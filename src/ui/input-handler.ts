@@ -1,7 +1,7 @@
 import { Key } from 'node:readline'
 import { PackageSelectionState } from '../types'
 import { StateManager } from './state'
-import { CursorUtils } from './cursor'
+import { CursorUtils } from './utils'
 
 export type InputAction =
   | { type: 'navigate_up' }
