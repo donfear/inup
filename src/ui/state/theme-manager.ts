@@ -1,4 +1,5 @@
 import { themes, defaultTheme, themeNames } from '../themes'
+import { configManager } from '../../utils/config'
 
 export interface ThemeState {
   showThemeModal: boolean
@@ -13,12 +14,16 @@ export class ThemeManager {
   private state: ThemeState
 
   constructor() {
+    // Load saved theme from config, fallback to default
+    const savedTheme = configManager.getTheme()
+    const initialTheme = savedTheme && themeNames.includes(savedTheme) ? savedTheme : defaultTheme
+
     this.state = {
       showThemeModal: false,
-      currentTheme: defaultTheme,
-      previewTheme: defaultTheme,
+      currentTheme: initialTheme,
+      previewTheme: initialTheme,
     }
-    globalCurrentTheme = defaultTheme
+    globalCurrentTheme = initialTheme
   }
 
   getState(): ThemeState {
@@ -60,6 +65,8 @@ export class ThemeManager {
   confirmTheme(): void {
     this.state.currentTheme = this.state.previewTheme
     globalCurrentTheme = this.state.currentTheme
+    // Save theme to config
+    configManager.setTheme(this.state.currentTheme)
     this.closeThemeModal()
   }
 
@@ -68,6 +75,8 @@ export class ThemeManager {
       this.state.currentTheme = themeName
       this.state.previewTheme = themeName
       globalCurrentTheme = themeName
+      // Save theme to config
+      configManager.setTheme(themeName)
     }
   }
 

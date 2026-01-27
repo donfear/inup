@@ -14,6 +14,9 @@ importers:
       commander:
         specifier: ^14.0.2
         version: 14.0.2
+      env-paths:
+        specifier: ^4.0.0
+        version: 4.0.0
       inquirer:
         specifier: ^13.2.1
         version: 13.2.1(@types/node@24.10.1)
@@ -227,6 +230,10 @@ packages:
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
 
+  env-paths@4.0.0:
+    resolution: {integrity: sha512-pxP8eL2SwwaTRi/KHYwLYXinDs7gL3jxFcBYmEdYfZmZXbaVDvdppd0XBU8qVz03rDfKZMXg1omHCbsJjZrMsw==}
+    engines: {node: '>=20'}
+
   get-east-asian-width@1.4.0:
     resolution: {integrity: sha512-QZjmEOC+IT1uk6Rx0sX22V6uHWVwbdbxf1faPqJ1QhLdGgsRGCZoyaQBm/piRdJy/D2um6hM1UP7ZEeQ4EkP+Q==}
     engines: {node: '>=18'}
@@ -243,6 +250,10 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
+
+  is-safe-filename@0.1.1:
+    resolution: {integrity: sha512-4SrR7AdnY11LHfDKTZY1u6Ga3RuxZdl3YKWWShO5iyuG5h8QS4GD2tOb04peBJ5I7pXbR+CGBNEhTcwK+FzN3g==}
+    engines: {node: '>=20'}
 
   keypress@0.2.1:
     resolution: {integrity: sha512-HjorDJFNhnM4SicvaUXac0X77NiskggxJdesG72+O5zBKpSqKFCrqmndKVqpu3pFqkla0St6uGk8Ju0sCurrmg==}
@@ -460,6 +471,10 @@ snapshots:
 
   emoji-regex@10.6.0: {}
 
+  env-paths@4.0.0:
+    dependencies:
+      is-safe-filename: 0.1.1
+
   get-east-asian-width@1.4.0: {}
 
   iconv-lite@0.7.2:
@@ -477,6 +492,8 @@ snapshots:
       rxjs: 7.8.2
     optionalDependencies:
       '@types/node': 24.10.1
+
+  is-safe-filename@0.1.1: {}
 
   keypress@0.2.1: {}
 
