@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import { CACHE_TTL, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../constants'
+import { CACHE_TTL, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
 
 // In-memory cache for package data
 interface CacheEntry {

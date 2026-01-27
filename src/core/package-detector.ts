@@ -8,7 +8,7 @@ import {
   findClosestMinorVersion,
 } from '../utils'
 import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
-import { DEFAULT_REGISTRY } from '../constants'
+import { DEFAULT_REGISTRY } from '../config'
 
 export class PackageDetector {
   private packageJsonPath: string | null = null

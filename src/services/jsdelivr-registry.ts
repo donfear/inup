@@ -1,6 +1,6 @@
 import { Pool, request } from 'undici'
 import * as semver from 'semver'
-import { CACHE_TTL, JSDELIVR_CDN_URL, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT } from '../constants'
+import { CACHE_TTL, JSDELIVR_CDN_URL, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT } from '../config'
 import { getAllPackageData } from './npm-registry'
 
 // Create a persistent connection pool for jsDelivr CDN with optimal settings
