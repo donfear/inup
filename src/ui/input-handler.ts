@@ -1,6 +1,7 @@
 import { Key } from 'node:readline'
 import { PackageSelectionState } from '../types'
 import { StateManager } from './state'
+import { CursorUtils } from './cursor'
 
 export type InputAction =
   | { type: 'navigate_up' }
@@ -35,6 +36,7 @@ export class InputHandler {
 
   handleKeypress(str: string, key: Key, states: PackageSelectionState[]): void {
     if (key.ctrl && key.name === 'c') {
+      CursorUtils.show()
       process.exit(0)
     }
 
@@ -108,6 +110,7 @@ export class InputHandler {
   }
 
   private cleanup(): void {
+    CursorUtils.show()
     if (process.stdin.setRawMode) {
       process.stdin.setRawMode(false)
     }
@@ -124,6 +127,7 @@ export class ConfirmationInputHandler {
 
   handleKeypress(str: string, key: Key): void {
     if (key.ctrl && key.name === 'c') {
+      CursorUtils.show()
       process.exit(0)
     }
 
@@ -147,6 +151,7 @@ export class ConfirmationInputHandler {
   }
 
   private cleanup(): void {
+    CursorUtils.show()
     if (process.stdin.setRawMode) {
       process.stdin.setRawMode(false)
     }

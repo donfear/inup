@@ -77,26 +77,31 @@ export class PackageDetector {
       }
     }
 
-    const allPackageData = DEFAULT_REGISTRY === 'jsdelivr'
-      ? await getAllPackageDataFromJsdelivr(
-        packageNames,
-        currentVersions,
-        (currentPackage: string, completed: number, total: number) => {
-          const percentage = Math.round((completed / total) * 100)
-          const truncatedPackage =
-            currentPackage.length > 40 ? currentPackage.substring(0, 37) + '...' : currentPackage
-          this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
-        }
-      )
-      : await getAllPackageData(
-        packageNames,
-        (currentPackage: string, completed: number, total: number) => {
-          const percentage = Math.round((completed / total) * 100)
-          const truncatedPackage =
-            currentPackage.length > 40 ? currentPackage.substring(0, 37) + '...' : currentPackage
-          this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
-        }
-      )
+    const allPackageData =
+      DEFAULT_REGISTRY === 'jsdelivr'
+        ? await getAllPackageDataFromJsdelivr(
+            packageNames,
+            currentVersions,
+            (currentPackage: string, completed: number, total: number) => {
+              const percentage = Math.round((completed / total) * 100)
+              const truncatedPackage =
+                currentPackage.length > 40
+                  ? currentPackage.substring(0, 37) + '...'
+                  : currentPackage
+              this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
+            }
+          )
+        : await getAllPackageData(
+            packageNames,
+            (currentPackage: string, completed: number, total: number) => {
+              const percentage = Math.round((completed / total) * 100)
+              const truncatedPackage =
+                currentPackage.length > 40
+                  ? currentPackage.substring(0, 37) + '...'
+                  : currentPackage
+              this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
+            }
+          )
 
     try {
       for (const dep of allDeps) {
