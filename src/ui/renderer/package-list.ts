@@ -18,9 +18,9 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
       const packagePart = parts.slice(1).join('/') // package name
 
       if (isCurrentRow) {
-        packageName = getThemeColor('packageAuthor')(author) + getThemeColor('packageName')('/' + packagePart)
+        packageName = chalk.bold(getThemeColor('packageAuthor')(author)) + getThemeColor('packageName')('/' + packagePart)
       } else {
-        packageName = chalk.white(author) + chalk.white('/' + packagePart)
+        packageName = chalk.bold.white(author) + chalk.white('/' + packagePart)
       }
     } else {
       packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
