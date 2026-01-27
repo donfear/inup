@@ -2,10 +2,16 @@ import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { existsSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
-import { PackageInfo, PackageUpgradeChoice } from '../types'
+import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo } from '../types'
 import { executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
 export class PackageUpgrader {
+  private packageManager: PackageManagerInfo
+
+  constructor(packageManager: PackageManagerInfo) {
+    this.packageManager = packageManager
+  }
+
   public async upgradePackages(
     choices: PackageUpgradeChoice[],
     packageInfos: PackageInfo[]
@@ -30,11 +36,11 @@ export class PackageUpgrader {
     const uniquePackages = new Set(choices.map((c) => c.name))
     console.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
 
-    // Execute pnpm install after all upgrades are complete
-    await this.runPnpmInstall(choices, packageInfos)
+    // Execute package manager install after all upgrades are complete
+    await this.runInstall(choices, packageInfos)
   }
 
-  private async runPnpmInstall(
+  private async runInstall(
     choices: PackageUpgradeChoice[],
     packageInfos: PackageInfo[]
   ): Promise<void> {
@@ -42,17 +48,34 @@ export class PackageUpgrader {
       return
     }
 
-    // Determine the directory to run pnpm install in
+    // Determine the directory to run install in
     // Use workspace root if it exists, otherwise use the directory of the first package.json
     const firstPackageJsonPath = choices[0].packageJsonPath
     const firstPackageDir = dirname(firstPackageJsonPath)
-    const workspaceRoot = findWorkspaceRoot(firstPackageDir)
+    const workspaceRoot = findWorkspaceRoot(firstPackageDir, this.packageManager.name)
     const installDir = workspaceRoot || firstPackageDir
 
-    const spinner = createSpinner('Running pnpm install...').start()
+    // Check if package manager is installed
+    try {
+      executeCommand(`${this.packageManager.name} --version`, installDir)
+    } catch (error) {
+      console.log(
+        chalk.yellow(
+          `\n⚠️  ${this.packageManager.displayName} is detected but not installed on your system.\n` +
+            `Please run the install command manually:\n` +
+            `  cd ${installDir}\n` +
+            `  ${this.packageManager.installCommand}\n`
+        )
+      )
+      return // Skip install, let user do it manually
+    }
+
+    const spinner = createSpinner(
+      `Running ${this.packageManager.displayName} install...`
+    ).start()
 
     try {
-      executeCommand('pnpm install', installDir)
+      executeCommand(this.packageManager.installCommand, installDir)
       spinner.success()
     } catch (error) {
       spinner.error()
@@ -104,7 +127,7 @@ export class PackageUpgrader {
       const packageJson = readPackageJson(packageJsonPath)
 
       // Find workspace root
-      const workspaceRoot = findWorkspaceRoot(packageDir)
+      const workspaceRoot = findWorkspaceRoot(packageDir, this.packageManager.name)
       const isWorkspaceRoot = packageDir === workspaceRoot
 
       // Group by upgrade type (range vs latest)

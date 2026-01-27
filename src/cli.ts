@@ -4,8 +4,9 @@ import { Command } from 'commander'
 import chalk from 'chalk'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { PnpmUpgradeInteractive } from './index'
+import { UpgradeRunner } from './index'
 import { checkForUpdateAsync } from './services'
+import { PackageManager } from './types'
 
 const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 
@@ -13,12 +14,13 @@ const program = new Command()
 
 program
   .name('inup')
-  .description('Interactive upgrade tool for package managers')
+  .description('Interactive upgrade tool for package managers. Auto-detects and works with npm, yarn, pnpm, and bun.')
   .version(packageJson.version)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option('-p, --peer', 'include peer dependencies in upgrade process')
   .option('-o, --optional', 'include optional dependencies in upgrade process')
+  .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 inup\n`))
 
@@ -37,11 +39,24 @@ program
     const includePeerDeps = options.peer === true
     const includeOptionalDeps = options.optional === true
 
-    const upgrader = new PnpmUpgradeInteractive({
+    // Validate package manager if provided
+    let packageManager: PackageManager | undefined
+    if (options.packageManager) {
+      const validPMs = ['npm', 'yarn', 'pnpm', 'bun']
+      if (!validPMs.includes(options.packageManager)) {
+        console.error(chalk.red(`Invalid package manager: ${options.packageManager}`))
+        console.error(chalk.yellow(`Valid options: ${validPMs.join(', ')}`))
+        process.exit(1)
+      }
+      packageManager = options.packageManager as PackageManager
+    }
+
+    const upgrader = new UpgradeRunner({
       cwd: options.dir,
       excludePatterns,
       includePeerDeps,
       includeOptionalDeps,
+      packageManager,
     })
     await upgrader.run()
 

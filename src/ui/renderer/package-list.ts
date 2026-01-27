@@ -155,12 +155,17 @@ export function renderInterface(
   maxVisibleItems: number,
   isInitialRender: boolean,
   renderableItems?: RenderableItem[],
-  dependencyTypeLabel?: string
+  dependencyTypeLabel?: string,
+  packageManager?: any
 ): string[] {
   const output: string[] = []
 
   // Header section (same for initial and incremental render)
-  output.push('  ' + chalk.bold.magenta('🚀 inup'))
+  if (packageManager) {
+    output.push('  ' + packageManager.color.bold(`🚀 inup (${packageManager.displayName})`))
+  } else {
+    output.push('  ' + chalk.bold.magenta('🚀 inup'))
+  }
   output.push('')
 
   // Show dependency type if provided

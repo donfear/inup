@@ -6,6 +6,7 @@ import {
   PackageInfo,
   PackageUpgradeChoice,
   PackageSelectionState,
+  PackageManagerInfo,
 } from './types'
 import { Key } from 'node:readline'
 import {
@@ -20,9 +21,11 @@ import { changelogFetcher } from './services'
 
 export class InteractiveUI {
   private renderer: UIRenderer
+  private packageManager: PackageManagerInfo
 
-  constructor() {
+  constructor(packageManager: PackageManagerInfo) {
     this.renderer = new UIRenderer()
+    this.packageManager = packageManager
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -357,7 +360,8 @@ export class InteractiveUI {
             uiState.maxVisibleItems,
             uiState.isInitialRender,
             [], // No renderable items - use flat rendering
-            dependencyTypeLabel // Show which dependency type we're upgrading
+            dependencyTypeLabel, // Show which dependency type we're upgrading
+            this.packageManager // Pass package manager info for header
           )
 
           // Print all lines
