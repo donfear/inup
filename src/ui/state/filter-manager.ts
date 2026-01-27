@@ -1,4 +1,4 @@
-import { PackageSelectionState } from '../types'
+import { PackageSelectionState } from '../../types'
 
 export interface FilterState {
   filterMode: boolean // Whether we're in filter/search input mode

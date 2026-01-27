@@ -1,4 +1,4 @@
-import { PackageSelectionState, RenderableItem } from '../types'
+import { PackageSelectionState, RenderableItem } from '../../types'
 import { NavigationManager, NavigationState } from './navigation-manager'
 import { ModalManager, ModalState } from './modal-manager'
 import { FilterManager, FilterState } from './filter-manager'
