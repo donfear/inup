@@ -17,7 +17,7 @@ export interface UIState {
 
 export class StateManager {
   private uiState: UIState
-  private readonly headerLines = 7 // title + empty + label + empty + 1 instruction line + status + empty
+  private readonly headerLines = 5 // title (with label) + empty + 1 instruction line + status + empty
 
   constructor(initialRow: number = 0, terminalHeight: number = 24) {
     this.uiState = {
@@ -94,7 +94,7 @@ export class StateManager {
     const currentPos = packageItems.findIndex((p) => p.packageIndex === currentPackageIndex)
     if (currentPos === -1) return packageItems[0].packageIndex
 
-    // Navigate with wrap-around
+    // Navigate with wrap-around at boundaries
     if (direction === 'up') {
       const newPos = currentPos <= 0 ? packageItems.length - 1 : currentPos - 1
       return packageItems[newPos].packageIndex
@@ -151,31 +151,23 @@ export class StateManager {
       }
     }
 
-    // Scrolling up: show from targetVisualIndex (includes headers if applicable)
+    // Scrolling up: scroll up by 1 item
     if (targetVisualIndex < this.uiState.scrollOffset) {
       this.uiState.scrollOffset = targetVisualIndex
     }
-    // Scrolling down: ensure the package is visible, but prefer showing context if possible
+    // Scrolling down: scroll down by 1 item (smooth scrolling)
     else if (visualIndex >= this.uiState.scrollOffset + this.uiState.maxVisibleItems) {
-      // Calculate how many items we need to show from targetVisualIndex to visualIndex
-      const rangeSize = visualIndex - targetVisualIndex + 1
-      if (rangeSize <= this.uiState.maxVisibleItems) {
-        // We can fit the context (header/spacer) and the package, so show from targetVisualIndex
-        this.uiState.scrollOffset = targetVisualIndex
-      } else {
-        // Not enough room for context, position package at bottom of viewport
-        this.uiState.scrollOffset = visualIndex - this.uiState.maxVisibleItems + 1
-      }
+      this.uiState.scrollOffset += 1
     }
 
     // Ensure scrollOffset doesn't go negative or beyond bounds
-    this.uiState.scrollOffset = Math.max(
-      0,
-      Math.min(
-        this.uiState.scrollOffset,
-        Math.max(0, totalVisualItems - this.uiState.maxVisibleItems)
-      )
-    )
+    const maxScroll = Math.max(0, totalVisualItems - this.uiState.maxVisibleItems)
+    this.uiState.scrollOffset = Math.max(0, Math.min(this.uiState.scrollOffset, maxScroll))
+
+    // Handle wrap-around: if we're at the last item and it's out of view, show it at bottom
+    if (visualIndex === totalVisualItems - 1 && visualIndex >= this.uiState.scrollOffset + this.uiState.maxVisibleItems) {
+      this.uiState.scrollOffset = maxScroll
+    }
   }
 
   updateSelection(states: PackageSelectionState[], direction: 'left' | 'right'): void {

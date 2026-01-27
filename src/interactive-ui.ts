@@ -67,15 +67,15 @@ export class InteractiveUI {
 
       // Build label describing which types are shown
       const types: string[] = []
-      if (options.includePeerDeps) types.push('Peer Dependencies')
-      if (options.includeOptionalDeps) types.push('Optional Dependencies')
+      if (options.includePeerDeps) types.push('Peer Deps')
+      if (options.includeOptionalDeps) types.push('Optional Deps')
       dependencyTypeLabel = types.join(' & ')
     } else {
       // Default: show only regular dependencies and devDependencies
       filteredPackages = outdatedPackages.filter(
         (pkg) => pkg.type === 'dependencies' || pkg.type === 'devDependencies'
       )
-      dependencyTypeLabel = 'Dependencies & Dev Dependencies'
+      dependencyTypeLabel = 'Deps & Dev Deps'
     }
 
     if (filteredPackages.length === 0) {

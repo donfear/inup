@@ -166,17 +166,13 @@ export function renderInterface(
     // Each character in "inup" gets a different color
     const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
-    output.push('  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + chalk.gray(` (${packageManager.displayName})`))
+    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + chalk.gray(` (${packageManager.displayName})`)
+    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
   } else {
-    output.push('  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p'))
+    const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
+    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
   }
   output.push('')
-
-  // Show dependency type if provided
-  if (dependencyTypeLabel) {
-    output.push('  ' + chalk.bold.cyan(dependencyTypeLabel))
-    output.push('')
-  }
   output.push(
     '  ' +
       chalk.bold.white('↑/↓ ') +
