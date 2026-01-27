@@ -1,4 +1,4 @@
-import { PackageSelectionState, RenderableItem } from '../../types'
+import { PackageSelectionState, RenderableItem, PackageManagerInfo } from '../../types'
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from './modal'
@@ -26,7 +26,8 @@ export class UIRenderer {
     maxVisibleItems: number,
     isInitialRender: boolean,
     renderableItems?: RenderableItem[],
-    dependencyTypeLabel?: string
+    dependencyTypeLabel?: string,
+    packageManager?: PackageManagerInfo
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -35,7 +36,8 @@ export class UIRenderer {
       maxVisibleItems,
       isInitialRender,
       renderableItems,
-      dependencyTypeLabel
+      dependencyTypeLabel,
+      packageManager
     )
   }
 

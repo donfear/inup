@@ -33,7 +33,7 @@ cleanup() {
     echo "🧹 Cleaning up..."
     
     echo "🔗 Unlinking global package..."
-    pnpm unlink --global pnpm-upgrade-interactive 2>/dev/null || true
+    pnpm unlink --global inup 2>/dev/null || true
     
     echo "🗑️  Removing temporary directory..."
     rm -rf "$TEMP_DIR"

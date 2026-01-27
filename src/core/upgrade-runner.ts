@@ -2,22 +2,33 @@ import chalk from 'chalk'
 import { PackageDetector } from './package-detector'
 import { InteractiveUI } from '../interactive-ui'
 import { PackageUpgrader } from './upgrader'
-import { PnpmUpgradeOptions } from '../types'
+import { UpgradeOptions, PackageManagerInfo } from '../types'
+import { PackageManagerDetector } from '../services/package-manager-detector'
 
 /**
- * Main orchestrator for the pnpm upgrade interactive process
+ * Main orchestrator for the inup upgrade process
  */
-export class PnpmUpgradeInteractive {
+export class UpgradeRunner {
   private detector: PackageDetector
   private ui: InteractiveUI
   private upgrader: PackageUpgrader
-  private options?: PnpmUpgradeOptions
+  private options?: UpgradeOptions
+  private packageManager: PackageManagerInfo
 
-  constructor(options?: PnpmUpgradeOptions) {
-    this.detector = new PackageDetector(options)
-    this.ui = new InteractiveUI()
-    this.upgrader = new PackageUpgrader()
+  constructor(options?: UpgradeOptions) {
     this.options = options
+
+    // Detect package manager
+    const cwd = options?.cwd || process.cwd()
+    if (options?.packageManager) {
+      this.packageManager = PackageManagerDetector.getInfo(options.packageManager)
+    } else {
+      this.packageManager = PackageManagerDetector.detect(cwd)
+    }
+
+    this.detector = new PackageDetector(options)
+    this.ui = new InteractiveUI(this.packageManager)
+    this.upgrader = new PackageUpgrader(this.packageManager)
   }
 
   public async run(): Promise<void> {
@@ -76,7 +87,7 @@ export class PnpmUpgradeInteractive {
         if (shouldProceed === null) {
           // User pressed N or ESC - go back to selection with current selections preserved
           console.clear()
-          console.log(chalk.bold.blue('🚀 pnpm-upgrade-interactive\n'))
+          console.log(chalk.bold.blue('🚀 inup\n'))
           // previousSelections is already set from above
           continue
         }
@@ -143,3 +154,8 @@ export class PnpmUpgradeInteractive {
     console.log(chalk.gray('─'.repeat(50)))
   }
 }
+
+/**
+ * @deprecated Use UpgradeRunner instead
+ */
+export class PnpmUpgradeInteractive extends UpgradeRunner {}

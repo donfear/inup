@@ -1,7 +1,8 @@
 import { readFileSync, existsSync, readdirSync, statSync, realpathSync } from 'fs'
 import { promises as fsPromises } from 'fs'
 import { join, relative } from 'path'
-import { PackageJson } from '../types'
+import { PackageJson, PackageManager } from '../types'
+import { PackageManagerDetector } from '../services/package-manager-detector'
 
 /**
  * Find package.json in the current working directory
@@ -12,18 +13,21 @@ export function findPackageJson(cwd: string = process.cwd()): string | null {
 }
 
 /**
- * Find the workspace root by looking for pnpm-workspace.yaml
+ * Find the workspace root by detecting package manager and checking for workspace configuration
+ * @param cwd - Current working directory
+ * @param packageManager - Optional package manager to use (will auto-detect if not provided)
  */
-export function findWorkspaceRoot(cwd: string = process.cwd()): string | null {
-  let currentDir = cwd
-  while (currentDir !== join(currentDir, '..')) {
-    const workspaceFile = join(currentDir, 'pnpm-workspace.yaml')
-    if (existsSync(workspaceFile)) {
-      return currentDir
-    }
-    currentDir = join(currentDir, '..')
+export function findWorkspaceRoot(
+  cwd: string = process.cwd(),
+  packageManager?: PackageManager
+): string | null {
+  // Auto-detect if not provided
+  if (!packageManager) {
+    const detected = PackageManagerDetector.detect(cwd)
+    packageManager = detected.name
   }
-  return null
+
+  return PackageManagerDetector.findWorkspaceRoot(cwd, packageManager)
 }
 
 /**

@@ -55,11 +55,23 @@ export type RenderableItem =
   | { type: 'spacer' }
   | { type: 'package'; state: PackageSelectionState; originalIndex: number }
 
-export interface PnpmUpgradeOptions {
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+
+export interface PackageManagerInfo {
+  name: PackageManager
+  displayName: string
+  lockFile: string
+  workspaceFile: string | null
+  installCommand: string
+  color: any // chalk instance
+}
+
+export interface UpgradeOptions {
   cwd?: string
   excludePatterns?: string[]
   includePeerDeps?: boolean
   includeOptionalDeps?: boolean
+  packageManager?: PackageManager // Manual override for package manager
 }
 
 export interface PackageJson {
@@ -67,5 +79,7 @@ export interface PackageJson {
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  packageManager?: string
+  workspaces?: string[] | { packages: string[] }
   [key: string]: any
 }

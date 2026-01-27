@@ -3,13 +3,6 @@ import { PackageSelectionState, RenderableItem } from '../../types'
 import { VersionUtils } from '../utils'
 
 /**
- * Remove ANSI color codes from a string for length calculation
- */
-function stripAnsi(str: string): string {
-  return str.replace(/\u001b\[[0-9;]*m/g, '')
-}
-
-/**
  * Render a single package line
  */
 export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
@@ -155,12 +148,28 @@ export function renderInterface(
   maxVisibleItems: number,
   isInitialRender: boolean,
   renderableItems?: RenderableItem[],
-  dependencyTypeLabel?: string
+  dependencyTypeLabel?: string,
+  packageManager?: any
 ): string[] {
   const output: string[] = []
 
   // Header section (same for initial and incremental render)
-  output.push('  ' + chalk.bold.magenta('🚀 pnpm-upgrade-interactive'))
+  if (packageManager) {
+    // Color map for each package manager - use their primary color for main text
+    const colorMap: { [key: string]: (text: string) => string } = {
+      npm: chalk.red,
+      yarn: chalk.blue,
+      pnpm: chalk.yellow,
+      bun: chalk.magenta,
+    }
+    const pmColor = colorMap[packageManager.name] || packageManager.color
+    // Each character in "inup" gets a different color
+    const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
+    const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
+    output.push('  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + chalk.gray(` (${packageManager.displayName})`))
+  } else {
+    output.push('  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p'))
+  }
   output.push('')
 
   // Show dependency type if provided
@@ -265,5 +274,5 @@ export function renderPackagesTable(packages: any[]): string {
   }
 
   // Just show a simple message, the interactive interface will handle the display
-  return chalk.bold.blue('🚀 pnpm-upgrade-interactive\n')
+  return chalk.bold.blue('🚀 inup\n')
 }
