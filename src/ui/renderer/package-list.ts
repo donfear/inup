@@ -160,7 +160,7 @@ export function renderInterface(
   const output: string[] = []
 
   // Header section (same for initial and incremental render)
-  output.push('  ' + chalk.bold.magenta('🚀 pnpm-upgrade-interactive'))
+  output.push('  ' + chalk.bold.magenta('🚀 inup'))
   output.push('')
 
   // Show dependency type if provided
@@ -265,5 +265,5 @@ export function renderPackagesTable(packages: any[]): string {
   }
 
   // Just show a simple message, the interactive interface will handle the display
-  return chalk.bold.blue('🚀 pnpm-upgrade-interactive\n')
+  return chalk.bold.blue('🚀 inup\n')
 }

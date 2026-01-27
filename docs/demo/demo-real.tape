@@ -15,8 +15,8 @@ Type "clear"
 Enter
 Show
 
-# Run pnpm-upgrade-interactive
-Type "pnpm-upgrade-interactive"
+# Run inup
+Type "inup"
 Enter
 
 # Wait for the tool to scan and fetch package updates (reduced from 5s)

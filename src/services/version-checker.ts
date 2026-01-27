@@ -34,8 +34,8 @@ export async function checkForUpdate(
     const isNpx = process.argv[1]?.includes('.npm') || process.argv[1]?.includes('_npx')
 
     const updateCommand = isNpx
-      ? `npx pnpm-upgrade-interactive@latest`
-      : `npm install -g pnpm-upgrade-interactive@latest`
+      ? `npx inup@latest`
+      : `npm install -g inup@latest`
 
     return {
       currentVersion,

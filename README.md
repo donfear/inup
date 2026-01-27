@@ -1,8 +1,8 @@
-# pnpm-upgrade-interactive
+# inup
 
-[![npm version](https://img.shields.io/npm/v/pnpm-upgrade-interactive?logo=npm&logoColor=%23CB3837&style=for-the-badge&color=crimson)](https://www.npmjs.com/package/pnpm-upgrade-interactive)
-[![Downloads](https://img.shields.io/npm/dm/pnpm-upgrade-interactive?style=for-the-badge&color=646CFF&logoColor=white)](https://www.npmjs.com/package/pnpm-upgrade-interactive)
-[![Total downloads](https://img.shields.io/npm/dt/pnpm-upgrade-interactive?style=for-the-badge&color=informational)](https://www.npmjs.com/package/pnpm-upgrade-interactive)
+[![npm version](https://img.shields.io/npm/v/inup?logo=npm&logoColor=%23CB3837&style=for-the-badge&color=crimson)](https://www.npmjs.com/package/inup)
+[![Downloads](https://img.shields.io/npm/dm/inup?style=for-the-badge&color=646CFF&logoColor=white)](https://www.npmjs.com/package/inup)
+[![Total downloads](https://img.shields.io/npm/dt/inup?style=for-the-badge&color=informational)](https://www.npmjs.com/package/inup)
 
 A powerful interactive CLI tool for upgrading pnpm dependencies with ease. Inspired by `yarn upgrade-interactive`, this tool makes dependency management a breeze for pnpm projects. Perfect for monorepos, workspaces, and batch upgrades ❤️
 
@@ -17,9 +17,9 @@ Ever found yourself staring at a wall of outdated packages, wondering which ones
 - **Lets you pick what to upgrade** - interactive interface to select exactly what you want
 - **Does the heavy lifting** - updates your package.json files and runs pnpm install for you
 
-## Why choose pnpm-upgrade-interactive?
+## Why choose inup?
 
-If you're using pnpm and miss the convenience of `yarn upgrade-interactive`, this tool is perfect for you!
+If you're using any package manager and miss the convenience of `yarn upgrade-interactive`, this tool is perfect for you!
 
 - **🚀 Fast & Efficient** - Batch upgrade multiple packages at once
 - **🔒 Safe Updates** - Choose between minor updates or major version jumps
@@ -33,19 +33,19 @@ If you're using pnpm and miss the convenience of `yarn upgrade-interactive`, thi
 ### With npx (no installation needed)
 
 ```bash
-npx pnpm-upgrade-interactive
+npx inup
 ```
 
 ### Install globally with pnpm
 
 ```bash
-pnpm add -g pnpm-upgrade-interactive
+pnpm add -g inup
 ```
 
 ### Alternative: npm
 
 ```bash
-npm install -g pnpm-upgrade-interactive
+npm install -g inup
 ```
 
 ## Usage
@@ -53,7 +53,7 @@ npm install -g pnpm-upgrade-interactive
 Just run it in your project directory:
 
 ```bash
-pnpm-upgrade-interactive
+inup
 ```
 
 The tool will scan your entire workspace (including monorepos), find outdated packages, and let you choose which ones to upgrade interactively.
@@ -71,28 +71,28 @@ Examples:
 
 ```bash
 # Basic usage - scans only dependencies and devDependencies
-pnpm-upgrade-interactive
+inup
 
 # Include peer dependencies in the upgrade process
-pnpm-upgrade-interactive --peer
+inup --peer
 
 # Include optional dependencies
-pnpm-upgrade-interactive --optional
+inup --optional
 
 # Include both peer and optional dependencies
-pnpm-upgrade-interactive --peer --optional
+inup --peer --optional
 
 # Skip example and test directories
-pnpm-upgrade-interactive --exclude "example,test"
+inup --exclude "example,test"
 
 # Skip specific paths with regex
-pnpm-upgrade-interactive -e "example/.*,.*\.test\..*"
+inup -e "example/.*,.*\.test\..*"
 
 # Run in a different directory
-pnpm-upgrade-interactive --dir ../my-other-project
+inup --dir ../my-other-project
 
 # Combine multiple options
-pnpm-upgrade-interactive --dir ./packages --peer --exclude "test,dist"
+inup --dir ./packages --peer --exclude "test,dist"
 ```
 
 ### How it works

@@ -325,7 +325,7 @@ export class InteractiveUI {
 
           // Render header
           const headerLines: string[] = []
-          headerLines.push('  ' + chalk.bold.magenta('🚀 pnpm-upgrade-interactive'))
+          headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
           headerLines.push('')
           headerLines.push(
             '  ' +

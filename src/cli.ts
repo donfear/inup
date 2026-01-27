@@ -12,18 +12,18 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 
 const program = new Command()
 
 program
-  .name('pnpm-upgrade-interactive')
-  .description('Interactive upgrade tool for pnpm packages')
+  .name('inup')
+  .description('Interactive upgrade tool for package managers')
   .version(packageJson.version)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option('-p, --peer', 'include peer dependencies in upgrade process')
   .option('-o, --optional', 'include optional dependencies in upgrade process')
   .action(async (options) => {
-    console.log(chalk.bold.blue(`🚀 pnpm-upgrade-interactive\n`))
+    console.log(chalk.bold.blue(`🚀 inup\n`))
 
     // Check for updates in the background (non-blocking)
-    const updateCheckPromise = checkForUpdateAsync('pnpm-upgrade-interactive', packageJson.version)
+    const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
 
     const excludePatterns = options.exclude
       ? options.exclude

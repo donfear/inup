@@ -1,10 +1,10 @@
 {
-  "name": "pnpm-upgrade-interactive",
+  "name": "inup",
   "version": "1.3.8",
   "description": "Interactive CLI tool for upgrading pnpm dependencies with ease. Inspired by yarn upgrade-interactive. Supports monorepos, workspaces, and batch upgrades.",
   "main": "dist/index.js",
   "bin": {
-    "pnpm-upgrade-interactive": "./dist/cli.js"
+    "inup": "./dist/cli.js"
   },
   "scripts": {
     "build": "rm -rf dist && tsc",
@@ -34,13 +34,13 @@
     "batch-upgrade"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/donfear/pnpm-upgrade-interactive#readme",
+  "homepage": "https://github.com/donfear/inup#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/donfear/pnpm-upgrade-interactive.git"
+    "url": "git+https://github.com/donfear/inup.git"
   },
   "bugs": {
-    "url": "https://github.com/donfear/pnpm-upgrade-interactive/issues"
+    "url": "https://github.com/donfear/inup/issues"
   },
   "files": [
     "dist/**/*.js",

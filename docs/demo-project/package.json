@@ -1,7 +1,7 @@
 {
   "name": "demo-project",
   "version": "1.0.0",
-  "description": "Demo project for pnpm-upgrade-interactive showcase",
+  "description": "Demo project for inup showcase",
   "private": true,
   "dependencies": {
     "chalk": "^4.0.0",

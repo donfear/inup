@@ -5,7 +5,7 @@ import { PackageUpgrader } from './upgrader'
 import { PnpmUpgradeOptions } from '../types'
 
 /**
- * Main orchestrator for the pnpm upgrade interactive process
+ * Main orchestrator for the inup upgrade process
  */
 export class PnpmUpgradeInteractive {
   private detector: PackageDetector
@@ -76,7 +76,7 @@ export class PnpmUpgradeInteractive {
         if (shouldProceed === null) {
           // User pressed N or ESC - go back to selection with current selections preserved
           console.clear()
-          console.log(chalk.bold.blue('🚀 pnpm-upgrade-interactive\n'))
+          console.log(chalk.bold.blue('🚀 inup\n'))
           // previousSelections is already set from above
           continue
         }

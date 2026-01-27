@@ -1,5 +1,5 @@
 /**
- * Public API for pnpm-upgrade-interactive
+ * Public API for inup
  */
 
 export { PnpmUpgradeInteractive } from './core'
