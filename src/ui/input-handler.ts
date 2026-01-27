@@ -35,6 +35,11 @@ export class InputHandler {
   }
 
   handleKeypress(str: string, key: Key, states: PackageSelectionState[]): void {
+    // Guard against undefined or missing key properties
+    if (!key) {
+      return
+    }
+
     if (key.ctrl && key.name === 'c') {
       CursorUtils.show()
       process.exit(0)
@@ -126,6 +131,11 @@ export class ConfirmationInputHandler {
   }
 
   handleKeypress(str: string, key: Key): void {
+    // Guard against undefined or missing key properties
+    if (!key) {
+      return
+    }
+
     if (key.ctrl && key.name === 'c') {
       CursorUtils.show()
       process.exit(0)
