@@ -16,6 +16,7 @@ import {
   ConfirmationInputHandler,
   InputAction,
   VersionUtils,
+  CursorUtils,
 } from './ui'
 import { changelogFetcher } from './services'
 
@@ -287,6 +288,7 @@ export class InteractiveUI {
       }
 
       const handleConfirm = (selectedStates: PackageSelectionState[]) => {
+        CursorUtils.show()
         // Clean up listeners
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
@@ -298,6 +300,7 @@ export class InteractiveUI {
       }
 
       const handleCancel = () => {
+        CursorUtils.show()
         // Clean up listeners
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
@@ -315,9 +318,9 @@ export class InteractiveUI {
 
         if (uiState.isInitialRender) {
           console.clear()
+          CursorUtils.hide()
         } else {
-          // Move cursor to top and rewrite everything to minimize flicker
-          process.stdout.write('\x1b[H')
+          CursorUtils.moveToHome()
         }
 
         // If modal is open, render only the modal with header/footer
@@ -349,7 +352,7 @@ export class InteractiveUI {
           }
 
           // Clear any remaining lines from previous render
-          process.stdout.write('\x1b[J')
+          CursorUtils.clearToEndOfScreen()
           stateManager.markRendered([])
         } else {
           // Normal list view (flat rendering - no grouping)
@@ -369,7 +372,7 @@ export class InteractiveUI {
 
           // Clear any remaining lines from previous render
           if (!uiState.isInitialRender) {
-            process.stdout.write('\x1b[J')
+            CursorUtils.clearToEndOfScreen()
           }
 
           stateManager.markRendered(lines)
@@ -430,6 +433,7 @@ export class InteractiveUI {
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(true)
         }
+        CursorUtils.hide()
         process.stdin.resume()
         process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key))
       } catch (error) {
