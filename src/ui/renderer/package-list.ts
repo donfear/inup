@@ -72,20 +72,20 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
     latestVersionText = ''
   }
 
-  // Column widths with dynamic package name width based on terminal width
+  // Column widths with capped package name width
   // Layout: prefix(2) + name + dashes + spacing(3) + current(16) + spacing(3) + range(16) + spacing(3) + latest(16)
-  // Total minimum: 2 + 24 + 3 + 16 + 3 + 16 + 3 + 16 = 83 chars
   const currentColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const rangeColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const latestColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const spacingWidth = 3
 
-  // Calculate dynamic package name width
-  const minPackageNameWidth = 24 // Minimum width before triggering ellipsis
+  // Package name width: max 50 chars (after which ellipsis kicks in), but scales down on small terminals
+  const maxPackageNameWidth = 50
+  const minPackageNameWidth = 24
   const otherColumnsWidth = currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
   const prefixWidth = 2
-  const availableForPackageName = Math.max(minPackageNameWidth, terminalWidth - prefixWidth - otherColumnsWidth - 1)
-  const packageNameWidth = availableForPackageName
+  const availableForPackageName = terminalWidth - prefixWidth - otherColumnsWidth - 1
+  const packageNameWidth = Math.min(maxPackageNameWidth, Math.max(minPackageNameWidth, availableForPackageName))
 
   // Apply ellipsis truncation if package name exceeds available width
   const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1) // -1 for space after name
