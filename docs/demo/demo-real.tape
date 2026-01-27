@@ -20,7 +20,7 @@ Type "inup"
 Enter
 
 # Wait for the tool to scan and fetch package updates (reduced from 5s)
-Sleep 3s
+Sleep 2s
 
 # Use 'M' to select all minor updates
 Type "m"
