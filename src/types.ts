@@ -74,9 +74,6 @@ export interface UpgradeOptions {
   packageManager?: PackageManager // Manual override for package manager
 }
 
-/** @deprecated Use UpgradeOptions instead */
-export type PnpmUpgradeOptions = UpgradeOptions
-
 export interface PackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>

@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import { PackageInfo, PackageJson, PnpmUpgradeOptions } from '../types'
+import { PackageInfo, PackageJson, UpgradeOptions } from '../types'
 import {
   findPackageJson,
   readPackageJson,
@@ -17,7 +17,7 @@ export class PackageDetector {
   private includePeerDeps: boolean
   private includeOptionalDeps: boolean
 
-  constructor(options?: PnpmUpgradeOptions) {
+  constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
     this.excludePatterns = options?.excludePatterns || []
     // Explicitly check for true to ensure false/undefined both become false (opt-in)
