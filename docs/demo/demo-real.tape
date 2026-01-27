@@ -26,6 +26,35 @@ Sleep 2s
 Type "m"
 Sleep 1s
 
+# Demonstrate search functionality - press '/' to enter search mode
+Type "/"
+Sleep 600ms
+
+# Type 'express' to search for the express package
+Type "express"
+Sleep 800ms
+
+# Navigate down to see the express package
+Down
+Sleep 400ms
+
+# Show version selection in search mode - press right to see patch version
+Right
+Sleep 600ms
+
+# Press right again to see major version
+Right
+Sleep 600ms
+
+# Press left to go back to minor version
+Left
+Sleep 400ms
+
+
+# Exit search mode with Escape
+Ctrl+[
+Sleep 600ms
+
 # Navigate down 2 packages
 Down
 Sleep 400ms
