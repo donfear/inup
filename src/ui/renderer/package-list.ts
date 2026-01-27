@@ -90,44 +90,52 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   // Apply ellipsis truncation if package name exceeds available width
   const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1) // -1 for space after name
 
-  // Package name with dashes
+  // Helper function to determine if dashes should be shown based on available padding
+  // Only show dashes if there's significant padding (> 2 chars) to fill
+  const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
+
+  const dashColor = isCurrentRow ? chalk.white : chalk.gray
+
+  // Package name with dashes only if needed
   const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
-  const nameDashes = '-'.repeat(namePadding)
-  const dashColor = isCurrentRow ? chalk.white : chalk.gray
+  const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
 
   // Use truncated name if it differs from original, otherwise use colored packageName
   const displayName = truncatedName !== state.name ? truncatedName : packageName
 
-  const packageNameSection = `${displayName} ${dashColor(nameDashes)}`
+  const packageNameSection = `${displayName} ${nameDashes}`
 
-  // Current version section with fixed width
+  // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
-  const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1 // +1 for space before dashes
+  const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1 // +1 for space before padding
   const currentPadding = Math.max(0, currentColumnWidth - currentSectionLength)
-  const currentWithPadding = currentSection + ' ' + dashColor('-').repeat(currentPadding)
+  const currentPaddingText = shouldShowDashes(currentPadding) ? dashColor('-').repeat(currentPadding) : ' '.repeat(currentPadding)
+  const currentWithPadding = currentSection + ' ' + currentPaddingText
 
-  // Range version section with fixed width
+  // Range version section with dashes only if needed
   let rangeSection = ''
   if (state.hasRangeUpdate) {
     rangeSection = `${rangeDot} ${rangeVersionText}`
-    const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before dashes
+    const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before padding
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
-    rangeSection += ' ' + dashColor('-').repeat(rangePadding)
+    const rangePaddingText = shouldShowDashes(rangePadding) ? dashColor('-').repeat(rangePadding) : ' '.repeat(rangePadding)
+    rangeSection += ' ' + rangePaddingText
   } else {
-    // Empty slot - just spaces to maintain column width
+    // Empty slot - maintain column width
     rangeSection = ' '.repeat(rangeColumnWidth)
   }
 
-  // Latest version section with fixed width
+  // Latest version section with dashes only if needed
   let latestSection = ''
   if (state.hasMajorUpdate) {
     latestSection = `${latestDot} ${latestVersionText}`
-    const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before dashes
+    const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before padding
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
-    latestSection += ' ' + dashColor('-').repeat(latestPadding)
+    const latestPaddingText = shouldShowDashes(latestPadding) ? dashColor('-').repeat(latestPadding) : ' '.repeat(latestPadding)
+    latestSection += ' ' + latestPaddingText
   } else {
-    // Empty slot - just spaces to maintain column width
+    // Empty slot - maintain column width
     latestSection = ' '.repeat(latestColumnWidth)
   }
 
