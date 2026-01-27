@@ -332,7 +332,7 @@ export class InteractiveUI {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states)
 
-        if (uiState.isInitialRender) {
+        if (uiState.forceFullRender) {
           console.clear()
           CursorUtils.hide()
         } else {
@@ -377,7 +377,7 @@ export class InteractiveUI {
             uiState.currentRow,
             uiState.scrollOffset,
             uiState.maxVisibleItems,
-            uiState.isInitialRender,
+            uiState.forceFullRender,
             [], // No renderable items - use flat rendering
             dependencyTypeLabel, // Show which dependency type we're upgrading
             this.packageManager, // Pass package manager info for header
@@ -390,7 +390,7 @@ export class InteractiveUI {
           lines.forEach((line) => console.log(line))
 
           // Clear any remaining lines from previous render
-          if (!uiState.isInitialRender) {
+          if (!uiState.forceFullRender) {
             CursorUtils.clearToEndOfScreen()
           }
 

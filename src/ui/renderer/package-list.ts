@@ -146,7 +146,7 @@ export function renderInterface(
   currentRow: number,
   scrollOffset: number,
   maxVisibleItems: number,
-  isInitialRender: boolean,
+  forceFullRender: boolean,
   renderableItems?: RenderableItem[],
   dependencyTypeLabel?: string,
   packageManager?: any,

@@ -1,5 +1,8 @@
 export { VersionUtils } from './utils'
 export { StateManager, type UIState } from './state'
+export { NavigationManager, type NavigationState } from './navigation-manager'
+export { ModalManager, type ModalState } from './modal-manager'
+export { FilterManager, type FilterState } from './filter-manager'
 export { UIRenderer } from './renderer/index'
 export { InputHandler, ConfirmationInputHandler, type InputAction } from './input-handler'
 export { CursorUtils } from './cursor'
