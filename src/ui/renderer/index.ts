@@ -2,6 +2,7 @@ import { PackageSelectionState, RenderableItem, PackageManagerInfo } from '../..
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from './modal'
+import * as ThemeSelector from './theme-selector'
 
 /**
  * Main UI renderer class that composes all rendering parts
@@ -70,9 +71,19 @@ export class UIRenderer {
   ): string[] {
     return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight)
   }
+
+  renderThemeSelectorModal(
+    currentTheme: string,
+    previewTheme: string,
+    terminalWidth: number = 80,
+    terminalHeight: number = 24
+  ): string[] {
+    return ThemeSelector.renderThemeSelectorModal(currentTheme, previewTheme, terminalWidth, terminalHeight)
+  }
 }
 
 // Re-export all functions for direct use if needed
 export * from './package-list'
 export * from './confirmation'
 export * from './modal'
+export * from './theme-selector'

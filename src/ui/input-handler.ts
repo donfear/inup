@@ -13,6 +13,10 @@ export type InputAction =
   | { type: 'bulk_select_latest' }
   | { type: 'bulk_unselect_all' }
   | { type: 'toggle_info_modal' }
+  | { type: 'toggle_theme_modal' }
+  | { type: 'theme_navigate_up' }
+  | { type: 'theme_navigate_down' }
+  | { type: 'theme_confirm' }
   | { type: 'cancel' }
   | { type: 'resize'; height: number }
   | { type: 'enter_filter_mode' }
@@ -50,6 +54,33 @@ export class InputHandler {
     }
 
     const uiState = this.stateManager.getUIState()
+
+    // Handle theme modal input
+    if (uiState.showThemeModal) {
+      if (key) {
+        switch (key.name) {
+          case 'escape':
+            this.onAction({ type: 'toggle_theme_modal' })
+            return
+
+          case 'return':
+            this.onAction({ type: 'theme_confirm' })
+            return
+
+          case 'up':
+            this.onAction({ type: 'theme_navigate_up' })
+            return
+
+          case 'down':
+            this.onAction({ type: 'theme_navigate_down' })
+            return
+
+          default:
+            return
+        }
+      }
+      return
+    }
 
     // Check for '/' character to enter filter mode (only in normal mode, not in modal or already in filter)
     if (str === '/' && !uiState.showInfoModal && !uiState.filterMode) {
@@ -163,6 +194,11 @@ export class InputHandler {
       case 'i':
       case 'I':
         this.onAction({ type: 'toggle_info_modal' })
+        break
+
+      case 't':
+      case 'T':
+        this.onAction({ type: 'toggle_theme_modal' })
         break
 
       case 'escape':

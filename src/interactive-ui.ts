@@ -19,6 +19,7 @@ import {
   CursorUtils,
 } from './ui'
 import { changelogFetcher } from './services'
+import { themeNames, themes } from './ui/themes'
 
 export class InteractiveUI {
   private renderer: UIRenderer
@@ -208,37 +209,37 @@ export class InteractiveUI {
 
         switch (action.type) {
           case 'navigate_up':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.navigateUp(filteredStates.length)
             }
             break
           case 'navigate_down':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.navigateDown(filteredStates.length)
             }
             break
           case 'select_left':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.updateSelection(filteredStates, 'left')
             }
             break
           case 'select_right':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.updateSelection(filteredStates, 'right')
             }
             break
           case 'bulk_select_minor':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.bulkSelectMinor(filteredStates)
             }
             break
           case 'bulk_select_latest':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.bulkSelectLatest(filteredStates)
             }
             break
           case 'bulk_unselect_all':
-            if (!uiState.showInfoModal) {
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.bulkUnselectAll(filteredStates)
             }
             break
@@ -293,6 +294,30 @@ export class InteractiveUI {
               stateManager.setInitialRender(true)
             }
             break
+          case 'toggle_theme_modal':
+            stateManager.toggleThemeModal()
+            break
+          case 'theme_navigate_up': {
+            const themeManager = stateManager.getThemeManager()
+            const currentIndex = themeNames.indexOf(themeManager.getPreviewTheme())
+            if (currentIndex > 0) {
+              const themeNames = Object.keys(themes)
+              stateManager.previewTheme(themeNames[currentIndex - 1])
+            }
+            break
+          }
+          case 'theme_navigate_down': {
+            const themeManager = stateManager.getThemeManager()
+            const currentIndex = themeNames.indexOf(themeManager.getPreviewTheme())
+            if (currentIndex < themeNames.length - 1) {
+              const themeNames = Object.keys(themes)
+              stateManager.previewTheme(themeNames[currentIndex + 1])
+            }
+            break
+          }
+          case 'theme_confirm':
+            stateManager.confirmTheme()
+            break
           case 'cancel':
             handleCancel()
             return
@@ -339,8 +364,36 @@ export class InteractiveUI {
           CursorUtils.moveToHome()
         }
 
-        // If modal is open, render only the modal with header/footer
-        if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
+        // If theme modal is open, render only the theme selector
+        if (uiState.showThemeModal) {
+          const terminalWidth = process.stdout.columns || 80
+          const terminalHeight = this.getTerminalHeight()
+          const themeManager = stateManager.getThemeManager()
+
+          // Render header
+          const headerLines: string[] = []
+          headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
+          headerLines.push('')
+          headerLines.push(
+            '  ' +
+              chalk.bold.white('T ') +
+              chalk.gray('/ Esc Exit theme selector')
+          )
+          headerLines.push('')
+          headerLines.forEach((line) => console.log(line))
+
+          const modalLines = this.renderer.renderThemeSelectorModal(
+            themeManager.getCurrentTheme(),
+            themeManager.getPreviewTheme(),
+            terminalWidth,
+            terminalHeight
+          )
+          modalLines.forEach((line) => console.log(line))
+
+          // Clear any remaining lines from previous render
+          CursorUtils.clearToEndOfScreen()
+          stateManager.markRendered([])
+        } else if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
           const selectedState = filteredStates[uiState.infoModalRow]
           const terminalWidth = process.stdout.columns || 80
           const terminalHeight = this.getTerminalHeight()

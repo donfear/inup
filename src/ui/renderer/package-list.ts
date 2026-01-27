@@ -1,12 +1,13 @@
 import chalk from 'chalk'
 import { PackageSelectionState, RenderableItem } from '../../types'
 import { VersionUtils } from '../utils'
+import { getThemeColor } from '../themes-colors'
 
 /**
  * Render a single package line
  */
 export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
-  const prefix = isCurrentRow ? chalk.green('❯ ') : '  '
+  const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
   // Package name with special formatting for scoped packages (@author/package)
   let packageName
@@ -17,15 +18,15 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
       const packagePart = parts.slice(1).join('/') // package name
 
       if (isCurrentRow) {
-        packageName = chalk.white.bold(author) + chalk.cyan('/' + packagePart)
+        packageName = chalk.white.bold(author) + getThemeColor('packageName')('/' + packagePart)
       } else {
         packageName = chalk.white.bold(author) + chalk.white('/' + packagePart)
       }
     } else {
-      packageName = isCurrentRow ? chalk.cyan(state.name) : chalk.white(state.name)
+      packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
     }
   } else {
-    packageName = isCurrentRow ? chalk.cyan(state.name) : chalk.white(state.name)
+    packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
   }
 
   // Determine which dot should be filled (only one per package)
@@ -34,43 +35,37 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const isLatestSelected = state.selectedOption === 'latest'
 
   // Current version dot and version (show original specifier with prefix)
-  const currentDot = isCurrentSelected ? chalk.green('●') : chalk.gray('○')
+  const currentDot = isCurrentSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
   const currentVersion = chalk.white(state.currentVersionSpecifier)
 
   // Range version dot and version
   let rangeDot = ''
   let rangeVersionText = ''
-  let rangeDashes = ''
   if (state.hasRangeUpdate) {
-    rangeDot = isRangeSelected ? chalk.green('●') : chalk.gray('○')
+    rangeDot = isRangeSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const rangeVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
       state.rangeVersion
     )
-    rangeVersionText = chalk.yellow(rangeVersionWithPrefix)
-    rangeDashes = ''
+    rangeVersionText = getThemeColor('versionRange')(rangeVersionWithPrefix)
   } else {
-    rangeDot = chalk.gray('○')
+    rangeDot = getThemeColor('dotEmpty')('○')
     rangeVersionText = ''
-    rangeDashes = chalk.gray('─')
   }
 
   // Latest version dot and version
   let latestDot = ''
   let latestVersionText = ''
-  let latestDashes = ''
   if (state.hasMajorUpdate) {
-    latestDot = isLatestSelected ? chalk.green('●') : chalk.gray('○')
+    latestDot = isLatestSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const latestVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
       state.latestVersion
     )
-    latestVersionText = chalk.red(latestVersionWithPrefix)
-    latestDashes = ''
+    latestVersionText = getThemeColor('versionLatest')(latestVersionWithPrefix)
   } else {
-    latestDot = chalk.gray('○')
+    latestDot = getThemeColor('dotEmpty')('○')
     latestVersionText = ''
-    latestDashes = chalk.gray('─')
   }
 
   // Fixed column widths for perfect alignment
@@ -196,6 +191,9 @@ export function renderInterface(
         '  ' +
         chalk.bold.white('I ') +
         chalk.gray('Info') +
+        '  ' +
+        chalk.bold.white('T ') +
+        chalk.gray('Theme') +
         '  ' +
         chalk.bold.white('M ') +
         chalk.gray('Minor') +
