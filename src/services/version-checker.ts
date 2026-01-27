@@ -33,9 +33,7 @@ export async function checkForUpdate(
     // Check if we're running via npx (node_modules/.bin path indicates local/npx)
     const isNpx = process.argv[1]?.includes('.npm') || process.argv[1]?.includes('_npx')
 
-    const updateCommand = isNpx
-      ? `npx inup@latest`
-      : `npm install -g inup@latest`
+    const updateCommand = isNpx ? `npx inup@latest` : `npm install -g inup@latest`
 
     return {
       currentVersion,

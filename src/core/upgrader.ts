@@ -70,9 +70,7 @@ export class PackageUpgrader {
       return // Skip install, let user do it manually
     }
 
-    const spinner = createSpinner(
-      `Running ${this.packageManager.displayName} install...`
-    ).start()
+    const spinner = createSpinner(`Running ${this.packageManager.displayName} install...`).start()
 
     try {
       executeCommand(this.packageManager.installCommand, installDir)
