@@ -7,7 +7,8 @@ import {
   collectAllDependenciesAsync,
   findClosestMinorVersion,
 } from '../utils'
-import { getAllPackageDataFromJsdelivr } from '../services'
+import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
+import { DEFAULT_REGISTRY } from '../constants'
 
 export class PackageDetector {
   private packageJsonPath: string | null = null
@@ -66,7 +67,7 @@ export class PackageDetector {
     }
     const packageNames = Array.from(uniquePackageNames)
 
-    // Step 4: Fetch all package data in one call per package using jsdelivr CDN
+    // Step 4: Fetch all package data in one call per package
     // Create a map of package names to their current versions for major version optimization
     const currentVersions = new Map<string, string>()
     for (const dep of allDeps) {
@@ -76,16 +77,26 @@ export class PackageDetector {
       }
     }
 
-    const allPackageData = await getAllPackageDataFromJsdelivr(
-      packageNames,
-      currentVersions,
-      (currentPackage: string, completed: number, total: number) => {
-        const percentage = Math.round((completed / total) * 100)
-        const truncatedPackage =
-          currentPackage.length > 40 ? currentPackage.substring(0, 37) + '...' : currentPackage
-        this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
-      }
-    )
+    const allPackageData = DEFAULT_REGISTRY === 'jsdelivr'
+      ? await getAllPackageDataFromJsdelivr(
+        packageNames,
+        currentVersions,
+        (currentPackage: string, completed: number, total: number) => {
+          const percentage = Math.round((completed / total) * 100)
+          const truncatedPackage =
+            currentPackage.length > 40 ? currentPackage.substring(0, 37) + '...' : currentPackage
+          this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
+        }
+      )
+      : await getAllPackageData(
+        packageNames,
+        (currentPackage: string, completed: number, total: number) => {
+          const percentage = Math.round((completed / total) * 100)
+          const truncatedPackage =
+            currentPackage.length > 40 ? currentPackage.substring(0, 37) + '...' : currentPackage
+          this.showProgress(`🌐 Fetching ${percentage}% (${truncatedPackage})`)
+        }
+      )
 
     try {
       for (const dep of allDeps) {

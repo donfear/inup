@@ -1,15 +1,5 @@
-import { Pool, request } from 'undici'
 import * as semver from 'semver'
-import { CACHE_TTL, MAX_CONCURRENT_REQUESTS, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../constants'
-
-// Create a persistent connection pool for npm registry with optimal settings
-// This enables connection reuse and HTTP/1.1 keep-alive for blazing fast requests
-const npmPool = new Pool('https://registry.npmjs.org', {
-  connections: MAX_CONCURRENT_REQUESTS, // Maximum concurrent connections
-  pipelining: 10, // Enable request pipelining for even better performance
-  keepAliveTimeout: 60000, // Keep connections alive for 60 seconds
-  keepAliveMaxTimeout: 600000, // Maximum keep-alive timeout
-})
+import { CACHE_TTL, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../constants'
 
 // In-memory cache for package data
 interface CacheEntry {
@@ -19,8 +9,8 @@ interface CacheEntry {
 const packageCache = new Map<string, CacheEntry>()
 
 /**
- * Fetches package data from npm registry with caching using undici pool.
- * Uses connection pooling and keep-alive for maximum performance.
+ * Fetches package data from npm registry with caching using native fetch.
+ * Includes timeout support for slow connections.
  */
 async function fetchPackageFromRegistry(
   packageName: string
@@ -34,57 +24,62 @@ async function fetchPackageFromRegistry(
   try {
     const url = `${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}`
 
-    const { statusCode, body } = await request(url, {
-      dispatcher: npmPool,
-      method: 'GET',
-      headers: {
-        accept: 'application/vnd.npm.install-v1+json',
-      },
-      headersTimeout: REQUEST_TIMEOUT,
-      bodyTimeout: REQUEST_TIMEOUT,
-    })
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
-    if (statusCode !== 200) {
-      // Consume body to prevent memory leaks
-      await body.text()
-      throw new Error(`HTTP ${statusCode}`)
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          accept: 'application/vnd.npm.install-v1+json',
+        },
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const text = await response.text()
+      const data = JSON.parse(text) as {
+        versions?: Record<string, unknown>
+        description?: string
+        homepage?: string
+        repository?: any
+        bugs?: any
+        keywords?: string[]
+        author?: any
+        license?: string
+        'dist-tags'?: Record<string, string>
+      }
+
+      // Extract versions and filter to valid semver (X.Y.Z format, no pre-releases)
+      const allVersions = Object.keys(data.versions || {}).filter((version) => {
+        // Match only X.Y.Z format (no pre-release, no build metadata)
+        return /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)
+      })
+
+      // Sort versions to find the latest
+      const sortedVersions = allVersions.sort(semver.rcompare)
+      const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
+
+      const result = {
+        latestVersion,
+        allVersions,
+      }
+
+      // Cache the result
+      packageCache.set(packageName, {
+        data: result,
+        timestamp: Date.now(),
+      })
+
+      return result
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    const text = await body.text()
-    const data = JSON.parse(text) as {
-      versions?: Record<string, unknown>
-      description?: string
-      homepage?: string
-      repository?: any
-      bugs?: any
-      keywords?: string[]
-      author?: any
-      license?: string
-      'dist-tags'?: Record<string, string>
-    }
-
-    // Extract versions and filter to valid semver (X.Y.Z format, no pre-releases)
-    const allVersions = Object.keys(data.versions || {}).filter((version) => {
-      // Match only X.Y.Z format (no pre-release, no build metadata)
-      return /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)
-    })
-
-    // Sort versions to find the latest
-    const sortedVersions = allVersions.sort(semver.rcompare)
-    const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
-
-    const result = {
-      latestVersion,
-      allVersions,
-    }
-
-    // Cache the result
-    packageCache.set(packageName, {
-      data: result,
-      timestamp: Date.now(),
-    })
-
-    return result
   } catch (error) {
     // Return fallback data for failed packages
     return { latestVersion: 'unknown', allVersions: [] }
@@ -93,7 +88,7 @@ async function fetchPackageFromRegistry(
 
 /**
  * Fetches package version data from npm registry for multiple packages.
- * Uses undici connection pool for blazing fast performance with connection reuse.
+ * Uses native fetch with timeout support for reliable performance.
  * Only returns valid semantic versions (X.Y.Z format, excluding pre-releases).
  */
 export async function getAllPackageData(
@@ -109,8 +104,8 @@ export async function getAllPackageData(
   const total = packageNames.length
   let completedCount = 0
 
-  // Fire all requests simultaneously - undici pool handles concurrency internally
-  // No need for p-limit - the pool's connection limit controls concurrency
+  // Fire all requests simultaneously
+  // Concurrency is handled naturally by the event loop with fetch
   const allPromises = packageNames.map(async (packageName) => {
     const data = await fetchPackageFromRegistry(packageName)
     packageData.set(packageName, data)
@@ -138,11 +133,4 @@ export async function getAllPackageData(
  */
 export function clearPackageCache(): void {
   packageCache.clear()
-}
-
-/**
- * Close the npm registry connection pool (useful for graceful shutdown)
- */
-export async function closeNpmPool(): Promise<void> {
-  await npmPool.close()
 }

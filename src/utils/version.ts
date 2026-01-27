@@ -62,6 +62,8 @@ export function findClosestMinorVersion(
 
     const installedMajor = semver.major(coercedInstalled)
     const installedMinor = semver.minor(coercedInstalled)
+    const installedPatch = semver.patch(coercedInstalled)
+
     let bestMinorVersion: string | null = null
     let bestMinorValue = -1
 
@@ -83,13 +85,17 @@ export function findClosestMinorVersion(
       return bestMinorVersion
     }
 
-    // Fallback: find highest patch that satisfies current range
-    let bestVersion: string | null = null
+    // Fallback: find highest patch version in same major.minor that's higher than installed
+    let bestPatchVersion: string | null = null
     for (const version of allVersions) {
       try {
-        if (semver.satisfies(version, installedVersion) && semver.gt(version, coercedInstalled)) {
-          if (!bestVersion || semver.gt(version, bestVersion)) {
-            bestVersion = version
+        const major = semver.major(version)
+        const minor = semver.minor(version)
+        const patch = semver.patch(version)
+        // Same major and minor, but higher patch
+        if (major === installedMajor && minor === installedMinor && patch > installedPatch) {
+          if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
+            bestPatchVersion = version
           }
         }
       } catch {
@@ -97,7 +103,7 @@ export function findClosestMinorVersion(
       }
     }
 
-    return bestVersion
+    return bestPatchVersion
   } catch {
     return null
   }
