@@ -24,20 +24,26 @@ export class UIRenderer {
     currentRow: number,
     scrollOffset: number,
     maxVisibleItems: number,
-    isInitialRender: boolean,
+    forceFullRender: boolean,
     renderableItems?: RenderableItem[],
     dependencyTypeLabel?: string,
-    packageManager?: PackageManagerInfo
+    packageManager?: PackageManagerInfo,
+    filterMode?: boolean,
+    filterQuery?: string,
+    totalPackagesBeforeFilter?: number
   ): string[] {
     return PackageList.renderInterface(
       states,
       currentRow,
       scrollOffset,
       maxVisibleItems,
-      isInitialRender,
+      forceFullRender,
       renderableItems,
       dependencyTypeLabel,
-      packageManager
+      packageManager,
+      filterMode,
+      filterQuery,
+      totalPackagesBeforeFilter
     )
   }
 

@@ -146,10 +146,13 @@ export function renderInterface(
   currentRow: number,
   scrollOffset: number,
   maxVisibleItems: number,
-  isInitialRender: boolean,
+  forceFullRender: boolean,
   renderableItems?: RenderableItem[],
   dependencyTypeLabel?: string,
-  packageManager?: any
+  packageManager?: any,
+  filterMode?: boolean,
+  filterQuery?: string,
+  totalPackagesBeforeFilter?: number
 ): string[] {
   const output: string[] = []
 
@@ -173,52 +176,118 @@ export function renderInterface(
     output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
   }
   output.push('')
-  output.push(
-    '  ' +
-      chalk.bold.white('↑/↓ ') +
-      chalk.gray('Move') +
+
+  if (filterMode) {
+    // Show filter input with cursor when actively filtering
+    const filterDisplay = '  ' + chalk.bold.white('Search: ') + chalk.cyan(filterQuery || '') + chalk.gray('█')
+    output.push(filterDisplay)
+  } else {
+    // Show instructions when not filtering
+    output.push(
       '  ' +
-      chalk.bold.white('←/→ ') +
-      chalk.gray('Select versions') +
-      '  ' +
-      chalk.bold.white('I ') +
-      chalk.gray('Info') +
-      '  ' +
-      chalk.bold.white('M ') +
-      chalk.gray('Select all minor') +
-      '  ' +
-      chalk.bold.white('L ') +
-      chalk.gray('Select all') +
-      '  ' +
-      chalk.bold.white('U ') +
-      chalk.gray('Unselect all')
-  )
+        chalk.bold.white('/ ') +
+        chalk.gray('Search') +
+        '  ' +
+        chalk.bold.white('↑/↓ ') +
+        chalk.gray('Move') +
+        '  ' +
+        chalk.bold.white('←/→ ') +
+        chalk.gray('Select') +
+        '  ' +
+        chalk.bold.white('I ') +
+        chalk.gray('Info') +
+        '  ' +
+        chalk.bold.white('M ') +
+        chalk.gray('Minor') +
+        '  ' +
+        chalk.bold.white('L ') +
+        chalk.gray('All') +
+        '  ' +
+        chalk.bold.white('U ') +
+        chalk.gray('None')
+    )
+  }
 
   // Show status line with item range
   const totalPackages = states.length
+  const totalBeforeFilter = totalPackagesBeforeFilter || totalPackages
   // Use renderableItems length only if we have renderable items (grouped mode), otherwise use totalPackages (flat mode)
   const totalVisualItems =
     renderableItems && renderableItems.length > 0 ? renderableItems.length : totalPackages
   const startItem = scrollOffset + 1
   const endItem = Math.min(scrollOffset + maxVisibleItems, totalVisualItems)
-  const statusLine =
-    totalVisualItems > maxVisibleItems
-      ? chalk.gray(
-          `Showing ${chalk.gray(startItem)}-${chalk.gray(endItem)} of ${chalk.gray(totalPackages)} packages`
-        ) +
+
+  let statusLine = ''
+  if (filterMode) {
+    // In filter mode, show ESC to exit filter
+    if (totalPackages === 0) {
+      statusLine = chalk.yellow(`No matches found`) +
+        '  ' +
+        chalk.gray('Esc ') +
+        chalk.gray('Clear filter')
+    } else if (totalVisualItems > maxVisibleItems) {
+      statusLine = chalk.gray(
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+      ) +
+        '  ' +
+        chalk.gray('Esc ') +
+        chalk.gray('Clear filter')
+    } else {
+      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+        '  ' +
+        chalk.gray('Esc ') +
+        chalk.gray('Clear filter')
+    }
+  } else if (totalPackages < totalBeforeFilter) {
+    // Filter is applied but not in filter mode
+    if (totalVisualItems > maxVisibleItems) {
+      statusLine = chalk.gray(
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+      ) +
+        '  ' +
+        chalk.gray('/ ') +
+        chalk.gray('Edit filter') +
         '  ' +
         chalk.gray('Enter ') +
         chalk.gray('Confirm') +
         '  ' +
         chalk.gray('Esc ') +
         chalk.gray('Cancel')
-      : chalk.gray(`Showing all ${chalk.gray(totalPackages)} packages`) +
+    } else {
+      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+        '  ' +
+        chalk.gray('/ ') +
+        chalk.gray('Edit filter') +
         '  ' +
         chalk.gray('Enter ') +
         chalk.gray('Confirm') +
         '  ' +
         chalk.gray('Esc ') +
         chalk.gray('Cancel')
+    }
+  } else {
+    // No filter applied
+    if (totalVisualItems > maxVisibleItems) {
+      statusLine = chalk.gray(
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
+      ) +
+        '  ' +
+        chalk.gray('Enter ') +
+        chalk.gray('Confirm') +
+        '  ' +
+        chalk.gray('Esc ') +
+        chalk.gray('Cancel')
+    } else {
+      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
+        '  ' +
+        chalk.gray('Enter ') +
+        chalk.gray('Confirm') +
+        '  ' +
+        chalk.gray('Esc ') +
+        chalk.gray('Cancel')
+    }
+  }
+
   output.push('  ' + statusLine)
   output.push('')
 

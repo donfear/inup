@@ -1,6 +1,6 @@
 import { execSync } from 'child_process'
 import * as semver from 'semver'
-import { REQUEST_TIMEOUT } from '../constants'
+import { REQUEST_TIMEOUT } from '../config'
 
 export interface VersionCheckResult {
   currentVersion: string
