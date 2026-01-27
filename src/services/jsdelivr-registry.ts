@@ -8,8 +8,9 @@ import { getAllPackageData } from './npm-registry'
 const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
   connections: MAX_CONCURRENT_REQUESTS, // Maximum concurrent connections
   pipelining: 10, // Enable request pipelining for even better performance
-  keepAliveTimeout: 60000, // Keep connections alive for 60 seconds
-  keepAliveMaxTimeout: 600000, // Maximum keep-alive timeout
+  keepAliveTimeout: REQUEST_TIMEOUT, // Keep connections alive for 60 seconds
+  keepAliveMaxTimeout: REQUEST_TIMEOUT, // Maximum keep-alive timeout
+  connectTimeout: REQUEST_TIMEOUT, // 60 seconds connect timeout
 })
 
 // In-memory cache for package data
