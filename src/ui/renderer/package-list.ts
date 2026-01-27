@@ -177,11 +177,12 @@ export function renderInterface(
   }
   output.push('')
 
-  // Show filter input if in filter mode
   if (filterMode) {
+    // Show filter input with cursor when actively filtering
     const filterDisplay = '  ' + chalk.bold.white('Search: ') + chalk.cyan(filterQuery || '') + chalk.gray('█')
     output.push(filterDisplay)
   } else {
+    // Show instructions when not filtering
     output.push(
       '  ' +
         chalk.bold.white('/ ') +

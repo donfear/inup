@@ -313,11 +313,13 @@ export class StateManager {
 
   appendToFilterQuery(char: string): void {
     this.updateFilterQuery(this.uiState.filterQuery + char)
+    this.uiState.isInitialRender = true // Force full re-render for clean display
   }
 
   deleteFromFilterQuery(): void {
     if (this.uiState.filterQuery.length > 0) {
       this.updateFilterQuery(this.uiState.filterQuery.slice(0, -1))
+      this.uiState.isInitialRender = true // Force full re-render for clean display
     }
   }
 
