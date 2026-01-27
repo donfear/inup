@@ -59,6 +59,15 @@ inup
 
 The tool will scan your entire workspace (including monorepos), find outdated packages, and let you choose which ones to upgrade interactively.
 
+### Interactive Features
+
+- **Search**: Press `/` to search for a specific package by name
+- **Navigate**: Use arrow keys to move between packages
+- **Select Version**: Use `Left` and `Right` arrow keys to cycle through available versions (default, minor, patch, major)
+- **Select All Minor**: Press `m` to select all minor updates
+- **Package Info**: Press `i` to view detailed information about the selected package
+- **Exit Search**: Press `Esc` to exit search mode
+
 ### Command line options
 
 - `-d, --dir <directory>`: Run in a specific directory (default: current directory)
