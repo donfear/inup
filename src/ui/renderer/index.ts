@@ -27,7 +27,10 @@ export class UIRenderer {
     isInitialRender: boolean,
     renderableItems?: RenderableItem[],
     dependencyTypeLabel?: string,
-    packageManager?: PackageManagerInfo
+    packageManager?: PackageManagerInfo,
+    filterMode?: boolean,
+    filterQuery?: string,
+    totalPackagesBeforeFilter?: number
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -37,7 +40,10 @@ export class UIRenderer {
       isInitialRender,
       renderableItems,
       dependencyTypeLabel,
-      packageManager
+      packageManager,
+      filterMode,
+      filterQuery,
+      totalPackagesBeforeFilter
     )
   }
 

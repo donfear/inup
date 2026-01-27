@@ -15,6 +15,10 @@ export type InputAction =
   | { type: 'toggle_info_modal' }
   | { type: 'cancel' }
   | { type: 'resize'; height: number }
+  | { type: 'enter_filter_mode' }
+  | { type: 'exit_filter_mode' }
+  | { type: 'filter_input'; char: string }
+  | { type: 'filter_backspace' }
 
 export class InputHandler {
   private stateManager: StateManager
@@ -40,9 +44,72 @@ export class InputHandler {
       return
     }
 
-    if (key.ctrl && key.name === 'c') {
+    if (key && key.ctrl && key.name === 'c') {
       CursorUtils.show()
       process.exit(0)
+    }
+
+    const uiState = this.stateManager.getUIState()
+
+    // Check for '/' character to enter filter mode (only in normal mode, not in modal or already in filter)
+    if (str === '/' && !uiState.showInfoModal && !uiState.filterMode) {
+      this.onAction({ type: 'enter_filter_mode' })
+      return
+    }
+
+    // Handle filter mode input
+    if (uiState.filterMode) {
+      if (key) {
+        switch (key.name) {
+          case 'escape':
+            this.onAction({ type: 'exit_filter_mode' })
+            return
+
+          case 'backspace':
+          case 'delete':
+            this.onAction({ type: 'filter_backspace' })
+            return
+
+          case 'return':
+            // Exit filter mode but keep the filter applied
+            this.onAction({ type: 'exit_filter_mode' })
+            return
+
+          case 'up':
+            this.onAction({ type: 'navigate_up' })
+            return
+
+          case 'down':
+            this.onAction({ type: 'navigate_down' })
+            return
+
+          case 'left':
+            this.onAction({ type: 'select_left' })
+            return
+
+          case 'right':
+            this.onAction({ type: 'select_right' })
+            return
+
+          default:
+            // Accept printable characters for filter input
+            if (str && str.length === 1 && str >= ' ' && str <= '~') {
+              this.onAction({ type: 'filter_input', char: str })
+            }
+            return
+        }
+      } else {
+        // No key object, just accept string input
+        if (str && str.length === 1 && str >= ' ' && str <= '~') {
+          this.onAction({ type: 'filter_input', char: str })
+        }
+      }
+      return
+    }
+
+    // Normal mode (not in filter mode)
+    if (!key) {
+      return
     }
 
     switch (key.name) {
@@ -100,7 +167,6 @@ export class InputHandler {
 
       case 'escape':
         // Check if modal is open - if so, close it; otherwise cancel
-        const uiState = this.stateManager.getUIState()
         if (uiState.showInfoModal) {
           this.onAction({ type: 'toggle_info_modal' })
         } else {
@@ -136,9 +202,13 @@ export class ConfirmationInputHandler {
       return
     }
 
-    if (key.ctrl && key.name === 'c') {
+    if (key && key.ctrl && key.name === 'c') {
       CursorUtils.show()
       process.exit(0)
+    }
+
+    if (!key) {
+      return
     }
 
     switch (key.name) {

@@ -13,6 +13,8 @@ export interface UIState {
   showInfoModal: boolean // Whether to show package info modal
   infoModalRow: number // Which package's info to show
   isLoadingModalInfo: boolean // Whether we're fetching package info for the modal
+  filterMode: boolean // Whether we're in filter/search input mode
+  filterQuery: string // Current filter/search query
 }
 
 export class StateManager {
@@ -33,6 +35,8 @@ export class StateManager {
       showInfoModal: false,
       infoModalRow: -1,
       isLoadingModalInfo: false,
+      filterMode: false,
+      filterQuery: '',
     }
   }
 
@@ -119,12 +123,14 @@ export class StateManager {
   }
 
   navigateUp(totalItems: number): void {
+    if (totalItems === 0) return
     this.uiState.previousRow = this.uiState.currentRow
     this.uiState.currentRow = this.findNextPackageIndex(this.uiState.currentRow, 'up', totalItems)
     this.ensureVisible(this.uiState.currentRow, totalItems)
   }
 
   navigateDown(totalItems: number): void {
+    if (totalItems === 0) return
     this.uiState.previousRow = this.uiState.currentRow
     this.uiState.currentRow = this.findNextPackageIndex(this.uiState.currentRow, 'down', totalItems)
     this.ensureVisible(this.uiState.currentRow, totalItems)
@@ -171,7 +177,10 @@ export class StateManager {
   }
 
   updateSelection(states: PackageSelectionState[], direction: 'left' | 'right'): void {
+    if (states.length === 0) return
+
     const currentState = states[this.uiState.currentRow]
+    if (!currentState) return
 
     if (direction === 'left') {
       // Move selection left with wraparound: latest -> range -> none -> latest
@@ -214,6 +223,7 @@ export class StateManager {
   }
 
   bulkSelectMinor(states: PackageSelectionState[]): void {
+    if (states.length === 0) return
     states.forEach((state) => {
       if (state.hasRangeUpdate) {
         state.selectedOption = 'range'
@@ -222,6 +232,7 @@ export class StateManager {
   }
 
   bulkSelectLatest(states: PackageSelectionState[]): void {
+    if (states.length === 0) return
     states.forEach((state) => {
       if (state.hasMajorUpdate) {
         state.selectedOption = 'latest'
@@ -232,6 +243,7 @@ export class StateManager {
   }
 
   bulkUnselectAll(states: PackageSelectionState[]): void {
+    if (states.length === 0) return
     states.forEach((state) => {
       state.selectedOption = 'none'
     })
@@ -276,5 +288,44 @@ export class StateManager {
   setModalLoading(isLoading: boolean): void {
     this.uiState.isLoadingModalInfo = isLoading
     this.uiState.isInitialRender = true
+  }
+
+  enterFilterMode(): void {
+    this.uiState.filterMode = true
+    this.uiState.filterQuery = ''
+    this.uiState.isInitialRender = true
+  }
+
+  exitFilterMode(): void {
+    this.uiState.filterMode = false
+    this.uiState.filterQuery = ''
+    this.uiState.currentRow = 0
+    this.uiState.scrollOffset = 0
+    this.uiState.isInitialRender = true
+  }
+
+  updateFilterQuery(query: string, filteredLength: number = 0): void {
+    this.uiState.filterQuery = query
+    // Reset to first item if we have results, stay at 0 if no results
+    this.uiState.currentRow = filteredLength > 0 ? 0 : 0
+    this.uiState.scrollOffset = 0
+  }
+
+  appendToFilterQuery(char: string): void {
+    this.updateFilterQuery(this.uiState.filterQuery + char)
+  }
+
+  deleteFromFilterQuery(): void {
+    if (this.uiState.filterQuery.length > 0) {
+      this.updateFilterQuery(this.uiState.filterQuery.slice(0, -1))
+    }
+  }
+
+  getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {
+    if (!this.uiState.filterQuery) {
+      return allStates
+    }
+    const query = this.uiState.filterQuery.toLowerCase()
+    return allStates.filter((state) => state.name.toLowerCase().includes(query))
   }
 }

@@ -204,48 +204,49 @@ export class InteractiveUI {
 
       const handleAction = (action: InputAction) => {
         const uiState = stateManager.getUIState()
+        const filteredStates = stateManager.getFilteredStates(states)
 
         switch (action.type) {
           case 'navigate_up':
             if (!uiState.showInfoModal) {
-              stateManager.navigateUp(states.length)
+              stateManager.navigateUp(filteredStates.length)
             }
             break
           case 'navigate_down':
             if (!uiState.showInfoModal) {
-              stateManager.navigateDown(states.length)
+              stateManager.navigateDown(filteredStates.length)
             }
             break
           case 'select_left':
             if (!uiState.showInfoModal) {
-              stateManager.updateSelection(states, 'left')
+              stateManager.updateSelection(filteredStates, 'left')
             }
             break
           case 'select_right':
             if (!uiState.showInfoModal) {
-              stateManager.updateSelection(states, 'right')
+              stateManager.updateSelection(filteredStates, 'right')
             }
             break
           case 'bulk_select_minor':
             if (!uiState.showInfoModal) {
-              stateManager.bulkSelectMinor(states)
+              stateManager.bulkSelectMinor(filteredStates)
             }
             break
           case 'bulk_select_latest':
             if (!uiState.showInfoModal) {
-              stateManager.bulkSelectLatest(states)
+              stateManager.bulkSelectLatest(filteredStates)
             }
             break
           case 'bulk_unselect_all':
             if (!uiState.showInfoModal) {
-              stateManager.bulkUnselectAll(states)
+              stateManager.bulkUnselectAll(filteredStates)
             }
             break
           case 'toggle_info_modal':
             if (!uiState.showInfoModal) {
               // Opening modal - load package info asynchronously
               stateManager.toggleInfoModal()
-              const currentState = states[uiState.currentRow]
+              const currentState = filteredStates[uiState.currentRow]
               stateManager.setModalLoading(true)
               renderInterface()
 
@@ -267,6 +268,20 @@ export class InteractiveUI {
               stateManager.toggleInfoModal()
               renderInterface()
             }
+            break
+          case 'enter_filter_mode':
+            stateManager.enterFilterMode()
+            break
+          case 'exit_filter_mode':
+            stateManager.exitFilterMode()
+            break
+          case 'filter_input':
+            stateManager.appendToFilterQuery(action.char)
+            // Re-calculate filtered states after input
+            break
+          case 'filter_backspace':
+            stateManager.deleteFromFilterQuery()
+            // Re-calculate filtered states after backspace
             break
           case 'resize':
             const heightChanged = stateManager.updateTerminalHeight(action.height)
@@ -315,6 +330,7 @@ export class InteractiveUI {
 
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
+        const filteredStates = stateManager.getFilteredStates(states)
 
         if (uiState.isInitialRender) {
           console.clear()
@@ -324,8 +340,8 @@ export class InteractiveUI {
         }
 
         // If modal is open, render only the modal with header/footer
-        if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < states.length) {
-          const selectedState = states[uiState.infoModalRow]
+        if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
+          const selectedState = filteredStates[uiState.infoModalRow]
           const terminalWidth = process.stdout.columns || 80
           const terminalHeight = this.getTerminalHeight()
 
@@ -357,14 +373,17 @@ export class InteractiveUI {
         } else {
           // Normal list view (flat rendering - no grouping)
           const lines = this.renderer.renderInterface(
-            states,
+            filteredStates,
             uiState.currentRow,
             uiState.scrollOffset,
             uiState.maxVisibleItems,
             uiState.isInitialRender,
             [], // No renderable items - use flat rendering
             dependencyTypeLabel, // Show which dependency type we're upgrading
-            this.packageManager // Pass package manager info for header
+            this.packageManager, // Pass package manager info for header
+            uiState.filterMode,
+            uiState.filterQuery,
+            states.length
           )
 
           // Print all lines
