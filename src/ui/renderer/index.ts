@@ -31,7 +31,8 @@ export class UIRenderer {
     packageManager?: PackageManagerInfo,
     filterMode?: boolean,
     filterQuery?: string,
-    totalPackagesBeforeFilter?: number
+    totalPackagesBeforeFilter?: number,
+    terminalWidth: number = 80
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -44,7 +45,8 @@ export class UIRenderer {
       packageManager,
       filterMode,
       filterQuery,
-      totalPackagesBeforeFilter
+      totalPackagesBeforeFilter,
+      terminalWidth
     )
   }
 

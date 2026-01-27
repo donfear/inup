@@ -425,6 +425,7 @@ export class InteractiveUI {
           stateManager.markRendered([])
         } else {
           // Normal list view (flat rendering - no grouping)
+          const terminalWidth = process.stdout.columns || 80
           const lines = this.renderer.renderInterface(
             filteredStates,
             uiState.currentRow,
@@ -436,7 +437,8 @@ export class InteractiveUI {
             this.packageManager, // Pass package manager info for header
             uiState.filterMode,
             uiState.filterQuery,
-            states.length
+            states.length,
+            terminalWidth
           )
 
           // Print all lines

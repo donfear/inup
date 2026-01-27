@@ -15,6 +15,35 @@ export class VersionUtils {
     return str.replace(/\u001b\[[0-9;]*m/g, '').length
   }
 
+  /**
+   * Truncate text with ellipsis in the middle if it exceeds maxLength
+   * Preserves ANSI color codes and applies them to the ellipsis
+   * @param str The text to truncate (may contain ANSI codes)
+   * @param maxLength The maximum visual length
+   * @returns Truncated text with middle ellipsis if needed
+   */
+  static truncateMiddle(str: string, maxLength: number): string {
+    const visualLength = this.getVisualLength(str)
+
+    if (visualLength <= maxLength) {
+      return str
+    }
+
+    // Need to truncate with ellipsis in the middle
+    const ellipsis = '…'
+    const availableLength = maxLength - 1 // Reserve 1 char for ellipsis
+    const startLength = Math.ceil(availableLength / 2)
+    const endLength = Math.floor(availableLength / 2)
+
+    // Extract raw text without ANSI codes to calculate positions
+    const rawText = str.replace(/\u001b\[[0-9;]*m/g, '')
+
+    const start = rawText.substring(0, startLength)
+    const end = rawText.substring(rawText.length - endLength)
+
+    return start + ellipsis + end
+  }
+
   static formatVersionDiff(
     current: string,
     target: string,

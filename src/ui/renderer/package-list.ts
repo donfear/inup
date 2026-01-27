@@ -5,8 +5,12 @@ import { getThemeColor } from '../themes-colors'
 
 /**
  * Render a single package line
+ * @param state Package selection state
+ * @param index Index in the list
+ * @param isCurrentRow Whether this is the current/highlighted row
+ * @param terminalWidth Terminal width for dynamic truncation (default 80)
  */
-export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
+export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean, terminalWidth: number = 80): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
   // Package name with special formatting for scoped packages (@author/package)
@@ -68,18 +72,34 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
     latestVersionText = ''
   }
 
-  // Fixed column widths for perfect alignment
-  const packageNameWidth = 38 // Total package column width minus prefix (2 chars)
+  // Column widths with dynamic package name width based on terminal width
+  // Layout: prefix(2) + name + dashes + spacing(3) + current(16) + spacing(3) + range(16) + spacing(3) + latest(16)
+  // Total minimum: 2 + 24 + 3 + 16 + 3 + 16 + 3 + 16 = 83 chars
   const currentColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const rangeColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const latestColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
+  const spacingWidth = 3
 
-  // Package name with fixed width and dashes
-  const nameLength = state.name.length
+  // Calculate dynamic package name width
+  const minPackageNameWidth = 24 // Minimum width before triggering ellipsis
+  const otherColumnsWidth = currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
+  const prefixWidth = 2
+  const availableForPackageName = Math.max(minPackageNameWidth, terminalWidth - prefixWidth - otherColumnsWidth - 1)
+  const packageNameWidth = availableForPackageName
+
+  // Apply ellipsis truncation if package name exceeds available width
+  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1) // -1 for space after name
+
+  // Package name with dashes
+  const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
   const nameDashes = '-'.repeat(namePadding)
   const dashColor = isCurrentRow ? chalk.white : chalk.gray
-  const packageNameSection = `${packageName} ${dashColor(nameDashes)}`
+
+  // Use truncated name if it differs from original, otherwise use colored packageName
+  const displayName = truncatedName !== state.name ? truncatedName : packageName
+
+  const packageNameSection = `${displayName} ${dashColor(nameDashes)}`
 
   // Current version section with fixed width
   const currentSection = `${currentDot} ${currentVersion}`
@@ -147,7 +167,8 @@ export function renderInterface(
   packageManager?: any,
   filterMode?: boolean,
   filterQuery?: string,
-  totalPackagesBeforeFilter?: number
+  totalPackagesBeforeFilter?: number,
+  terminalWidth: number = 80
 ): string[] {
   const output: string[] = []
 
@@ -306,7 +327,8 @@ export function renderInterface(
         const line = renderPackageLine(
           item.state,
           item.originalIndex,
-          item.originalIndex === currentRow
+          item.originalIndex === currentRow,
+          terminalWidth
         )
         output.push(line)
       }
@@ -314,7 +336,7 @@ export function renderInterface(
   } else {
     // Fallback to flat rendering (legacy mode)
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow)
+      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth)
       output.push(line)
     }
   }
