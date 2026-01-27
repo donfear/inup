@@ -22,7 +22,7 @@ program
   .option('-o, --optional', 'include optional dependencies in upgrade process')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .action(async (options) => {
-    console.log(chalk.bold.blue(`🚀 inup\n`))
+    console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
 
     // Check for updates in the background (non-blocking)
     const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
