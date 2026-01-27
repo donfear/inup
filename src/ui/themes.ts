@@ -9,6 +9,10 @@ export interface Theme {
 
 // Theme definitions
 export const themes: Record<string, Theme> = {
+  catppuccin: {
+    name: 'Catppuccin',
+    colors: chalk,
+  },
   dracula: {
     name: 'Dracula',
     colors: chalk,
@@ -27,5 +31,5 @@ export const themes: Record<string, Theme> = {
   },
 }
 
-export const defaultTheme = 'dracula'
+export const defaultTheme = 'catppuccin'
 export const themeNames = Object.keys(themes)

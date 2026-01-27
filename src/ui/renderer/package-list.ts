@@ -164,45 +164,45 @@ export function renderInterface(
     // Each character in "inup" gets a different color
     const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
-    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + chalk.gray(` (${packageManager.displayName})`)
-    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
+    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
+    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
   } else {
     const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
-    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
+    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
   }
   output.push('')
 
   if (filterMode) {
     // Show filter input with cursor when actively filtering
-    const filterDisplay = '  ' + chalk.bold.white('Search: ') + chalk.cyan(filterQuery || '') + chalk.gray('█')
+    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery || '') + getThemeColor('border')('█')
     output.push(filterDisplay)
   } else {
     // Show instructions when not filtering
     output.push(
       '  ' +
         chalk.bold.white('/ ') +
-        chalk.gray('Search') +
+        getThemeColor('textSecondary')('Search') +
         '  ' +
         chalk.bold.white('↑/↓ ') +
-        chalk.gray('Move') +
+        getThemeColor('textSecondary')('Move') +
         '  ' +
         chalk.bold.white('←/→ ') +
-        chalk.gray('Select') +
+        getThemeColor('textSecondary')('Select') +
         '  ' +
         chalk.bold.white('I ') +
-        chalk.gray('Info') +
+        getThemeColor('textSecondary')('Info') +
         '  ' +
         chalk.bold.white('T ') +
-        chalk.gray('Theme') +
+        getThemeColor('textSecondary')('Theme') +
         '  ' +
         chalk.bold.white('M ') +
-        chalk.gray('Minor') +
+        getThemeColor('textSecondary')('Minor') +
         '  ' +
         chalk.bold.white('L ') +
-        chalk.gray('All') +
+        getThemeColor('textSecondary')('All') +
         '  ' +
         chalk.bold.white('U ') +
-        chalk.gray('None')
+        getThemeColor('textSecondary')('None')
     )
   }
 
@@ -219,42 +219,42 @@ export function renderInterface(
   if (filterMode) {
     // In filter mode, show ESC to exit filter
     if (totalPackages === 0) {
-      statusLine = chalk.yellow(`No matches found`) +
+      statusLine = getThemeColor('warning')(`No matches found`) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     } else if (totalVisualItems > maxVisibleItems) {
-      statusLine = chalk.gray(
+      statusLine = getThemeColor('textSecondary')(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
       ) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     } else {
-      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     }
   } else if (totalPackages < totalBeforeFilter) {
     // Filter is applied but not in filter mode
     if (totalVisualItems > maxVisibleItems) {
-      statusLine = chalk.gray(
+      statusLine = getThemeColor('textSecondary')(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
       ) +
         '  ' +
-        chalk.gray('/ ') +
-        chalk.gray('Edit filter') +
+        getThemeColor('textSecondary')('/ ') +
+        getThemeColor('textSecondary')('Edit filter') +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
+        getThemeColor('textSecondary')('Enter ') +
+        getThemeColor('textSecondary')('Confirm') +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Cancel')
     } else {
-      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
         '  ' +
-        chalk.gray('/ ') +
+        getThemeColor('textSecondary')('/ ') +
         chalk.gray('Edit filter') +
         '  ' +
         chalk.gray('Enter ') +

@@ -63,6 +63,21 @@ const themeColorSchemes = {
     dot: (text: string) => chalk.hex('#A3BE8C')(text), // Aurora Green
     dotEmpty: (text: string) => chalk.hex('#4C566A')(text), // Polar Night
   },
+  catppuccin: {
+    primary: (text: string) => chalk.hex('#89B4FA')(text), // Blue
+    secondary: (text: string) => chalk.hex('#CBA6F7')(text), // Mauve
+    success: (text: string) => chalk.hex('#A6E3A1')(text), // Green
+    warning: (text: string) => chalk.hex('#F9E2AF')(text), // Yellow
+    error: (text: string) => chalk.hex('#F38BA8')(text), // Red
+    border: (text: string) => chalk.hex('#585B70')(text), // Surface2
+    text: (text: string) => chalk.hex('#CDD6F4')(text), // Text
+    textSecondary: (text: string) => chalk.hex('#BAC2DE')(text), // Subtext1
+    packageName: (text: string) => chalk.hex('#89B4FA')(text), // Blue
+    versionRange: (text: string) => chalk.hex('#F9E2AF')(text), // Yellow
+    versionLatest: (text: string) => chalk.hex('#F38BA8')(text), // Red
+    dot: (text: string) => chalk.hex('#A6E3A1')(text), // Green
+    dotEmpty: (text: string) => chalk.hex('#585B70')(text), // Surface2
+  },
 }
 
 export type ThemeColorKey = keyof typeof themeColorSchemes.dracula
