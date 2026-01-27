@@ -171,7 +171,10 @@ export class StateManager {
     this.uiState.scrollOffset = Math.max(0, Math.min(this.uiState.scrollOffset, maxScroll))
 
     // Handle wrap-around: if we're at the last item and it's out of view, show it at bottom
-    if (visualIndex === totalVisualItems - 1 && visualIndex >= this.uiState.scrollOffset + this.uiState.maxVisibleItems) {
+    if (
+      visualIndex === totalVisualItems - 1 &&
+      visualIndex >= this.uiState.scrollOffset + this.uiState.maxVisibleItems
+    ) {
       this.uiState.scrollOffset = maxScroll
     }
   }
