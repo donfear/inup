@@ -3,6 +3,21 @@ import { getCurrentThemeName } from './state/theme-manager'
 
 // Define actual color functions for each theme using hex colors
 const themeColorSchemes = {
+  default: {
+    primary: (text: string) => chalk.cyan(text),
+    secondary: (text: string) => chalk.magenta(text),
+    success: (text: string) => chalk.green(text),
+    warning: (text: string) => chalk.yellow(text),
+    error: (text: string) => chalk.red(text),
+    border: (text: string) => chalk.gray(text),
+    text: (text: string) => chalk.white(text),
+    textSecondary: (text: string) => chalk.gray(text),
+    packageName: (text: string) => chalk.cyan(text),
+    versionRange: (text: string) => chalk.yellow(text),
+    versionLatest: (text: string) => chalk.red(text),
+    dot: (text: string) => chalk.green(text),
+    dotEmpty: (text: string) => chalk.gray(text),
+  },
   dracula: {
     primary: (text: string) => chalk.hex('#8BE9FD')(text), // Cyan
     secondary: (text: string) => chalk.hex('#FF79C6')(text), // Pink
