@@ -196,11 +196,15 @@ export function renderPackageInfoModal(
     lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
     const repoLabel = 'Changelog:'
     const repoUrl = state.repository.substring(0, modalWidth - 20)
-    const repoText = `  ${repoLabel} ${chalk.underline(getThemeColor('primary')(repoUrl))}`
+    const repoText = ` ${repoLabel} ${chalk.underline(getThemeColor('primary')(repoUrl))}`
     const repoLength = stripAnsi(repoText).length
-    const repoPadding = Math.max(0, modalWidth - 2 - repoLength)
+    const repoPadding = Math.max(0, modalWidth - 3 - repoLength)
     lines.push(
-      ' '.repeat(padding) + chalk.gray('│') + repoText + ' '.repeat(repoPadding) + chalk.gray('│')
+      ' '.repeat(padding) +
+        chalk.gray('│') +
+        repoText +
+        ' '.repeat(repoPadding) +
+        chalk.gray('│')
     )
   }
 
@@ -210,11 +214,15 @@ export function renderPackageInfoModal(
 
     const homeLabel = 'Homepage:'
     const homeUrl = state.homepage.substring(0, modalWidth - 20)
-    const homeText = `  ${homeLabel} ${chalk.underline(getThemeColor('primary')(homeUrl))}`
+    const homeText = ` ${homeLabel} ${chalk.underline(getThemeColor('primary')(homeUrl))}`
     const homeLength = stripAnsi(homeText).length
-    const homePadding = Math.max(0, modalWidth - 2 - homeLength)
+    const homePadding = Math.max(0, modalWidth - 3 - homeLength)
     lines.push(
-      ' '.repeat(padding) + chalk.gray('│') + homeText + ' '.repeat(homePadding) + chalk.gray('│')
+      ' '.repeat(padding) +
+        chalk.gray('│') +
+        homeText +
+        ' '.repeat(homePadding) +
+        chalk.gray('│')
     )
   }
 
