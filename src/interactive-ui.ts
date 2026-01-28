@@ -301,19 +301,17 @@ export class InteractiveUI {
           case 'theme_navigate_up': {
             const themeManager = stateManager.getThemeManager()
             const currentIndex = themeNames.indexOf(themeManager.getPreviewTheme())
-            if (currentIndex > 0) {
-              const themeNames = Object.keys(themes)
-              stateManager.previewTheme(themeNames[currentIndex - 1])
-            }
+            const themeArray = Object.keys(themes)
+            const nextIndex = currentIndex > 0 ? currentIndex - 1 : themeArray.length - 1
+            stateManager.previewTheme(themeArray[nextIndex])
             break
           }
           case 'theme_navigate_down': {
             const themeManager = stateManager.getThemeManager()
             const currentIndex = themeNames.indexOf(themeManager.getPreviewTheme())
-            if (currentIndex < themeNames.length - 1) {
-              const themeNames = Object.keys(themes)
-              stateManager.previewTheme(themeNames[currentIndex + 1])
-            }
+            const themeArray = Object.keys(themes)
+            const nextIndex = currentIndex < themeArray.length - 1 ? currentIndex + 1 : 0
+            stateManager.previewTheme(themeArray[nextIndex])
             break
           }
           case 'theme_confirm':

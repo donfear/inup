@@ -223,14 +223,12 @@ export class StateManager {
     this.filterManager.appendToFilterQuery(char)
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
-    this.renderState.forceFullRender = true
   }
 
   deleteFromFilterQuery(): void {
     this.filterManager.deleteFromFilterQuery()
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
-    this.renderState.forceFullRender = true
   }
 
   getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {

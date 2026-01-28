@@ -204,7 +204,9 @@ export function renderInterface(
   if (filterMode) {
     // Show filter input with cursor when actively filtering
     const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery || '') + getThemeColor('border')('█')
-    output.push(filterDisplay)
+    // Pad to terminal width to clear any leftover characters from backspace
+    const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
+    output.push(filterDisplay + ' '.repeat(padding))
   } else {
     // Show instructions when not filtering
     output.push(

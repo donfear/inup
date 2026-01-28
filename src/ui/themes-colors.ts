@@ -15,7 +15,7 @@ const themeColorDefinitions = {
     textSecondary: 'gray',
   },
   dracula: {
-    bg: '#282A36',
+    bg: '#1e1f26',
     primary: '#8BE9FD',
     secondary: '#FF79C6',
     success: '#50FA7B',
@@ -68,6 +68,17 @@ const themeColorDefinitions = {
     border: '#414868',
     text: '#C0CAF5',
     textSecondary: '#A9B1D6',
+  },
+  onedark: {
+    bg: '#282c34',
+    primary: '#61AFEF',
+    secondary: '#C678DD',
+    success: '#98C379',
+    warning: '#E5C07B',
+    error: '#E06C75',
+    border: '#3E4452',
+    text: '#ABB2BF',
+    textSecondary: '#5C6370',
   },
 }
 

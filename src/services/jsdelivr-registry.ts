@@ -77,15 +77,12 @@ async function fetchPackageFromJsdelivr(
   }
 
   try {
-    // Coerce the current version in case it's a range like ^1.1.5
-    const coercedVersion = currentVersion ? semver.coerce(currentVersion)?.version : null
-
     // Determine major version from current version if provided
     const majorVersion = currentVersion
       ? semver.major(semver.coerce(currentVersion) || '0.0.0').toString()
       : null
 
-    // Prepare requests: always fetch @latest, @major if we have a current version, and @currentVersion
+    // Prepare requests: always fetch @latest, @major if we have a current version
     const requests: Array<Promise<{ version: string } | null>> = [
       fetchPackageJsonFromJsdelivr(packageName, 'latest'),
     ]
@@ -94,16 +91,11 @@ async function fetchPackageFromJsdelivr(
       requests.push(fetchPackageJsonFromJsdelivr(packageName, majorVersion))
     }
 
-    if (coercedVersion) {
-      requests.push(fetchPackageJsonFromJsdelivr(packageName, coercedVersion))
-    }
-
     // Execute all requests simultaneously
     const results = await Promise.all(requests)
 
     const latestResult = results[0]
     const majorResult = results[1]
-    const currentResult = results[2]
 
     if (!latestResult) {
       // jsdelivr doesn't have this package, fallback to npm registry
@@ -125,11 +117,6 @@ async function fetchPackageFromJsdelivr(
     // Add the major version result if different from latest
     if (majorResult && majorResult.version !== latestVersion) {
       allVersions.push(majorResult.version)
-    }
-
-    // Add the current version result if different from latest and major
-    if (currentResult && !allVersions.includes(currentResult.version)) {
-      allVersions.push(currentResult.version)
     }
 
     const result = {
