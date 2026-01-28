@@ -20,6 +20,7 @@ import {
 } from './ui'
 import { changelogFetcher } from './services'
 import { themeNames, themes } from './ui/themes'
+import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
 
 export class InteractiveUI {
   private renderer: UIRenderer
@@ -328,6 +329,8 @@ export class InteractiveUI {
       }
 
       const handleConfirm = (selectedStates: PackageSelectionState[]) => {
+        // Reset terminal colors
+        process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
         // Clean up listeners
         if (process.stdin.setRawMode) {
@@ -340,6 +343,8 @@ export class InteractiveUI {
       }
 
       const handleCancel = () => {
+        // Reset terminal colors
+        process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
         // Clean up listeners
         if (process.stdin.setRawMode) {
@@ -356,6 +361,10 @@ export class InteractiveUI {
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states)
+
+        // Apply terminal background color
+        const bgCode = getTerminalBgColorCode()
+        process.stdout.write(bgCode)
 
         if (uiState.forceFullRender) {
           console.clear()
@@ -484,6 +493,8 @@ export class InteractiveUI {
         // Initial render
         renderInterface()
       } catch (error) {
+        // Reset terminal colors
+        process.stdout.write(getTerminalResetCode())
         // Fallback to simple interface if raw mode fails
         console.log(chalk.yellow('Raw mode not available, using fallback interface...'))
         resolve(states)

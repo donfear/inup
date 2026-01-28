@@ -1,6 +1,17 @@
 import chalk from 'chalk'
 import { getCurrentThemeName } from './state/theme-manager'
 
+// Background color hex values for each theme
+const themeBgColors = {
+  default: '#1a1a1a',
+  dracula: '#282A36',
+  vsc: '#1E1E1E',
+  monokai: '#272822',
+  catppuccin: '#1E1E2E',
+  tokyonight: '#1A1B26',
+  onedark: '#282C34',
+}
+
 // Define actual color functions for each theme using hex colors
 const themeColorSchemes = {
   default: {
@@ -18,6 +29,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.red(text),
     dot: (text: string) => chalk.green(text),
     dotEmpty: (text: string) => chalk.gray(text),
+    bg: (text: string) => chalk.bgHex('#1a1a1a')(text),
   },
   dracula: {
     primary: (text: string) => chalk.hex('#8BE9FD')(text), // Cyan
@@ -34,6 +46,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#FF5555')(text), // Red
     dot: (text: string) => chalk.hex('#50FA7B')(text), // Green
     dotEmpty: (text: string) => chalk.hex('#6272A4')(text), // Comment
+    bg: (text: string) => chalk.hex('#282A36').bgHex('#282A36')(text), // Dark background
   },
   vsc: {
     primary: (text: string) => chalk.hex('#4FC1FF')(text), // Brighter blue
@@ -50,6 +63,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#F48771')(text), // Match error
     dot: (text: string) => chalk.hex('#89D185')(text), // Match success
     dotEmpty: (text: string) => chalk.hex('#6E6E6E')(text), // Match border
+    bg: (text: string) => chalk.hex('#D4D4D4').bgHex('#1E1E1E')(text), // Light text on dark bg
   },
   monokai: {
     primary: (text: string) => chalk.hex('#66D9EF')(text), // Cyan (unchanged)
@@ -66,6 +80,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#F92672')(text), // Red
     dot: (text: string) => chalk.hex('#A6E22E')(text), // Green
     dotEmpty: (text: string) => chalk.hex('#75715E')(text), // Comment
+    bg: (text: string) => chalk.hex('#F8F8F2').bgHex('#272822')(text), // Light text on dark bg
   },
   catppuccin: {
     primary: (text: string) => chalk.hex('#89B4FA')(text), // Blue (unchanged)
@@ -82,6 +97,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#F38BA8')(text), // Red
     dot: (text: string) => chalk.hex('#A6E3A1')(text), // Green
     dotEmpty: (text: string) => chalk.hex('#585B70')(text), // Surface2
+    bg: (text: string) => chalk.hex('#CDD6F4').bgHex('#1E1E2E')(text), // Light text on dark bg
   },
   tokyonight: {
     primary: (text: string) => chalk.hex('#7AA2F7')(text), // Blue
@@ -98,6 +114,7 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#F7768E')(text),
     dot: (text: string) => chalk.hex('#9ECE6A')(text),
     dotEmpty: (text: string) => chalk.hex('#565F89')(text),
+    bg: (text: string) => chalk.hex('#C0CAF5').bgHex('#1A1B26')(text), // Light text on dark bg
   },
   onedark: {
     primary: (text: string) => chalk.hex('#61AFEF')(text), // Blue
@@ -114,15 +131,55 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#E06C75')(text),
     dot: (text: string) => chalk.hex('#98C379')(text),
     dotEmpty: (text: string) => chalk.hex('#5C6370')(text),
+    bg: (text: string) => chalk.hex('#ABB2BF').bgHex('#282C34')(text), // Light text on dark bg
   },
 }
 
 export type ThemeColorKey = keyof typeof themeColorSchemes.dracula
+export type ThemeBgKey = 'bg'
 
 export function getThemeColor(key: ThemeColorKey): (text: string) => string {
   const themeName = getCurrentThemeName() as keyof typeof themeColorSchemes
   const scheme = themeColorSchemes[themeName] || themeColorSchemes.dracula
   return scheme[key]
+}
+
+/**
+ * Get the background color hex value for the current theme
+ */
+export function getThemeBgColor(): string {
+  const themeName = getCurrentThemeName() as keyof typeof themeBgColors
+  return themeBgColors[themeName] || themeBgColors.dracula
+}
+
+/**
+ * Convert hex color to RGB
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : { r: 0, g: 0, b: 0 }
+}
+
+/**
+ * Get ANSI escape code to set terminal background color
+ */
+export function getTerminalBgColorCode(): string {
+  const hex = getThemeBgColor()
+  const rgb = hexToRgb(hex)
+  return `\x1b[48;2;${rgb.r};${rgb.g};${rgb.b}m`
+}
+
+/**
+ * Get ANSI escape code to reset terminal colors
+ */
+export function getTerminalResetCode(): string {
+  return '\x1b[0m'
 }
 
 export const themeColors = {
@@ -139,4 +196,5 @@ export const themeColors = {
   versionLatest: () => getThemeColor('versionLatest'),
   dot: () => getThemeColor('dot'),
   dotEmpty: () => getThemeColor('dotEmpty'),
+  bg: () => getThemeColor('bg'),
 }
