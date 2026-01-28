@@ -5,7 +5,6 @@ Set FontSize 14
 Set Width 1400
 Set Height 800
 Set PlaybackSpeed 1.0
-Set Theme "Catppuccin Mocha"
 
 # Change to clean temp directory (hidden from view)
 Hide
@@ -25,6 +24,18 @@ Sleep 2s
 # Use 'M' to select all minor updates
 Type "m"
 Sleep 1s
+
+# Press 'T' to open theme menu
+Type "t"
+Sleep 800ms
+
+# Navigate down 1 positions to select a theme
+Down
+Sleep 300ms
+
+# Press Enter to apply the selected theme
+Enter
+Sleep 800ms
 
 # Demonstrate search functionality - press '/' to enter search mode
 Type "/"
