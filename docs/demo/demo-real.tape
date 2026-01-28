@@ -121,5 +121,5 @@ Sleep 500ms
 # Press Enter again to confirm installation
 Enter
 
-# Wait for pnpm install to complete (reduced from 5s)
-Sleep 3s
+# Install to complete
+Sleep 1s
