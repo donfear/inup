@@ -2,6 +2,7 @@ import { PackageSelectionState, RenderableItem } from '../../types'
 import { NavigationManager, NavigationState } from './navigation-manager'
 import { ModalManager, ModalState } from './modal-manager'
 import { FilterManager, FilterState } from './filter-manager'
+import { ThemeManager, ThemeState } from './theme-manager'
 
 export interface DisplayState {
   maxVisibleItems: number
@@ -29,12 +30,15 @@ export interface UIState {
   isLoadingModalInfo: boolean
   filterMode: boolean
   filterQuery: string
+  showThemeModal: boolean
+  currentTheme: string
 }
 
 export class StateManager {
   private navigationManager: NavigationManager
   private modalManager: ModalManager
   private filterManager: FilterManager
+  private themeManager: ThemeManager
   private displayState: DisplayState
   private renderState: RenderState
   private readonly headerLines = 5 // title (with label) + empty + 1 instruction line + status + empty
@@ -45,6 +49,7 @@ export class StateManager {
     this.navigationManager = new NavigationManager(initialRow, maxVisibleItems)
     this.modalManager = new ModalManager()
     this.filterManager = new FilterManager()
+    this.themeManager = new ThemeManager()
 
     this.displayState = {
       maxVisibleItems,
@@ -63,6 +68,7 @@ export class StateManager {
     const navState = this.navigationManager.getState()
     const modalState = this.modalManager.getState()
     const filterState = this.filterManager.getState()
+    const themeState = this.themeManager.getState()
 
     return {
       currentRow: navState.currentRow,
@@ -79,6 +85,8 @@ export class StateManager {
       isLoadingModalInfo: modalState.isLoadingModalInfo,
       filterMode: filterState.filterMode,
       filterQuery: filterState.filterQuery,
+      showThemeModal: themeState.showThemeModal,
+      currentTheme: themeState.currentTheme,
     }
   }
 
@@ -258,5 +266,30 @@ export class StateManager {
     const totalItems = this.renderState.renderableItems.length || this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
+  }
+
+  // Theme delegation
+  toggleThemeModal(): void {
+    this.themeManager.toggleThemeModal()
+    this.renderState.forceFullRender = true
+  }
+
+  closeThemeModal(): void {
+    this.themeManager.closeThemeModal()
+    this.renderState.forceFullRender = true
+  }
+
+  previewTheme(themeName: string): void {
+    this.themeManager.previewTheme(themeName)
+    this.renderState.forceFullRender = true
+  }
+
+  confirmTheme(): void {
+    this.themeManager.confirmTheme()
+    this.renderState.forceFullRender = true
+  }
+
+  getThemeManager(): ThemeManager {
+    return this.themeManager
   }
 }

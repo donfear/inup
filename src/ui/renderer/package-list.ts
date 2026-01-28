@@ -1,12 +1,17 @@
 import chalk from 'chalk'
 import { PackageSelectionState, RenderableItem } from '../../types'
 import { VersionUtils } from '../utils'
+import { getThemeColor } from '../themes-colors'
 
 /**
  * Render a single package line
+ * @param state Package selection state
+ * @param index Index in the list
+ * @param isCurrentRow Whether this is the current/highlighted row
+ * @param terminalWidth Terminal width for dynamic truncation (default 80)
  */
-export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
-  const prefix = isCurrentRow ? chalk.green('❯ ') : '  '
+export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean, terminalWidth: number = 80): string {
+  const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
   // Package name with special formatting for scoped packages (@author/package)
   let packageName
@@ -17,15 +22,15 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
       const packagePart = parts.slice(1).join('/') // package name
 
       if (isCurrentRow) {
-        packageName = chalk.white.bold(author) + chalk.cyan('/' + packagePart)
+        packageName = chalk.bold(getThemeColor('packageAuthor')(author)) + getThemeColor('packageName')('/' + packagePart)
       } else {
-        packageName = chalk.white.bold(author) + chalk.white('/' + packagePart)
+        packageName = chalk.bold.white(author) + chalk.white('/' + packagePart)
       }
     } else {
-      packageName = isCurrentRow ? chalk.cyan(state.name) : chalk.white(state.name)
+      packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
     }
   } else {
-    packageName = isCurrentRow ? chalk.cyan(state.name) : chalk.white(state.name)
+    packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
   }
 
   // Determine which dot should be filled (only one per package)
@@ -34,85 +39,103 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const isLatestSelected = state.selectedOption === 'latest'
 
   // Current version dot and version (show original specifier with prefix)
-  const currentDot = isCurrentSelected ? chalk.green('●') : chalk.gray('○')
+  const currentDot = isCurrentSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
   const currentVersion = chalk.white(state.currentVersionSpecifier)
 
   // Range version dot and version
   let rangeDot = ''
   let rangeVersionText = ''
-  let rangeDashes = ''
   if (state.hasRangeUpdate) {
-    rangeDot = isRangeSelected ? chalk.green('●') : chalk.gray('○')
+    rangeDot = isRangeSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const rangeVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
       state.rangeVersion
     )
-    rangeVersionText = chalk.yellow(rangeVersionWithPrefix)
-    rangeDashes = ''
+    rangeVersionText = getThemeColor('versionRange')(rangeVersionWithPrefix)
   } else {
-    rangeDot = chalk.gray('○')
+    rangeDot = getThemeColor('dotEmpty')('○')
     rangeVersionText = ''
-    rangeDashes = chalk.gray('─')
   }
 
   // Latest version dot and version
   let latestDot = ''
   let latestVersionText = ''
-  let latestDashes = ''
   if (state.hasMajorUpdate) {
-    latestDot = isLatestSelected ? chalk.green('●') : chalk.gray('○')
+    latestDot = isLatestSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const latestVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
       state.latestVersion
     )
-    latestVersionText = chalk.red(latestVersionWithPrefix)
-    latestDashes = ''
+    latestVersionText = getThemeColor('versionLatest')(latestVersionWithPrefix)
   } else {
-    latestDot = chalk.gray('○')
+    latestDot = getThemeColor('dotEmpty')('○')
     latestVersionText = ''
-    latestDashes = chalk.gray('─')
   }
 
-  // Fixed column widths for perfect alignment
-  const packageNameWidth = 38 // Total package column width minus prefix (2 chars)
+  // Column widths with capped package name width
+  // Layout: prefix(2) + name + dashes + spacing(3) + current(16) + spacing(3) + range(16) + spacing(3) + latest(16)
   const currentColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const rangeColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
   const latestColumnWidth = 16 // Increased to accommodate ^ and ~ prefixes
+  const spacingWidth = 3
 
-  // Package name with fixed width and dashes
-  const nameLength = state.name.length
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
-  const nameDashes = '-'.repeat(namePadding)
+  // Package name width: max 50 chars (after which ellipsis kicks in), but scales down on small terminals
+  const maxPackageNameWidth = 50
+  const minPackageNameWidth = 24
+  const otherColumnsWidth = currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
+  const prefixWidth = 2
+  const availableForPackageName = terminalWidth - prefixWidth - otherColumnsWidth - 1
+  const packageNameWidth = Math.min(maxPackageNameWidth, Math.max(minPackageNameWidth, availableForPackageName))
+
+  // Apply ellipsis truncation if package name exceeds available width
+  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1) // -1 for space after name
+
+  // Helper function to determine if dashes should be shown based on available padding
+  // Only show dashes if there's significant padding (> 2 chars) to fill
+  const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
+
   const dashColor = isCurrentRow ? chalk.white : chalk.gray
-  const packageNameSection = `${packageName} ${dashColor(nameDashes)}`
 
-  // Current version section with fixed width
+  // Package name with dashes only if needed
+  const nameLength = VersionUtils.getVisualLength(truncatedName)
+  const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
+  const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
+
+  // Use truncated name if it differs from original, otherwise use colored packageName
+  const displayName = truncatedName !== state.name ? truncatedName : packageName
+
+  const packageNameSection = `${displayName} ${nameDashes}`
+
+  // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
-  const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1 // +1 for space before dashes
+  const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1 // +1 for space before padding
   const currentPadding = Math.max(0, currentColumnWidth - currentSectionLength)
-  const currentWithPadding = currentSection + ' ' + dashColor('-').repeat(currentPadding)
+  const currentPaddingText = shouldShowDashes(currentPadding) ? dashColor('-').repeat(currentPadding) : ' '.repeat(currentPadding)
+  const currentWithPadding = currentSection + ' ' + currentPaddingText
 
-  // Range version section with fixed width
+  // Range version section with dashes only if needed
   let rangeSection = ''
   if (state.hasRangeUpdate) {
     rangeSection = `${rangeDot} ${rangeVersionText}`
-    const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before dashes
+    const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before padding
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
-    rangeSection += ' ' + dashColor('-').repeat(rangePadding)
+    const rangePaddingText = shouldShowDashes(rangePadding) ? dashColor('-').repeat(rangePadding) : ' '.repeat(rangePadding)
+    rangeSection += ' ' + rangePaddingText
   } else {
-    // Empty slot - just spaces to maintain column width
+    // Empty slot - maintain column width
     rangeSection = ' '.repeat(rangeColumnWidth)
   }
 
-  // Latest version section with fixed width
+  // Latest version section with dashes only if needed
   let latestSection = ''
   if (state.hasMajorUpdate) {
     latestSection = `${latestDot} ${latestVersionText}`
-    const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before dashes
+    const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before padding
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
-    latestSection += ' ' + dashColor('-').repeat(latestPadding)
+    const latestPaddingText = shouldShowDashes(latestPadding) ? dashColor('-').repeat(latestPadding) : ' '.repeat(latestPadding)
+    latestSection += ' ' + latestPaddingText
   } else {
-    // Empty slot - just spaces to maintain column width
+    // Empty slot - maintain column width
     latestSection = ' '.repeat(latestColumnWidth)
   }
 
@@ -152,7 +175,8 @@ export function renderInterface(
   packageManager?: any,
   filterMode?: boolean,
   filterQuery?: string,
-  totalPackagesBeforeFilter?: number
+  totalPackagesBeforeFilter?: number,
+  terminalWidth: number = 80
 ): string[] {
   const output: string[] = []
 
@@ -169,42 +193,45 @@ export function renderInterface(
     // Each character in "inup" gets a different color
     const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
-    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + chalk.gray(` (${packageManager.displayName})`)
-    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
+    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
+    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
   } else {
     const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
-    output.push(dependencyTypeLabel ? headerLine + chalk.gray(' - ') + chalk.bold.cyan(dependencyTypeLabel) : headerLine)
+    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
   }
   output.push('')
 
   if (filterMode) {
     // Show filter input with cursor when actively filtering
-    const filterDisplay = '  ' + chalk.bold.white('Search: ') + chalk.cyan(filterQuery || '') + chalk.gray('█')
+    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery || '') + getThemeColor('border')('█')
     output.push(filterDisplay)
   } else {
     // Show instructions when not filtering
     output.push(
       '  ' +
         chalk.bold.white('/ ') +
-        chalk.gray('Search') +
+        getThemeColor('textSecondary')('Search') +
         '  ' +
         chalk.bold.white('↑/↓ ') +
-        chalk.gray('Move') +
+        getThemeColor('textSecondary')('Move') +
         '  ' +
         chalk.bold.white('←/→ ') +
-        chalk.gray('Select') +
+        getThemeColor('textSecondary')('Select') +
         '  ' +
         chalk.bold.white('I ') +
-        chalk.gray('Info') +
+        getThemeColor('textSecondary')('Info') +
+        '  ' +
+        chalk.bold.white('T ') +
+        getThemeColor('textSecondary')('Theme') +
         '  ' +
         chalk.bold.white('M ') +
-        chalk.gray('Minor') +
+        getThemeColor('textSecondary')('Minor') +
         '  ' +
         chalk.bold.white('L ') +
-        chalk.gray('All') +
+        getThemeColor('textSecondary')('All') +
         '  ' +
         chalk.bold.white('U ') +
-        chalk.gray('None')
+        getThemeColor('textSecondary')('None')
     )
   }
 
@@ -221,42 +248,42 @@ export function renderInterface(
   if (filterMode) {
     // In filter mode, show ESC to exit filter
     if (totalPackages === 0) {
-      statusLine = chalk.yellow(`No matches found`) +
+      statusLine = getThemeColor('warning')(`No matches found`) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     } else if (totalVisualItems > maxVisibleItems) {
-      statusLine = chalk.gray(
+      statusLine = getThemeColor('textSecondary')(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
       ) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     } else {
-      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Clear filter')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Clear filter')
     }
   } else if (totalPackages < totalBeforeFilter) {
     // Filter is applied but not in filter mode
     if (totalVisualItems > maxVisibleItems) {
-      statusLine = chalk.gray(
+      statusLine = getThemeColor('textSecondary')(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
       ) +
         '  ' +
-        chalk.gray('/ ') +
-        chalk.gray('Edit filter') +
+        getThemeColor('textSecondary')('/ ') +
+        getThemeColor('textSecondary')('Edit filter') +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
+        getThemeColor('textSecondary')('Enter ') +
+        getThemeColor('textSecondary')('Confirm') +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        getThemeColor('textSecondary')('Esc ') +
+        getThemeColor('textSecondary')('Cancel')
     } else {
-      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
         '  ' +
-        chalk.gray('/ ') +
+        getThemeColor('textSecondary')('/ ') +
         chalk.gray('Edit filter') +
         '  ' +
         chalk.gray('Enter ') +
@@ -308,7 +335,8 @@ export function renderInterface(
         const line = renderPackageLine(
           item.state,
           item.originalIndex,
-          item.originalIndex === currentRow
+          item.originalIndex === currentRow,
+          terminalWidth
         )
         output.push(line)
       }
@@ -316,7 +344,7 @@ export function renderInterface(
   } else {
     // Fallback to flat rendering (legacy mode)
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow)
+      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth)
       output.push(line)
     }
   }

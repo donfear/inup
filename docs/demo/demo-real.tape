@@ -5,7 +5,6 @@ Set FontSize 14
 Set Width 1400
 Set Height 800
 Set PlaybackSpeed 1.0
-Set Theme "Catppuccin Mocha"
 
 # Change to clean temp directory (hidden from view)
 Hide
@@ -25,6 +24,24 @@ Sleep 2s
 # Use 'M' to select all minor updates
 Type "m"
 Sleep 1s
+
+# Press 'T' to open theme menu
+Type "t"
+Sleep 800ms
+
+# Navigate down 3 positions to select a theme
+Down
+Sleep 300ms
+
+Down
+Sleep 300ms
+
+Down
+Sleep 300ms
+
+# Press Enter to apply the selected theme
+Enter
+Sleep 800ms
 
 # Demonstrate search functionality - press '/' to enter search mode
 Type "/"
@@ -104,5 +121,5 @@ Sleep 500ms
 # Press Enter again to confirm installation
 Enter
 
-# Wait for pnpm install to complete (reduced from 5s)
-Sleep 3s
+# Install to complete
+Sleep 1s
