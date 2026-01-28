@@ -68,7 +68,7 @@ const themeColorDefinitions = {
     border: '#414868',
     text: '#C0CAF5',
     textSecondary: '#A9B1D6',
-  }
+  },
 }
 
 // Helper to apply color - handles both hex and named colors
@@ -79,10 +79,16 @@ function applyColor(color: string, text: string): string {
   return (chalk as any)[color](text)
 }
 
-const themeColorSchemes: Record<keyof typeof themeColorDefinitions, Record<string, (text: string) => string>> = Object.entries(themeColorDefinitions).reduce((schemes, [themeName, colors]) => {
-  schemes[themeName as keyof typeof themeColorDefinitions] = createThemeScheme(colors)
-  return schemes
-}, {} as Record<keyof typeof themeColorDefinitions, Record<string, (text: string) => string>>)
+const themeColorSchemes: Record<
+  keyof typeof themeColorDefinitions,
+  Record<string, (text: string) => string>
+> = Object.entries(themeColorDefinitions).reduce(
+  (schemes, [themeName, colors]) => {
+    schemes[themeName as keyof typeof themeColorDefinitions] = createThemeScheme(colors)
+    return schemes
+  },
+  {} as Record<keyof typeof themeColorDefinitions, Record<string, (text: string) => string>>
+)
 
 function createThemeScheme(colors: typeof themeColorDefinitions.default) {
   return {
