@@ -1,138 +1,125 @@
 import chalk from 'chalk'
 import { getCurrentThemeName } from './state/theme-manager'
 
-// Background color hex values for each theme
-const themeBgColors = {
-  default: '#1a1a1a',
-  dracula: '#282A36',
-  vsc: '#1E1E1E',
-  monokai: '#272822',
-  catppuccin: '#1E1E2E',
-  tokyonight: '#1A1B26',
-  onedark: '#282C34',
-}
-
-// Define actual color functions for each theme using hex colors
-const themeColorSchemes = {
+// Centralized theme color definitions - single source of truth
+const themeColorDefinitions = {
   default: {
-    primary: (text: string) => chalk.cyan(text),
-    secondary: (text: string) => chalk.magenta(text),
-    success: (text: string) => chalk.green(text),
-    warning: (text: string) => chalk.yellow(text),
-    error: (text: string) => chalk.red(text),
-    border: (text: string) => chalk.gray(text),
-    text: (text: string) => chalk.white(text),
-    textSecondary: (text: string) => chalk.gray(text),
-    packageName: (text: string) => chalk.cyan(text),
-    packageAuthor: (text: string) => chalk.white(text),
-    versionRange: (text: string) => chalk.yellow(text),
-    versionLatest: (text: string) => chalk.red(text),
-    dot: (text: string) => chalk.green(text),
-    dotEmpty: (text: string) => chalk.gray(text),
-    bg: (text: string) => chalk.bgHex('#1a1a1a')(text),
+    bg: '#1a1a1a',
+    primary: 'cyan',
+    secondary: 'magenta',
+    success: 'green',
+    warning: 'yellow',
+    error: 'red',
+    border: 'gray',
+    text: 'white',
+    textSecondary: 'gray',
   },
   dracula: {
-    primary: (text: string) => chalk.hex('#8BE9FD')(text), // Cyan
-    secondary: (text: string) => chalk.hex('#FF79C6')(text), // Pink
-    success: (text: string) => chalk.hex('#50FA7B')(text), // Green
-    warning: (text: string) => chalk.hex('#F1FA8C')(text), // Yellow
-    error: (text: string) => chalk.hex('#FF5555')(text), // Red
-    border: (text: string) => chalk.hex('#6272A4')(text), // Comment
-    text: (text: string) => chalk.hex('#F8F8F2')(text), // Foreground
-    textSecondary: (text: string) => chalk.hex('#6272A4')(text), // Comment
-    packageName: (text: string) => chalk.hex('#8BE9FD')(text), // Cyan
-    packageAuthor: (text: string) => chalk.hex('#FF79C6')(text), // Pink
-    versionRange: (text: string) => chalk.hex('#F1FA8C')(text), // Yellow
-    versionLatest: (text: string) => chalk.hex('#FF5555')(text), // Red
-    dot: (text: string) => chalk.hex('#50FA7B')(text), // Green
-    dotEmpty: (text: string) => chalk.hex('#6272A4')(text), // Comment
-    bg: (text: string) => chalk.hex('#282A36').bgHex('#282A36')(text), // Dark background
+    bg: '#282A36',
+    primary: '#8BE9FD',
+    secondary: '#FF79C6',
+    success: '#50FA7B',
+    warning: '#F1FA8C',
+    error: '#FF5555',
+    border: '#6272A4',
+    text: '#F8F8F2',
+    textSecondary: '#6272A4',
   },
   vsc: {
-    primary: (text: string) => chalk.hex('#4FC1FF')(text), // Brighter blue
-    secondary: (text: string) => chalk.hex('#4EC9B0')(text), // Cyan (unchanged)
-    success: (text: string) => chalk.hex('#89D185')(text), // Brighter green
-    warning: (text: string) => chalk.hex('#E5C07B')(text), // Warmer yellow
-    error: (text: string) => chalk.hex('#F48771')(text), // Red (unchanged)
-    border: (text: string) => chalk.hex('#6E6E6E')(text), // Lighter gray
-    text: (text: string) => chalk.hex('#D4D4D4')(text), // Foreground (unchanged)
-    textSecondary: (text: string) => chalk.hex('#858585')(text), // Gray (unchanged)
-    packageName: (text: string) => chalk.hex('#4FC1FF')(text), // Match primary
-    packageAuthor: (text: string) => chalk.hex('#4EC9B0')(text), // Match secondary (cyan)
-    versionRange: (text: string) => chalk.hex('#E5C07B')(text), // Match warning
-    versionLatest: (text: string) => chalk.hex('#F48771')(text), // Match error
-    dot: (text: string) => chalk.hex('#89D185')(text), // Match success
-    dotEmpty: (text: string) => chalk.hex('#6E6E6E')(text), // Match border
-    bg: (text: string) => chalk.hex('#D4D4D4').bgHex('#1E1E1E')(text), // Light text on dark bg
+    bg: '#1E1E1E',
+    primary: '#4FC1FF',
+    secondary: '#4EC9B0',
+    success: '#89D185',
+    warning: '#E5C07B',
+    error: '#F48771',
+    border: '#6E6E6E',
+    text: '#D4D4D4',
+    textSecondary: '#858585',
   },
   monokai: {
-    primary: (text: string) => chalk.hex('#66D9EF')(text), // Cyan (unchanged)
-    secondary: (text: string) => chalk.hex('#AE81FF')(text), // Purple (better contrast)
-    success: (text: string) => chalk.hex('#A6E22E')(text), // Green (unchanged)
-    warning: (text: string) => chalk.hex('#E6DB74')(text), // Yellow (unchanged)
-    error: (text: string) => chalk.hex('#F92672')(text), // Red (unchanged)
-    border: (text: string) => chalk.hex('#75715E')(text), // Comment (unchanged)
-    text: (text: string) => chalk.hex('#F8F8F2')(text), // Foreground (unchanged)
-    textSecondary: (text: string) => chalk.hex('#75715E')(text), // Comment (unchanged)
-    packageName: (text: string) => chalk.hex('#66D9EF')(text), // Cyan
-    packageAuthor: (text: string) => chalk.hex('#AE81FF')(text), // Purple
-    versionRange: (text: string) => chalk.hex('#E6DB74')(text), // Yellow
-    versionLatest: (text: string) => chalk.hex('#F92672')(text), // Red
-    dot: (text: string) => chalk.hex('#A6E22E')(text), // Green
-    dotEmpty: (text: string) => chalk.hex('#75715E')(text), // Comment
-    bg: (text: string) => chalk.hex('#F8F8F2').bgHex('#272822')(text), // Light text on dark bg
+    bg: '#272822',
+    primary: '#66D9EF',
+    secondary: '#AE81FF',
+    success: '#A6E22E',
+    warning: '#E6DB74',
+    error: '#F92672',
+    border: '#75715E',
+    text: '#F8F8F2',
+    textSecondary: '#75715E',
   },
   catppuccin: {
-    primary: (text: string) => chalk.hex('#89B4FA')(text), // Blue (unchanged)
-    secondary: (text: string) => chalk.hex('#CBA6F7')(text), // Mauve (unchanged)
-    success: (text: string) => chalk.hex('#A6E3A1')(text), // Green (unchanged)
-    warning: (text: string) => chalk.hex('#F9E2AF')(text), // Yellow (unchanged)
-    error: (text: string) => chalk.hex('#F38BA8')(text), // Red (unchanged)
-    border: (text: string) => chalk.hex('#585B70')(text), // Surface2 (unchanged)
-    text: (text: string) => chalk.hex('#CDD6F4')(text), // Text (unchanged)
-    textSecondary: (text: string) => chalk.hex('#BAC2DE')(text), // Subtext1 (unchanged)
-    packageName: (text: string) => chalk.hex('#89B4FA')(text), // Blue
-    packageAuthor: (text: string) => chalk.hex('#CBA6F7')(text), // Mauve
-    versionRange: (text: string) => chalk.hex('#F9E2AF')(text), // Yellow
-    versionLatest: (text: string) => chalk.hex('#F38BA8')(text), // Red
-    dot: (text: string) => chalk.hex('#A6E3A1')(text), // Green
-    dotEmpty: (text: string) => chalk.hex('#585B70')(text), // Surface2
-    bg: (text: string) => chalk.hex('#CDD6F4').bgHex('#1E1E2E')(text), // Light text on dark bg
+    bg: '#1E1E2E',
+    primary: '#89B4FA',
+    secondary: '#CBA6F7',
+    success: '#A6E3A1',
+    warning: '#F9E2AF',
+    error: '#F38BA8',
+    border: '#585B70',
+    text: '#CDD6F4',
+    textSecondary: '#BAC2DE',
   },
   tokyonight: {
-    primary: (text: string) => chalk.hex('#7AA2F7')(text), // Blue
-    secondary: (text: string) => chalk.hex('#BB9AF7')(text), // Purple
-    success: (text: string) => chalk.hex('#9ECE6A')(text), // Green
-    warning: (text: string) => chalk.hex('#E0AF68')(text), // Yellow
-    error: (text: string) => chalk.hex('#F7768E')(text), // Red
-    border: (text: string) => chalk.hex('#565F89')(text), // Comment
-    text: (text: string) => chalk.hex('#C0CAF5')(text), // Foreground
-    textSecondary: (text: string) => chalk.hex('#9AA5CE')(text),
-    packageName: (text: string) => chalk.hex('#7AA2F7')(text),
-    packageAuthor: (text: string) => chalk.hex('#BB9AF7')(text),
-    versionRange: (text: string) => chalk.hex('#E0AF68')(text),
-    versionLatest: (text: string) => chalk.hex('#F7768E')(text),
-    dot: (text: string) => chalk.hex('#9ECE6A')(text),
-    dotEmpty: (text: string) => chalk.hex('#565F89')(text),
-    bg: (text: string) => chalk.hex('#C0CAF5').bgHex('#1A1B26')(text), // Light text on dark bg
+    bg: '#1A1B26',
+    primary: '#7AA2F7',
+    secondary: '#BB9AF7',
+    success: '#9ECE6A',
+    warning: '#E0AF68',
+    error: '#F7768E',
+    border: '#565F89',
+    text: '#C0CAF5',
+    textSecondary: '#9AA5CE',
   },
   onedark: {
-    primary: (text: string) => chalk.hex('#61AFEF')(text), // Blue
-    secondary: (text: string) => chalk.hex('#C678DD')(text), // Purple
-    success: (text: string) => chalk.hex('#98C379')(text), // Green
-    warning: (text: string) => chalk.hex('#E5C07B')(text), // Yellow
-    error: (text: string) => chalk.hex('#E06C75')(text), // Red
-    border: (text: string) => chalk.hex('#5C6370')(text), // Gutter
-    text: (text: string) => chalk.hex('#ABB2BF')(text), // Foreground
-    textSecondary: (text: string) => chalk.hex('#828997')(text),
-    packageName: (text: string) => chalk.hex('#61AFEF')(text),
-    packageAuthor: (text: string) => chalk.hex('#C678DD')(text),
-    versionRange: (text: string) => chalk.hex('#E5C07B')(text),
-    versionLatest: (text: string) => chalk.hex('#E06C75')(text),
-    dot: (text: string) => chalk.hex('#98C379')(text),
-    dotEmpty: (text: string) => chalk.hex('#5C6370')(text),
-    bg: (text: string) => chalk.hex('#ABB2BF').bgHex('#282C34')(text), // Light text on dark bg
+    bg: '#282C34',
+    primary: '#61AFEF',
+    secondary: '#C678DD',
+    success: '#98C379',
+    warning: '#E5C07B',
+    error: '#E06C75',
+    border: '#5C6370',
+    text: '#ABB2BF',
+    textSecondary: '#828997',
   },
+}
+
+// Helper to apply color - handles both hex and named colors
+function applyColor(color: string, text: string): string {
+  if (color.startsWith('#')) {
+    return chalk.hex(color)(text)
+  }
+  return (chalk as any)[color](text)
+}
+
+// Generate color schemes with functions from definitions
+const themeColorSchemes = {
+  default: createThemeScheme(themeColorDefinitions.default),
+  dracula: createThemeScheme(themeColorDefinitions.dracula),
+  vsc: createThemeScheme(themeColorDefinitions.vsc),
+  monokai: createThemeScheme(themeColorDefinitions.monokai),
+  catppuccin: createThemeScheme(themeColorDefinitions.catppuccin),
+  tokyonight: createThemeScheme(themeColorDefinitions.tokyonight),
+  onedark: createThemeScheme(themeColorDefinitions.onedark),
+}
+
+function createThemeScheme(colors: typeof themeColorDefinitions.default) {
+  return {
+    primary: (text: string) => applyColor(colors.primary, text),
+    secondary: (text: string) => applyColor(colors.secondary, text),
+    success: (text: string) => applyColor(colors.success, text),
+    warning: (text: string) => applyColor(colors.warning, text),
+    error: (text: string) => applyColor(colors.error, text),
+    border: (text: string) => applyColor(colors.border, text),
+    text: (text: string) => applyColor(colors.text, text),
+    textSecondary: (text: string) => applyColor(colors.textSecondary, text),
+    // Derived colors (reuse existing colors for semantic purposes)
+    packageName: (text: string) => applyColor(colors.primary, text),
+    packageAuthor: (text: string) => applyColor(colors.secondary, text),
+    versionRange: (text: string) => applyColor(colors.warning, text),
+    versionLatest: (text: string) => applyColor(colors.error, text),
+    dot: (text: string) => applyColor(colors.success, text),
+    dotEmpty: (text: string) => applyColor(colors.border, text),
+    bg: (text: string) => chalk.bgHex(colors.bg)(text),
+  }
 }
 
 export type ThemeColorKey = keyof typeof themeColorSchemes.dracula
@@ -148,8 +135,8 @@ export function getThemeColor(key: ThemeColorKey): (text: string) => string {
  * Get the background color hex value for the current theme
  */
 export function getThemeBgColor(): string {
-  const themeName = getCurrentThemeName() as keyof typeof themeBgColors
-  return themeBgColors[themeName] || themeBgColors.dracula
+  const themeName = getCurrentThemeName() as keyof typeof themeColorDefinitions
+  return themeColorDefinitions[themeName]?.bg || themeColorDefinitions.dracula.bg
 }
 
 /**
