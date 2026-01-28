@@ -67,22 +67,6 @@ const themeColorSchemes = {
     dot: (text: string) => chalk.hex('#A6E22E')(text), // Green
     dotEmpty: (text: string) => chalk.hex('#75715E')(text), // Comment
   },
-  nord: {
-    primary: (text: string) => chalk.hex('#88C0D0')(text), // Frost Cyan (unchanged)
-    secondary: (text: string) => chalk.hex('#81A1C1')(text), // Frost Blue (unchanged)
-    success: (text: string) => chalk.hex('#A3BE8C')(text), // Aurora Green (unchanged)
-    warning: (text: string) => chalk.hex('#EBCB8B')(text), // Aurora Yellow (unchanged)
-    error: (text: string) => chalk.hex('#BF616A')(text), // Aurora Red (unchanged)
-    border: (text: string) => chalk.hex('#4C566A')(text), // Polar Night (unchanged)
-    text: (text: string) => chalk.hex('#ECEFF4')(text), // Snow Storm (unchanged)
-    textSecondary: (text: string) => chalk.hex('#D8DEE9')(text), // Snow Storm (unchanged)
-    packageName: (text: string) => chalk.hex('#88C0D0')(text), // Frost Cyan
-    packageAuthor: (text: string) => chalk.hex('#81A1C1')(text), // Frost Blue
-    versionRange: (text: string) => chalk.hex('#EBCB8B')(text), // Aurora Yellow
-    versionLatest: (text: string) => chalk.hex('#BF616A')(text), // Aurora Red
-    dot: (text: string) => chalk.hex('#A3BE8C')(text), // Aurora Green
-    dotEmpty: (text: string) => chalk.hex('#4C566A')(text), // Polar Night
-  },
   catppuccin: {
     primary: (text: string) => chalk.hex('#89B4FA')(text), // Blue (unchanged)
     secondary: (text: string) => chalk.hex('#CBA6F7')(text), // Mauve (unchanged)
@@ -98,6 +82,38 @@ const themeColorSchemes = {
     versionLatest: (text: string) => chalk.hex('#F38BA8')(text), // Red
     dot: (text: string) => chalk.hex('#A6E3A1')(text), // Green
     dotEmpty: (text: string) => chalk.hex('#585B70')(text), // Surface2
+  },
+  tokyonight: {
+    primary: (text: string) => chalk.hex('#7AA2F7')(text), // Blue
+    secondary: (text: string) => chalk.hex('#BB9AF7')(text), // Purple
+    success: (text: string) => chalk.hex('#9ECE6A')(text), // Green
+    warning: (text: string) => chalk.hex('#E0AF68')(text), // Yellow
+    error: (text: string) => chalk.hex('#F7768E')(text), // Red
+    border: (text: string) => chalk.hex('#565F89')(text), // Comment
+    text: (text: string) => chalk.hex('#C0CAF5')(text), // Foreground
+    textSecondary: (text: string) => chalk.hex('#9AA5CE')(text),
+    packageName: (text: string) => chalk.hex('#7AA2F7')(text),
+    packageAuthor: (text: string) => chalk.hex('#BB9AF7')(text),
+    versionRange: (text: string) => chalk.hex('#E0AF68')(text),
+    versionLatest: (text: string) => chalk.hex('#F7768E')(text),
+    dot: (text: string) => chalk.hex('#9ECE6A')(text),
+    dotEmpty: (text: string) => chalk.hex('#565F89')(text),
+  },
+  onedark: {
+    primary: (text: string) => chalk.hex('#61AFEF')(text), // Blue
+    secondary: (text: string) => chalk.hex('#C678DD')(text), // Purple
+    success: (text: string) => chalk.hex('#98C379')(text), // Green
+    warning: (text: string) => chalk.hex('#E5C07B')(text), // Yellow
+    error: (text: string) => chalk.hex('#E06C75')(text), // Red
+    border: (text: string) => chalk.hex('#5C6370')(text), // Gutter
+    text: (text: string) => chalk.hex('#ABB2BF')(text), // Foreground
+    textSecondary: (text: string) => chalk.hex('#828997')(text),
+    packageName: (text: string) => chalk.hex('#61AFEF')(text),
+    packageAuthor: (text: string) => chalk.hex('#C678DD')(text),
+    versionRange: (text: string) => chalk.hex('#E5C07B')(text),
+    versionLatest: (text: string) => chalk.hex('#E06C75')(text),
+    dot: (text: string) => chalk.hex('#98C379')(text),
+    dotEmpty: (text: string) => chalk.hex('#5C6370')(text),
   },
 }
 
