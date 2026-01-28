@@ -29,7 +29,13 @@ Sleep 1s
 Type "t"
 Sleep 800ms
 
-# Navigate down 1 positions to select a theme
+# Navigate down 3 positions to select a theme
+Down
+Sleep 300ms
+
+Down
+Sleep 300ms
+
 Down
 Sleep 300ms
 
