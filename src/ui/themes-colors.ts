@@ -68,18 +68,7 @@ const themeColorDefinitions = {
     border: '#565F89',
     text: '#C0CAF5',
     textSecondary: '#9AA5CE',
-  },
-  onedark: {
-    bg: '#282C34',
-    primary: '#61AFEF',
-    secondary: '#C678DD',
-    success: '#98C379',
-    warning: '#E5C07B',
-    error: '#E06C75',
-    border: '#5C6370',
-    text: '#ABB2BF',
-    textSecondary: '#828997',
-  },
+  }
 }
 
 // Helper to apply color - handles both hex and named colors
@@ -90,16 +79,10 @@ function applyColor(color: string, text: string): string {
   return (chalk as any)[color](text)
 }
 
-// Generate color schemes with functions from definitions
-const themeColorSchemes = {
-  default: createThemeScheme(themeColorDefinitions.default),
-  dracula: createThemeScheme(themeColorDefinitions.dracula),
-  vsc: createThemeScheme(themeColorDefinitions.vsc),
-  monokai: createThemeScheme(themeColorDefinitions.monokai),
-  catppuccin: createThemeScheme(themeColorDefinitions.catppuccin),
-  tokyonight: createThemeScheme(themeColorDefinitions.tokyonight),
-  onedark: createThemeScheme(themeColorDefinitions.onedark),
-}
+const themeColorSchemes: Record<keyof typeof themeColorDefinitions, Record<string, (text: string) => string>> = Object.entries(themeColorDefinitions).reduce((schemes, [themeName, colors]) => {
+  schemes[themeName as keyof typeof themeColorDefinitions] = createThemeScheme(colors)
+  return schemes
+}, {} as Record<keyof typeof themeColorDefinitions, Record<string, (text: string) => string>>)
 
 function createThemeScheme(colors: typeof themeColorDefinitions.default) {
   return {
