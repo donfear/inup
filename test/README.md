@@ -6,21 +6,17 @@ This directory contains the test suite for `inup`, which includes both unit test
 
 ```
 test/
-├── fixtures/              # Test fixtures for integration tests
-│   └── test-package/      # Sample package for testing
-└── integration/           # Integration tests
-    └── package-managers.test.ts
-```
-
-Unit tests are co-located with source files:
-```
-src/
-├── services/
-│   ├── package-manager-detector.ts
-│   └── package-manager-detector.test.ts
-└── utils/
-    ├── version.ts
-    └── version.test.ts
+├── unit/                  # Unit tests
+│   ├── services/
+│   │   └── package-manager-detector.test.ts
+│   └── utils/
+│       ├── exec.test.ts
+│       ├── filesystem.test.ts
+│       └── version.test.ts
+├── integration/           # Integration tests
+│   └── package-managers.test.ts
+└── fixtures/              # Test fixtures
+    └── test-package/      # Sample package for testing
 ```
 
 ## Running Tests
@@ -42,7 +38,7 @@ pnpm test:coverage
 
 Unit tests verify individual functions and modules work correctly in isolation:
 
-- **Package Manager Detector** ([package-manager-detector.test.ts](../src/services/package-manager-detector.test.ts))
+- **Package Manager Detector** ([unit/services/package-manager-detector.test.ts](unit/services/package-manager-detector.test.ts)) - 23 tests
   - Detection from `packageManager` field
   - Detection from lock files
   - Priority handling (packageManager field > lock files)
@@ -50,11 +46,25 @@ Unit tests verify individual functions and modules work correctly in isolation:
   - Workspace detection
   - Edge cases (invalid JSON, missing files)
 
-- **Version Utilities** ([version.test.ts](../src/utils/version.test.ts))
+- **Version Utilities** ([unit/utils/version.test.ts](unit/utils/version.test.ts)) - 20 tests
   - Version comparison logic
   - Optimized range version calculation
   - Minor version finding
   - Semver edge cases (prereleases, invalid versions)
+
+- **Filesystem Utilities** ([unit/utils/filesystem.test.ts](unit/utils/filesystem.test.ts)) - 29 tests
+  - Finding package.json files
+  - Reading and parsing package.json
+  - Collecting dependencies (sync and async)
+  - Recursive file searching
+  - Workspace detection
+  - Exclude patterns and depth limiting
+
+- **Exec Utilities** ([unit/utils/exec.test.ts](unit/utils/exec.test.ts)) - 9 tests
+  - Synchronous command execution
+  - Asynchronous command execution
+  - Error handling
+  - Working directory handling
 
 ### Integration Tests
 
