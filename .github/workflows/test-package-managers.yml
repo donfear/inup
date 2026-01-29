@@ -2,12 +2,13 @@ name: Test Package Managers
 
 on:
   push:
-    branches: [main]
+    # branches: [main]  # Temporarily allowing all branches for testing
   pull_request:
     branches: [main]
-  schedule:
-    # Run weekly on Mondays at 8am UTC to catch compatibility issues
-    - cron: '0 8 * * 1'
+  # schedule:
+  #   # Run weekly on Mondays at 8am UTC to catch compatibility issues
+  #   - cron: '0 8 * * 1'
+  # TODO: Restore schedule and branch restriction after testing
 
 jobs:
   test-npm:
