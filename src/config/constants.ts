@@ -1,4 +1,4 @@
-export const TEST_PACKAGE_NAME = 'inup'
+export const PACKAGE_NAME = 'inup'
 export const NPM_REGISTRY_URL = 'https://registry.npmjs.org'
 export const JSDELIVR_CDN_URL = 'https://cdn.jsdelivr.net/npm'
 export const MAX_CONCURRENT_REQUESTS = 150

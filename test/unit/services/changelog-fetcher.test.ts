@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ChangelogFetcher } from '../../../src/services/changelog-fetcher'
-import { TEST_PACKAGE_NAME } from '../../../src/config/constants'
+import { PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('ChangelogFetcher', () => {
   let fetcher: ChangelogFetcher
@@ -11,14 +11,14 @@ describe('ChangelogFetcher', () => {
   })
 
   describe('fetchPackageMetadata()', () => {
-    it(`should fetch metadata for ${TEST_PACKAGE_NAME}`, async () => {
-      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+    it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       expect(metadata?.description).toBeTruthy()
       expect(metadata?.repositoryUrl).toBeTruthy()
       expect(metadata?.repositoryUrl).toContain('github.com')
-      expect(metadata?.npmUrl).toBe(`https://www.npmjs.com/package/${TEST_PACKAGE_NAME}`)
+      expect(metadata?.npmUrl).toBe(`https://www.npmjs.com/package/${PACKAGE_NAME}`)
       expect(metadata?.license).toBeTruthy()
     }, 10000)
 
@@ -30,11 +30,11 @@ describe('ChangelogFetcher', () => {
 
     it('should use cache on second fetch', async () => {
       const start1 = Date.now()
-      await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
       const duration1 = Date.now() - start1
 
       const start2 = Date.now()
-      await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
       const duration2 = Date.now() - start2
 
       // Second fetch should be significantly faster (cached)
@@ -55,7 +55,7 @@ describe('ChangelogFetcher', () => {
     }, 10000)
 
     it('should extract repository URL correctly', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       expect(metadata?.repositoryUrl).toBeTruthy()
@@ -66,7 +66,7 @@ describe('ChangelogFetcher', () => {
     }, 10000)
 
     it('should generate release notes URL', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       if (metadata?.repositoryUrl) {
@@ -75,7 +75,7 @@ describe('ChangelogFetcher', () => {
     }, 10000)
 
     it('should generate issues URL', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       if (metadata?.repositoryUrl) {
@@ -84,7 +84,7 @@ describe('ChangelogFetcher', () => {
     }, 10000)
 
     it('should fetch package metadata with optional weekly downloads', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       // Weekly downloads is optional - may not always be available
@@ -96,9 +96,9 @@ describe('ChangelogFetcher', () => {
 
   describe('getRepositoryReleaseUrl()', () => {
     it('should return release URL for cached package', async () => {
-      await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
-      const releaseUrl = fetcher.getRepositoryReleaseUrl(TEST_PACKAGE_NAME, '1.0.0')
+      const releaseUrl = fetcher.getRepositoryReleaseUrl(PACKAGE_NAME, '1.0.0')
 
       expect(releaseUrl).toBeTruthy()
       expect(releaseUrl).toContain('/releases/tag/v1.0.0')
@@ -146,7 +146,7 @@ describe('ChangelogFetcher', () => {
   describe('clearCache()', () => {
     it('should clear both success and failure caches', async () => {
       // Fetch test package
-      await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
 
       // Fetch nonexistent package (failure)
       await fetcher.fetchPackageMetadata('nonexistent-pkg-xyz')
@@ -156,7 +156,7 @@ describe('ChangelogFetcher', () => {
 
       // Both should be refetched
       const start = Date.now()
-      await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
+      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
       const duration = Date.now() - start
 
       expect(duration).toBeGreaterThan(10)
