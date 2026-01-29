@@ -12,14 +12,13 @@ on:
 
 jobs:
   test-npm:
-    name: Test with npm (Node ${{ matrix.node-version }}, ${{ matrix.os }})
+    name: Test with npm (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20, 24]
 
     steps:
       - name: Checkout repository
@@ -28,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
 
       - name: Create test project with npm
         run: |
@@ -49,14 +48,13 @@ jobs:
         shell: bash
 
   test-yarn:
-    name: Test with Yarn (Node ${{ matrix.node-version }}, ${{ matrix.os }})
+    name: Test with Yarn (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20, 24]
 
     steps:
       - name: Checkout repository
@@ -65,7 +63,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
 
       - name: Enable Corepack for Yarn
         run: corepack enable
@@ -97,14 +95,13 @@ jobs:
         shell: bash
 
   test-pnpm:
-    name: Test with pnpm (Node ${{ matrix.node-version }}, ${{ matrix.os }})
+    name: Test with pnpm (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20, 24]
 
     steps:
       - name: Checkout repository
@@ -116,7 +113,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: 'pnpm'
 
       - name: Create test project with pnpm

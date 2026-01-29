@@ -8,14 +8,13 @@ on:
 
 jobs:
   unit-tests:
-    name: Unit Tests (Node ${{ matrix.node-version }}, ${{ matrix.os }})
+    name: Unit Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [20, 22, 24]
 
     steps:
       - name: Checkout repository
@@ -27,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
@@ -36,8 +35,8 @@ jobs:
       - name: Run unit tests
         run: pnpm test
 
-      - name: Upload coverage (Ubuntu + Node 24 only)
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 24
+      - name: Upload coverage (Ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
