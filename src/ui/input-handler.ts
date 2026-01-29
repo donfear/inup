@@ -23,6 +23,7 @@ export type InputAction =
   | { type: 'exit_filter_mode' }
   | { type: 'filter_input'; char: string }
   | { type: 'filter_backspace' }
+  | { type: 'toggle_dep_type_filter'; depType: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies' }
 
 export class InputHandler {
   private stateManager: StateManager
@@ -196,6 +197,27 @@ export class InputHandler {
       case 'u':
       case 'U':
         this.onAction({ type: 'bulk_unselect_all' })
+        break
+
+      case 'd':
+      case 'D':
+        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+          this.onAction({ type: 'toggle_dep_type_filter', depType: 'devDependencies' })
+        }
+        break
+
+      case 'p':
+      case 'P':
+        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+          this.onAction({ type: 'toggle_dep_type_filter', depType: 'peerDependencies' })
+        }
+        break
+
+      case 'o':
+      case 'O':
+        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+          this.onAction({ type: 'toggle_dep_type_filter', depType: 'optionalDependencies' })
+        }
         break
 
       case 'i':

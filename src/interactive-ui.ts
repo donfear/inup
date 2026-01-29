@@ -37,50 +37,11 @@ export class InteractiveUI {
 
   public async selectPackagesToUpgrade(
     packages: PackageInfo[],
-    previousSelections?: Map<string, 'none' | 'range' | 'latest'>,
-    options?: { includePeerDeps?: boolean; includeOptionalDeps?: boolean }
+    previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): Promise<PackageUpgradeChoice[]> {
     const outdatedPackages = packages.filter((p) => p.isOutdated)
 
     if (outdatedPackages.length === 0) {
-      return []
-    }
-
-    // Filter packages based on CLI options.
-    // IMPORTANT: This uses an opt-in approach where:
-    // - Default (no flags): shows dependencies + devDependencies
-    // - With -p flag: shows ONLY peerDependencies (excludes dependencies)
-    // - With -o flag: shows ONLY optionalDependencies (excludes dependencies)
-    // - With -p -o flags: shows peerDependencies + optionalDependencies (excludes dependencies)
-    //
-    // This design allows users to focus on one dependency type at a time,
-    // which is useful since peer/optional deps have different upgrade semantics.
-    let filteredPackages = outdatedPackages
-    let dependencyTypeLabel = ''
-
-    if (options?.includePeerDeps || options?.includeOptionalDeps) {
-      // If any special-case flag is provided, filter to show ONLY those types
-      // (excluding regular dependencies/devDependencies)
-      filteredPackages = outdatedPackages.filter((pkg) => {
-        if (options.includePeerDeps && pkg.type === 'peerDependencies') return true
-        if (options.includeOptionalDeps && pkg.type === 'optionalDependencies') return true
-        return false
-      })
-
-      // Build label describing which types are shown
-      const types: string[] = []
-      if (options.includePeerDeps) types.push('Peer Deps')
-      if (options.includeOptionalDeps) types.push('Optional Deps')
-      dependencyTypeLabel = types.join(' & ')
-    } else {
-      // Default: show only regular dependencies and devDependencies
-      filteredPackages = outdatedPackages.filter(
-        (pkg) => pkg.type === 'dependencies' || pkg.type === 'devDependencies'
-      )
-      dependencyTypeLabel = 'Deps & Dev Deps'
-    }
-
-    if (filteredPackages.length === 0) {
       return []
     }
 
@@ -94,7 +55,7 @@ export class InteractiveUI {
       }
     >()
 
-    for (const pkg of filteredPackages) {
+    for (const pkg of outdatedPackages) {
       const key = `${pkg.name}@${pkg.currentVersion}`
       if (!uniquePackages.has(key)) {
         uniquePackages.set(key, {
@@ -154,7 +115,7 @@ export class InteractiveUI {
     })
 
     // Use custom interactive table selector (simplified - no grouping)
-    const selectedStates = await this.interactiveTableSelector(selectionStates, dependencyTypeLabel)
+    const selectedStates = await this.interactiveTableSelector(selectionStates)
 
     // Convert to PackageUpgradeChoice[] - create one choice per package.json path
     const choices: PackageUpgradeChoice[] = []
@@ -193,8 +154,7 @@ export class InteractiveUI {
   }
 
   private async interactiveTableSelector(
-    selectionStates: PackageSelectionState[],
-    dependencyTypeLabel: string
+    selectionStates: PackageSelectionState[]
   ): Promise<PackageSelectionState[]> {
     return new Promise((resolve) => {
       const states = [...selectionStates]
@@ -242,6 +202,11 @@ export class InteractiveUI {
           case 'bulk_unselect_all':
             if (!uiState.showInfoModal && !uiState.showThemeModal) {
               stateManager.bulkUnselectAll(filteredStates)
+            }
+            break
+          case 'toggle_dep_type_filter':
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
+              stateManager.toggleDependencyTypeFilter(action.depType)
             }
             break
           case 'toggle_info_modal':
@@ -433,6 +398,7 @@ export class InteractiveUI {
         } else {
           // Normal list view (flat rendering - no grouping)
           const terminalWidth = process.stdout.columns || 80
+          const activeFilterLabel = stateManager.getActiveFilterLabel()
           const lines = this.renderer.renderInterface(
             filteredStates,
             uiState.currentRow,
@@ -440,7 +406,7 @@ export class InteractiveUI {
             uiState.maxVisibleItems,
             uiState.forceFullRender,
             [], // No renderable items - use flat rendering
-            dependencyTypeLabel, // Show which dependency type we're upgrading
+            activeFilterLabel, // Show current dependency type filter state
             this.packageManager, // Pass package manager info for header
             uiState.filterMode,
             uiState.filterQuery,

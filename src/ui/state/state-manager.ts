@@ -235,6 +235,17 @@ export class StateManager {
     return this.filterManager.getFilteredStates(allStates)
   }
 
+  toggleDependencyTypeFilter(type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'): void {
+    this.filterManager.toggleDependencyType(type)
+    // Reset navigation when filter changes
+    this.navigationManager.setCurrentRow(0)
+    this.navigationManager.setScrollOffset(0)
+  }
+
+  getActiveFilterLabel(): string {
+    return this.filterManager.getActiveFilterLabel()
+  }
+
   // Display and render state management
   updateTerminalHeight(newHeight: number): boolean {
     const newMaxVisibleItems = Math.max(5, newHeight - this.headerLines - 2)
