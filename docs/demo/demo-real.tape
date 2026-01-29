@@ -2,8 +2,8 @@ Output docs/demo/interactive-upgrade.gif
 
 Set Shell zsh
 Set FontSize 14
-Set Width 1400
-Set Height 800
+Set Width 1280
+Set Height 720
 Set PlaybackSpeed 1.0
 
 # Change to clean temp directory (hidden from view)
