@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { executeCommand, executeCommandAsync } from '../../../src/utils/exec'
 import * as os from 'os'
+import * as fs from 'fs'
 
 describe('exec utils', () => {
   describe('executeCommand()', () => {
@@ -11,8 +12,12 @@ describe('exec utils', () => {
 
     it('should execute command with cwd option', () => {
       const tmpDir = os.tmpdir()
+      // On macOS, /var/folders/... is a symlink → realpath gives the /private/var/... path
+      // that process.cwd() actually returns in the child process
+      const realTmpDir = fs.realpathSync(tmpDir)
+
       const result = executeCommand('node -e "console.log(process.cwd())"', tmpDir)
-      expect(result.trim()).toBe(tmpDir)
+      expect(result.trim()).toBe(realTmpDir)
     })
 
     it('should throw error for invalid command', () => {
