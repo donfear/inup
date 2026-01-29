@@ -262,7 +262,8 @@ jobs:
           mkdir test-workspace
           cd test-workspace
 
-          TARBALL=$(ls ../inup/inup-*.tgz | head -1)
+          # Get just the filename of the tarball
+          TARBALL_FILE=$(ls ../inup/inup-*.tgz | head -1 | xargs basename)
 
           # Create root package.json with workspaces
           cat > package.json << 'EOF'
@@ -283,7 +284,7 @@ jobs:
             "name": "pkg-a",
             "version": "1.0.0",
             "dependencies": {
-              "inup": "file:$TARBALL"
+              "inup": "file:../../../inup/${TARBALL_FILE}"
             }
           }
           EOF
@@ -294,7 +295,7 @@ jobs:
             "name": "pkg-b",
             "version": "1.0.0",
             "dependencies": {
-              "inup": "file:$TARBALL"
+              "inup": "file:../../../inup/${TARBALL_FILE}"
             }
           }
           EOF
