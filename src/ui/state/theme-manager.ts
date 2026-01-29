@@ -52,6 +52,8 @@ export class ThemeManager {
     this.state.showThemeModal = false
     // Reset preview to current theme when closing without confirmation
     this.state.previewTheme = this.state.currentTheme
+    // Restore global theme to confirmed theme when canceling
+    globalCurrentTheme = this.state.currentTheme
   }
 
   previewTheme(themeName: string): void {

@@ -203,14 +203,14 @@ export class StateManager {
   // Filter delegation
   enterFilterMode(): void {
     this.filterManager.enterFilterMode()
-    this.renderState.forceFullRender = true
+    // Use incremental render for search mode toggle (no blink)
   }
 
   exitFilterMode(): void {
     this.filterManager.exitFilterMode()
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
-    this.renderState.forceFullRender = true
+    // Use incremental render for search mode toggle (no blink)
   }
 
   updateFilterQuery(query: string): void {
