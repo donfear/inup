@@ -203,12 +203,11 @@ jobs:
 
       - name: Create test project with Bun
         run: |
-          INUP_TARBALL=$(ls inup-*.tgz | head -1)
           cd ..
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
-          bun add "$GITHUB_WORKSPACE/inup/${INUP_TARBALL}"
+          bun add ../inup/inup-*.tgz
         shell: bash
 
       - name: Verify bun.lockb exists
