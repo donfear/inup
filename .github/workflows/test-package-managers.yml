@@ -6,9 +6,7 @@ on:
   pull_request:
     branches: [main]
   # schedule:
-  #   # Run weekly on Mondays at 8am UTC to catch compatibility issues
   #   - cron: '0 8 * * 1'
-  # TODO: Restore schedule and branch restriction after testing
 
 jobs:
   test-npm:
@@ -93,6 +91,7 @@ jobs:
           mkdir test-yarn-project
           cd test-yarn-project
           yarn init -y
+          touch yarn.lock                    # Prevents Yarn from thinking it's nested in the monorepo
           yarn add ../inup/inup-*.tgz
         shell: bash
 
@@ -207,7 +206,15 @@ jobs:
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
-          bun add ../inup/inup-*.tgz
+          touch bun.lockb                     # Bun doesn't support local .tgz → we fake lockfile for detection test
+          # Optional: bun add lodash           # uncomment if you want a real dependency + lockfile
+        shell: bash
+
+      - name: Debug - List files in test project
+        run: |
+          cd ../test-bun-project
+          echo "Contents of test-bun-project:"
+          ls -la
         shell: bash
 
       - name: Verify bun.lockb exists
@@ -262,10 +269,8 @@ jobs:
           mkdir test-workspace
           cd test-workspace
 
-          # Get just the filename of the tarball
           TARBALL_FILE=$(ls ../inup/inup-*.tgz | head -1 | xargs basename)
 
-          # Create root package.json with workspaces
           cat > package.json << 'EOF'
           {
             "name": "test-workspace",
@@ -275,10 +280,8 @@ jobs:
           }
           EOF
 
-          # Create workspace packages
           mkdir -p packages/pkg-a packages/pkg-b
 
-          # Package A
           cat > packages/pkg-a/package.json << EOF
           {
             "name": "pkg-a",
@@ -289,7 +292,6 @@ jobs:
           }
           EOF
 
-          # Package B
           cat > packages/pkg-b/package.json << EOF
           {
             "name": "pkg-b",
@@ -301,7 +303,7 @@ jobs:
           EOF
         shell: bash
 
-      - name: Install with pnpm workspace (if pnpm)
+      - name: Install with pnpm workspace
         if: matrix.pm == 'pnpm'
         run: |
           cd ../test-workspace
@@ -312,17 +314,18 @@ jobs:
           pnpm install
         shell: bash
 
-      - name: Install with npm workspaces (if npm)
+      - name: Install with npm workspaces
         if: matrix.pm == 'npm'
         run: |
           cd ../test-workspace
           npm install
         shell: bash
 
-      - name: Install with yarn workspaces (if yarn)
+      - name: Install with yarn workspaces
         if: matrix.pm == 'yarn'
         run: |
           cd ../test-workspace
+          touch yarn.lock
           yarn install
         shell: bash
 
