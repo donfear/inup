@@ -9,11 +9,11 @@ import { getThemeColor } from '../themes-colors'
 function getTypeBadge(type: PackageInfo['type']): string {
   switch (type) {
     case 'devDependencies':
-      return ' ' + chalk.dim.gray('[D]')
+      return chalk.cyan('[D]')
     case 'peerDependencies':
-      return ' ' + chalk.magenta('[P]')
+      return chalk.magenta('[P]')
     case 'optionalDependencies':
-      return ' ' + chalk.yellow('[O]')
+      return chalk.yellow('[O]')
     case 'dependencies':
     default:
       return '' // No badge for regular dependencies
@@ -105,7 +105,7 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const packageNameWidth = Math.min(maxPackageNameWidth, Math.max(minPackageNameWidth, availableForPackageName))
 
   // Apply ellipsis truncation if package name exceeds available width
-  const badgeWidth = state.type === 'dependencies' ? 0 : 4 // space + [X]
+  const badgeWidth = state.type === 'dependencies' ? 0 : 3 // [X] without leading space
   const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1 - badgeWidth) // -1 for space after name, -badgeWidth for badge
 
   // Helper function to determine if dashes should be shown based on available padding
@@ -114,17 +114,19 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 
   const dashColor = isCurrentRow ? chalk.white : chalk.gray
 
-  // Package name with dashes only if needed
-  const typeBadge = getTypeBadge(state.type)
-  const nameLength = VersionUtils.getVisualLength(truncatedName) + badgeWidth
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
-  const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
-
   // Use truncated name if it differs from original, otherwise use colored packageName
   const displayName = truncatedName !== state.name ? truncatedName : packageName
-  const packageNameWithBadge = displayName + typeBadge
 
-  const packageNameSection = `${packageNameWithBadge} ${nameDashes}`
+  // Package name with dashes and badge at the end
+  const typeBadge = getTypeBadge(state.type)
+  const nameLength = VersionUtils.getVisualLength(truncatedName)
+  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth) // -1 for space after package name, -badgeWidth for badge at end
+  const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
+
+  // Place badge at the end of dashes: name ------[D]
+  const packageNameSection = typeBadge
+    ? `${displayName} ${nameDashes}${typeBadge}`
+    : `${displayName} ${nameDashes}`
 
   // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
