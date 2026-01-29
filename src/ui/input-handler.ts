@@ -23,7 +23,10 @@ export type InputAction =
   | { type: 'exit_filter_mode' }
   | { type: 'filter_input'; char: string }
   | { type: 'filter_backspace' }
-  | { type: 'toggle_dep_type_filter'; depType: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies' }
+  | {
+      type: 'toggle_dep_type_filter'
+      depType: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
+    }
 
 export class InputHandler {
   private stateManager: StateManager
