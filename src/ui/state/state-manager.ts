@@ -240,6 +240,8 @@ export class StateManager {
     // Reset navigation when filter changes
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
+    // Force full render to clear old header text
+    this.renderState.forceFullRender = true
   }
 
   getActiveFilterLabel(): string {

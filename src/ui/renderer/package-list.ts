@@ -1,7 +1,24 @@
 import chalk from 'chalk'
-import { PackageSelectionState, RenderableItem } from '../../types'
+import { PackageSelectionState, RenderableItem, PackageInfo } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
+
+/**
+ * Get type badge for dependency type
+ */
+function getTypeBadge(type: PackageInfo['type']): string {
+  switch (type) {
+    case 'devDependencies':
+      return ' ' + chalk.dim.gray('[D]')
+    case 'peerDependencies':
+      return ' ' + chalk.magenta('[P]')
+    case 'optionalDependencies':
+      return ' ' + chalk.yellow('[O]')
+    case 'dependencies':
+    default:
+      return '' // No badge for regular dependencies
+  }
+}
 
 /**
  * Render a single package line
@@ -88,7 +105,8 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const packageNameWidth = Math.min(maxPackageNameWidth, Math.max(minPackageNameWidth, availableForPackageName))
 
   // Apply ellipsis truncation if package name exceeds available width
-  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1) // -1 for space after name
+  const badgeWidth = state.type === 'dependencies' ? 0 : 4 // space + [X]
+  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1 - badgeWidth) // -1 for space after name, -badgeWidth for badge
 
   // Helper function to determine if dashes should be shown based on available padding
   // Only show dashes if there's significant padding (> 2 chars) to fill
@@ -97,14 +115,16 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const dashColor = isCurrentRow ? chalk.white : chalk.gray
 
   // Package name with dashes only if needed
-  const nameLength = VersionUtils.getVisualLength(truncatedName)
+  const typeBadge = getTypeBadge(state.type)
+  const nameLength = VersionUtils.getVisualLength(truncatedName) + badgeWidth
   const namePadding = Math.max(0, packageNameWidth - nameLength - 1) // -1 for space after package name
   const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
 
   // Use truncated name if it differs from original, otherwise use colored packageName
   const displayName = truncatedName !== state.name ? truncatedName : packageName
+  const packageNameWithBadge = displayName + typeBadge
 
-  const packageNameSection = `${displayName} ${nameDashes}`
+  const packageNameSection = `${packageNameWithBadge} ${nameDashes}`
 
   // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
@@ -171,7 +191,7 @@ export function renderInterface(
   maxVisibleItems: number,
   forceFullRender: boolean,
   renderableItems?: RenderableItem[],
-  dependencyTypeLabel?: string,
+  activeFilterLabel?: string,
   packageManager?: any,
   filterMode?: boolean,
   filterQuery?: string,
@@ -194,10 +214,22 @@ export function renderInterface(
     const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
     const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
-    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
+
+    // Show filter state if not showing all
+    if (activeFilterLabel && activeFilterLabel !== 'All') {
+      output.push(headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel))
+    } else {
+      output.push(headerLine)
+    }
   } else {
     const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
-    output.push(dependencyTypeLabel ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(dependencyTypeLabel) : headerLine)
+
+    // Show filter state if not showing all
+    if (activeFilterLabel && activeFilterLabel !== 'All') {
+      output.push(headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel))
+    } else {
+      output.push(headerLine)
+    }
   }
   output.push('')
 
@@ -220,11 +252,11 @@ export function renderInterface(
         chalk.bold.white('←/→ ') +
         getThemeColor('textSecondary')('Select') +
         '  ' +
+        chalk.bold.white('D/P/O ') +
+        getThemeColor('textSecondary')('Filter') +
+        '  ' +
         chalk.bold.white('I ') +
         getThemeColor('textSecondary')('Info') +
-        '  ' +
-        chalk.bold.white('T ') +
-        getThemeColor('textSecondary')('Theme') +
         '  ' +
         chalk.bold.white('M ') +
         getThemeColor('textSecondary')('Minor') +
