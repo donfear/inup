@@ -53,11 +53,8 @@ export class UpgradeRunner {
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
       while (true) {
-        // Interactive selection (pass options for filtering)
-        selectedChoices = await this.ui.selectPackagesToUpgrade(packages, previousSelections, {
-          includePeerDeps: this.options?.includePeerDeps,
-          includeOptionalDeps: this.options?.includeOptionalDeps,
-        })
+        // Interactive selection
+        selectedChoices = await this.ui.selectPackagesToUpgrade(packages, previousSelections)
 
         if (selectedChoices.length === 0) {
           console.log(chalk.yellow('No packages selected. Exiting...'))

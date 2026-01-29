@@ -69,8 +69,6 @@ export interface PackageManagerInfo {
 export interface UpgradeOptions {
   cwd?: string
   excludePatterns?: string[]
-  includePeerDeps?: boolean
-  includeOptionalDeps?: boolean
   packageManager?: PackageManager // Manual override for package manager
 }
 

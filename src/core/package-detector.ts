@@ -15,15 +15,10 @@ export class PackageDetector {
   private packageJson: PackageJson | null = null
   private cwd: string
   private excludePatterns: string[]
-  private includePeerDeps: boolean
-  private includeOptionalDeps: boolean
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
     this.excludePatterns = options?.excludePatterns || []
-    // Explicitly check for true to ensure false/undefined both become false (opt-in)
-    this.includePeerDeps = options?.includePeerDeps === true
-    this.includeOptionalDeps = options?.includeOptionalDeps === true
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -51,8 +46,8 @@ export class PackageDetector {
     // Step 2: Collect all dependencies from package.json files (parallelized)
     this.showProgress('🔍 Reading dependencies from package.json files...')
     const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, {
-      includePeerDeps: this.includePeerDeps,
-      includeOptionalDeps: this.includeOptionalDeps,
+      includePeerDeps: true,
+      includeOptionalDeps: true,
     })
 
     // Step 3: Get unique package names while filtering out workspace references
