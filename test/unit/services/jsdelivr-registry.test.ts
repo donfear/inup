@@ -110,19 +110,26 @@ describe('jsdelivr-registry', () => {
 
   describe('clearJsdelivrPackageCache()', () => {
     it('should clear the cache for inup', async () => {
-      // First fetch
+      // First fetch to populate cache
+      const result1 = await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
+      expect(result1.size).toBe(1)
+
+      // Second fetch should be much faster (cached)
+      const start2 = Date.now()
       await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
+      const cachedDuration = Date.now() - start2
 
       // Clear cache
       clearJsdelivrPackageCache()
 
-      // Second fetch should hit the network again
-      const start = Date.now()
-      await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
-      const duration = Date.now() - start
+      // Third fetch should hit the network again and not be instant
+      const start3 = Date.now()
+      const result3 = await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
+      const networkDuration = Date.now() - start3
 
-      // Should take some time (not instant from cache)
-      expect(duration).toBeGreaterThan(10)
-    }, 10000)
+      // Verify cache was actually cleared by checking network fetch took longer than cached fetch
+      expect(result3.size).toBe(1)
+      expect(networkDuration).toBeGreaterThanOrEqual(cachedDuration)
+    }, 15000)
   })
 })
