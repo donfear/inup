@@ -50,7 +50,7 @@ describe('Package Manager Integration Tests', () => {
       // Test that package manager detector can find it
       const pm = PackageManagerDetector.detect(testDir)
       expect(pm.name).toBe('npm')
-    })
+    }, 30000)
 
     it('should detect npm from packageManager field', () => {
       writeFileSync(

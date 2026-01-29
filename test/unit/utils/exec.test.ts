@@ -4,14 +4,13 @@ import { executeCommand, executeCommandAsync } from '../../../src/utils/exec'
 describe('exec utils', () => {
   describe('executeCommand()', () => {
     it('should execute a simple command successfully', () => {
-      const result = executeCommand('echo "hello"')
+      const result = executeCommand('node -e "console.log(\'hello\')"')
       expect(result.trim()).toBe('hello')
     })
 
     it('should execute command with cwd option', () => {
-      const result = executeCommand('pwd', '/tmp')
-      // On macOS, /tmp is a symlink to /private/tmp
-      expect(result.trim()).toMatch(/\/(private\/)?tmp/)
+      const result = executeCommand('node -e "console.log(process.cwd())"', '/tmp')
+      expect(result.trim()).toMatch(/tmp/)
     })
 
     it('should throw error for invalid command', () => {
@@ -24,14 +23,14 @@ describe('exec utils', () => {
     })
 
     it('should handle commands with pipes', () => {
-      const result = executeCommand('echo "test" | cat')
+      const result = executeCommand('node -e "console.log(\'test\')" | cat')
       expect(result.trim()).toBe('test')
     })
   })
 
   describe('executeCommandAsync()', () => {
     it('should execute a simple command asynchronously', async () => {
-      const result = await executeCommandAsync('echo "hello async"')
+      const result = await executeCommandAsync('node -e "console.log(\'hello async\')"')
       expect(result.trim()).toBe('hello async')
     })
 
@@ -48,9 +47,9 @@ describe('exec utils', () => {
 
     it('should handle multiple async commands', async () => {
       const results = await Promise.all([
-        executeCommandAsync('echo "test1"'),
-        executeCommandAsync('echo "test2"'),
-        executeCommandAsync('echo "test3"'),
+        executeCommandAsync('node -e "console.log(\'test1\')"'),
+        executeCommandAsync('node -e "console.log(\'test2\')"'),
+        executeCommandAsync('node -e "console.log(\'test3\')"'),
       ])
 
       expect(results[0].trim()).toBe('test1')

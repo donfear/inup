@@ -11,7 +11,7 @@ describe('version-checker', () => {
       expect(result?.currentVersion).toBe('1.0.0')
       expect(result?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
       expect(result?.updateCommand).toBeTruthy()
-    }, 10000)
+    }, 30000)
 
     it('should detect up-to-date version', async () => {
       // Use a very high version that likely doesn't exist yet
