@@ -60,6 +60,7 @@ export class InputHandler {
       if (key) {
         switch (key.name) {
           case 'escape':
+            // Close theme modal (which also resets theme on cancel)
             this.onAction({ type: 'toggle_theme_modal' })
             return
 
@@ -73,6 +74,12 @@ export class InputHandler {
 
           case 'down':
             this.onAction({ type: 'theme_navigate_down' })
+            return
+
+          case 't':
+          case 'T':
+            // Allow 't' to toggle theme modal closed as well
+            this.onAction({ type: 'toggle_theme_modal' })
             return
 
           default:
