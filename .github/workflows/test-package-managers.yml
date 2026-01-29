@@ -29,17 +29,17 @@ jobs:
         with:
           node-version: 24
 
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
       - name: Create test project with npm
         run: |
           mkdir test-npm-project
           cd test-npm-project
           npm init -y
           npm install inup@1.4.0 --silent
-
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
 
       - name: Test inup detects npm
         run: |
@@ -68,17 +68,17 @@ jobs:
       - name: Enable Corepack for Yarn
         run: corepack enable
 
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
       - name: Create test project with Yarn
         run: |
           mkdir test-yarn-project
           cd test-yarn-project
           yarn init -y
           yarn add inup@1.4.0
-
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
 
       - name: Verify yarn.lock exists
         run: |
@@ -116,17 +116,17 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
       - name: Create test project with pnpm
         run: |
           mkdir test-pnpm-project
           cd test-pnpm-project
           pnpm init
           pnpm add inup@1.4.0
-
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
 
       - name: Verify pnpm-lock.yaml exists
         run: |
@@ -166,17 +166,17 @@ jobs:
         with:
           node-version: 24
 
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
       - name: Create test project with Bun
         run: |
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
           bun add inup@1.4.0
-
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
 
       - name: Verify bun.lockb exists
         run: |
