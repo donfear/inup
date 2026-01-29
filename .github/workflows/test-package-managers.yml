@@ -207,7 +207,8 @@ jobs:
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
-          bun add ../inup/inup-*.tgz
+          TARBALL_FILE=$(ls ../inup/inup-*.tgz | head -1 | xargs basename)
+          bun add "../inup/${TARBALL_FILE}"
         shell: bash
 
       - name: Verify bun.lockb exists
