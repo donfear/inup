@@ -84,7 +84,6 @@ export class FilterManager {
     if (this.state.showPeerDependencies) activeTypes.push('Peer')
     if (this.state.showOptionalDependencies) activeTypes.push('Optional')
 
-    if (activeTypes.length === 4) return 'All'
     if (activeTypes.length === 0) return 'None'
     return activeTypes.join(', ')
   }

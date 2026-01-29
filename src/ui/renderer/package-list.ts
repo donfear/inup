@@ -4,16 +4,16 @@ import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
 
 /**
- * Get type badge for dependency type
+ * Get type badge for dependency type (theme-aware)
  */
 function getTypeBadge(type: PackageInfo['type']): string {
   switch (type) {
     case 'devDependencies':
-      return chalk.cyan('[D]')
+      return getThemeColor('textSecondary')('[D]')
     case 'peerDependencies':
-      return chalk.magenta('[P]')
+      return getThemeColor('textSecondary')('[P]')
     case 'optionalDependencies':
-      return chalk.yellow('[O]')
+      return getThemeColor('textSecondary')('[O]')
     case 'dependencies':
     default:
       return '' // No badge for regular dependencies
@@ -217,26 +217,20 @@ export function renderInterface(
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
     const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
 
-    // Show filter state if not showing all
-    let fullHeaderLine: string
-    if (activeFilterLabel && activeFilterLabel !== 'All') {
-      fullHeaderLine = headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel)
-    } else {
-      fullHeaderLine = headerLine
-    }
+    // Show filter state (always show, including "All")
+    const fullHeaderLine = activeFilterLabel
+      ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
+      : headerLine
     // Pad to terminal width to clear any leftover characters
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
     output.push(fullHeaderLine + ' '.repeat(headerPadding))
   } else {
     const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
 
-    // Show filter state if not showing all
-    let fullHeaderLine: string
-    if (activeFilterLabel && activeFilterLabel !== 'All') {
-      fullHeaderLine = headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel)
-    } else {
-      fullHeaderLine = headerLine
-    }
+    // Show filter state (always show, including "All")
+    const fullHeaderLine = activeFilterLabel
+      ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
+      : headerLine
     // Pad to terminal width to clear any leftover characters
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
     output.push(fullHeaderLine + ' '.repeat(headerPadding))
