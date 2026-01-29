@@ -216,20 +216,28 @@ export function renderInterface(
     const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
 
     // Show filter state if not showing all
+    let fullHeaderLine: string
     if (activeFilterLabel && activeFilterLabel !== 'All') {
-      output.push(headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel))
+      fullHeaderLine = headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel)
     } else {
-      output.push(headerLine)
+      fullHeaderLine = headerLine
     }
+    // Pad to terminal width to clear any leftover characters
+    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
+    output.push(fullHeaderLine + ' '.repeat(headerPadding))
   } else {
     const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
 
     // Show filter state if not showing all
+    let fullHeaderLine: string
     if (activeFilterLabel && activeFilterLabel !== 'All') {
-      output.push(headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel))
+      fullHeaderLine = headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')('Showing: ' + activeFilterLabel)
     } else {
-      output.push(headerLine)
+      fullHeaderLine = headerLine
     }
+    // Pad to terminal width to clear any leftover characters
+    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
+    output.push(fullHeaderLine + ' '.repeat(headerPadding))
   }
   output.push('')
 
