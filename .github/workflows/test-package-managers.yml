@@ -20,6 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,17 +37,22 @@ jobs:
           npm install
           npx tsc
 
+      - name: Pack inup for testing
+        run: npm pack
+
       - name: Create test project with npm
         run: |
+          cd ..
           mkdir test-npm-project
           cd test-npm-project
           npm init -y
-          npm install inup@1.4.0 --silent
+          npm install ../inup/inup-*.tgz --silent
+        shell: bash
 
       - name: Test inup detects npm
         run: |
-          cd test-npm-project
-          node ../dist/cli.js --help
+          cd ../test-npm-project
+          node ../inup/dist/cli.js --help
         shell: bash
 
   test-yarn:
@@ -55,6 +63,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
 
     steps:
       - name: Checkout repository
@@ -73,16 +84,21 @@ jobs:
           npm install
           npx tsc
 
+      - name: Pack inup for testing
+        run: npm pack
+
       - name: Create test project with Yarn
         run: |
+          cd ..
           mkdir test-yarn-project
           cd test-yarn-project
           yarn init -y
-          yarn add inup@1.4.0
+          yarn add ../inup/inup-*.tgz
+        shell: bash
 
       - name: Verify yarn.lock exists
         run: |
-          if [ ! -f test-yarn-project/yarn.lock ]; then
+          if [ ! -f ../test-yarn-project/yarn.lock ]; then
             echo "yarn.lock not found!"
             exit 1
           fi
@@ -90,8 +106,8 @@ jobs:
 
       - name: Test inup detects Yarn
         run: |
-          cd test-yarn-project
-          node ../dist/cli.js --help
+          cd ../test-yarn-project
+          node ../inup/dist/cli.js --help
         shell: bash
 
   test-pnpm:
@@ -102,6 +118,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
 
     steps:
       - name: Checkout repository
@@ -121,16 +140,21 @@ jobs:
           npm install
           npx tsc
 
+      - name: Pack inup for testing
+        run: npm pack
+
       - name: Create test project with pnpm
         run: |
+          cd ..
           mkdir test-pnpm-project
           cd test-pnpm-project
           pnpm init
-          pnpm add inup@1.4.0
+          pnpm add ../inup/inup-*.tgz
+        shell: bash
 
       - name: Verify pnpm-lock.yaml exists
         run: |
-          if [ ! -f test-pnpm-project/pnpm-lock.yaml ]; then
+          if [ ! -f ../test-pnpm-project/pnpm-lock.yaml ]; then
             echo "pnpm-lock.yaml not found!"
             exit 1
           fi
@@ -138,8 +162,8 @@ jobs:
 
       - name: Test inup detects pnpm
         run: |
-          cd test-pnpm-project
-          node ../dist/cli.js --help
+          cd ../test-pnpm-project
+          node ../inup/dist/cli.js --help
         shell: bash
 
   test-bun:
@@ -151,6 +175,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         bun-version: ['latest']
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
 
     steps:
       - name: Checkout repository
@@ -171,24 +198,31 @@ jobs:
           npm install
           npx tsc
 
+      - name: Pack inup for testing
+        run: npm pack
+
       - name: Create test project with Bun
         run: |
+          cd ..
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
-          bun add inup@1.4.0
+          bun add ../inup/inup-*.tgz
+        shell: bash
 
       - name: Verify bun.lockb exists
         run: |
-          if [ ! -f test-bun-project/bun.lockb ]; then
+          if [ ! -f ../test-bun-project/bun.lockb ]; then
             echo "bun.lockb not found!"
             exit 1
           fi
+        shell: bash
 
       - name: Test inup detects Bun
         run: |
-          cd test-bun-project
-          node ../dist/cli.js --help
+          cd ../test-bun-project
+          node ../inup/dist/cli.js --help
+        shell: bash
 
   test-workspaces:
     name: Test Workspace Detection (${{ matrix.pm }})
@@ -198,6 +232,9 @@ jobs:
       fail-fast: false
       matrix:
         pm: [npm, yarn, pnpm]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
 
     steps:
       - name: Checkout repository
@@ -211,10 +248,21 @@ jobs:
         with:
           node-version: 24
 
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
       - name: Create workspace project
         run: |
+          cd ..
           mkdir test-workspace
           cd test-workspace
+
+          TARBALL=$(ls ../inup/inup-*.tgz | head -1)
 
           # Create root package.json with workspaces
           cat > package.json << 'EOF'
@@ -230,56 +278,55 @@ jobs:
           mkdir -p packages/pkg-a packages/pkg-b
 
           # Package A
-          cat > packages/pkg-a/package.json << 'EOF'
+          cat > packages/pkg-a/package.json << EOF
           {
             "name": "pkg-a",
             "version": "1.0.0",
             "dependencies": {
-              "inup": "1.4.0"
+              "inup": "file:$TARBALL"
             }
           }
           EOF
 
           # Package B
-          cat > packages/pkg-b/package.json << 'EOF'
+          cat > packages/pkg-b/package.json << EOF
           {
             "name": "pkg-b",
             "version": "1.0.0",
             "dependencies": {
-              "inup": "1.4.0"
+              "inup": "file:$TARBALL"
             }
           }
           EOF
+        shell: bash
 
       - name: Install with pnpm workspace (if pnpm)
         if: matrix.pm == 'pnpm'
         run: |
-          cd test-workspace
+          cd ../test-workspace
           cat > pnpm-workspace.yaml << 'EOF'
           packages:
             - 'packages/*'
           EOF
           pnpm install
+        shell: bash
 
       - name: Install with npm workspaces (if npm)
         if: matrix.pm == 'npm'
         run: |
-          cd test-workspace
+          cd ../test-workspace
           npm install
+        shell: bash
 
       - name: Install with yarn workspaces (if yarn)
         if: matrix.pm == 'yarn'
         run: |
-          cd test-workspace
+          cd ../test-workspace
           yarn install
-
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+        shell: bash
 
       - name: Test workspace detection
         run: |
-          cd test-workspace/packages/pkg-a
-          node ../../../dist/cli.js --help
+          cd ../test-workspace/packages/pkg-a
+          node ../../../inup/dist/cli.js --help
         shell: bash
