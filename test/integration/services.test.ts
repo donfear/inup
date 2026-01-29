@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { ChangelogFetcher } from '../../src/services/changelog-fetcher'
 import { getAllPackageData } from '../../src/services/npm-registry'
 import { getAllPackageDataFromJsdelivr } from '../../src/services/jsdelivr-registry'
+import { TEST_PACKAGE_NAME } from '../../src/config/constants'
 
 describe('Services Integration Tests', () => {
-  describe('ChangelogFetcher with inup', () => {
+  describe(`ChangelogFetcher with ${TEST_PACKAGE_NAME}`, () => {
     let fetcher: ChangelogFetcher
 
     beforeEach(() => {
@@ -12,8 +13,8 @@ describe('Services Integration Tests', () => {
       fetcher.clearCache()
     })
 
-    it('should fetch metadata for inup', async () => {
-      const metadata = await fetcher.fetchPackageMetadata('inup')
+    it(`should fetch metadata for ${TEST_PACKAGE_NAME}`, async () => {
+      const metadata = await fetcher.fetchPackageMetadata(TEST_PACKAGE_NAME)
 
       expect(metadata).not.toBeNull()
       expect(metadata?.description).toBeTruthy()
@@ -43,26 +44,26 @@ describe('Services Integration Tests', () => {
     }, 10000)
   })
 
-  describe('npm-registry with inup', () => {
-    it('should fetch version data for inup', async () => {
-      const result = await getAllPackageData(['inup'])
+  describe(`npm-registry with ${TEST_PACKAGE_NAME}`, () => {
+    it(`should fetch version data for ${TEST_PACKAGE_NAME}`, async () => {
+      const result = await getAllPackageData([TEST_PACKAGE_NAME])
 
       expect(result.size).toBe(1)
-      const inupData = result.get('inup')
-      expect(inupData).toBeDefined()
-      expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      expect(inupData?.allVersions.length).toBeGreaterThan(0)
-      expect(inupData?.allVersions[0]).toBe(inupData?.latestVersion)
+      const testData = result.get(TEST_PACKAGE_NAME)
+      expect(testData).toBeDefined()
+      expect(testData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
+      expect(testData?.allVersions.length).toBeGreaterThan(0)
+      expect(testData?.allVersions[0]).toBe(testData?.latestVersion)
     }, 10000)
 
     it('should filter out pre-release versions', async () => {
-      const result = await getAllPackageData(['inup'])
+      const result = await getAllPackageData([TEST_PACKAGE_NAME])
 
-      const inupData = result.get('inup')
-      expect(inupData).toBeDefined()
+      const testData = result.get(TEST_PACKAGE_NAME)
+      expect(testData).toBeDefined()
 
       // All versions should be stable (X.Y.Z format, no -beta, -rc, etc.)
-      inupData?.allVersions.forEach((version) => {
+      testData?.allVersions.forEach((version: string) => {
         expect(version).toMatch(/^\d+\.\d+\.\d+$/)
         expect(version).not.toContain('-')
         expect(version).not.toContain('alpha')
@@ -74,7 +75,7 @@ describe('Services Integration Tests', () => {
     it('should track progress with callback', async () => {
       const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
 
-      await getAllPackageData(['inup', 'inup', 'inup'], (pkg, completed, total) => {
+      await getAllPackageData([TEST_PACKAGE_NAME, TEST_PACKAGE_NAME, TEST_PACKAGE_NAME], (pkg, completed, total) => {
         progressUpdates.push({ package: pkg, completed, total })
       })
 
@@ -84,35 +85,35 @@ describe('Services Integration Tests', () => {
     }, 10000)
   })
 
-  describe('jsdelivr-registry with inup', () => {
-    it('should fetch version data for inup from jsdelivr', async () => {
-      const result = await getAllPackageDataFromJsdelivr(['inup'])
+  describe(`jsdelivr-registry with ${TEST_PACKAGE_NAME}`, () => {
+    it(`should fetch version data for ${TEST_PACKAGE_NAME} from jsdelivr`, async () => {
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
 
       expect(result.size).toBe(1)
-      const inupData = result.get('inup')
-      expect(inupData).toBeDefined()
-      expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      expect(inupData?.allVersions.length).toBeGreaterThan(0)
+      const testData = result.get(TEST_PACKAGE_NAME)
+      expect(testData).toBeDefined()
+      expect(testData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
+      expect(testData?.allVersions.length).toBeGreaterThan(0)
     }, 10000)
 
     it('should fetch both latest and major version', async () => {
-      const currentVersions = new Map([['inup', '1.0.0']])
+      const currentVersions = new Map([[TEST_PACKAGE_NAME, '1.0.0']])
 
-      const result = await getAllPackageDataFromJsdelivr(['inup'], currentVersions)
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME], currentVersions)
 
-      const inupData = result.get('inup')
-      expect(inupData).toBeDefined()
-      expect(inupData?.allVersions.length).toBeGreaterThanOrEqual(1)
+      const testData = result.get(TEST_PACKAGE_NAME)
+      expect(testData).toBeDefined()
+      expect(testData?.allVersions.length).toBeGreaterThanOrEqual(1)
 
       // Should have at least the latest version
-      expect(inupData?.latestVersion).toBeTruthy()
+      expect(testData?.latestVersion).toBeTruthy()
     }, 10000)
 
     it('should track progress with callback', async () => {
       const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
 
       await getAllPackageDataFromJsdelivr(
-        ['inup', 'inup', 'inup'],
+        [TEST_PACKAGE_NAME, TEST_PACKAGE_NAME, TEST_PACKAGE_NAME],
         undefined,
         (pkg, completed, total) => {
           progressUpdates.push({ package: pkg, completed, total })
@@ -126,15 +127,15 @@ describe('Services Integration Tests', () => {
   })
 
   describe('Performance comparison: npm vs jsdelivr', () => {
-    it('should compare fetch performance for inup', async () => {
+    it(`should compare fetch performance for ${TEST_PACKAGE_NAME}`, async () => {
       // Test npm registry
       const npmStart = Date.now()
-      await getAllPackageData(['inup'])
+      await getAllPackageData([TEST_PACKAGE_NAME])
       const npmDuration = Date.now() - npmStart
 
       // Test jsdelivr
       const jsdelivrStart = Date.now()
-      await getAllPackageDataFromJsdelivr(['inup'])
+      await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
       const jsdelivrDuration = Date.now() - jsdelivrStart
 
       // Both should complete in reasonable time

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { getAllPackageData, clearPackageCache } from '../../../src/services/npm-registry'
+import { TEST_PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('npm-registry', () => {
   beforeEach(() => {
@@ -8,10 +9,10 @@ describe('npm-registry', () => {
 
   describe('getAllPackageData()', () => {
     it('should fetch package data for inup from npm registry', async () => {
-      const result = await getAllPackageData(['inup'])
+      const result = await getAllPackageData([TEST_PACKAGE_NAME])
 
       expect(result.size).toBe(1)
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
       expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
       expect(inupData?.allVersions).toBeDefined()
@@ -19,9 +20,9 @@ describe('npm-registry', () => {
     }, 10000)
 
     it('should filter out pre-release versions for inup', async () => {
-      const result = await getAllPackageData(['inup'])
+      const result = await getAllPackageData([TEST_PACKAGE_NAME])
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
 
       // All versions should be stable (X.Y.Z format, no -beta, -rc, etc.)
@@ -42,11 +43,11 @@ describe('npm-registry', () => {
 
     it('should cache package data for inup', async () => {
       const start1 = Date.now()
-      await getAllPackageData(['inup'])
+      await getAllPackageData([TEST_PACKAGE_NAME])
       const duration1 = Date.now() - start1
 
       const start2 = Date.now()
-      await getAllPackageData(['inup'])
+      await getAllPackageData([TEST_PACKAGE_NAME])
       const duration2 = Date.now() - start2
 
       // Second fetch should be significantly faster (cached)
@@ -56,7 +57,7 @@ describe('npm-registry', () => {
     it('should call progress callback', async () => {
       const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
 
-      await getAllPackageData(['inup', 'inup'], (pkg, completed, total) => {
+      await getAllPackageData([TEST_PACKAGE_NAME, TEST_PACKAGE_NAME], (pkg, completed, total) => {
         progressUpdates.push({ package: pkg, completed, total })
       })
 
@@ -67,9 +68,9 @@ describe('npm-registry', () => {
     }, 10000)
 
     it('should sort versions correctly for inup', async () => {
-      const result = await getAllPackageData(['inup'])
+      const result = await getAllPackageData([TEST_PACKAGE_NAME])
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
 
       // Versions should be sorted in descending order
@@ -95,14 +96,14 @@ describe('npm-registry', () => {
   describe('clearPackageCache()', () => {
     it('should clear the cache for inup', async () => {
       // First fetch
-      await getAllPackageData(['inup'])
+      await getAllPackageData([TEST_PACKAGE_NAME])
 
       // Clear cache
       clearPackageCache()
 
       // Second fetch should hit the network again
       const start = Date.now()
-      await getAllPackageData(['inup'])
+      await getAllPackageData([TEST_PACKAGE_NAME])
       const duration = Date.now() - start
 
       // Should take some time (not instant from cache)

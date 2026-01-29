@@ -3,6 +3,7 @@ import {
   getAllPackageDataFromJsdelivr,
   clearJsdelivrPackageCache,
 } from '../../../src/services/jsdelivr-registry'
+import { TEST_PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('jsdelivr-registry', () => {
   beforeEach(() => {
@@ -11,10 +12,10 @@ describe('jsdelivr-registry', () => {
 
   describe('getAllPackageDataFromJsdelivr()', () => {
     it('should fetch package data for inup from jsdelivr', async () => {
-      const result = await getAllPackageDataFromJsdelivr(['inup'])
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
 
       expect(result.size).toBe(1)
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
       expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
       expect(inupData?.allVersions).toBeDefined()
@@ -22,11 +23,11 @@ describe('jsdelivr-registry', () => {
     }, 10000)
 
     it('should fetch both latest and major versions for inup', async () => {
-      const currentVersions = new Map([['inup', '1.0.0']])
+      const currentVersions = new Map([[TEST_PACKAGE_NAME, '1.0.0']])
 
-      const result = await getAllPackageDataFromJsdelivr(['inup'], currentVersions)
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME], currentVersions)
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
       expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
 
@@ -35,9 +36,9 @@ describe('jsdelivr-registry', () => {
     }, 10000)
 
     it('should not duplicate versions when major equals latest', async () => {
-      const result = await getAllPackageDataFromJsdelivr(['inup'])
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
 
       // Check that all versions are unique
@@ -53,11 +54,11 @@ describe('jsdelivr-registry', () => {
 
     it('should cache package data for inup', async () => {
       const start1 = Date.now()
-      await getAllPackageDataFromJsdelivr(['inup'])
+      await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
       const duration1 = Date.now() - start1
 
       const start2 = Date.now()
-      await getAllPackageDataFromJsdelivr(['inup'])
+      await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
       const duration2 = Date.now() - start2
 
       // Second fetch should be significantly faster (cached)
@@ -68,7 +69,7 @@ describe('jsdelivr-registry', () => {
       const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
 
       await getAllPackageDataFromJsdelivr(
-        ['inup', 'inup'],
+        [TEST_PACKAGE_NAME, TEST_PACKAGE_NAME],
         undefined,
         (pkg, completed, total) => {
           progressUpdates.push({ package: pkg, completed, total })
@@ -81,11 +82,11 @@ describe('jsdelivr-registry', () => {
     }, 15000)
 
     it('should sort versions correctly for inup', async () => {
-      const currentVersions = new Map([['inup', '1.0.0']])
+      const currentVersions = new Map([[TEST_PACKAGE_NAME, '1.0.0']])
 
-      const result = await getAllPackageDataFromJsdelivr(['inup'], currentVersions)
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME], currentVersions)
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
 
       // If multiple versions exist, verify they're sorted
@@ -97,11 +98,11 @@ describe('jsdelivr-registry', () => {
     }, 10000)
 
     it('should extract major version correctly for inup with specific version', async () => {
-      const currentVersions = new Map([['inup', '1.2.0']])
+      const currentVersions = new Map([[TEST_PACKAGE_NAME, '1.2.0']])
 
-      const result = await getAllPackageDataFromJsdelivr(['inup'], currentVersions)
+      const result = await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME], currentVersions)
 
-      const inupData = result.get('inup')
+      const inupData = result.get(TEST_PACKAGE_NAME)
       expect(inupData).toBeDefined()
       expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
     }, 10000)
@@ -110,14 +111,14 @@ describe('jsdelivr-registry', () => {
   describe('clearJsdelivrPackageCache()', () => {
     it('should clear the cache for inup', async () => {
       // First fetch
-      await getAllPackageDataFromJsdelivr(['inup'])
+      await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
 
       // Clear cache
       clearJsdelivrPackageCache()
 
       // Second fetch should hit the network again
       const start = Date.now()
-      await getAllPackageDataFromJsdelivr(['inup'])
+      await getAllPackageDataFromJsdelivr([TEST_PACKAGE_NAME])
       const duration = Date.now() - start
 
       // Should take some time (not instant from cache)
