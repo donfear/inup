@@ -68,7 +68,6 @@ export function collectAllDependencies(
   packageJsonFiles: string[],
   options: CollectDependenciesOptions = {}
 ): Array<{ name: string; version: string; type: string; packageJsonPath: string }> {
-  const { includePeerDeps = false, includeOptionalDeps = false } = options
   const allDeps: Array<{ name: string; version: string; type: string; packageJsonPath: string }> =
     []
 
@@ -77,14 +76,7 @@ export function collectAllDependencies(
       const packageJson = readPackageJson(packageJsonPath)
       const depTypes: Array<
         'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
-      > = ['dependencies', 'devDependencies']
-
-      if (includeOptionalDeps) {
-        depTypes.push('optionalDependencies')
-      }
-      if (includePeerDeps) {
-        depTypes.push('peerDependencies')
-      }
+      > = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 
       for (const depType of depTypes) {
         const deps = packageJson[depType]
@@ -117,8 +109,6 @@ export async function collectAllDependenciesAsync(
   packageJsonFiles: string[],
   options: CollectDependenciesOptions = {}
 ): Promise<Array<{ name: string; version: string; type: string; packageJsonPath: string }>> {
-  const { includePeerDeps = false, includeOptionalDeps = false } = options
-
   // Read all package.json files in parallel
   const packageJsonPromises = packageJsonFiles.map(async (packageJsonPath) => {
     try {
@@ -142,14 +132,7 @@ export async function collectAllDependenciesAsync(
     const { packageJson, packageJsonPath } = result
     const depTypes: Array<
       'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
-    > = ['dependencies', 'devDependencies']
-
-    if (includeOptionalDeps) {
-      depTypes.push('optionalDependencies')
-    }
-    if (includePeerDeps) {
-      depTypes.push('peerDependencies')
-    }
+    > = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 
     for (const depType of depTypes) {
       const deps = packageJson[depType]

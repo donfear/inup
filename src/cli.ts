@@ -18,8 +18,6 @@ program
   .version(packageJson.version)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
-  .option('-p, --peer', 'include peer dependencies in upgrade process')
-  .option('-o, --optional', 'include optional dependencies in upgrade process')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
@@ -33,11 +31,6 @@ program
           .map((p: string) => p.trim())
           .filter(Boolean)
       : []
-
-    // Commander.js: boolean flags are undefined if not provided, true if provided
-    // Both flags default to false (opt-in)
-    const includePeerDeps = options.peer === true
-    const includeOptionalDeps = options.optional === true
 
     // Validate package manager if provided
     let packageManager: PackageManager | undefined
@@ -54,8 +47,6 @@ program
     const upgrader = new UpgradeRunner({
       cwd: options.dir,
       excludePatterns,
-      includePeerDeps,
-      includeOptionalDeps,
       packageManager,
     })
     await upgrader.run()
