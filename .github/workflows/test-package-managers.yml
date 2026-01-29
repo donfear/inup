@@ -40,7 +40,7 @@ jobs:
       - name: Build inup
         run: |
           npm install
-          npm run build
+          npx tsc
 
       - name: Test inup detects npm
         run: |
@@ -79,10 +79,8 @@ jobs:
 
       - name: Build inup
         run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
-          pnpm install
-          pnpm run build
+          npm install
+          npx tsc
 
       - name: Verify yarn.lock exists
         run: |
@@ -130,8 +128,8 @@ jobs:
 
       - name: Build inup
         run: |
-          pnpm install --frozen-lockfile
-          pnpm run build
+          npm install
+          npx tsc
 
       - name: Verify pnpm-lock.yaml exists
         run: |
@@ -178,12 +176,10 @@ jobs:
           bun init -y
           bun add inup@1.4.0
 
-      - name: Build inup (using pnpm)
+      - name: Build inup
         run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
-          pnpm install
-          pnpm run build
+          npm install
+          npx tsc
 
       - name: Verify bun.lockb exists
         run: |
@@ -282,8 +278,8 @@ jobs:
 
       - name: Build inup
         run: |
-          pnpm install --frozen-lockfile
-          pnpm run build
+          npm install
+          npx tsc
 
       - name: Test workspace detection
         run: |
