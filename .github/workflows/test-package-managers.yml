@@ -34,7 +34,7 @@ jobs:
           mkdir test-npm-project
           cd test-npm-project
           npm init -y
-          npm install chalk@4.0.0 --silent
+          npm install inup@1.4.0 --silent
 
       - name: Build inup
         run: |
@@ -74,7 +74,7 @@ jobs:
           mkdir test-yarn-project
           cd test-yarn-project
           yarn init -y
-          yarn add chalk@4.0.0
+          yarn add inup@1.4.0
 
       - name: Build inup
         run: |
@@ -125,7 +125,7 @@ jobs:
           mkdir test-pnpm-project
           cd test-pnpm-project
           pnpm init
-          pnpm add chalk@4.0.0
+          pnpm add inup@1.4.0
 
       - name: Build inup
         run: |
@@ -175,7 +175,7 @@ jobs:
           mkdir test-bun-project
           cd test-bun-project
           bun init -y
-          bun add chalk@4.0.0
+          bun add inup@1.4.0
 
       - name: Build inup (using pnpm)
         run: |
@@ -241,7 +241,7 @@ jobs:
             "name": "pkg-a",
             "version": "1.0.0",
             "dependencies": {
-              "chalk": "4.0.0"
+              "inup": "1.4.0"
             }
           }
           EOF
@@ -252,7 +252,7 @@ jobs:
             "name": "pkg-b",
             "version": "1.0.0",
             "dependencies": {
-              "commander": "7.0.0"
+              "inup": "1.4.0"
             }
           }
           EOF
