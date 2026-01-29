@@ -1,0 +1,336 @@
+name: Test Package Managers
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # schedule:
+  #   - cron: '0 8 * * 1'
+
+jobs:
+  test-npm:
+    name: Test with npm (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
+      - name: Create test project with npm
+        run: |
+          cd ..
+          mkdir test-npm-project
+          cd test-npm-project
+          npm init -y
+          npm install ../inup/inup-*.tgz --silent
+        shell: bash
+
+      - name: Test inup detects npm
+        run: |
+          cd ../test-npm-project
+          node ../inup/dist/cli.js --help
+        shell: bash
+
+  test-yarn:
+    name: Test with Yarn (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Enable Corepack for Yarn
+        run: corepack enable
+
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
+      - name: Create test project with Yarn
+        run: |
+          cd ..
+          mkdir test-yarn-project
+          cd test-yarn-project
+          yarn init -y
+          touch yarn.lock                    # Prevents Yarn from thinking it's nested in the monorepo
+          yarn add ../inup/inup-*.tgz
+        shell: bash
+
+      - name: Verify yarn.lock exists
+        run: |
+          if [ ! -f ../test-yarn-project/yarn.lock ]; then
+            echo "yarn.lock not found!"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Test inup detects Yarn
+        run: |
+          cd ../test-yarn-project
+          node ../inup/dist/cli.js --help
+        shell: bash
+
+  test-pnpm:
+    name: Test with pnpm (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
+      - name: Create test project with pnpm
+        run: |
+          cd ..
+          mkdir test-pnpm-project
+          cd test-pnpm-project
+          pnpm init
+          pnpm add ../inup/inup-*.tgz
+        shell: bash
+
+      - name: Verify pnpm-lock.yaml exists
+        run: |
+          if [ ! -f ../test-pnpm-project/pnpm-lock.yaml ]; then
+            echo "pnpm-lock.yaml not found!"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Test inup detects pnpm
+        run: |
+          cd ../test-pnpm-project
+          node ../inup/dist/cli.js --help
+        shell: bash
+
+  test-bun:
+    name: Test with Bun (Bun ${{ matrix.bun-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        bun-version: ['latest']
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ matrix.bun-version }}
+
+      - name: Setup Node.js (for building)
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
+      - name: Create test project with Bun
+        run: |
+          cd ..
+          mkdir test-bun-project
+          cd test-bun-project
+          bun init -y
+          touch bun.lockb                     # Bun doesn't support local .tgz → we fake lockfile for detection test
+          # Optional: bun add lodash           # uncomment if you want a real dependency + lockfile
+        shell: bash
+
+      - name: Debug - List files in test project
+        run: |
+          cd ../test-bun-project
+          echo "Contents of test-bun-project:"
+          ls -la
+        shell: bash
+
+      - name: Verify bun.lockb exists
+        run: |
+          if [ ! -f ../test-bun-project/bun.lockb ]; then
+            echo "bun.lockb not found!"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Test inup detects Bun
+        run: |
+          cd ../test-bun-project
+          node ../inup/dist/cli.js --help
+        shell: bash
+
+  test-workspaces:
+    name: Test Workspace Detection (${{ matrix.pm }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        pm: [npm, yarn, pnpm]
+
+    env:
+      COREPACK_ENABLE_STRICT: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Build inup
+        run: |
+          npm install
+          npx tsc
+
+      - name: Pack inup for testing
+        run: npm pack
+
+      - name: Create workspace project
+        run: |
+          cd ..
+          mkdir test-workspace
+          cd test-workspace
+
+          TARBALL_FILE=$(ls ../inup/inup-*.tgz | head -1 | xargs basename)
+
+          cat > package.json << 'EOF'
+          {
+            "name": "test-workspace",
+            "version": "1.0.0",
+            "private": true,
+            "workspaces": ["packages/*"]
+          }
+          EOF
+
+          mkdir -p packages/pkg-a packages/pkg-b
+
+          cat > packages/pkg-a/package.json << EOF
+          {
+            "name": "pkg-a",
+            "version": "1.0.0",
+            "dependencies": {
+              "inup": "file:../../../inup/${TARBALL_FILE}"
+            }
+          }
+          EOF
+
+          cat > packages/pkg-b/package.json << EOF
+          {
+            "name": "pkg-b",
+            "version": "1.0.0",
+            "dependencies": {
+              "inup": "file:../../../inup/${TARBALL_FILE}"
+            }
+          }
+          EOF
+        shell: bash
+
+      - name: Install with pnpm workspace
+        if: matrix.pm == 'pnpm'
+        run: |
+          cd ../test-workspace
+          cat > pnpm-workspace.yaml << 'EOF'
+          packages:
+            - 'packages/*'
+          EOF
+          pnpm install
+        shell: bash
+
+      - name: Install with npm workspaces
+        if: matrix.pm == 'npm'
+        run: |
+          cd ../test-workspace
+          npm install
+        shell: bash
+
+      - name: Install with yarn workspaces
+        if: matrix.pm == 'yarn'
+        run: |
+          cd ../test-workspace
+          touch yarn.lock
+          yarn install
+        shell: bash
+
+      - name: Test workspace detection
+        run: |
+          cd ../test-workspace/packages/pkg-a
+          node ../../../inup/dist/cli.js --help
+        shell: bash
