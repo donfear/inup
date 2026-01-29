@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { PackageManagerDetector } from './package-manager-detector'
+import { PackageManagerDetector } from '../../../src/services/package-manager-detector'
 
 describe('PackageManagerDetector', () => {
   let testDir: string

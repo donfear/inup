@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isVersionOutdated, getOptimizedRangeVersion, findClosestMinorVersion } from './version'
+import { isVersionOutdated, getOptimizedRangeVersion, findClosestMinorVersion } from '../../../src/utils/version'
 
 describe('version utils', () => {
   describe('isVersionOutdated()', () => {
