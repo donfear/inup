@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { executeCommand, executeCommandAsync } from '../../../src/utils/exec'
+import * as os from 'os'
 
 describe('exec utils', () => {
   describe('executeCommand()', () => {
@@ -9,8 +10,9 @@ describe('exec utils', () => {
     })
 
     it('should execute command with cwd option', () => {
-      const result = executeCommand('node -e "console.log(process.cwd())"', '/tmp')
-      expect(result.trim()).toMatch(/tmp/)
+      const tmpDir = os.tmpdir()
+      const result = executeCommand('node -e "console.log(process.cwd())"', tmpDir)
+      expect(result.trim()).toBe(tmpDir)
     })
 
     it('should throw error for invalid command', () => {
