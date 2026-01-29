@@ -1,0 +1,12 @@
+{
+  "name": "test-package",
+  "version": "1.0.0",
+  "description": "Test package for integration tests",
+  "dependencies": {
+    "chalk": "4.0.0",
+    "commander": "7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "4.0.0"
+  }
+}
