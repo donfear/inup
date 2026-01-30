@@ -100,7 +100,7 @@ Sleep 400ms
 
 # Press 'i' to show info modal for current package
 Type "i"
-Sleep 1.5s
+Sleep 2s
 
 # Press 'i' again to toggle info modal
 Type "i"

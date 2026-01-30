@@ -81,3 +81,7 @@ export interface PackageJson {
   workspaces?: string[] | { packages: string[] }
   [key: string]: any
 }
+
+export type OnBatchReadyCallback = (
+  batch: Array<{ name: string; data: { latestVersion: string; allVersions: string[] } }>
+) => void
