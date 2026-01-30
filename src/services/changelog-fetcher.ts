@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { JSDELIVR_CDN_URL } from '../config/constants'
 
 export interface PackageMetadata {
   description: string
@@ -95,13 +96,14 @@ export class ChangelogFetcher {
   }
 
   /**
-   * Fetch data from npm registry
-   * Returns the package data from the registry
+   * Fetch data from jsdelivr CDN
+   * Returns the package data by fetching package.json directly from jsdelivr
    */
   private async fetchFromRegistry(packageName: string): Promise<any> {
     try {
+      // Fetch package.json directly from jsdelivr CDN (resolves to latest automatically)
       const response = await fetch(
-        `https://registry.npmjs.org/${encodeURIComponent(packageName)}`,
+        `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@latest/package.json`,
         {
           method: 'GET',
           headers: {
@@ -114,21 +116,16 @@ export class ChangelogFetcher {
         return null
       }
 
-      const data = (await response.json()) as Record<string, unknown>
-      // Get the latest version data
-      const distTags = data['dist-tags'] as Record<string, string> | undefined
-      const latestVersion = distTags?.latest
-      const versions = data.versions as Record<string, any> | undefined
-      const latestPackageData = latestVersion ? versions?.[latestVersion] : undefined
+      const pkgData = (await response.json()) as Record<string, unknown>
 
       return {
-        description: data.description,
-        homepage: (data.homepage || latestPackageData?.homepage) as string | undefined,
-        repository: (data.repository || latestPackageData?.repository) as any,
-        bugs: (data.bugs || latestPackageData?.bugs) as any,
-        keywords: (data.keywords || []) as string[],
-        author: (data.author || latestPackageData?.author) as any,
-        license: (data.license || latestPackageData?.license) as string | undefined,
+        description: pkgData.description,
+        homepage: pkgData.homepage as string | undefined,
+        repository: pkgData.repository as any,
+        bugs: pkgData.bugs as any,
+        keywords: (pkgData.keywords || []) as string[],
+        author: pkgData.author as any,
+        license: pkgData.license as string | undefined,
       }
     } catch {
       return null
