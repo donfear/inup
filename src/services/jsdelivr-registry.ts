@@ -91,7 +91,8 @@ export async function getAllPackageDataFromJsdelivr(
   let completedCount = 0
 
   // Batch buffer for progressive updates
-  let batchBuffer: Array<{ name: string; data: { latestVersion: string; allVersions: string[] } }> = []
+  let batchBuffer: Array<{ name: string; data: { latestVersion: string; allVersions: string[] } }> =
+    []
   let batchTimer: NodeJS.Timeout | null = null
 
   // Helper to flush the current batch
@@ -107,7 +108,10 @@ export async function getAllPackageDataFromJsdelivr(
   }
 
   // Helper to add package to batch and flush if needed
-  const addToBatch = (packageName: string, data: { latestVersion: string; allVersions: string[] }) => {
+  const addToBatch = (
+    packageName: string,
+    data: { latestVersion: string; allVersions: string[] }
+  ) => {
     if (onBatchReady) {
       batchBuffer.push({ name: packageName, data })
 
