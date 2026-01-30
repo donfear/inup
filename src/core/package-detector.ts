@@ -78,13 +78,13 @@ export class PackageDetector {
             packageNames,
             currentVersions,
             (_currentPackage: string, completed: number, total: number) => {
-              this.showProgress(`🌐 Loading packages... (${completed}/${total} ready)`)
+              this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
             }
           )
         : await getAllPackageData(
             packageNames,
             (_currentPackage: string, completed: number, total: number) => {
-              this.showProgress(`🌐 Loading packages... (${completed}/${total} ready)`)
+              this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
             }
           )
 
