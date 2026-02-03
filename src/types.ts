@@ -70,6 +70,7 @@ export interface UpgradeOptions {
   cwd?: string
   excludePatterns?: string[]
   packageManager?: PackageManager // Manual override for package manager
+  ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
 }
 
 export interface PackageJson {

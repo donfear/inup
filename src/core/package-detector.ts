@@ -8,17 +8,19 @@ import {
   findClosestMinorVersion,
 } from '../utils'
 import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
-import { DEFAULT_REGISTRY } from '../config'
+import { DEFAULT_REGISTRY, isPackageIgnored } from '../config'
 
 export class PackageDetector {
   private packageJsonPath: string | null = null
   private packageJson: PackageJson | null = null
   private cwd: string
   private excludePatterns: string[]
+  private ignorePackages: string[]
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
     this.excludePatterns = options?.excludePatterns || []
+    this.ignorePackages = options?.ignorePackages || []
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -50,15 +52,24 @@ export class PackageDetector {
       includeOptionalDeps: true,
     })
 
-    // Step 3: Get unique package names while filtering out workspace references
+    // Step 3: Get unique package names while filtering out workspace references and ignored packages
     this.showProgress('🔍 Identifying unique packages...')
     const uniquePackageNames = new Set<string>()
     const allDeps: typeof allDepsRaw = []
+    let ignoredCount = 0
     for (const dep of allDepsRaw) {
-      if (!this.isWorkspaceReference(dep.version)) {
-        allDeps.push(dep)
-        uniquePackageNames.add(dep.name)
+      if (this.isWorkspaceReference(dep.version)) {
+        continue
       }
+      if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
+        ignoredCount++
+        continue
+      }
+      allDeps.push(dep)
+      uniquePackageNames.add(dep.name)
+    }
+    if (ignoredCount > 0) {
+      this.showProgress(`🔍 Skipped ${ignoredCount} ignored package(s)`)
     }
     const packageNames = Array.from(uniquePackageNames)
 
