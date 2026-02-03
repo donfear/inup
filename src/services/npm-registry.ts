@@ -1,5 +1,6 @@
 import * as semver from 'semver'
 import { CACHE_TTL, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
+import { persistentCache } from './persistent-cache'
 
 // In-memory cache for package data
 interface CacheEntry {
@@ -15,10 +16,21 @@ const packageCache = new Map<string, CacheEntry>()
 async function fetchPackageFromRegistry(
   packageName: string
 ): Promise<{ latestVersion: string; allVersions: string[] }> {
-  // Check cache first
-  const cached = packageCache.get(packageName)
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data
+  // Check in-memory cache first (fastest)
+  const memoryCached = packageCache.get(packageName)
+  if (memoryCached && Date.now() - memoryCached.timestamp < CACHE_TTL) {
+    return memoryCached.data
+  }
+
+  // Check persistent disk cache (fast, survives restarts)
+  const diskCached = persistentCache.get(packageName)
+  if (diskCached) {
+    // Also populate in-memory cache for subsequent accesses
+    packageCache.set(packageName, {
+      data: diskCached,
+      timestamp: Date.now(),
+    })
+    return diskCached
   }
 
   try {
@@ -70,11 +82,13 @@ async function fetchPackageFromRegistry(
         allVersions,
       }
 
-      // Cache the result
+      // Cache the result in memory
       packageCache.set(packageName, {
         data: result,
         timestamp: Date.now(),
       })
+      // Cache to disk for persistence
+      persistentCache.set(packageName, result)
 
       return result
     } finally {
@@ -119,6 +133,9 @@ export async function getAllPackageData(
 
   // Wait for all requests to complete
   await Promise.all(allPromises)
+
+  // Flush persistent cache to disk
+  persistentCache.flush()
 
   // Clear the progress line and show completion time if no custom progress handler
   if (!onProgress) {

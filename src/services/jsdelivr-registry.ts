@@ -2,6 +2,7 @@ import { Pool, request } from 'undici'
 import * as semver from 'semver'
 import { CACHE_TTL, JSDELIVR_CDN_URL, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT } from '../config'
 import { getAllPackageData } from './npm-registry'
+import { persistentCache } from './persistent-cache'
 import { OnBatchReadyCallback } from '../types'
 
 // Create a persistent connection pool for jsDelivr CDN with optimal settings
@@ -129,15 +130,32 @@ export async function getAllPackageDataFromJsdelivr(
   const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
     const currentVersion = currentVersions?.get(packageName)
 
-    // Try to get from cache first
-    const cached = packageCache.get(packageName)
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      packageData.set(packageName, cached.data)
+    // Try to get from in-memory cache first (fastest)
+    const memoryCached = packageCache.get(packageName)
+    if (memoryCached && Date.now() - memoryCached.timestamp < CACHE_TTL) {
+      packageData.set(packageName, memoryCached.data)
       completedCount++
       if (onProgress) {
         onProgress(packageName, completedCount, total)
       }
-      addToBatch(packageName, cached.data)
+      addToBatch(packageName, memoryCached.data)
+      return
+    }
+
+    // Try persistent disk cache (fast, survives restarts)
+    const diskCached = persistentCache.get(packageName)
+    if (diskCached) {
+      // Also populate in-memory cache for subsequent accesses
+      packageCache.set(packageName, {
+        data: diskCached,
+        timestamp: Date.now(),
+      })
+      packageData.set(packageName, diskCached)
+      completedCount++
+      if (onProgress) {
+        onProgress(packageName, completedCount, total)
+      }
+      addToBatch(packageName, diskCached)
       return
     }
 
@@ -169,10 +187,13 @@ export async function getAllPackageDataFromJsdelivr(
 
         if (result) {
           packageData.set(packageName, result)
+          // Cache in memory
           packageCache.set(packageName, {
             data: result,
             timestamp: Date.now(),
           })
+          // Cache to disk for persistence
+          persistentCache.set(packageName, result)
           addToBatch(packageName, result)
         }
 
@@ -196,11 +217,13 @@ export async function getAllPackageDataFromJsdelivr(
         allVersions: allVersions.sort(semver.rcompare),
       }
 
-      // Cache the result
+      // Cache the result in memory
       packageCache.set(packageName, {
         data: result,
         timestamp: Date.now(),
       })
+      // Cache to disk for persistence
+      persistentCache.set(packageName, result)
 
       packageData.set(packageName, result)
       completedCount++
@@ -217,10 +240,13 @@ export async function getAllPackageDataFromJsdelivr(
 
         if (result) {
           packageData.set(packageName, result)
+          // Cache in memory
           packageCache.set(packageName, {
             data: result,
             timestamp: Date.now(),
           })
+          // Cache to disk for persistence
+          persistentCache.set(packageName, result)
           addToBatch(packageName, result)
         }
       } catch (npmError) {
@@ -239,6 +265,9 @@ export async function getAllPackageDataFromJsdelivr(
 
   // Flush any remaining batch items
   flushBatch()
+
+  // Flush persistent cache to disk
+  persistentCache.flush()
 
   // Clear the progress line and show completion time if no custom progress handler
   if (!onProgress) {
