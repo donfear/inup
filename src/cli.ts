@@ -3,9 +3,10 @@
 import { Command } from 'commander'
 import chalk from 'chalk'
 import { readFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { UpgradeRunner } from './index'
 import { checkForUpdateAsync } from './services'
+import { loadProjectConfig } from './config'
 import { PackageManager } from './types'
 
 const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
@@ -18,6 +19,7 @@ program
   .version(packageJson.version)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
+  .option('-i, --ignore <packages>', 'ignore packages (comma-separated, supports glob patterns like @babel/*)')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
@@ -25,12 +27,28 @@ program
     // Check for updates in the background (non-blocking)
     const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
 
-    const excludePatterns = options.exclude
+    const cwd = resolve(options.dir)
+
+    // Load project config from .inuprc
+    const projectConfig = loadProjectConfig(cwd)
+
+    // Merge CLI exclude patterns with config
+    const cliExcludePatterns = options.exclude
       ? options.exclude
           .split(',')
           .map((p: string) => p.trim())
           .filter(Boolean)
       : []
+    const excludePatterns = [...cliExcludePatterns, ...(projectConfig.exclude || [])]
+
+    // Merge CLI ignore patterns with config (CLI takes precedence / adds to config)
+    const cliIgnorePatterns = options.ignore
+      ? options.ignore
+          .split(',')
+          .map((p: string) => p.trim())
+          .filter(Boolean)
+      : []
+    const ignorePackages = [...new Set([...cliIgnorePatterns, ...(projectConfig.ignore || [])])]
 
     // Validate package manager if provided
     let packageManager: PackageManager | undefined
@@ -45,8 +63,9 @@ program
     }
 
     const upgrader = new UpgradeRunner({
-      cwd: options.dir,
+      cwd,
       excludePatterns,
+      ignorePackages,
       packageManager,
     })
     await upgrader.run()
