@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { getAllPackageData, clearPackageCache } from '../../../src/services/npm-registry'
+import { persistentCache } from '../../../src/services/persistent-cache'
 import { PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('npm-registry', () => {
   beforeEach(() => {
     clearPackageCache()
+    persistentCache.clearCache()
   })
 
   describe('getAllPackageData()', () => {
@@ -98,8 +100,9 @@ describe('npm-registry', () => {
       // First fetch
       await getAllPackageData([PACKAGE_NAME])
 
-      // Clear cache
+      // Clear both in-memory and persistent cache
       clearPackageCache()
+      persistentCache.clearCache()
 
       // Second fetch should hit the network again
       const start = Date.now()

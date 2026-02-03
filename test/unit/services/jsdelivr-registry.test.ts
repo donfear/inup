@@ -3,11 +3,13 @@ import {
   getAllPackageDataFromJsdelivr,
   clearJsdelivrPackageCache,
 } from '../../../src/services/jsdelivr-registry'
+import { persistentCache } from '../../../src/services/persistent-cache'
 import { PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('jsdelivr-registry', () => {
   beforeEach(() => {
     clearJsdelivrPackageCache()
+    persistentCache.clearCache()
   })
 
   describe('getAllPackageDataFromJsdelivr()', () => {
@@ -119,8 +121,9 @@ describe('jsdelivr-registry', () => {
       await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
       const cachedDuration = Date.now() - start2
 
-      // Clear cache
+      // Clear both in-memory and persistent cache
       clearJsdelivrPackageCache()
+      persistentCache.clearCache()
 
       // Third fetch should hit the network again and not be instant
       const start3 = Date.now()
