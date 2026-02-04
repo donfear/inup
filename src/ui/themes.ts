@@ -15,6 +15,9 @@ const themesMetadata = {
   monokai: 'Monokai',
   tokyonight: 'Tokyo Night',
   onedark: 'One Dark',
+  gruvbox: 'Gruvbox',
+  solarized: 'Solarized',
+  github: 'GitHub',
 }
 
 // Theme definitions
