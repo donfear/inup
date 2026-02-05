@@ -249,11 +249,7 @@ export class InputHandler {
   }
 
   private cleanup(): void {
-    CursorUtils.show()
-    if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(false)
-    }
-    process.stdin.pause()
+    CursorUtils.cleanup()
   }
 }
 
@@ -299,10 +295,6 @@ export class ConfirmationInputHandler {
   }
 
   private cleanup(): void {
-    CursorUtils.show()
-    if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(false)
-    }
-    process.stdin.pause()
+    CursorUtils.cleanup()
   }
 }

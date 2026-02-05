@@ -1,2 +1,2 @@
 export { VersionUtils } from './version'
-export { CursorUtils } from './cursor'
+export { CursorUtils, ConsoleUtils } from './cursor'
