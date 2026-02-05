@@ -53,11 +53,15 @@ Sleep 600ms
 Type "express"
 Sleep 800ms
 
-# Navigate down to see the express package
+# Press Enter to apply the search filter
+Enter
+Sleep 600ms
+
+# Show the applied search UI - navigate and select versions
 Down
 Sleep 400ms
 
-# Show version selection in search mode - press right to see patch version
+# Show version selection - press right to select
 Right
 Sleep 600ms
 
@@ -69,8 +73,7 @@ Sleep 600ms
 Left
 Sleep 400ms
 
-
-# Exit search mode with Escape
+# Clear search filter with Escape to show all packages again
 Ctrl+[
 Sleep 600ms
 
