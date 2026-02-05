@@ -243,6 +243,11 @@ export function renderInterface(
     // Pad to terminal width to clear any leftover characters from backspace
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
+  } else if (filterQuery) {
+    // Show applied filter when not in filter mode but filter is active
+    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery) + getThemeColor('textSecondary')(' (press / to edit)')
+    const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
+    output.push(filterDisplay + ' '.repeat(padding))
   } else {
     // Show instructions when not filtering
     output.push(
@@ -353,7 +358,10 @@ export function renderInterface(
     }
   }
 
-  output.push('  ' + statusLine)
+  // Pad status line to terminal width to clear any leftover characters
+  const statusLineFull = '  ' + statusLine
+  const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
+  output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
 
   // Render visible items
