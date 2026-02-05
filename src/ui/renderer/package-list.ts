@@ -312,28 +312,30 @@ export function renderInterface(
     // Filter is applied but not in filter mode
     if (totalVisualItems > maxVisibleItems) {
       statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
       ) +
         '  ' +
-        getThemeColor('textSecondary')('/ ') +
-        getThemeColor('textSecondary')('Edit filter') +
+        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
         '  ' +
-        getThemeColor('textSecondary')('Enter ') +
-        getThemeColor('textSecondary')('Confirm') +
+        chalk.bold.white('M ') + chalk.gray('Minor') +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Cancel')
+        chalk.bold.white('L ') + chalk.gray('All') +
+        '  ' +
+        chalk.bold.white('U ') + chalk.gray('None') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
         '  ' +
-        getThemeColor('textSecondary')('/ ') +
-        chalk.gray('Edit filter') +
+        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
+        chalk.bold.white('M ') + chalk.gray('Minor') +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('L ') + chalk.gray('All') +
+        '  ' +
+        chalk.bold.white('U ') + chalk.gray('None') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     }
   } else {
     // No filter applied
