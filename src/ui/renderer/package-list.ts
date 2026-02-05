@@ -289,24 +289,25 @@ export function renderInterface(
 
   let statusLine = ''
   if (filterMode) {
-    // In filter mode, show ESC to exit filter
+    // In filter mode, show Enter to apply and ESC to clear
     if (totalPackages === 0) {
       statusLine = getThemeColor('warning')(`No matches found`) +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     } else if (totalVisualItems > maxVisibleItems) {
       statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
       ) +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
-    } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+        chalk.bold.white('Enter ') + chalk.gray('Apply') +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
+    } else {
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
+        '  ' +
+        chalk.bold.white('Enter ') + chalk.gray('Apply') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     }
   } else if (totalPackages < totalBeforeFilter) {
     // Filter is applied but not in filter mode
@@ -344,19 +345,11 @@ export function renderInterface(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
       ) +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
-        '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('Enter ') + chalk.gray('Confirm')
     } else {
       statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
-        '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('Enter ') + chalk.gray('Confirm')
     }
   }
 
