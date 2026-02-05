@@ -185,12 +185,7 @@ export class InputHandler {
         // Check if any packages are selected
         const selectedCount = states.filter((s) => s.selectedOption !== 'none').length
         if (selectedCount === 0) {
-          // Show warning and stay in selection mode
-          console.log(
-            '\n' +
-              '\x1b[33m⚠️  No packages selected. Press ↑/↓ to navigate and ←/→ to select versions, or ESC to exit.\x1b[39m'
-          )
-          // Re-render will happen automatically
+          // Do nothing if no packages selected
           return
         }
         this.cleanup()
