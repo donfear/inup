@@ -116,7 +116,6 @@ export class InputHandler {
 
       if (key) {
         switch (key.name) {
-
           case 'backspace':
           case 'delete':
             this.onAction({ type: 'filter_backspace' })

@@ -7,9 +7,7 @@ import { ConsoleUtils } from '../ui/utils'
  * Fetches package data from npm registry.
  * Uses the shared CacheManager for caching.
  */
-async function fetchPackageFromRegistry(
-  packageName: string
-): Promise<PackageVersionData> {
+async function fetchPackageFromRegistry(packageName: string): Promise<PackageVersionData> {
   // Use CacheManager for unified caching (memory + disk)
   const cached = packageCache.get(packageName)
   if (cached) {
