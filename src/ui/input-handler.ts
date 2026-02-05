@@ -19,8 +19,8 @@ export type InputAction =
   | { type: 'theme_confirm' }
   | { type: 'cancel' }
   | { type: 'resize'; height: number }
-  | { type: 'enter_filter_mode' }
-  | { type: 'exit_filter_mode' }
+  | { type: 'enter_filter_mode'; preserveQuery?: boolean }
+  | { type: 'exit_filter_mode'; clearQuery?: boolean }
   | { type: 'filter_input'; char: string }
   | { type: 'filter_backspace' }
   | {
@@ -93,27 +93,36 @@ export class InputHandler {
       return
     }
 
-    // Check for '/' character to enter filter mode (only in normal mode, not in modal or already in filter)
-    if (str === '/' && !uiState.showInfoModal && !uiState.filterMode) {
-      this.onAction({ type: 'enter_filter_mode' })
+    // Check for '/' character to handle filter mode (only when not in modal)
+    if (str === '/' && !uiState.showInfoModal) {
+      if (uiState.filterMode) {
+        // Apply search (exit filter mode but keep the filter)
+        this.onAction({ type: 'exit_filter_mode' })
+      } else {
+        // Enter filter mode - preserve query if one exists (to edit it)
+        this.onAction({ type: 'enter_filter_mode', preserveQuery: !!uiState.filterQuery })
+      }
       return
     }
 
     // Handle filter mode input
     if (uiState.filterMode) {
+      // Check for escape key (either via key.name or raw escape character)
+      if ((key && key.name === 'escape') || str === '\x1b') {
+        // Escape clears the filter and exits filter mode
+        this.onAction({ type: 'exit_filter_mode', clearQuery: true })
+        return
+      }
+
       if (key) {
         switch (key.name) {
-          case 'escape':
-            this.onAction({ type: 'exit_filter_mode' })
-            return
-
           case 'backspace':
           case 'delete':
             this.onAction({ type: 'filter_backspace' })
             return
 
           case 'return':
-            // Exit filter mode but keep the filter applied
+            // Apply search (exit filter mode but keep the filter)
             this.onAction({ type: 'exit_filter_mode' })
             return
 
@@ -175,12 +184,7 @@ export class InputHandler {
         // Check if any packages are selected
         const selectedCount = states.filter((s) => s.selectedOption !== 'none').length
         if (selectedCount === 0) {
-          // Show warning and stay in selection mode
-          console.log(
-            '\n' +
-              '\x1b[33m⚠️  No packages selected. Press ↑/↓ to navigate and ←/→ to select versions, or ESC to exit.\x1b[39m'
-          )
-          // Re-render will happen automatically
+          // Do nothing if no packages selected
           return
         }
         this.cleanup()
@@ -234,12 +238,14 @@ export class InputHandler {
         break
 
       case 'escape':
-        // Check if modal is open - if so, close it; otherwise cancel
+        // Close modal if open
         if (uiState.showInfoModal) {
           this.onAction({ type: 'toggle_info_modal' })
-        } else {
-          this.onAction({ type: 'cancel' })
+        } else if (uiState.filterQuery) {
+          // Clear filter if one is applied
+          this.onAction({ type: 'exit_filter_mode', clearQuery: true })
         }
+        // Otherwise do nothing - Escape no longer exits the CLI
         break
     }
   }
@@ -249,11 +255,7 @@ export class InputHandler {
   }
 
   private cleanup(): void {
-    CursorUtils.show()
-    if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(false)
-    }
-    process.stdin.pause()
+    CursorUtils.cleanup()
   }
 }
 
@@ -299,10 +301,6 @@ export class ConfirmationInputHandler {
   }
 
   private cleanup(): void {
-    CursorUtils.show()
-    if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(false)
-    }
-    process.stdin.pause()
+    CursorUtils.cleanup()
   }
 }

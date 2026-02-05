@@ -237,10 +237,10 @@ export class InteractiveUI {
             }
             break
           case 'enter_filter_mode':
-            stateManager.enterFilterMode()
+            stateManager.enterFilterMode(action.preserveQuery)
             break
           case 'exit_filter_mode':
-            stateManager.exitFilterMode()
+            stateManager.exitFilterMode(action.clearQuery)
             break
           case 'filter_input':
             stateManager.appendToFilterQuery(action.char)

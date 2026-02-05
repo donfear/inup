@@ -1,13 +1,10 @@
 import chalk from 'chalk'
 import { PackageSelectionState } from '../../types'
 import { getThemeColor } from '../themes-colors'
+import { VersionUtils } from '../utils'
 
-/**
- * Remove ANSI color codes from a string for length calculation
- */
-function stripAnsi(str: string): string {
-  return str.replace(/\u001b\[[0-9;]*m/g, '')
-}
+// Use shared ANSI stripping utility
+const stripAnsi = VersionUtils.stripAnsi
 
 /**
  * Format a number for display (e.g., 1000000 -> "1M", 1000 -> "1K")

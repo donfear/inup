@@ -1,36 +1,17 @@
 import * as semver from 'semver'
-import { CACHE_TTL, NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
-import { persistentCache } from './persistent-cache'
-
-// In-memory cache for package data
-interface CacheEntry {
-  data: { latestVersion: string; allVersions: string[] }
-  timestamp: number
-}
-const packageCache = new Map<string, CacheEntry>()
+import { NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
+import { packageCache, PackageVersionData } from './cache-manager'
+import { ConsoleUtils } from '../ui/utils'
 
 /**
- * Fetches package data from npm registry with caching using native fetch.
- * Includes timeout support for slow connections.
+ * Fetches package data from npm registry.
+ * Uses the shared CacheManager for caching.
  */
-async function fetchPackageFromRegistry(
-  packageName: string
-): Promise<{ latestVersion: string; allVersions: string[] }> {
-  // Check in-memory cache first (fastest)
-  const memoryCached = packageCache.get(packageName)
-  if (memoryCached && Date.now() - memoryCached.timestamp < CACHE_TTL) {
-    return memoryCached.data
-  }
-
-  // Check persistent disk cache (fast, survives restarts)
-  const diskCached = persistentCache.get(packageName)
-  if (diskCached) {
-    // Also populate in-memory cache for subsequent accesses
-    packageCache.set(packageName, {
-      data: diskCached,
-      timestamp: Date.now(),
-    })
-    return diskCached
+async function fetchPackageFromRegistry(packageName: string): Promise<PackageVersionData> {
+  // Use CacheManager for unified caching (memory + disk)
+  const cached = packageCache.get(packageName)
+  if (cached) {
+    return cached
   }
 
   try {
@@ -77,18 +58,13 @@ async function fetchPackageFromRegistry(
       const sortedVersions = allVersions.sort(semver.rcompare)
       const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
 
-      const result = {
+      const result: PackageVersionData = {
         latestVersion,
         allVersions,
       }
 
-      // Cache the result in memory
-      packageCache.set(packageName, {
-        data: result,
-        timestamp: Date.now(),
-      })
-      // Cache to disk for persistence
-      persistentCache.set(packageName, result)
+      // Cache the result using CacheManager (handles both memory and disk)
+      packageCache.set(packageName, result)
 
       return result
     } finally {
@@ -108,8 +84,8 @@ async function fetchPackageFromRegistry(
 export async function getAllPackageData(
   packageNames: string[],
   onProgress?: (currentPackage: string, completed: number, total: number) => void
-): Promise<Map<string, { latestVersion: string; allVersions: string[] }>> {
-  const packageData = new Map<string, { latestVersion: string; allVersions: string[] }>()
+): Promise<Map<string, PackageVersionData>> {
+  const packageData = new Map<string, PackageVersionData>()
 
   if (packageNames.length === 0) {
     return packageData
@@ -135,11 +111,11 @@ export async function getAllPackageData(
   await Promise.all(allPromises)
 
   // Flush persistent cache to disk
-  persistentCache.flush()
+  packageCache.flush()
 
-  // Clear the progress line and show completion time if no custom progress handler
+  // Clear the progress line if no custom progress handler
   if (!onProgress) {
-    process.stdout.write('\r' + ' '.repeat(80) + '\r')
+    ConsoleUtils.clearProgress()
   }
 
   return packageData

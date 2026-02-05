@@ -1,5 +1,10 @@
 import chalk from 'chalk'
 
+/**
+ * ANSI escape code pattern for stripping terminal colors
+ */
+const ANSI_PATTERN = /\u001b\[[0-9;]*m/g
+
 export class VersionUtils {
   static applyVersionPrefix(originalSpecifier: string, targetVersion: string): string {
     // Extract prefix from original specifier (^ or ~)
@@ -10,9 +15,18 @@ export class VersionUtils {
     return prefix + targetVersion
   }
 
+  /**
+   * Strip ANSI escape codes from a string
+   */
+  static stripAnsi(str: string): string {
+    return str.replace(ANSI_PATTERN, '')
+  }
+
+  /**
+   * Get the visual length of a string (excluding ANSI codes)
+   */
   static getVisualLength(str: string): number {
-    // Strip ANSI escape codes to get visual length
-    return str.replace(/\u001b\[[0-9;]*m/g, '').length
+    return VersionUtils.stripAnsi(str).length
   }
 
   /**
@@ -36,7 +50,7 @@ export class VersionUtils {
     const endLength = Math.floor(availableLength / 2)
 
     // Extract raw text without ANSI codes to calculate positions
-    const rawText = str.replace(/\u001b\[[0-9;]*m/g, '')
+    const rawText = VersionUtils.stripAnsi(str)
 
     const start = rawText.substring(0, startLength)
     const end = rawText.substring(rawText.length - endLength)

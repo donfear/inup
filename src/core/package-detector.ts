@@ -9,6 +9,7 @@ import {
 } from '../utils'
 import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
 import { DEFAULT_REGISTRY, isPackageIgnored } from '../config'
+import { ConsoleUtils } from '../ui/utils'
 
 export class PackageDetector {
   private packageJsonPath: string | null = null
@@ -198,8 +199,7 @@ export class PackageDetector {
   }
 
   private showProgress(message: string): void {
-    // Clear current line and show new message
-    process.stdout.write(`\r${' '.repeat(80)}\r${message}`)
+    ConsoleUtils.showProgress(message)
   }
 
   public getOutdatedPackagesOnly(packages: PackageInfo[]): PackageInfo[] {

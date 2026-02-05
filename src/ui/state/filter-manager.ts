@@ -36,14 +36,18 @@ export class FilterManager {
     return this.state.filterQuery
   }
 
-  enterFilterMode(): void {
+  enterFilterMode(preserveQuery: boolean = false): void {
     this.state.filterMode = true
-    this.state.filterQuery = ''
+    if (!preserveQuery) {
+      this.state.filterQuery = ''
+    }
   }
 
-  exitFilterMode(): void {
+  exitFilterMode(clearQuery: boolean = false): void {
     this.state.filterMode = false
-    this.state.filterQuery = ''
+    if (clearQuery) {
+      this.state.filterQuery = ''
+    }
   }
 
   updateFilterQuery(query: string): void {

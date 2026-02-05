@@ -243,6 +243,11 @@ export function renderInterface(
     // Pad to terminal width to clear any leftover characters from backspace
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
+  } else if (filterQuery) {
+    // Show applied filter when not in filter mode but filter is active
+    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery) + getThemeColor('textSecondary')(' (press / to edit)')
+    const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
+    output.push(filterDisplay + ' '.repeat(padding))
   } else {
     // Show instructions when not filtering
     output.push(
@@ -284,51 +289,54 @@ export function renderInterface(
 
   let statusLine = ''
   if (filterMode) {
-    // In filter mode, show ESC to exit filter
+    // In filter mode, show Enter to apply and ESC to clear
     if (totalPackages === 0) {
       statusLine = getThemeColor('warning')(`No matches found`) +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     } else if (totalVisualItems > maxVisibleItems) {
       statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
       ) +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
-    } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+        chalk.bold.white('Enter ') + chalk.gray('Apply') +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Clear filter')
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
+    } else {
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
+        '  ' +
+        chalk.bold.white('Enter ') + chalk.gray('Apply') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     }
   } else if (totalPackages < totalBeforeFilter) {
     // Filter is applied but not in filter mode
     if (totalVisualItems > maxVisibleItems) {
       statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`
+        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
       ) +
         '  ' +
-        getThemeColor('textSecondary')('/ ') +
-        getThemeColor('textSecondary')('Edit filter') +
+        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
         '  ' +
-        getThemeColor('textSecondary')('Enter ') +
-        getThemeColor('textSecondary')('Confirm') +
+        chalk.bold.white('M ') + chalk.gray('Minor') +
         '  ' +
-        getThemeColor('textSecondary')('Esc ') +
-        getThemeColor('textSecondary')('Cancel')
+        chalk.bold.white('L ') + chalk.gray('All') +
+        '  ' +
+        chalk.bold.white('U ') + chalk.gray('None') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches (${chalk.white(totalBeforeFilter)} total)`) +
+      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
         '  ' +
-        getThemeColor('textSecondary')('/ ') +
-        chalk.gray('Edit filter') +
+        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
+        chalk.bold.white('M ') + chalk.gray('Minor') +
         '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('L ') + chalk.gray('All') +
+        '  ' +
+        chalk.bold.white('U ') + chalk.gray('None') +
+        '  ' +
+        chalk.bold.white('Esc ') + chalk.gray('Clear')
     }
   } else {
     // No filter applied
@@ -337,23 +345,18 @@ export function renderInterface(
         `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
       ) +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
-        '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('Enter ') + chalk.gray('Confirm')
     } else {
       statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
         '  ' +
-        chalk.gray('Enter ') +
-        chalk.gray('Confirm') +
-        '  ' +
-        chalk.gray('Esc ') +
-        chalk.gray('Cancel')
+        chalk.bold.white('Enter ') + chalk.gray('Confirm')
     }
   }
 
-  output.push('  ' + statusLine)
+  // Pad status line to terminal width to clear any leftover characters
+  const statusLineFull = '  ' + statusLine
+  const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
+  output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
 
   // Render visible items
