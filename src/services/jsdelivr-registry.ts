@@ -1,6 +1,13 @@
 import { Pool, request } from 'undici'
 import * as semver from 'semver'
-import { JSDELIVR_CDN_URL, MAX_CONCURRENT_REQUESTS, REQUEST_TIMEOUT } from '../config'
+import {
+  JSDELIVR_CDN_URL,
+  MAX_CONCURRENT_REQUESTS,
+  REQUEST_TIMEOUT,
+  JSDELIVR_RETRY_TIMEOUTS,
+  JSDELIVR_RETRY_DELAYS,
+  PER_PACKAGE_TIMEOUT,
+} from '../config'
 import { getAllPackageData } from './npm-registry'
 import { packageCache, PackageVersionData } from './cache-manager'
 import { ConsoleUtils } from '../ui/utils'
@@ -9,11 +16,11 @@ import { OnBatchReadyCallback } from '../types'
 // Create a persistent connection pool for jsDelivr CDN with optimal settings
 // This enables connection reuse and HTTP/1.1 keep-alive for blazing fast requests
 const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
-  connections: MAX_CONCURRENT_REQUESTS, // Maximum concurrent connections
-  pipelining: 10, // Enable request pipelining for even better performance
-  keepAliveTimeout: REQUEST_TIMEOUT, // Keep connections alive for 60 seconds
-  keepAliveMaxTimeout: REQUEST_TIMEOUT, // Maximum keep-alive timeout
-  connectTimeout: REQUEST_TIMEOUT, // 60 seconds connect timeout
+  connections: MAX_CONCURRENT_REQUESTS,
+  pipelining: 10,
+  keepAliveTimeout: REQUEST_TIMEOUT,
+  keepAliveMaxTimeout: REQUEST_TIMEOUT,
+  connectTimeout: REQUEST_TIMEOUT,
 })
 
 // Batch configuration for progressive loading
@@ -23,6 +30,8 @@ const BATCH_TIMEOUT_MS = 500
 /**
  * Fetches package.json from jsdelivr CDN for a specific version tag using undici pool.
  * Uses connection pooling and keep-alive for maximum performance.
+ * Retries on timeout to allow CDN cache warming — the first request triggers caching,
+ * and subsequent retries hit the warm cache.
  * @param packageName - The npm package name
  * @param versionTag - The version tag (e.g., '14', 'latest')
  * @returns The package.json content or null if not found
@@ -31,32 +40,51 @@ async function fetchPackageJsonFromJsdelivr(
   packageName: string,
   versionTag: string
 ): Promise<{ version: string } | null> {
-  try {
-    const url = `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${versionTag}/package.json`
+  const url = `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${versionTag}/package.json`
 
-    const { statusCode, body } = await request(url, {
-      dispatcher: jsdelivrPool,
-      method: 'GET',
-      headers: {
-        accept: 'application/json',
-      },
-      headersTimeout: REQUEST_TIMEOUT,
-      bodyTimeout: REQUEST_TIMEOUT,
-    })
+  for (let attempt = 0; attempt < JSDELIVR_RETRY_TIMEOUTS.length; attempt++) {
+    const timeout = JSDELIVR_RETRY_TIMEOUTS[attempt]
+    try {
+      const { statusCode, body } = await request(url, {
+        dispatcher: jsdelivrPool,
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+        },
+        headersTimeout: timeout,
+        bodyTimeout: timeout,
+      })
 
-    if (statusCode !== 200) {
-      // Consume body to prevent memory leaks
-      await body.text()
+      if (statusCode !== 200) {
+        // Consume body to prevent memory leaks
+        await body.text()
+        return null
+      }
+
+      const text = await body.text()
+      const data = JSON.parse(text) as { version?: string }
+      return data.version ? { version: data.version } : null
+    } catch (error) {
+      const isTimeout =
+        error instanceof Error &&
+        (error.message.includes('timeout') ||
+          error.message.includes('Timeout') ||
+          error.name === 'HeadersTimeoutError' ||
+          error.name === 'BodyTimeoutError')
+
+      if (isTimeout && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
+        // Wait before retrying — CDN should be caching the response
+        const delay = JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1]
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        continue
+      }
+
+      // Non-timeout error or final attempt — give up
       return null
     }
-
-    const text = await body.text()
-    const data = JSON.parse(text) as { version?: string }
-    return data.version ? { version: data.version } : null
-  } catch (error) {
-    console.error(`Error fetching from jsdelivr for package: ${packageName}@${versionTag}`, error)
-    return null
   }
+
+  return null
 }
 
 /**
@@ -116,6 +144,9 @@ export async function getAllPackageDataFromJsdelivr(
     }
   }
 
+  // Track which packages have been timed out so background work doesn't double-count
+  const timedOut = new Set<string>()
+
   // Process individual package fetch with immediate npm fallback on failure
   const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
     const currentVersion = currentVersions?.get(packageName)
@@ -150,17 +181,20 @@ export async function getAllPackageDataFromJsdelivr(
       // Execute all requests simultaneously
       const results = await Promise.all(requests)
 
+      // If timed out while waiting, don't update progress (already counted)
+      if (timedOut.has(packageName)) return
+
       const latestResult = results[0]
       const majorResult = results[1]
 
       if (!latestResult) {
         // Package not on jsDelivr, immediately try npm fallback
         const npmData = await getAllPackageData([packageName])
+        if (timedOut.has(packageName)) return
         const result = npmData.get(packageName)
 
         if (result) {
           packageData.set(packageName, result)
-          // CacheManager handles both memory and disk caching
           packageCache.set(packageName, result)
           addToBatch(packageName, result)
         }
@@ -185,9 +219,7 @@ export async function getAllPackageDataFromJsdelivr(
         allVersions: allVersions.sort(semver.rcompare),
       }
 
-      // Cache the result using CacheManager (handles both memory and disk)
       packageCache.set(packageName, result)
-
       packageData.set(packageName, result)
       completedCount++
 
@@ -196,14 +228,16 @@ export async function getAllPackageDataFromJsdelivr(
       }
       addToBatch(packageName, result)
     } catch (error) {
+      if (timedOut.has(packageName)) return
+
       // On error, immediately try npm fallback
       try {
         const npmData = await getAllPackageData([packageName])
+        if (timedOut.has(packageName)) return
         const result = npmData.get(packageName)
 
         if (result) {
           packageData.set(packageName, result)
-          // CacheManager handles both memory and disk caching
           packageCache.set(packageName, result)
           addToBatch(packageName, result)
         }
@@ -218,8 +252,29 @@ export async function getAllPackageDataFromJsdelivr(
     }
   }
 
-  // Fire all requests simultaneously - they handle fallback internally and immediately
-  await Promise.all(packageNames.map(fetchPackageWithFallback))
+  // Fire all requests simultaneously with a per-package timeout cap
+  // This ensures no single slow package can hold up the entire batch
+  await Promise.all(
+    packageNames.map((packageName) => {
+      let timer: NodeJS.Timeout
+      return Promise.race([
+        fetchPackageWithFallback(packageName).finally(() => clearTimeout(timer)),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(() => {
+            // If this package hasn't completed yet, mark it timed out and skip
+            if (!packageData.has(packageName)) {
+              timedOut.add(packageName)
+              completedCount++
+              if (onProgress) {
+                onProgress(packageName, completedCount, total)
+              }
+            }
+            resolve()
+          }, PER_PACKAGE_TIMEOUT)
+        }),
+      ])
+    })
+  )
 
   // Flush any remaining batch items
   flushBatch()
