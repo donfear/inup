@@ -74,7 +74,8 @@ async function fetchPackageJsonFromJsdelivr(
 
       if (isTimeout && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
         // Wait before retrying — CDN should be caching the response
-        const delay = JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1]
+        const delay =
+          JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1]
         await new Promise((resolve) => setTimeout(resolve, delay))
         continue
       }
