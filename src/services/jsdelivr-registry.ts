@@ -12,6 +12,42 @@ import { packageCache, PackageVersionData } from './cache-manager'
 import { ConsoleUtils } from '../ui/utils'
 import { OnBatchReadyCallback } from '../types'
 
+// Batch configuration for progressive loading
+const BATCH_SIZE = 5
+const BATCH_TIMEOUT_MS = 500
+
+const DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS = 2000
+const MIN_JSDELIVR_CONNECT_TIMEOUT_MS = 500
+
+const toPositiveMs = (value: number): number | null => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return null
+  }
+  return Math.floor(value)
+}
+
+const RETRY_TIMEOUTS = (() => {
+  const configured = JSDELIVR_RETRY_TIMEOUTS.map(toPositiveMs).filter(
+    (value): value is number => value !== null
+  )
+  return configured.length > 0 ? configured : [DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS]
+})()
+
+const RETRY_DELAYS = JSDELIVR_RETRY_DELAYS.map(toPositiveMs).filter(
+  (value): value is number => value !== null
+)
+
+const getRetryDelay = (attempt: number): number => {
+  if (RETRY_DELAYS.length === 0) {
+    return 0
+  }
+
+  return RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]
+}
+
+// Keep connection setup bounded by retry budget so fallback stays responsive.
+const JSDELIVR_CONNECT_TIMEOUT_MS = Math.max(RETRY_TIMEOUTS[0], MIN_JSDELIVR_CONNECT_TIMEOUT_MS)
+
 // Create a persistent connection pool for jsDelivr CDN with optimal settings
 // This enables connection reuse and HTTP/1.1 keep-alive for blazing fast requests
 const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
@@ -19,12 +55,8 @@ const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
   pipelining: 10,
   keepAliveTimeout: JSDELIVR_POOL_TIMEOUT,
   keepAliveMaxTimeout: JSDELIVR_POOL_TIMEOUT,
-  connectTimeout: JSDELIVR_POOL_TIMEOUT,
+  connectTimeout: JSDELIVR_CONNECT_TIMEOUT_MS,
 })
-
-// Batch configuration for progressive loading
-const BATCH_SIZE = 5
-const BATCH_TIMEOUT_MS = 500
 
 const isTimeoutError = (error: unknown): boolean => {
   if (!(error instanceof Error)) {
@@ -44,9 +76,98 @@ const isTimeoutError = (error: unknown): boolean => {
   )
 }
 
-const isRetryableStatus = (statusCode: number): boolean => statusCode === 429 || statusCode >= 500
+const isTransientNetworkError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const maybeCode = (error as Error & { code?: string }).code
+  return (
+    maybeCode === 'UND_ERR_SOCKET' ||
+    maybeCode === 'ENOTFOUND' ||
+    maybeCode === 'EAI_AGAIN' ||
+    maybeCode === 'ECONNRESET' ||
+    maybeCode === 'ECONNREFUSED' ||
+    maybeCode === 'ETIMEDOUT' ||
+    maybeCode === 'EPIPE'
+  )
+}
+
+const isRetryableStatus = (statusCode: number): boolean =>
+  statusCode === 408 || statusCode === 429 || statusCode >= 500
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+const consumeBodySafely = async (body: { text: () => Promise<string> }): Promise<void> => {
+  try {
+    await body.text()
+  } catch {
+    // Ignore body read errors on non-200 responses because request will be retried/fallback.
+  }
+}
+
+const extractMajorVersion = (version: string | undefined): string | null => {
+  if (!version) {
+    return null
+  }
+
+  const coerced = semver.coerce(version)
+  if (!coerced) {
+    return null
+  }
+
+  return semver.major(coerced).toString()
+}
+
+const toComparableVersion = (version: string): string | null => {
+  const validVersion = semver.valid(version)
+  if (validVersion) {
+    return validVersion
+  }
+
+  const coerced = semver.coerce(version)
+  return coerced ? coerced.version : null
+}
+
+const versionIdentity = (version: string): string => {
+  const comparable = toComparableVersion(version)
+  return comparable ?? `raw:${version}`
+}
+
+const sortVersionsDescending = (versions: string[]): string[] => {
+  const uniqueVersions: string[] = []
+  const seenVersions = new Set<string>()
+
+  for (const version of versions) {
+    const identity = versionIdentity(version)
+    if (!seenVersions.has(identity)) {
+      seenVersions.add(identity)
+      uniqueVersions.push(version)
+    }
+  }
+
+  return uniqueVersions.sort((a, b) => {
+    const comparableA = toComparableVersion(a)
+    const comparableB = toComparableVersion(b)
+
+    if (comparableA && comparableB) {
+      return semver.rcompare(comparableA, comparableB)
+    }
+
+    if (comparableA) {
+      return -1
+    }
+
+    if (comparableB) {
+      return 1
+    }
+
+    return b.localeCompare(a)
+  })
+}
+
+const isExpectedTransientError = (error: unknown): boolean =>
+  isTimeoutError(error) || isTransientNetworkError(error)
 
 /**
  * Fetches package.json from jsdelivr CDN for a specific version tag using undici pool.
@@ -62,8 +183,8 @@ async function fetchPackageJsonFromJsdelivr(
 ): Promise<{ version: string } | null> {
   const url = `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${versionTag}/package.json`
 
-  for (let attempt = 0; attempt < JSDELIVR_RETRY_TIMEOUTS.length; attempt++) {
-    const timeout = JSDELIVR_RETRY_TIMEOUTS[attempt]
+  for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
+    const timeout = RETRY_TIMEOUTS[attempt]
     try {
       const { statusCode, body } = await request(url, {
         dispatcher: jsdelivrPool,
@@ -77,10 +198,9 @@ async function fetchPackageJsonFromJsdelivr(
 
       if (statusCode !== 200) {
         // Consume body to prevent memory leaks
-        await body.text()
-        if (isRetryableStatus(statusCode) && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
-          const delay =
-            JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1] || 0
+        await consumeBodySafely(body)
+        if (isRetryableStatus(statusCode) && attempt < RETRY_TIMEOUTS.length - 1) {
+          const delay = getRetryDelay(attempt)
           if (delay > 0) {
             await sleep(delay)
           }
@@ -90,23 +210,28 @@ async function fetchPackageJsonFromJsdelivr(
       }
 
       const text = await body.text()
-      const data = JSON.parse(text) as { version?: string }
-      return data.version ? { version: data.version } : null
+      const data = JSON.parse(text) as { version?: unknown }
+      const version = typeof data.version === 'string' ? data.version.trim() : ''
+      return version ? { version } : null
     } catch (error) {
-      if (isTimeoutError(error) && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
-        const delay =
-          JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1] || 0
+      if (
+        (isTimeoutError(error) || isTransientNetworkError(error)) &&
+        attempt < RETRY_TIMEOUTS.length - 1
+      ) {
+        const delay = getRetryDelay(attempt)
         if (delay > 0) {
           await sleep(delay)
         }
         continue
       }
 
-      // Non-timeout error or final attempt — give up, but preserve observability.
-      console.error(
-        `jsDelivr fetch failed for ${packageName}@${versionTag} on attempt ${attempt + 1}/${JSDELIVR_RETRY_TIMEOUTS.length}`,
-        error
-      )
+      if (!isExpectedTransientError(error)) {
+        // Unexpected errors are logged for observability.
+        console.error(
+          `jsDelivr fetch failed for ${packageName}@${versionTag} on attempt ${attempt + 1}/${RETRY_TIMEOUTS.length}`,
+          error
+        )
+      }
       return null
     }
   }
@@ -172,92 +297,100 @@ export async function getAllPackageDataFromJsdelivr(
   }
 
   // Process individual package fetch with immediate npm fallback on failure
-  const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
-    const currentVersion = currentVersions?.get(packageName)
+  const inFlightLookups = new Map<string, Promise<PackageVersionData | null>>()
 
-    // Use CacheManager for unified caching (memory + disk)
-    const cached = packageCache.get(packageName)
-    if (cached) {
-      packageData.set(packageName, cached)
-      completedCount++
-      if (onProgress) {
-        onProgress(packageName, completedCount, total)
-      }
-      addToBatch(packageName, cached)
-      return
-    }
-
+  const fetchFromNpmFallback = async (packageName: string): Promise<PackageVersionData | null> => {
     try {
-      // Determine major version from current version if provided
-      const majorVersion = currentVersion
-        ? semver.major(semver.coerce(currentVersion) || '0.0.0').toString()
-        : null
+      const npmData = await getAllPackageData([packageName])
+      const result = npmData.get(packageName) ?? null
+
+      if (result) {
+        packageCache.set(packageName, result)
+      }
+
+      return result
+    } catch {
+      return null
+    }
+  }
+
+  const fetchFreshPackageData = async (
+    packageName: string,
+    currentVersion: string | undefined
+  ): Promise<PackageVersionData | null> => {
+    try {
+      const majorVersion = extractMajorVersion(currentVersion)
 
       const latestResult = await fetchPackageJsonFromJsdelivr(packageName, 'latest')
-
       if (!latestResult) {
-        // Package not on jsDelivr, immediately try npm fallback
-        const npmData = await getAllPackageData([packageName])
-        const result = npmData.get(packageName)
-
-        if (result) {
-          packageData.set(packageName, result)
-          packageCache.set(packageName, result)
-          addToBatch(packageName, result)
-        }
-
-        completedCount++
-        if (onProgress) {
-          onProgress(packageName, completedCount, total)
-        }
-        return
+        return await fetchFromNpmFallback(packageName)
       }
 
       const latestVersion = latestResult.version
-      const latestMajorVersion = semver.major(semver.coerce(latestVersion) || '0.0.0').toString()
-      const shouldFetchMajorVersion = Boolean(majorVersion && majorVersion !== latestMajorVersion)
+      const latestMajorVersion = extractMajorVersion(latestVersion)
+      const shouldFetchMajorVersion = Boolean(
+        majorVersion && (latestMajorVersion === null || majorVersion !== latestMajorVersion)
+      )
       const majorResult = shouldFetchMajorVersion
         ? await fetchPackageJsonFromJsdelivr(packageName, majorVersion as string)
         : null
       const allVersions = [latestVersion]
 
-      // Add the major version result if different from latest
       if (majorResult && majorResult.version !== latestVersion) {
         allVersions.push(majorResult.version)
       }
 
+      const sortedVersions = sortVersionsDescending(allVersions)
+      const orderedVersions =
+        sortedVersions[0] === latestVersion
+          ? sortedVersions
+          : [latestVersion, ...sortedVersions.filter((version) => version !== latestVersion)]
+
       const result: PackageVersionData = {
         latestVersion,
-        allVersions: allVersions.sort(semver.rcompare),
+        allVersions: orderedVersions,
       }
 
       packageCache.set(packageName, result)
+      return result
+    } catch {
+      return await fetchFromNpmFallback(packageName)
+    }
+  }
+
+  const getPackageData = async (
+    packageName: string,
+    currentVersion: string | undefined
+  ): Promise<PackageVersionData | null> => {
+    const cached = packageCache.get(packageName)
+    if (cached) {
+      return cached
+    }
+
+    const inFlight = inFlightLookups.get(packageName)
+    if (inFlight) {
+      return await inFlight
+    }
+
+    const lookupPromise = fetchFreshPackageData(packageName, currentVersion).finally(() => {
+      inFlightLookups.delete(packageName)
+    })
+    inFlightLookups.set(packageName, lookupPromise)
+    return await lookupPromise
+  }
+
+  const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
+    const currentVersion = currentVersions?.get(packageName)
+    const result = await getPackageData(packageName, currentVersion)
+
+    if (result) {
       packageData.set(packageName, result)
-      completedCount++
-
-      if (onProgress) {
-        onProgress(packageName, completedCount, total)
-      }
       addToBatch(packageName, result)
-    } catch (error) {
-      // On error, immediately try npm fallback
-      try {
-        const npmData = await getAllPackageData([packageName])
-        const result = npmData.get(packageName)
+    }
 
-        if (result) {
-          packageData.set(packageName, result)
-          packageCache.set(packageName, result)
-          addToBatch(packageName, result)
-        }
-      } catch (npmError) {
-        // If both fail, just continue
-      }
-
-      completedCount++
-      if (onProgress) {
-        onProgress(packageName, completedCount, total)
-      }
+    completedCount++
+    if (onProgress) {
+      onProgress(packageName, completedCount, total)
     }
   }
 
