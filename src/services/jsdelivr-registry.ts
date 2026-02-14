@@ -17,44 +17,126 @@ const BATCH_SIZE = 5
 const BATCH_TIMEOUT_MS = 500
 
 const DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS = 2000
+const DEFAULT_JSDELIVR_POOL_TIMEOUT_MS = 60000
 const MIN_JSDELIVR_CONNECT_TIMEOUT_MS = 500
 
-const toPositiveMs = (value: number): number | null => {
+const toPositiveInteger = (value: number): number | null => {
   if (!Number.isFinite(value) || value <= 0) {
     return null
   }
-  return Math.floor(value)
+
+  const normalized = Math.floor(value)
+  return normalized > 0 ? normalized : null
 }
 
 const RETRY_TIMEOUTS = (() => {
-  const configured = JSDELIVR_RETRY_TIMEOUTS.map(toPositiveMs).filter(
-    (value): value is number => value !== null
-  )
+  const configured = Array.from(
+    new Set(
+      JSDELIVR_RETRY_TIMEOUTS.map(toPositiveInteger).filter((value): value is number => value !== null)
+    )
+  ).sort((a, b) => a - b)
   return configured.length > 0 ? configured : [DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS]
 })()
 
-const RETRY_DELAYS = JSDELIVR_RETRY_DELAYS.map(toPositiveMs).filter(
+const RETRY_DELAYS = JSDELIVR_RETRY_DELAYS.map(toPositiveInteger).filter(
   (value): value is number => value !== null
 )
 
-const getRetryDelay = (attempt: number): number => {
-  if (RETRY_DELAYS.length === 0) {
-    return 0
+const MAX_RETRY_AFTER_DELAY_MS = RETRY_TIMEOUTS[RETRY_TIMEOUTS.length - 1]
+const RETRY_AFTER_HEADER = 'retry-after'
+
+type ResponseHeaders = Record<string, string | string[] | undefined> | undefined
+
+const parseRetryAfterMs = (value: string): number | null => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return null
   }
 
-  return RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]
+  const seconds = Number(trimmed)
+  if (Number.isFinite(seconds)) {
+    if (seconds <= 0) {
+      return null
+    }
+
+    const delayMs = Math.floor(seconds * 1000)
+    return delayMs > 0 ? delayMs : null
+  }
+
+  const dateMs = Date.parse(trimmed)
+  if (Number.isNaN(dateMs)) {
+    return null
+  }
+
+  const delayMs = dateMs - Date.now()
+  return delayMs > 0 ? delayMs : null
+}
+
+const getHeaderValue = (headers: ResponseHeaders, name: string): string | null => {
+  if (!headers) {
+    return null
+  }
+
+  const direct = headers[name]
+  if (typeof direct === 'string') {
+    return direct
+  }
+
+  if (Array.isArray(direct)) {
+    return direct.find((value) => typeof value === 'string') ?? null
+  }
+
+  const headerEntry = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === name)
+  if (!headerEntry) {
+    return null
+  }
+
+  const [, rawValue] = headerEntry
+  if (typeof rawValue === 'string') {
+    return rawValue
+  }
+
+  if (Array.isArray(rawValue)) {
+    return rawValue.find((value) => typeof value === 'string') ?? null
+  }
+
+  return null
+}
+
+const getRetryAfterDelay = (headers: ResponseHeaders): number | null => {
+  const retryAfterValue = getHeaderValue(headers, RETRY_AFTER_HEADER)
+  if (!retryAfterValue) {
+    return null
+  }
+
+  const parsedDelay = parseRetryAfterMs(retryAfterValue)
+  if (parsedDelay === null) {
+    return null
+  }
+
+  return Math.min(parsedDelay, MAX_RETRY_AFTER_DELAY_MS)
+}
+
+const getRetryDelay = (attempt: number, headers?: ResponseHeaders): number => {
+  const configuredDelay =
+    RETRY_DELAYS.length === 0 ? 0 : RETRY_DELAYS[Math.min(attempt, RETRY_DELAYS.length - 1)]
+  const retryAfterDelay = getRetryAfterDelay(headers)
+  return retryAfterDelay === null ? configuredDelay : Math.max(configuredDelay, retryAfterDelay)
 }
 
 // Keep connection setup bounded by retry budget so fallback stays responsive.
 const JSDELIVR_CONNECT_TIMEOUT_MS = Math.max(RETRY_TIMEOUTS[0], MIN_JSDELIVR_CONNECT_TIMEOUT_MS)
+const JSDELIVR_POOL_TIMEOUT_MS =
+  toPositiveInteger(JSDELIVR_POOL_TIMEOUT) ?? DEFAULT_JSDELIVR_POOL_TIMEOUT_MS
+const JSDELIVR_CONNECTIONS = toPositiveInteger(MAX_CONCURRENT_REQUESTS) ?? 1
 
 // Create a persistent connection pool for jsDelivr CDN with optimal settings
 // This enables connection reuse and HTTP/1.1 keep-alive for blazing fast requests
 const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
-  connections: MAX_CONCURRENT_REQUESTS,
+  connections: JSDELIVR_CONNECTIONS,
   pipelining: 10,
-  keepAliveTimeout: JSDELIVR_POOL_TIMEOUT,
-  keepAliveMaxTimeout: JSDELIVR_POOL_TIMEOUT,
+  keepAliveTimeout: JSDELIVR_POOL_TIMEOUT_MS,
+  keepAliveMaxTimeout: JSDELIVR_POOL_TIMEOUT_MS,
   connectTimeout: JSDELIVR_CONNECT_TIMEOUT_MS,
 })
 
@@ -186,7 +268,7 @@ async function fetchPackageJsonFromJsdelivr(
   for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
     const timeout = RETRY_TIMEOUTS[attempt]
     try {
-      const { statusCode, body } = await request(url, {
+      const { statusCode, headers, body } = await request(url, {
         dispatcher: jsdelivrPool,
         method: 'GET',
         headers: {
@@ -200,7 +282,7 @@ async function fetchPackageJsonFromJsdelivr(
         // Consume body to prevent memory leaks
         await consumeBodySafely(body)
         if (isRetryableStatus(statusCode) && attempt < RETRY_TIMEOUTS.length - 1) {
-          const delay = getRetryDelay(attempt)
+          const delay = getRetryDelay(attempt, headers as ResponseHeaders)
           if (delay > 0) {
             await sleep(delay)
           }
@@ -264,16 +346,45 @@ export async function getAllPackageDataFromJsdelivr(
 
   const total = packageNames.length
   let completedCount = 0
+  let progressCallback = onProgress
+  let batchReadyCallback = onBatchReady
 
   // Batch buffer for progressive updates
   let batchBuffer: Array<{ name: string; data: PackageVersionData }> = []
   let batchTimer: NodeJS.Timeout | null = null
 
+  const emitProgress = (packageName: string, completed: number, packageTotal: number) => {
+    if (!progressCallback) {
+      return
+    }
+
+    try {
+      progressCallback(packageName, completed, packageTotal)
+    } catch (error) {
+      console.error('Progress callback failed, disabling progress updates for this run.', error)
+      progressCallback = undefined
+    }
+  }
+
+  const emitBatch = (batch: Array<{ name: string; data: PackageVersionData }>) => {
+    if (!batchReadyCallback) {
+      return
+    }
+
+    try {
+      batchReadyCallback(batch)
+    } catch (error) {
+      console.error('Batch callback failed, disabling batch updates for this run.', error)
+      batchReadyCallback = undefined
+    }
+  }
+
   // Helper to flush the current batch
   const flushBatch = () => {
-    if (batchBuffer.length > 0 && onBatchReady) {
-      onBatchReady([...batchBuffer])
+    if (batchBuffer.length > 0) {
+      const batch = [...batchBuffer]
       batchBuffer = []
+      emitBatch(batch)
     }
     if (batchTimer) {
       clearTimeout(batchTimer)
@@ -283,16 +394,18 @@ export async function getAllPackageDataFromJsdelivr(
 
   // Helper to add package to batch and flush if needed
   const addToBatch = (packageName: string, data: PackageVersionData) => {
-    if (onBatchReady) {
-      batchBuffer.push({ name: packageName, data })
+    if (!batchReadyCallback) {
+      return
+    }
 
-      // Flush if batch is full
-      if (batchBuffer.length >= BATCH_SIZE) {
-        flushBatch()
-      } else if (!batchTimer) {
-        // Set timer to flush batch after timeout
-        batchTimer = setTimeout(flushBatch, BATCH_TIMEOUT_MS)
-      }
+    batchBuffer.push({ name: packageName, data })
+
+    // Flush if batch is full
+    if (batchBuffer.length >= BATCH_SIZE) {
+      flushBatch()
+    } else if (!batchTimer) {
+      // Set timer to flush batch after timeout
+      batchTimer = setTimeout(flushBatch, BATCH_TIMEOUT_MS)
     }
   }
 
@@ -380,32 +493,36 @@ export async function getAllPackageDataFromJsdelivr(
   }
 
   const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
-    const currentVersion = currentVersions?.get(packageName)
-    const result = await getPackageData(packageName, currentVersion)
+    try {
+      const currentVersion = currentVersions?.get(packageName)
+      const result = await getPackageData(packageName, currentVersion)
 
-    if (result) {
-      packageData.set(packageName, result)
-      addToBatch(packageName, result)
-    }
-
-    completedCount++
-    if (onProgress) {
-      onProgress(packageName, completedCount, total)
+      if (result) {
+        packageData.set(packageName, result)
+        addToBatch(packageName, result)
+      }
+    } catch (error) {
+      console.error(`Failed to resolve package data for ${packageName}; continuing with others.`, error)
+    } finally {
+      completedCount++
+      emitProgress(packageName, completedCount, total)
     }
   }
 
-  // Fire all requests simultaneously - each request internally handles retries/fallback.
-  await Promise.all(packageNames.map(fetchPackageWithFallback))
+  try {
+    // Fire all requests simultaneously - each request internally handles retries/fallback.
+    await Promise.all(packageNames.map(fetchPackageWithFallback))
+  } finally {
+    // Flush any remaining batch items
+    flushBatch()
 
-  // Flush any remaining batch items
-  flushBatch()
+    // Flush persistent cache to disk
+    packageCache.flush()
 
-  // Flush persistent cache to disk
-  packageCache.flush()
-
-  // Clear the progress line if no custom progress handler
-  if (!onProgress) {
-    ConsoleUtils.clearProgress()
+    // Clear the progress line if no custom progress handler
+    if (!onProgress) {
+      ConsoleUtils.clearProgress()
+    }
   }
 
   return packageData

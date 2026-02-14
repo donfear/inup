@@ -37,6 +37,7 @@ const createTimeoutError = () => {
 
 describe('jsdelivr-registry retries', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
     clearJsdelivrPackageCache()
     persistentCache.clearCache()
@@ -193,6 +194,109 @@ describe('jsdelivr-registry retries', () => {
 
     expect(requestMock).toHaveBeenCalledTimes(2)
     expect(getAllPackageDataMock).not.toHaveBeenCalled()
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.2.3',
+      allVersions: ['1.2.3'],
+    })
+  })
+
+  it('honors retry-after delay when server asks for backoff', async () => {
+    vi.useFakeTimers()
+    requestMock
+      .mockResolvedValueOnce({
+        statusCode: 429,
+        headers: {
+          'retry-after': '0.02',
+        },
+        body: {
+          text: async () => 'too many requests',
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        body: {
+          text: async () => JSON.stringify({ version: '1.2.3' }),
+        },
+      })
+
+    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    expect(requestMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(19)
+    expect(requestMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    const result = await pending
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
+    expect(getAllPackageDataMock).not.toHaveBeenCalled()
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.2.3',
+      allVersions: ['1.2.3'],
+    })
+  })
+
+  it('treats non-positive numeric retry-after values as no server delay', async () => {
+    vi.useFakeTimers()
+    requestMock
+      .mockResolvedValueOnce({
+        statusCode: 429,
+        headers: {
+          'retry-after': '0',
+        },
+        body: {
+          text: async () => 'too many requests',
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        body: {
+          text: async () => JSON.stringify({ version: '1.2.3' }),
+        },
+      })
+
+    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    expect(requestMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    const result = await pending
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.2.3',
+      allVersions: ['1.2.3'],
+    })
+  })
+
+  it('reads retry-after header case-insensitively', async () => {
+    vi.useFakeTimers()
+    requestMock
+      .mockResolvedValueOnce({
+        statusCode: 429,
+        headers: {
+          'Retry-After': '0.02',
+        },
+        body: {
+          text: async () => 'too many requests',
+        },
+      })
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        body: {
+          text: async () => JSON.stringify({ version: '1.2.3' }),
+        },
+      })
+
+    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    expect(requestMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(19)
+    expect(requestMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    const result = await pending
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
     expect(result.get('demo-pkg')).toEqual({
       latestVersion: '1.2.3',
       allVersions: ['1.2.3'],
@@ -396,5 +500,60 @@ describe('jsdelivr-registry retries', () => {
       latestVersion: '1.2.3',
       allVersions: ['1.2.3'],
     })
+  })
+
+  it('continues fetching when progress callback throws', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      body: {
+        text: async () => JSON.stringify({ version: '1.2.3' }),
+      },
+    })
+
+    const result = await getAllPackageDataFromJsdelivr(
+      ['demo-a', 'demo-b'],
+      undefined,
+      () => {
+        throw new Error('progress callback failed')
+      }
+    )
+
+    expect(requestMock).toHaveBeenCalledTimes(2)
+    expect(result.size).toBe(2)
+    expect(result.get('demo-a')).toEqual({
+      latestVersion: '1.2.3',
+      allVersions: ['1.2.3'],
+    })
+    expect(result.get('demo-b')).toEqual({
+      latestVersion: '1.2.3',
+      allVersions: ['1.2.3'],
+    })
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+    consoleErrorSpy.mockRestore()
+  })
+
+  it('continues fetching when batch callback throws', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      body: {
+        text: async () => JSON.stringify({ version: '1.2.3' }),
+      },
+    })
+
+    const result = await getAllPackageDataFromJsdelivr(
+      ['demo-a', 'demo-b', 'demo-c', 'demo-d', 'demo-e', 'demo-f'],
+      undefined,
+      undefined,
+      () => {
+        throw new Error('batch callback failed')
+      }
+    )
+
+    expect(requestMock).toHaveBeenCalledTimes(6)
+    expect(result.size).toBe(6)
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+    consoleErrorSpy.mockRestore()
   })
 })
