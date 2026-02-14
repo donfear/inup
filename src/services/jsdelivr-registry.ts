@@ -3,10 +3,9 @@ import * as semver from 'semver'
 import {
   JSDELIVR_CDN_URL,
   MAX_CONCURRENT_REQUESTS,
-  REQUEST_TIMEOUT,
+  JSDELIVR_POOL_TIMEOUT,
   JSDELIVR_RETRY_TIMEOUTS,
   JSDELIVR_RETRY_DELAYS,
-  PER_PACKAGE_TIMEOUT,
 } from '../config'
 import { getAllPackageData } from './npm-registry'
 import { packageCache, PackageVersionData } from './cache-manager'
@@ -18,9 +17,9 @@ import { OnBatchReadyCallback } from '../types'
 const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
   connections: MAX_CONCURRENT_REQUESTS,
   pipelining: 10,
-  keepAliveTimeout: REQUEST_TIMEOUT,
-  keepAliveMaxTimeout: REQUEST_TIMEOUT,
-  connectTimeout: REQUEST_TIMEOUT,
+  keepAliveTimeout: JSDELIVR_POOL_TIMEOUT,
+  keepAliveMaxTimeout: JSDELIVR_POOL_TIMEOUT,
+  connectTimeout: JSDELIVR_POOL_TIMEOUT,
 })
 
 // Batch configuration for progressive loading
@@ -80,7 +79,11 @@ async function fetchPackageJsonFromJsdelivr(
         continue
       }
 
-      // Non-timeout error or final attempt — give up
+      // Non-timeout error or final attempt — give up, but preserve observability.
+      console.error(
+        `jsDelivr fetch failed for ${packageName}@${versionTag} on attempt ${attempt + 1}/${JSDELIVR_RETRY_TIMEOUTS.length}`,
+        error
+      )
       return null
     }
   }
@@ -145,9 +148,6 @@ export async function getAllPackageDataFromJsdelivr(
     }
   }
 
-  // Track which packages have been timed out so background work doesn't double-count
-  const timedOut = new Set<string>()
-
   // Process individual package fetch with immediate npm fallback on failure
   const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
     const currentVersion = currentVersions?.get(packageName)
@@ -182,16 +182,12 @@ export async function getAllPackageDataFromJsdelivr(
       // Execute all requests simultaneously
       const results = await Promise.all(requests)
 
-      // If timed out while waiting, don't update progress (already counted)
-      if (timedOut.has(packageName)) return
-
       const latestResult = results[0]
       const majorResult = results[1]
 
       if (!latestResult) {
         // Package not on jsDelivr, immediately try npm fallback
         const npmData = await getAllPackageData([packageName])
-        if (timedOut.has(packageName)) return
         const result = npmData.get(packageName)
 
         if (result) {
@@ -229,12 +225,9 @@ export async function getAllPackageDataFromJsdelivr(
       }
       addToBatch(packageName, result)
     } catch (error) {
-      if (timedOut.has(packageName)) return
-
       // On error, immediately try npm fallback
       try {
         const npmData = await getAllPackageData([packageName])
-        if (timedOut.has(packageName)) return
         const result = npmData.get(packageName)
 
         if (result) {
@@ -253,29 +246,8 @@ export async function getAllPackageDataFromJsdelivr(
     }
   }
 
-  // Fire all requests simultaneously with a per-package timeout cap
-  // This ensures no single slow package can hold up the entire batch
-  await Promise.all(
-    packageNames.map((packageName) => {
-      let timer: NodeJS.Timeout
-      return Promise.race([
-        fetchPackageWithFallback(packageName).finally(() => clearTimeout(timer)),
-        new Promise<void>((resolve) => {
-          timer = setTimeout(() => {
-            // If this package hasn't completed yet, mark it timed out and skip
-            if (!packageData.has(packageName)) {
-              timedOut.add(packageName)
-              completedCount++
-              if (onProgress) {
-                onProgress(packageName, completedCount, total)
-              }
-            }
-            resolve()
-          }, PER_PACKAGE_TIMEOUT)
-        }),
-      ])
-    })
-  )
+  // Fire all requests simultaneously - each request internally handles retries/fallback.
+  await Promise.all(packageNames.map(fetchPackageWithFallback))
 
   // Flush any remaining batch items
   flushBatch()
