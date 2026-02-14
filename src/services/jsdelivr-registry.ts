@@ -26,11 +26,32 @@ const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
 const BATCH_SIZE = 5
 const BATCH_TIMEOUT_MS = 500
 
+const isTimeoutError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const maybeCode = (error as Error & { code?: string }).code
+  const message = error.message.toLowerCase()
+  return (
+    maybeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
+    maybeCode === 'UND_ERR_BODY_TIMEOUT' ||
+    maybeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
+    error.name === 'HeadersTimeoutError' ||
+    error.name === 'BodyTimeoutError' ||
+    error.name === 'ConnectTimeoutError' ||
+    message.includes('timeout')
+  )
+}
+
+const isRetryableStatus = (statusCode: number): boolean => statusCode === 429 || statusCode >= 500
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 /**
  * Fetches package.json from jsdelivr CDN for a specific version tag using undici pool.
  * Uses connection pooling and keep-alive for maximum performance.
- * Retries on timeout to allow CDN cache warming — the first request triggers caching,
- * and subsequent retries hit the warm cache.
+ * Retries on transient failures while keeping a short fallback budget.
  * @param packageName - The npm package name
  * @param versionTag - The version tag (e.g., '14', 'latest')
  * @returns The package.json content or null if not found
@@ -57,6 +78,14 @@ async function fetchPackageJsonFromJsdelivr(
       if (statusCode !== 200) {
         // Consume body to prevent memory leaks
         await body.text()
+        if (isRetryableStatus(statusCode) && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
+          const delay =
+            JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1] || 0
+          if (delay > 0) {
+            await sleep(delay)
+          }
+          continue
+        }
         return null
       }
 
@@ -64,18 +93,12 @@ async function fetchPackageJsonFromJsdelivr(
       const data = JSON.parse(text) as { version?: string }
       return data.version ? { version: data.version } : null
     } catch (error) {
-      const isTimeout =
-        error instanceof Error &&
-        (error.message.includes('timeout') ||
-          error.message.includes('Timeout') ||
-          error.name === 'HeadersTimeoutError' ||
-          error.name === 'BodyTimeoutError')
-
-      if (isTimeout && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
-        // Wait before retrying — CDN should be caching the response
+      if (isTimeoutError(error) && attempt < JSDELIVR_RETRY_TIMEOUTS.length - 1) {
         const delay =
-          JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1]
-        await new Promise((resolve) => setTimeout(resolve, delay))
+          JSDELIVR_RETRY_DELAYS[attempt] || JSDELIVR_RETRY_DELAYS[JSDELIVR_RETRY_DELAYS.length - 1] || 0
+        if (delay > 0) {
+          await sleep(delay)
+        }
         continue
       }
 
@@ -170,20 +193,7 @@ export async function getAllPackageDataFromJsdelivr(
         ? semver.major(semver.coerce(currentVersion) || '0.0.0').toString()
         : null
 
-      // Prepare requests: always fetch @latest, @major if we have a current version
-      const requests: Array<Promise<{ version: string } | null>> = [
-        fetchPackageJsonFromJsdelivr(packageName, 'latest'),
-      ]
-
-      if (majorVersion) {
-        requests.push(fetchPackageJsonFromJsdelivr(packageName, majorVersion))
-      }
-
-      // Execute all requests simultaneously
-      const results = await Promise.all(requests)
-
-      const latestResult = results[0]
-      const majorResult = results[1]
+      const latestResult = await fetchPackageJsonFromJsdelivr(packageName, 'latest')
 
       if (!latestResult) {
         // Package not on jsDelivr, immediately try npm fallback
@@ -204,6 +214,11 @@ export async function getAllPackageDataFromJsdelivr(
       }
 
       const latestVersion = latestResult.version
+      const latestMajorVersion = semver.major(semver.coerce(latestVersion) || '0.0.0').toString()
+      const shouldFetchMajorVersion = Boolean(majorVersion && majorVersion !== latestMajorVersion)
+      const majorResult = shouldFetchMajorVersion
+        ? await fetchPackageJsonFromJsdelivr(packageName, majorVersion as string)
+        : null
       const allVersions = [latestVersion]
 
       // Add the major version result if different from latest
