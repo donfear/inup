@@ -10,6 +10,7 @@ import {
 import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
 import { DEFAULT_REGISTRY, isPackageIgnored } from '../config'
 import { ConsoleUtils } from '../ui/utils'
+import { debugLog } from '../utils'
 
 export class PackageDetector {
   private packageJsonPath: string | null = null
@@ -38,32 +39,51 @@ export class PackageDetector {
     }
 
     const packages: PackageInfo[] = []
+    const t0 = Date.now()
+    debugLog.info('PackageDetector', `Starting scan in ${this.cwd}`)
 
     // Always check all package.json files recursively with timeout protection
     this.showProgress('🔍 Scanning repository for package.json files...')
+    const tScan = Date.now()
     const allPackageJsonFiles = this.findPackageJsonFilesWithTimeout(30000) // 30 second timeout
+    debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
+      files: allPackageJsonFiles,
+    })
     this.showProgress(
       `🔍 Found ${allPackageJsonFiles.length} package.json file${allPackageJsonFiles.length === 1 ? '' : 's'}`
     )
 
     // Step 2: Collect all dependencies from package.json files (parallelized)
     this.showProgress('🔍 Reading dependencies from package.json files...')
+    const tDeps = Date.now()
     const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, {
       includePeerDeps: true,
       includeOptionalDeps: true,
     })
+    debugLog.perf('PackageDetector', `dependency collection (${allDepsRaw.length} raw deps)`, tDeps)
 
     // Step 3: Get unique package names while filtering out workspace references and ignored packages
     this.showProgress('🔍 Identifying unique packages...')
     const uniquePackageNames = new Set<string>()
     const allDeps: typeof allDepsRaw = []
     let ignoredCount = 0
+    const seenWorkspaceRefs = new Set<string>()
+    const seenIgnored = new Set<string>()
     for (const dep of allDepsRaw) {
       if (this.isWorkspaceReference(dep.version)) {
+        const key = `${dep.name}@${dep.version}`
+        if (!seenWorkspaceRefs.has(key)) {
+          seenWorkspaceRefs.add(key)
+          debugLog.info('PackageDetector', `skipping workspace ref: ${key}`)
+        }
         continue
       }
       if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
         ignoredCount++
+        if (!seenIgnored.has(dep.name)) {
+          seenIgnored.add(dep.name)
+          debugLog.info('PackageDetector', `ignoring package: ${dep.name}`)
+        }
         continue
       }
       allDeps.push(dep)
@@ -73,6 +93,10 @@ export class PackageDetector {
       this.showProgress(`🔍 Skipped ${ignoredCount} ignored package(s)`)
     }
     const packageNames = Array.from(uniquePackageNames)
+    debugLog.info(
+      'PackageDetector',
+      `${packageNames.length} unique packages to check, ${ignoredCount} ignored`
+    )
 
     // Step 4: Fetch all package data in one call per package
     // Create a map of package names to their current versions for major version optimization
@@ -84,6 +108,8 @@ export class PackageDetector {
       }
     }
 
+    const tFetch = Date.now()
+    debugLog.info('PackageDetector', `fetching version data via ${DEFAULT_REGISTRY}`)
     const allPackageData =
       DEFAULT_REGISTRY === 'jsdelivr'
         ? await getAllPackageDataFromJsdelivr(
@@ -99,12 +125,25 @@ export class PackageDetector {
               this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
             }
           )
+    debugLog.perf(
+      'PackageDetector',
+      `registry fetch (${allPackageData.size}/${packageNames.length} resolved)`,
+      tFetch
+    )
 
+    const loggedOutdated = new Set<string>()
+    const loggedNoData = new Set<string>()
     try {
       for (const dep of allDeps) {
         try {
           const packageData = allPackageData.get(dep.name)
-          if (!packageData) continue
+          if (!packageData) {
+            if (!loggedNoData.has(dep.name)) {
+              loggedNoData.add(dep.name)
+              debugLog.warn('PackageDetector', `no data returned for ${dep.name} — skipping`)
+            }
+            continue
+          }
 
           const { latestVersion, allVersions } = packageData
 
@@ -122,6 +161,17 @@ export class PackageDetector {
           const hasMajorUpdate = semver.major(latestClean) > semver.major(installedClean)
           const isOutdated = hasRangeUpdate || hasMajorUpdate
 
+          if (isOutdated) {
+            const outdatedKey = `${dep.name}@${dep.version}`
+            if (!loggedOutdated.has(outdatedKey)) {
+              loggedOutdated.add(outdatedKey)
+              debugLog.info(
+                'PackageDetector',
+                `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${latestVersion}`
+              )
+            }
+          }
+
           packages.push({
             name: dep.name,
             currentVersion: dep.version, // Keep original version specifier with prefix
@@ -138,6 +188,7 @@ export class PackageDetector {
             hasMajorUpdate,
           })
         } catch (error) {
+          debugLog.error('PackageDetector', `error processing ${dep.name}`, error)
           // Skip packages that can't be checked (private packages, etc.)
           packages.push({
             name: dep.name,
@@ -157,9 +208,16 @@ export class PackageDetector {
         }
       }
 
+      const outdatedCount = packages.filter((p) => p.isOutdated).length
+      debugLog.perf(
+        'PackageDetector',
+        `total scan complete (${outdatedCount} outdated of ${packages.length} deps)`,
+        t0
+      )
       return packages
     } catch (error) {
       this.showProgress('❌ Failed to check packages\n')
+      debugLog.error('PackageDetector', 'fatal error during package check', error)
       throw error
     }
   }

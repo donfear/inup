@@ -4,4 +4,7 @@ export const JSDELIVR_CDN_URL = 'https://cdn.jsdelivr.net/npm'
 export const MAX_CONCURRENT_REQUESTS = 150
 export const CACHE_TTL = 5 * 60 * 1000 // 5 minutes in milliseconds
 export const REQUEST_TIMEOUT = 60000 // 60 seconds in milliseconds
+export const JSDELIVR_RETRY_TIMEOUTS = [2000, 3500] // short retry budget to keep fallback fast
+export const JSDELIVR_RETRY_DELAYS = [150] // tiny backoff between jsDelivr retries in ms
+export const JSDELIVR_POOL_TIMEOUT = 60000 // keep-alive/connect lifecycle should be looser than per-request timeouts
 export const DEFAULT_REGISTRY: 'jsdelivr' | 'npm' = 'jsdelivr'

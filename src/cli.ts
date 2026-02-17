@@ -8,6 +8,7 @@ import { UpgradeRunner } from './index'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig } from './config'
 import { PackageManager } from './types'
+import { enableDebugLogging } from './utils'
 
 const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 
@@ -21,6 +22,7 @@ program
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option('-i, --ignore <packages>', 'ignore packages (comma-separated, supports glob patterns like @babel/*)')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
+  .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
 
@@ -28,6 +30,10 @@ program
     const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
 
     const cwd = resolve(options.dir)
+
+    if (options.debug || process.env.INUP_DEBUG === '1') {
+      enableDebugLogging()
+    }
 
     // Load project config from .inuprc
     const projectConfig = loadProjectConfig(cwd)
@@ -67,6 +73,7 @@ program
       excludePatterns,
       ignorePackages,
       packageManager,
+      debug: options.debug || process.env.INUP_DEBUG === '1',
     })
     await upgrader.run()
 
