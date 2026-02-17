@@ -208,8 +208,10 @@ export class StateManager {
 
   exitFilterMode(clearQuery: boolean = false): void {
     this.filterManager.exitFilterMode(clearQuery)
-    this.navigationManager.setCurrentRow(0)
-    this.navigationManager.setScrollOffset(0)
+    if (clearQuery) {
+      this.navigationManager.setCurrentRow(0)
+      this.navigationManager.setScrollOffset(0)
+    }
     // Use incremental render for search mode toggle (no blink)
   }
 
@@ -272,8 +274,8 @@ export class StateManager {
     this.renderState.forceFullRender = isInitial
   }
 
-  resetForResize(): void {
-    const totalItems = this.renderState.renderableItems.length || this.displayState.maxVisibleItems
+  resetForResize(totalFilteredItems?: number): void {
+    const totalItems = totalFilteredItems || this.renderState.renderableItems.length || this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
   }

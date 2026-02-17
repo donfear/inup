@@ -156,9 +156,9 @@ export class NavigationManager {
     if (targetVisualIndex < this.state.scrollOffset) {
       this.state.scrollOffset = targetVisualIndex
     }
-    // Scrolling down: scroll down by 1 item (smooth scrolling)
+    // Scrolling down: adjust scroll to keep item visible
     else if (visualIndex >= this.state.scrollOffset + this.maxVisibleItems) {
-      this.state.scrollOffset += 1
+      this.state.scrollOffset = visualIndex - this.maxVisibleItems + 1
     }
 
     // Ensure scrollOffset doesn't go negative or beyond bounds

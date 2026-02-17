@@ -253,7 +253,7 @@ export class InteractiveUI {
           case 'resize':
             const heightChanged = stateManager.updateTerminalHeight(action.height)
             if (heightChanged) {
-              stateManager.resetForResize()
+              stateManager.resetForResize(filteredStates.length)
             } else {
               // Even if height didn't change, width might have changed
               // Force a full re-render to clear any wrapping issues
@@ -451,7 +451,8 @@ export class InteractiveUI {
         // This handles cases where process.stdout.rows might not be accurate at startup
         const currentHeight = this.getTerminalHeight()
         if (stateManager.updateTerminalHeight(currentHeight)) {
-          stateManager.resetForResize()
+          const initialFiltered = stateManager.getFilteredStates(states)
+          stateManager.resetForResize(initialFiltered.length)
         }
 
         // Initial render
