@@ -71,6 +71,7 @@ export interface UpgradeOptions {
   excludePatterns?: string[]
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
+  debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
 }
 
 export interface PackageJson {

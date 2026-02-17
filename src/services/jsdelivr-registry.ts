@@ -11,6 +11,7 @@ import { getAllPackageData } from './npm-registry'
 import { packageCache, PackageVersionData } from './cache-manager'
 import { ConsoleUtils } from '../ui/utils'
 import { OnBatchReadyCallback } from '../types'
+import { debugLog } from '../utils'
 
 // Batch configuration for progressive loading
 const BATCH_SIZE = 5
@@ -267,6 +268,7 @@ async function fetchPackageJsonFromJsdelivr(
 
   for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
     const timeout = RETRY_TIMEOUTS[attempt]
+    const tReq = Date.now()
     try {
       const { statusCode, headers, body } = await request(url, {
         dispatcher: jsdelivrPool,
@@ -283,17 +285,20 @@ async function fetchPackageJsonFromJsdelivr(
         await consumeBodySafely(body)
         if (isRetryableStatus(statusCode) && attempt < RETRY_TIMEOUTS.length - 1) {
           const delay = getRetryDelay(attempt, headers as ResponseHeaders)
+          debugLog.warn('jsdelivr', `${packageName}@${versionTag} HTTP ${statusCode}, retry ${attempt + 1} in ${delay}ms`)
           if (delay > 0) {
             await sleep(delay)
           }
           continue
         }
+        debugLog.warn('jsdelivr', `${packageName}@${versionTag} HTTP ${statusCode}, no more retries`)
         return null
       }
 
       const text = await body.text()
       const data = JSON.parse(text) as { version?: unknown }
       const version = typeof data.version === 'string' ? data.version.trim() : ''
+      debugLog.perf('jsdelivr', `fetch ${packageName}@${versionTag} → ${version || 'no version'}`, tReq)
       return version ? { version } : null
     } catch (error) {
       if (
@@ -301,6 +306,7 @@ async function fetchPackageJsonFromJsdelivr(
         attempt < RETRY_TIMEOUTS.length - 1
       ) {
         const delay = getRetryDelay(attempt)
+        debugLog.warn('jsdelivr', `${packageName}@${versionTag} transient error on attempt ${attempt + 1}, retry in ${delay}ms`, error)
         if (delay > 0) {
           await sleep(delay)
         }
@@ -313,6 +319,9 @@ async function fetchPackageJsonFromJsdelivr(
           `jsDelivr fetch failed for ${packageName}@${versionTag} on attempt ${attempt + 1}/${RETRY_TIMEOUTS.length}`,
           error
         )
+        debugLog.error('jsdelivr', `unexpected error for ${packageName}@${versionTag} attempt ${attempt + 1}`, error)
+      } else {
+        debugLog.warn('jsdelivr', `${packageName}@${versionTag} exhausted retries`, error)
       }
       return null
     }
@@ -413,16 +422,22 @@ export async function getAllPackageDataFromJsdelivr(
   const inFlightLookups = new Map<string, Promise<PackageVersionData | null>>()
 
   const fetchFromNpmFallback = async (packageName: string): Promise<PackageVersionData | null> => {
+    const tFallback = Date.now()
+    debugLog.info('jsdelivr', `falling back to npm registry for ${packageName}`)
     try {
       const npmData = await getAllPackageData([packageName])
       const result = npmData.get(packageName) ?? null
 
       if (result) {
         packageCache.set(packageName, result)
+        debugLog.perf('jsdelivr', `npm fallback resolved ${packageName} → ${result.latestVersion}`, tFallback)
+      } else {
+        debugLog.warn('jsdelivr', `npm fallback returned no data for ${packageName}`)
       }
 
       return result
-    } catch {
+    } catch (error) {
+      debugLog.error('jsdelivr', `npm fallback failed for ${packageName}`, error)
       return null
     }
   }
@@ -477,6 +492,7 @@ export async function getAllPackageDataFromJsdelivr(
   ): Promise<PackageVersionData | null> => {
     const cached = packageCache.get(packageName)
     if (cached) {
+      debugLog.info('jsdelivr', `cache hit: ${packageName} → ${cached.latestVersion}`)
       return cached
     }
 
