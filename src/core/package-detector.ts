@@ -46,7 +46,9 @@ export class PackageDetector {
     this.showProgress('🔍 Scanning repository for package.json files...')
     const tScan = Date.now()
     const allPackageJsonFiles = this.findPackageJsonFilesWithTimeout(30000) // 30 second timeout
-    debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, { files: allPackageJsonFiles })
+    debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
+      files: allPackageJsonFiles,
+    })
     this.showProgress(
       `🔍 Found ${allPackageJsonFiles.length} package.json file${allPackageJsonFiles.length === 1 ? '' : 's'}`
     )
@@ -91,7 +93,10 @@ export class PackageDetector {
       this.showProgress(`🔍 Skipped ${ignoredCount} ignored package(s)`)
     }
     const packageNames = Array.from(uniquePackageNames)
-    debugLog.info('PackageDetector', `${packageNames.length} unique packages to check, ${ignoredCount} ignored`)
+    debugLog.info(
+      'PackageDetector',
+      `${packageNames.length} unique packages to check, ${ignoredCount} ignored`
+    )
 
     // Step 4: Fetch all package data in one call per package
     // Create a map of package names to their current versions for major version optimization
@@ -120,7 +125,11 @@ export class PackageDetector {
               this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
             }
           )
-    debugLog.perf('PackageDetector', `registry fetch (${allPackageData.size}/${packageNames.length} resolved)`, tFetch)
+    debugLog.perf(
+      'PackageDetector',
+      `registry fetch (${allPackageData.size}/${packageNames.length} resolved)`,
+      tFetch
+    )
 
     const loggedOutdated = new Set<string>()
     const loggedNoData = new Set<string>()
@@ -156,7 +165,10 @@ export class PackageDetector {
             const outdatedKey = `${dep.name}@${dep.version}`
             if (!loggedOutdated.has(outdatedKey)) {
               loggedOutdated.add(outdatedKey)
-              debugLog.info('PackageDetector', `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${latestVersion}`)
+              debugLog.info(
+                'PackageDetector',
+                `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${latestVersion}`
+              )
             }
           }
 
@@ -197,7 +209,11 @@ export class PackageDetector {
       }
 
       const outdatedCount = packages.filter((p) => p.isOutdated).length
-      debugLog.perf('PackageDetector', `total scan complete (${outdatedCount} outdated of ${packages.length} deps)`, t0)
+      debugLog.perf(
+        'PackageDetector',
+        `total scan complete (${outdatedCount} outdated of ${packages.length} deps)`,
+        t0
+      )
       return packages
     } catch (error) {
       this.showProgress('❌ Failed to check packages\n')

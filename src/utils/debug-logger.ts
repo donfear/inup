@@ -74,9 +74,12 @@ function write(level: LogLevel, context: string, message: string, extra?: unknow
 }
 
 export const debugLog = {
-  info: (context: string, message: string, extra?: unknown) => write('INFO', context, message, extra),
-  warn: (context: string, message: string, extra?: unknown) => write('WARN', context, message, extra),
-  error: (context: string, message: string, extra?: unknown) => write('ERROR', context, message, extra),
+  info: (context: string, message: string, extra?: unknown) =>
+    write('INFO', context, message, extra),
+  warn: (context: string, message: string, extra?: unknown) =>
+    write('WARN', context, message, extra),
+  error: (context: string, message: string, extra?: unknown) =>
+    write('ERROR', context, message, extra),
 
   /** Log elapsed time since a start timestamp obtained via Date.now() */
   perf: (context: string, label: string, startMs: number, extra?: unknown) => {

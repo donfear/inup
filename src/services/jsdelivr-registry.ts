@@ -33,7 +33,9 @@ const toPositiveInteger = (value: number): number | null => {
 const RETRY_TIMEOUTS = (() => {
   const configured = Array.from(
     new Set(
-      JSDELIVR_RETRY_TIMEOUTS.map(toPositiveInteger).filter((value): value is number => value !== null)
+      JSDELIVR_RETRY_TIMEOUTS.map(toPositiveInteger).filter(
+        (value): value is number => value !== null
+      )
     )
   ).sort((a, b) => a - b)
   return configured.length > 0 ? configured : [DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS]
@@ -87,7 +89,9 @@ const getHeaderValue = (headers: ResponseHeaders, name: string): string | null =
     return direct.find((value) => typeof value === 'string') ?? null
   }
 
-  const headerEntry = Object.entries(headers).find(([headerName]) => headerName.toLowerCase() === name)
+  const headerEntry = Object.entries(headers).find(
+    ([headerName]) => headerName.toLowerCase() === name
+  )
   if (!headerEntry) {
     return null
   }
@@ -285,20 +289,30 @@ async function fetchPackageJsonFromJsdelivr(
         await consumeBodySafely(body)
         if (isRetryableStatus(statusCode) && attempt < RETRY_TIMEOUTS.length - 1) {
           const delay = getRetryDelay(attempt, headers as ResponseHeaders)
-          debugLog.warn('jsdelivr', `${packageName}@${versionTag} HTTP ${statusCode}, retry ${attempt + 1} in ${delay}ms`)
+          debugLog.warn(
+            'jsdelivr',
+            `${packageName}@${versionTag} HTTP ${statusCode}, retry ${attempt + 1} in ${delay}ms`
+          )
           if (delay > 0) {
             await sleep(delay)
           }
           continue
         }
-        debugLog.warn('jsdelivr', `${packageName}@${versionTag} HTTP ${statusCode}, no more retries`)
+        debugLog.warn(
+          'jsdelivr',
+          `${packageName}@${versionTag} HTTP ${statusCode}, no more retries`
+        )
         return null
       }
 
       const text = await body.text()
       const data = JSON.parse(text) as { version?: unknown }
       const version = typeof data.version === 'string' ? data.version.trim() : ''
-      debugLog.perf('jsdelivr', `fetch ${packageName}@${versionTag} → ${version || 'no version'}`, tReq)
+      debugLog.perf(
+        'jsdelivr',
+        `fetch ${packageName}@${versionTag} → ${version || 'no version'}`,
+        tReq
+      )
       return version ? { version } : null
     } catch (error) {
       if (
@@ -306,7 +320,11 @@ async function fetchPackageJsonFromJsdelivr(
         attempt < RETRY_TIMEOUTS.length - 1
       ) {
         const delay = getRetryDelay(attempt)
-        debugLog.warn('jsdelivr', `${packageName}@${versionTag} transient error on attempt ${attempt + 1}, retry in ${delay}ms`, error)
+        debugLog.warn(
+          'jsdelivr',
+          `${packageName}@${versionTag} transient error on attempt ${attempt + 1}, retry in ${delay}ms`,
+          error
+        )
         if (delay > 0) {
           await sleep(delay)
         }
@@ -319,7 +337,11 @@ async function fetchPackageJsonFromJsdelivr(
           `jsDelivr fetch failed for ${packageName}@${versionTag} on attempt ${attempt + 1}/${RETRY_TIMEOUTS.length}`,
           error
         )
-        debugLog.error('jsdelivr', `unexpected error for ${packageName}@${versionTag} attempt ${attempt + 1}`, error)
+        debugLog.error(
+          'jsdelivr',
+          `unexpected error for ${packageName}@${versionTag} attempt ${attempt + 1}`,
+          error
+        )
       } else {
         debugLog.warn('jsdelivr', `${packageName}@${versionTag} exhausted retries`, error)
       }
@@ -430,7 +452,11 @@ export async function getAllPackageDataFromJsdelivr(
 
       if (result) {
         packageCache.set(packageName, result)
-        debugLog.perf('jsdelivr', `npm fallback resolved ${packageName} → ${result.latestVersion}`, tFallback)
+        debugLog.perf(
+          'jsdelivr',
+          `npm fallback resolved ${packageName} → ${result.latestVersion}`,
+          tFallback
+        )
       } else {
         debugLog.warn('jsdelivr', `npm fallback returned no data for ${packageName}`)
       }
@@ -518,7 +544,10 @@ export async function getAllPackageDataFromJsdelivr(
         addToBatch(packageName, result)
       }
     } catch (error) {
-      console.error(`Failed to resolve package data for ${packageName}; continuing with others.`, error)
+      console.error(
+        `Failed to resolve package data for ${packageName}; continuing with others.`,
+        error
+      )
     } finally {
       completedCount++
       emitProgress(packageName, completedCount, total)
