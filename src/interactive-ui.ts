@@ -253,7 +253,7 @@ export class InteractiveUI {
           case 'resize':
             const heightChanged = stateManager.updateTerminalHeight(action.height)
             if (heightChanged) {
-              stateManager.resetForResize()
+              stateManager.resetForResize(filteredStates.length)
             } else {
               // Even if height didn't change, width might have changed
               // Force a full re-render to clear any wrapping issues

@@ -272,8 +272,8 @@ export class StateManager {
     this.renderState.forceFullRender = isInitial
   }
 
-  resetForResize(): void {
-    const totalItems = this.renderState.renderableItems.length || this.displayState.maxVisibleItems
+  resetForResize(totalFilteredItems?: number): void {
+    const totalItems = totalFilteredItems || this.renderState.renderableItems.length || this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
   }
