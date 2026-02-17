@@ -451,7 +451,8 @@ export class InteractiveUI {
         // This handles cases where process.stdout.rows might not be accurate at startup
         const currentHeight = this.getTerminalHeight()
         if (stateManager.updateTerminalHeight(currentHeight)) {
-          stateManager.resetForResize()
+          const initialFiltered = stateManager.getFilteredStates(states)
+          stateManager.resetForResize(initialFiltered.length)
         }
 
         // Initial render
