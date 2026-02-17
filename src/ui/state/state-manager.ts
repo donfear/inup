@@ -208,8 +208,10 @@ export class StateManager {
 
   exitFilterMode(clearQuery: boolean = false): void {
     this.filterManager.exitFilterMode(clearQuery)
-    this.navigationManager.setCurrentRow(0)
-    this.navigationManager.setScrollOffset(0)
+    if (clearQuery) {
+      this.navigationManager.setCurrentRow(0)
+      this.navigationManager.setScrollOffset(0)
+    }
     // Use incremental render for search mode toggle (no blink)
   }
 
