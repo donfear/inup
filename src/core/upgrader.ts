@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { existsSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
+import { spawnSync } from 'child_process'
 import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo } from '../types'
 import { executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
@@ -70,15 +71,16 @@ export class PackageUpgrader {
       return // Skip install, let user do it manually
     }
 
-    const spinner = createSpinner(`Running ${this.packageManager.displayName} install...`).start()
+    console.log(chalk.cyan(`\n📦 Running ${this.packageManager.installCommand}...\n`))
 
-    try {
-      executeCommand(this.packageManager.installCommand, installDir)
-      spinner.success()
-    } catch (error) {
-      spinner.error()
-      console.error(chalk.red(`Error: ${error}`))
-      throw error
+    const [cmd, ...args] = this.packageManager.installCommand.split(' ')
+    const result = spawnSync(cmd, args, {
+      cwd: installDir,
+      stdio: 'inherit',
+    })
+
+    if (result.status !== 0) {
+      throw new Error(`${this.packageManager.installCommand} exited with code ${result.status}`)
     }
   }
 
