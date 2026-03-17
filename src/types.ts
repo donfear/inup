@@ -19,6 +19,7 @@ export interface PackageInfo {
 export interface PackageUpgradeChoice {
   name: string
   packageJsonPath: string // Path to the package.json file to upgrade
+  dependencyType: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
   upgradeType: 'none' | 'range' | 'latest'
   targetVersion: string
   currentVersionSpecifier: string // Original version specifier with prefix

@@ -70,7 +70,7 @@ export class UpgradeRunner {
         // Group by package name and version specifier
         const choiceMap = new Map<string, 'range' | 'latest'>()
         selectedChoices.forEach((choice) => {
-          const key = `${choice.name}@${choice.currentVersionSpecifier}`
+          const key = `${choice.name}@${choice.currentVersionSpecifier}@${choice.dependencyType}`
           choiceMap.set(key, choice.upgradeType as 'range' | 'latest')
         })
         // Convert to the format expected by selectPackagesToUpgrade
@@ -117,7 +117,10 @@ export class UpgradeRunner {
     // Validate that all selected packages have valid target versions
     const invalidChoices = selectedChoices.filter((choice) => {
       const packageInfo = allPackages.find(
-        (pkg) => pkg.name === choice.name && pkg.packageJsonPath === choice.packageJsonPath
+        (pkg) =>
+          pkg.name === choice.name &&
+          pkg.packageJsonPath === choice.packageJsonPath &&
+          pkg.type === choice.dependencyType
       )
       return !packageInfo || !choice.targetVersion
     })
