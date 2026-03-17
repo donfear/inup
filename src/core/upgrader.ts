@@ -86,21 +86,16 @@ export class PackageUpgrader {
 
   private groupChoicesByFileAndType(
     choices: PackageUpgradeChoice[],
-    packageInfos: PackageInfo[]
+    _packageInfos: PackageInfo[]
   ): Record<string, PackageUpgradeChoice[]> {
     const groups: Record<string, PackageUpgradeChoice[]> = {}
 
     choices.forEach((choice) => {
-      const info = packageInfos.find(
-        (p) => p.name === choice.name && p.packageJsonPath === choice.packageJsonPath
-      )
-      if (info) {
-        const key = `${choice.packageJsonPath}|${info.type}`
-        if (!groups[key]) {
-          groups[key] = []
-        }
-        groups[key].push(choice)
+      const key = `${choice.packageJsonPath}|${choice.dependencyType}`
+      if (!groups[key]) {
+        groups[key] = []
       }
+      groups[key].push(choice)
     })
 
     return groups

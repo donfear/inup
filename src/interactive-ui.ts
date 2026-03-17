@@ -56,7 +56,7 @@ export class InteractiveUI {
     >()
 
     for (const pkg of outdatedPackages) {
-      const key = `${pkg.name}@${pkg.currentVersion}`
+      const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
       if (!uniquePackages.has(key)) {
         uniquePackages.set(key, {
           pkg,
@@ -96,7 +96,7 @@ export class InteractiveUI {
       const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
 
       // Use previous selection if available, otherwise default to 'none'
-      const key = `${pkg.name}@${pkg.currentVersion}`
+      const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
       const previousSelection = previousSelections?.get(key) || 'none'
 
       return {
@@ -135,6 +135,7 @@ export class InteractiveUI {
           choices.push({
             name: state.name,
             packageJsonPath,
+            dependencyType: state.type,
             upgradeType: state.selectedOption,
             targetVersion: targetVersionWithPrefix,
             currentVersionSpecifier: state.currentVersionSpecifier,
