@@ -85,7 +85,9 @@ export class PackageUpgrader {
 
     if (result.status !== 0) {
       if (result.signal) {
-        throw new Error(`${this.packageManager.installCommand} terminated by signal ${result.signal}`)
+        throw new Error(
+          `${this.packageManager.installCommand} terminated by signal ${result.signal}`
+        )
       }
       throw new Error(`${this.packageManager.installCommand} exited with code ${result.status}`)
     }
