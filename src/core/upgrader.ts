@@ -73,13 +73,20 @@ export class PackageUpgrader {
 
     console.log(chalk.cyan(`\n📦 Running ${this.packageManager.installCommand}...\n`))
 
-    const [cmd, ...args] = this.packageManager.installCommand.split(' ')
-    const result = spawnSync(cmd, args, {
+    const result = spawnSync(this.packageManager.installCommand, {
       cwd: installDir,
       stdio: 'inherit',
+      shell: true,
     })
 
+    if (result.error) {
+      throw result.error
+    }
+
     if (result.status !== 0) {
+      if (result.signal) {
+        throw new Error(`${this.packageManager.installCommand} terminated by signal ${result.signal}`)
+      }
       throw new Error(`${this.packageManager.installCommand} exited with code ${result.status}`)
     }
   }
