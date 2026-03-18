@@ -3,11 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const requestMock = vi.fn()
 const closeMock = vi.fn()
 const getAllPackageDataMock = vi.fn()
+const PoolMock = vi.fn(
+  class MockPool {
+    close = closeMock
+  }
+)
 
 vi.mock('undici', () => ({
-  Pool: vi.fn().mockImplementation(() => ({
-    close: closeMock,
-  })),
+  Pool: PoolMock,
   request: requestMock,
 }))
 
