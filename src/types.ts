@@ -70,6 +70,7 @@ export interface PackageManagerInfo {
 export interface UpgradeOptions {
   cwd?: string
   excludePatterns?: string[]
+  maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log

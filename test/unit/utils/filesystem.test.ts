@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -9,6 +9,7 @@ import {
   collectAllDependencies,
   collectAllDependenciesAsync,
   findAllPackageJsonFiles,
+  findAllPackageJsonFilesAsync,
   findWorkspaceRoot,
 } from '../../../src/utils/filesystem'
 
@@ -265,6 +266,18 @@ describe('filesystem utils', () => {
       expect(result[0]).toBe(join(testDir, 'package.json'))
     })
 
+    it('should skip hidden directories', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const hiddenDir = join(testDir, '.turbo', 'nested-package')
+      mkdirSync(hiddenDir, { recursive: true })
+      writeFileSync(join(hiddenDir, 'package.json'), '{}')
+
+      const result = findAllPackageJsonFiles(testDir)
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
     it('should skip directories matching exclude patterns', () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
 
@@ -295,6 +308,34 @@ describe('filesystem utils', () => {
       expect(progressCalls.length).toBeGreaterThan(0)
     })
 
+    it('should keep reporting progress while scanning a large directory', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const largeDir = join(testDir, 'large-dir')
+      mkdirSync(largeDir, { recursive: true })
+      for (let i = 0; i < 20; i++) {
+        writeFileSync(join(largeDir, `file-${i}.txt`), 'content')
+      }
+
+      const progressCalls: Array<{ current: string; found: number }> = []
+      let now = 0
+      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+        now += 100
+        return now
+      })
+
+      try {
+        findAllPackageJsonFiles(testDir, [], 10, (current, found) => {
+          progressCalls.push({ current, found })
+        })
+      } finally {
+        dateNowSpy.mockRestore()
+      }
+
+      expect(progressCalls.length).toBeGreaterThan(1)
+      expect(progressCalls.some((call) => call.current === 'large-dir')).toBe(true)
+    })
+
     it('should respect max depth limit', () => {
       // Create deeply nested structure
       let currentDir = testDir
@@ -307,6 +348,95 @@ describe('filesystem utils', () => {
       const result = findAllPackageJsonFiles(testDir, [], 5)
 
       // Should find less than 15 due to depth limit
+      expect(result.length).toBeLessThan(15)
+    })
+  })
+
+  describe('findAllPackageJsonFilesAsync()', () => {
+    it('should find package.json files recursively', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const packagesDir = join(testDir, 'packages')
+      mkdirSync(join(packagesDir, 'pkg-a'), { recursive: true })
+      mkdirSync(join(packagesDir, 'pkg-b'), { recursive: true })
+
+      writeFileSync(join(packagesDir, 'pkg-a', 'package.json'), '{}')
+      writeFileSync(join(packagesDir, 'pkg-b', 'package.json'), '{}')
+
+      const result = await findAllPackageJsonFilesAsync(testDir)
+
+      expect(result).toHaveLength(3)
+      expect(result).toContain(join(testDir, 'package.json'))
+      expect(result).toContain(join(packagesDir, 'pkg-a', 'package.json'))
+      expect(result).toContain(join(packagesDir, 'pkg-b', 'package.json'))
+    })
+
+    it('should skip node_modules directories and exclude patterns', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const nodeModulesDir = join(testDir, 'node_modules', 'some-package')
+      const excludedDir = join(testDir, 'skip-me')
+      mkdirSync(nodeModulesDir, { recursive: true })
+      mkdirSync(excludedDir, { recursive: true })
+
+      writeFileSync(join(nodeModulesDir, 'package.json'), '{}')
+      writeFileSync(join(excludedDir, 'package.json'), '{}')
+
+      const result = await findAllPackageJsonFilesAsync(testDir, ['^skip-me'])
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('should skip hidden directories', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const hiddenDir = join(testDir, '.turbo', 'nested-package')
+      mkdirSync(hiddenDir, { recursive: true })
+      writeFileSync(join(hiddenDir, 'package.json'), '{}')
+
+      const result = await findAllPackageJsonFilesAsync(testDir)
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('should call progress callback while scanning large directories', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const largeDir = join(testDir, 'large-dir')
+      mkdirSync(largeDir, { recursive: true })
+      for (let i = 0; i < 20; i++) {
+        writeFileSync(join(largeDir, `file-${i}.txt`), 'content')
+      }
+
+      const progressCalls: Array<{ current: string; found: number }> = []
+      let now = 0
+      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
+        now += 100
+        return now
+      })
+
+      try {
+        await findAllPackageJsonFilesAsync(testDir, [], 10, (current, found) => {
+          progressCalls.push({ current, found })
+        })
+      } finally {
+        dateNowSpy.mockRestore()
+      }
+
+      expect(progressCalls.length).toBeGreaterThan(1)
+      expect(progressCalls.some((call) => call.current === 'large-dir')).toBe(true)
+    })
+
+    it('should respect max depth limit', async () => {
+      let currentDir = testDir
+      for (let i = 0; i < 15; i++) {
+        currentDir = join(currentDir, `level-${i}`)
+        mkdirSync(currentDir, { recursive: true })
+        writeFileSync(join(currentDir, 'package.json'), '{}')
+      }
+
+      const result = await findAllPackageJsonFilesAsync(testDir, [], 5)
+
       expect(result.length).toBeLessThan(15)
     })
   })
