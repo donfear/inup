@@ -45,10 +45,16 @@ jobs:
           esac
 
           curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/${VHS_VERSION}/vhs_${VHS_VERSION#v}_Linux_${VHS_ARCH}.tar.gz" -o /tmp/vhs.tar.gz
+          echo "--- tarball contents ---"
+          tar -tzf /tmp/vhs.tar.gz
           mkdir -p /tmp/vhs-extract
           tar -xzf /tmp/vhs.tar.gz -C /tmp/vhs-extract
-          sudo install -m 0755 /tmp/vhs-extract/vhs /usr/local/bin/vhs
-            
+          echo "--- extracted files ---"
+          ls -la /tmp/vhs-extract/
+          VHS_BIN="$(find /tmp/vhs-extract -type f -name 'vhs' | head -1)"
+          echo "--- found binary at: $VHS_BIN ---"
+          sudo install -m 0755 "$VHS_BIN" /usr/local/bin/vhs
+          
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
