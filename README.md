@@ -14,12 +14,6 @@ Upgrade your dependencies interactively. Works with npm, yarn, pnpm, and bun.
 npx inup
 ```
 
-Scan deeper package layouts:
-
-```bash
-npx inup --max-depth 15
-```
-
 Or install globally:
 
 ```bash
@@ -59,6 +53,7 @@ inup [options]
 -i, --ignore <packages>       Ignore packages (comma-separated, glob supported)
 --max-depth <number>          Maximum scan depth for package discovery (default: 10)
 --package-manager <name>      Force package manager (npm, yarn, pnpm, bun)
+--no-cache                    Bypass cached package metadata and fetch fresh registry data
 --debug                       Write verbose debug logs
 ```
 
