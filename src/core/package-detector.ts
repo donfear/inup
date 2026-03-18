@@ -18,11 +18,13 @@ export class PackageDetector {
   private cwd: string
   private excludePatterns: string[]
   private ignorePackages: string[]
+  private maxDepth: number
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
     this.excludePatterns = options?.excludePatterns || []
     this.ignorePackages = options?.ignorePackages || []
+    this.maxDepth = options?.maxDepth ?? 10
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -231,10 +233,11 @@ export class PackageDetector {
           findAllPackageJsonFilesAsync(
             this.cwd,
             this.excludePatterns,
-            10,
+            this.maxDepth,
             (currentDir: string, foundCount: number) => {
               // Show scanning progress with current directory and count
-              const truncatedDir = currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
+              const truncatedDir =
+                currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
               this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
             }
           ),

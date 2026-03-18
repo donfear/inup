@@ -21,13 +21,11 @@ program
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option('-i, --ignore <packages>', 'ignore packages (comma-separated, supports glob patterns like @babel/*)')
+  .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
-
-    // Check for updates in the background (non-blocking)
-    const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
 
     const cwd = resolve(options.dir)
 
@@ -56,6 +54,16 @@ program
       : []
     const ignorePackages = [...new Set([...cliIgnorePatterns, ...(projectConfig.ignore || [])])]
 
+    const maxDepth = Number.parseInt(options.maxDepth, 10)
+    if (!Number.isInteger(maxDepth) || maxDepth < 0) {
+      console.error(chalk.red(`Invalid max depth: ${options.maxDepth}`))
+      console.error(chalk.yellow('Expected a non-negative integer, for example: --max-depth 10'))
+      process.exit(1)
+    }
+
+    // Check for updates in the background (non-blocking)
+    const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
+
     // Validate package manager if provided
     let packageManager: PackageManager | undefined
     if (options.packageManager) {
@@ -71,6 +79,7 @@ program
     const upgrader = new UpgradeRunner({
       cwd,
       excludePatterns,
+      maxDepth,
       ignorePackages,
       packageManager,
       debug: options.debug || process.env.INUP_DEBUG === '1',
