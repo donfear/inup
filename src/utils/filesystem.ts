@@ -59,6 +59,10 @@ export interface CollectDependenciesOptions {
   includeOptionalDeps?: boolean
 }
 
+export interface PackageJsonScanOptions {
+  concurrency?: number
+}
+
 /**
  * Collects all dependencies from multiple package.json files.
  * Always includes regular dependencies and devDependencies.
@@ -164,12 +168,27 @@ export function findAllPackageJsonFiles(
   const packageJsonFiles: string[] = []
   const visitedPaths = new Set<string>()
   let directoriesScanned = 0
+  let lastProgressAt = 0
+  const progressIntervalMs = 250
 
   // Compile regex patterns for exclude filtering
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
   function shouldExcludePath(relativePath: string): boolean {
     return excludeRegexes.some((regex) => regex.test(relativePath))
+  }
+
+  function reportProgress(currentDir: string, force: boolean = false): void {
+    if (!onProgress) return
+
+    const now = Date.now()
+    if (!force && now - lastProgressAt < progressIntervalMs) {
+      return
+    }
+
+    lastProgressAt = now
+    const relativePath = relative(rootDir, currentDir) || '.'
+    onProgress(relativePath, packageJsonFiles.length)
   }
 
   function traverseDirectory(dir: string, depth: number = 0): void {
@@ -190,13 +209,13 @@ export function findAllPackageJsonFiles(
 
       // Report progress every 10 directories or on first scan
       if (onProgress && (directoriesScanned % 10 === 0 || directoriesScanned === 1)) {
-        const relativePath = relative(rootDir, dir) || '.'
-        onProgress(relativePath, packageJsonFiles.length)
+        reportProgress(dir, true)
       }
 
       const files = readdirSync(dir)
 
       for (const file of files) {
+        reportProgress(dir)
         const fullPath = join(dir, file)
         const relativePath = relative(rootDir, fullPath)
 
@@ -244,5 +263,166 @@ export function findAllPackageJsonFiles(
   }
 
   traverseDirectory(rootDir)
+  return packageJsonFiles
+}
+
+/**
+ * Find all package.json files recursively with bounded parallel directory traversal.
+ */
+export async function findAllPackageJsonFilesAsync(
+  rootDir: string = process.cwd(),
+  excludePatterns: string[] = [],
+  maxDepth: number = 10,
+  onProgress?: (current: string, found: number) => void,
+  options: PackageJsonScanOptions = {}
+): Promise<string[]> {
+  const packageJsonFiles: string[] = []
+  const visitedPaths = new Set<string>()
+  let directoriesScanned = 0
+  let lastProgressAt = 0
+  const progressIntervalMs = 250
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 16, 64))
+
+  const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
+
+  function shouldExcludePath(relativePath: string): boolean {
+    return excludeRegexes.some((regex) => regex.test(relativePath))
+  }
+
+  function reportProgress(currentDir: string, force: boolean = false): void {
+    if (!onProgress) return
+
+    const now = Date.now()
+    if (!force && now - lastProgressAt < progressIntervalMs) {
+      return
+    }
+
+    lastProgressAt = now
+    const relativePath = relative(rootDir, currentDir) || '.'
+    onProgress(relativePath, packageJsonFiles.length)
+  }
+
+  const pending: Array<{ dir: string; depth: number }> = []
+  let activeTasks = 0
+  let failedError: unknown = null
+  let resolveDone: (() => void) | null = null
+  let rejectDone: ((error: unknown) => void) | null = null
+
+  const done = new Promise<void>((resolve, reject) => {
+    resolveDone = resolve
+    rejectDone = reject
+  })
+
+  function finishIfIdle(): void {
+    if (pending.length === 0 && activeTasks === 0) {
+      resolveDone?.()
+    }
+  }
+
+  function schedule(dir: string, depth: number): void {
+    pending.push({ dir, depth })
+    pump()
+  }
+
+  async function processDirectory(dir: string, depth: number): Promise<void> {
+    if (depth > maxDepth) {
+      return
+    }
+
+    let realPath: string
+    try {
+      realPath = await fsPromises.realpath(dir)
+    } catch {
+      return
+    }
+
+    if (visitedPaths.has(realPath)) {
+      return
+    }
+    visitedPaths.add(realPath)
+
+    directoriesScanned++
+    if (directoriesScanned % 10 === 0 || directoriesScanned === 1) {
+      reportProgress(dir, true)
+    }
+
+    let files: string[]
+    try {
+      files = await fsPromises.readdir(dir)
+    } catch {
+      return
+    }
+
+    for (const file of files) {
+      reportProgress(dir)
+
+      const fullPath = join(dir, file)
+      const relativePath = relative(rootDir, fullPath)
+
+      if (shouldExcludePath(relativePath)) {
+        continue
+      }
+
+      let stat
+      try {
+        stat = await fsPromises.stat(fullPath)
+      } catch {
+        continue
+      }
+
+      const skipDirs = [
+        'node_modules',
+        '.git',
+        'dist',
+        'build',
+        '.next',
+        'coverage',
+        '.cache',
+        'out',
+        '.output',
+        '.nuxt',
+        '.vercel',
+        '.netlify',
+        'lib',
+        'es',
+        'esm',
+        'cjs',
+      ]
+
+      if (stat.isDirectory() && !file.startsWith('.') && !skipDirs.includes(file)) {
+        schedule(fullPath, depth + 1)
+      } else if (file === 'package.json' && stat.isFile()) {
+        packageJsonFiles.push(fullPath)
+      }
+    }
+  }
+
+  function pump(): void {
+    while (activeTasks < concurrency && pending.length > 0 && !failedError) {
+      const next = pending.shift()
+      if (!next) break
+
+      activeTasks++
+      void processDirectory(next.dir, next.depth)
+        .catch((error) => {
+          if (!failedError) {
+            failedError = error
+            rejectDone?.(error)
+          }
+        })
+        .finally(() => {
+          activeTasks--
+          if (failedError) {
+            return
+          }
+          pump()
+          finishIfIdle()
+        })
+    }
+  }
+
+  schedule(rootDir, 0)
+  await done
+
   return packageJsonFiles
 }

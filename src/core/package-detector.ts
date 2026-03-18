@@ -3,7 +3,7 @@ import { PackageInfo, PackageJson, UpgradeOptions } from '../types'
 import {
   findPackageJson,
   readPackageJson,
-  findAllPackageJsonFiles,
+  findAllPackageJsonFilesAsync,
   collectAllDependenciesAsync,
   findClosestMinorVersion,
 } from '../utils'
@@ -45,7 +45,7 @@ export class PackageDetector {
     // Always check all package.json files recursively with timeout protection
     this.showProgress('🔍 Scanning repository for package.json files...')
     const tScan = Date.now()
-    const allPackageJsonFiles = this.findPackageJsonFilesWithTimeout(30000) // 30 second timeout
+    const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000) // 30 second timeout
     debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
       files: allPackageJsonFiles,
     })
@@ -222,20 +222,34 @@ export class PackageDetector {
     }
   }
 
-  private findPackageJsonFilesWithTimeout(timeoutMs: number): string[] {
-    // Synchronous file search with depth limiting and symlink protection
-    // The timeout parameter is kept for future async implementation
+  private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {
     try {
-      return findAllPackageJsonFiles(
-        this.cwd,
-        this.excludePatterns,
-        10,
-        (currentDir: string, foundCount: number) => {
-          // Show scanning progress with current directory and count
-          const truncatedDir = currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
-          this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
+      let timeoutId: NodeJS.Timeout | undefined
+
+      try {
+        return await Promise.race([
+          findAllPackageJsonFilesAsync(
+            this.cwd,
+            this.excludePatterns,
+            10,
+            (currentDir: string, foundCount: number) => {
+              // Show scanning progress with current directory and count
+              const truncatedDir = currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
+              this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
+            }
+          ),
+          new Promise<string[]>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error(`Scan timed out after ${timeoutMs}ms`))
+            }, timeoutMs)
+            timeoutId.unref?.()
+          }),
+        ])
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
         }
-      )
+      }
     } catch (err) {
       throw new Error(
         `Failed to scan for package.json files: ${err}. Try using --exclude patterns to skip problematic directories.`
