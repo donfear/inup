@@ -1,0 +1,54 @@
+name: Record Demo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  record-demo:
+    name: Record Demo
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install VHS dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg ttyd
+          curl -fsSL https://raw.githubusercontent.com/charmbracelet/vhs/main/install.sh | bash
+          sudo mv bin/vhs /usr/local/bin/vhs
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Record demo
+        run: pnpm demo:record
+
+      - name: Commit and push demo GIF
+        run: |
+          if git diff --quiet -- docs/demo/interactive-upgrade.gif; then
+            echo "No demo GIF changes to commit"
+            exit 0
+          fi
+
+          git config --local user.email "${{ secrets.GH_EMAIL }}"
+          git config --local user.name "${{ secrets.GH_USERNAME }}"
+          git add docs/demo/interactive-upgrade.gif
+          git commit -m "docs: update demo gif"
+          git push
