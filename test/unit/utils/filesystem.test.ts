@@ -266,6 +266,18 @@ describe('filesystem utils', () => {
       expect(result[0]).toBe(join(testDir, 'package.json'))
     })
 
+    it('should skip hidden directories', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const hiddenDir = join(testDir, '.turbo', 'nested-package')
+      mkdirSync(hiddenDir, { recursive: true })
+      writeFileSync(join(hiddenDir, 'package.json'), '{}')
+
+      const result = findAllPackageJsonFiles(testDir)
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
     it('should skip directories matching exclude patterns', () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
 
@@ -371,6 +383,18 @@ describe('filesystem utils', () => {
       writeFileSync(join(excludedDir, 'package.json'), '{}')
 
       const result = await findAllPackageJsonFilesAsync(testDir, ['^skip-me'])
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('should skip hidden directories', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const hiddenDir = join(testDir, '.turbo', 'nested-package')
+      mkdirSync(hiddenDir, { recursive: true })
+      writeFileSync(join(hiddenDir, 'package.json'), '{}')
+
+      const result = await findAllPackageJsonFilesAsync(testDir)
 
       expect(result).toEqual([join(testDir, 'package.json')])
     })

@@ -63,6 +63,22 @@ export interface PackageJsonScanOptions {
   concurrency?: number
 }
 
+const SKIP_DIRS = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  'out',
+  'lib',
+  'es',
+  'esm',
+  'cjs',
+])
+
+function shouldSkipDirectory(name: string): boolean {
+  return name.startsWith('.') || SKIP_DIRS.has(name)
+}
+
 /**
  * Collects all dependencies from multiple package.json files.
  * Always includes regular dependencies and devDependencies.
@@ -232,26 +248,7 @@ export function findAllPackageJsonFiles(
           continue
         }
 
-        // Skip common build and dependency directories
-        const skipDirs = [
-          'node_modules',
-          '.git',
-          'dist',
-          'build',
-          '.next',
-          'coverage',
-          '.cache',
-          'out',
-          '.output',
-          '.nuxt',
-          '.vercel',
-          '.netlify',
-          'lib',
-          'es',
-          'esm',
-          'cjs',
-        ]
-        if (stat.isDirectory() && !file.startsWith('.') && !skipDirs.includes(file)) {
+        if (stat.isDirectory() && !shouldSkipDirectory(file)) {
           traverseDirectory(fullPath, depth + 1)
         } else if (file === 'package.json' && stat.isFile()) {
           packageJsonFiles.push(fullPath)
@@ -370,26 +367,7 @@ export async function findAllPackageJsonFilesAsync(
         continue
       }
 
-      const skipDirs = [
-        'node_modules',
-        '.git',
-        'dist',
-        'build',
-        '.next',
-        'coverage',
-        '.cache',
-        'out',
-        '.output',
-        '.nuxt',
-        '.vercel',
-        '.netlify',
-        'lib',
-        'es',
-        'esm',
-        'cjs',
-      ]
-
-      if (stat.isDirectory() && !file.startsWith('.') && !skipDirs.includes(file)) {
+      if (stat.isDirectory() && !shouldSkipDirectory(file)) {
         schedule(fullPath, depth + 1)
       } else if (file === 'package.json' && stat.isFile()) {
         packageJsonFiles.push(fullPath)
