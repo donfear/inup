@@ -2,7 +2,13 @@ import chalk from 'chalk'
 import { PackageDetector } from './package-detector'
 import { InteractiveUI } from '../interactive-ui'
 import { PackageUpgrader } from './upgrader'
-import { PackageInfo, PackageLoadProgress, PackageSelectionState, UpgradeOptions, PackageManagerInfo } from '../types'
+import {
+  PackageInfo,
+  PackageLoadProgress,
+  PackageSelectionState,
+  UpgradeOptions,
+  PackageManagerInfo,
+} from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
 
 /**
@@ -109,7 +115,6 @@ export class UpgradeRunner {
       let shouldProceed: boolean | null = false
 
       while (true) {
-
         if (selectedChoices.length === 0) {
           console.log(chalk.yellow('No packages selected. Exiting...'))
           return
@@ -140,9 +145,13 @@ export class UpgradeRunner {
           console.clear()
           console.log(chalk.bold.blue('🚀 inup\n'))
           selectedChoices = progress.isLoading
-            ? await this.ui.selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {
-                refreshUI = refresh
-              })
+            ? await this.ui.selectPackagesToUpgradeProgressive(
+                selectionStates,
+                progress,
+                (refresh) => {
+                  refreshUI = refresh
+                }
+              )
             : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
           continue
         }

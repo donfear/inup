@@ -67,7 +67,9 @@ export class PackageDetector {
     return packages
   }
 
-  public async streamOutdatedPackages(onEvent: StreamOutdatedPackagesCallback): Promise<PackageInfo[]> {
+  public async streamOutdatedPackages(
+    onEvent: StreamOutdatedPackagesCallback
+  ): Promise<PackageInfo[]> {
     if (!this.packageJson) {
       throw new Error('No package.json found in current directory')
     }
@@ -144,7 +146,9 @@ export class PackageDetector {
       tFetch
     )
 
-    const finalPackages = prepared.uniquePackages.flatMap((packageName) => packageLookup.get(packageName) ?? [])
+    const finalPackages = prepared.uniquePackages.flatMap(
+      (packageName) => packageLookup.get(packageName) ?? []
+    )
     const progress = this.createProgressSnapshot(
       prepared.uniquePackages.length,
       resolved,
@@ -269,7 +273,10 @@ export class PackageDetector {
         if (!packageData || packageData.latestVersion === 'unknown') {
           if (!loggedNoData.has(dep.name)) {
             loggedNoData.add(dep.name)
-            debugLog.warn('PackageDetector', `no data returned for ${dep.name} — marking unavailable`)
+            debugLog.warn(
+              'PackageDetector',
+              `no data returned for ${dep.name} — marking unavailable`
+            )
           }
 
           return this.createFailedPackageInfo(dep)
