@@ -7,8 +7,8 @@ import {
   collectAllDependenciesAsync,
   findClosestMinorVersion,
 } from '../utils'
-import { getAllPackageDataFromJsdelivr, getAllPackageData } from '../services'
-import { DEFAULT_REGISTRY, isPackageIgnored } from '../config'
+import { getAllPackageData } from '../services'
+import { isPackageIgnored } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
 
@@ -100,33 +100,22 @@ export class PackageDetector {
       `${packageNames.length} unique packages to check, ${ignoredCount} ignored`
     )
 
-    // Step 4: Fetch all package data in one call per package
-    // Create a map of package names to their current versions for major version optimization
     const currentVersions = new Map<string, string>()
     for (const dep of allDeps) {
-      // Use the first occurrence of each package's version
       if (!currentVersions.has(dep.name)) {
         currentVersions.set(dep.name, dep.version)
       }
     }
 
     const tFetch = Date.now()
-    debugLog.info('PackageDetector', `fetching version data via ${DEFAULT_REGISTRY}`)
-    const allPackageData =
-      DEFAULT_REGISTRY === 'jsdelivr'
-        ? await getAllPackageDataFromJsdelivr(
-            packageNames,
-            currentVersions,
-            (_currentPackage: string, completed: number, total: number) => {
-              this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
-            }
-          )
-        : await getAllPackageData(
-            packageNames,
-            (_currentPackage: string, completed: number, total: number) => {
-              this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
-            }
-          )
+    debugLog.info('PackageDetector', 'fetching version data via npm registry')
+    const allPackageData = await getAllPackageData(
+      packageNames,
+      (_currentPackage: string, completed: number, total: number) => {
+        this.showProgress(`🌐 Checking versions... (${completed}/${total} packages)`)
+      },
+      currentVersions
+    )
     debugLog.perf(
       'PackageDetector',
       `registry fetch (${allPackageData.size}/${packageNames.length} resolved)`,

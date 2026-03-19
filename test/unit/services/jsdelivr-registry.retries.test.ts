@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const requestMock = vi.fn()
 const closeMock = vi.fn()
-const getAllPackageDataMock = vi.fn()
 const PoolMock = vi.fn(
   class MockPool {
     close = closeMock
@@ -14,10 +13,6 @@ vi.mock('undici', () => ({
   request: requestMock,
 }))
 
-vi.mock('../../../src/services/npm-registry', () => ({
-  getAllPackageData: getAllPackageDataMock,
-}))
-
 vi.mock('../../../src/config', async () => {
   const actual = await vi.importActual<typeof import('../../../src/config')>('../../../src/config')
   return {
@@ -27,9 +22,7 @@ vi.mock('../../../src/config', async () => {
   }
 })
 
-const { getAllPackageDataFromJsdelivr, clearJsdelivrPackageCache } =
-  await import('../../../src/services/jsdelivr-registry')
-const { persistentCache } = await import('../../../src/services/persistent-cache')
+const { fetchExactPackageManifest } = await import('../../../src/services/jsdelivr-registry')
 const { JSDELIVR_RETRY_TIMEOUTS } = await import('../../../src/config')
 
 const createTimeoutError = () => {
@@ -41,144 +34,62 @@ const createTimeoutError = () => {
 describe('jsdelivr-registry retries', () => {
   beforeEach(() => {
     vi.useRealTimers()
-    vi.clearAllMocks()
-    clearJsdelivrPackageCache()
-    persistentCache.clearCache()
+    requestMock.mockReset()
+    closeMock.mockReset()
+    PoolMock.mockClear()
   })
 
-  it('retries jsDelivr request and succeeds before fallback', async () => {
+  it('retries jsDelivr exact-manifest request and succeeds', async () => {
     requestMock.mockRejectedValueOnce(createTimeoutError()).mockResolvedValueOnce({
       statusCode: 200,
       body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
+        text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
       },
     })
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
   })
 
-  it('falls back to npm after jsDelivr retry budget is exhausted without noisy logs', async () => {
+  it('returns null after retry budget is exhausted without noisy logs', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     requestMock.mockRejectedValue(createTimeoutError())
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(JSDELIVR_RETRY_TIMEOUTS.length)
-    expect(getAllPackageDataMock).toHaveBeenCalledWith(['demo-pkg'])
     expect(consoleErrorSpy).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '9.9.9',
-      allVersions: ['9.9.9'],
-    })
+    expect(result).toBeNull()
     consoleErrorSpy.mockRestore()
   })
 
-  it('reports progress exactly once per package when retries are exhausted', async () => {
-    requestMock.mockRejectedValue(createTimeoutError())
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
-    const progressUpdates: Array<{ pkg: string; completed: number; total: number }> = []
-
-    await getAllPackageDataFromJsdelivr(['demo-pkg'], undefined, (pkg, completed, total) => {
-      progressUpdates.push({ pkg, completed, total })
-    })
-
-    expect(progressUpdates).toEqual([{ pkg: 'demo-pkg', completed: 1, total: 1 }])
-  })
-
-  it('coalesces duplicate in-flight jsDelivr lookups for the same package', async () => {
+  it('coalesces duplicate in-flight exact-manifest lookups for the same package/version', async () => {
     requestMock.mockResolvedValue({
       statusCode: 200,
       body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
+        text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
       },
     })
-    const progressUpdates: Array<{ pkg: string; completed: number; total: number }> = []
 
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-pkg', 'demo-pkg'],
-      undefined,
-      (pkg, completed, total) => {
-        progressUpdates.push({ pkg, completed, total })
-      }
-    )
+    const [first, second] = await Promise.all([
+      fetchExactPackageManifest('demo-pkg', '1.2.3'),
+      fetchExactPackageManifest('demo-pkg', '1.2.3'),
+    ])
 
     expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(first).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
-    expect(progressUpdates).toEqual([
-      { pkg: 'demo-pkg', completed: 1, total: 2 },
-      { pkg: 'demo-pkg', completed: 2, total: 2 },
-    ])
+    expect(second).toEqual(first)
   })
 
-  it('coalesces duplicate npm fallbacks when jsDelivr retries are exhausted', async () => {
-    requestMock.mockRejectedValue(createTimeoutError())
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
-    const progressUpdates: Array<{ pkg: string; completed: number; total: number }> = []
-
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-pkg', 'demo-pkg'],
-      undefined,
-      (pkg, completed, total) => {
-        progressUpdates.push({ pkg, completed, total })
-      }
-    )
-
-    expect(requestMock).toHaveBeenCalledTimes(JSDELIVR_RETRY_TIMEOUTS.length)
-    expect(getAllPackageDataMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).toHaveBeenCalledWith(['demo-pkg'])
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '9.9.9',
-      allVersions: ['9.9.9'],
-    })
-    expect(progressUpdates).toEqual([
-      { pkg: 'demo-pkg', completed: 1, total: 2 },
-      { pkg: 'demo-pkg', completed: 2, total: 2 },
-    ])
-  })
-
-  it('retries on transient HTTP status and succeeds without npm fallback', async () => {
+  it('retries on transient HTTP status and succeeds', async () => {
     requestMock
       .mockResolvedValueOnce({
         statusCode: 503,
@@ -189,17 +100,16 @@ describe('jsdelivr-registry retries', () => {
       .mockResolvedValueOnce({
         statusCode: 200,
         body: {
-          text: async () => JSON.stringify({ version: '1.2.3' }),
+          text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
         },
       })
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
   })
 
@@ -218,11 +128,11 @@ describe('jsdelivr-registry retries', () => {
       .mockResolvedValueOnce({
         statusCode: 200,
         body: {
-          text: async () => JSON.stringify({ version: '1.2.3' }),
+          text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
         },
       })
 
-    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const pending = fetchExactPackageManifest('demo-pkg', '1.2.3')
     expect(requestMock).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(19)
@@ -232,10 +142,9 @@ describe('jsdelivr-registry retries', () => {
     const result = await pending
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
   })
 
@@ -254,20 +163,20 @@ describe('jsdelivr-registry retries', () => {
       .mockResolvedValueOnce({
         statusCode: 200,
         body: {
-          text: async () => JSON.stringify({ version: '1.2.3' }),
+          text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
         },
       })
 
-    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const pending = fetchExactPackageManifest('demo-pkg', '1.2.3')
     expect(requestMock).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(1)
     const result = await pending
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
   })
 
@@ -286,11 +195,11 @@ describe('jsdelivr-registry retries', () => {
       .mockResolvedValueOnce({
         statusCode: 200,
         body: {
-          text: async () => JSON.stringify({ version: '1.2.3' }),
+          text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
         },
       })
 
-    const pending = getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const pending = fetchExactPackageManifest('demo-pkg', '1.2.3')
     expect(requestMock).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(19)
@@ -300,13 +209,13 @@ describe('jsdelivr-registry retries', () => {
     const result = await pending
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
   })
 
-  it('logs unexpected parse errors once and then falls back to npm', async () => {
+  it('logs unexpected parse errors once and returns null', async () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     requestMock.mockResolvedValue({
       statusCode: 200,
@@ -314,45 +223,18 @@ describe('jsdelivr-registry retries', () => {
         text: async () => '{invalid-json',
       },
     })
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).toHaveBeenCalledWith(['demo-pkg'])
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '9.9.9',
-      allVersions: ['9.9.9'],
-    })
+    expect(result).toBeNull()
     consoleErrorSpy.mockRestore()
   })
 
-  it('falls back immediately when latest fails and skips major fetch', async () => {
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
-
+  it('returns null on non-retryable http status', async () => {
     requestMock.mockImplementation((url: string) => {
-      if (url.includes('@latest')) {
+      if (url.includes('@1.2.3')) {
         return Promise.resolve({
           statusCode: 404,
           body: {
@@ -365,121 +247,33 @@ describe('jsdelivr-registry retries', () => {
     })
 
     const result = await Promise.race([
-      getAllPackageDataFromJsdelivr(['demo-pkg'], new Map([['demo-pkg', '1.0.0']])),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('timeout waiting for fallback')), 250)
-      ),
+      fetchExactPackageManifest('demo-pkg', '1.2.3'),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
     ])
 
-    expect(getAllPackageDataMock).toHaveBeenCalledWith(['demo-pkg'])
     expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '9.9.9',
-      allVersions: ['9.9.9'],
-    })
+    expect(result).toBeNull()
   })
 
-  it('skips major request when current major matches latest major', async () => {
+  it('returns null when jsDelivr response is not an object', async () => {
     requestMock.mockResolvedValue({
       statusCode: 200,
       body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
+        text: async () => JSON.stringify('not-an-object'),
       },
     })
 
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-pkg'],
-      new Map([['demo-pkg', '1.0.0']])
-    )
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
-    })
+    expect(result).toBeNull()
   })
 
-  it('falls back when jsDelivr response contains a non-string version', async () => {
-    requestMock.mockResolvedValue({
-      statusCode: 200,
-      body: {
-        text: async () => JSON.stringify({ version: 123 }),
-      },
-    })
-    getAllPackageDataMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '9.9.9',
-            allVersions: ['9.9.9'],
-          },
-        ],
-      ])
-    )
+  it('returns null for non-exact versions before issuing a request', async () => {
+    const result = await fetchExactPackageManifest('demo-pkg', 'latest')
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
-
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).toHaveBeenCalledWith(['demo-pkg'])
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '9.9.9',
-      allVersions: ['9.9.9'],
-    })
-  })
-
-  it('skips major request when current version is not a valid semver', async () => {
-    requestMock.mockResolvedValue({
-      statusCode: 200,
-      body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
-      },
-    })
-
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-pkg'],
-      new Map([['demo-pkg', 'not-a-version']])
-    )
-
-    expect(requestMock).toHaveBeenCalledTimes(1)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
-    })
-  })
-
-  it('keeps latest version first when it is not semver and major version is semver', async () => {
-    requestMock.mockImplementation((url: string) => {
-      if (url.includes('@latest')) {
-        return Promise.resolve({
-          statusCode: 200,
-          body: {
-            text: async () => JSON.stringify({ version: 'stable' }),
-          },
-        })
-      }
-
-      return Promise.resolve({
-        statusCode: 200,
-        body: {
-          text: async () => JSON.stringify({ version: '1.0.0' }),
-        },
-      })
-    })
-
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-pkg'],
-      new Map([['demo-pkg', '1.2.0']])
-    )
-
-    expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: 'stable',
-      allVersions: ['stable', '1.0.0'],
-    })
+    expect(requestMock).not.toHaveBeenCalled()
+    expect(result).toBeNull()
   })
 
   it('retries on transient network errors and succeeds', async () => {
@@ -491,72 +285,16 @@ describe('jsdelivr-registry retries', () => {
     requestMock.mockRejectedValueOnce(dnsError).mockResolvedValueOnce({
       statusCode: 200,
       body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
+        text: async () => JSON.stringify({ name: 'demo-pkg', version: '1.2.3' }),
       },
     })
 
-    const result = await getAllPackageDataFromJsdelivr(['demo-pkg'])
+    const result = await fetchExactPackageManifest('demo-pkg', '1.2.3')
 
     expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(getAllPackageDataMock).not.toHaveBeenCalled()
-    expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
+    expect(result).toEqual({
+      name: 'demo-pkg',
+      version: '1.2.3',
     })
-  })
-
-  it('continues fetching when progress callback throws', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    requestMock.mockResolvedValue({
-      statusCode: 200,
-      body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
-      },
-    })
-
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-a', 'demo-b'],
-      undefined,
-      () => {
-        throw new Error('progress callback failed')
-      }
-    )
-
-    expect(requestMock).toHaveBeenCalledTimes(2)
-    expect(result.size).toBe(2)
-    expect(result.get('demo-a')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
-    })
-    expect(result.get('demo-b')).toEqual({
-      latestVersion: '1.2.3',
-      allVersions: ['1.2.3'],
-    })
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
-    consoleErrorSpy.mockRestore()
-  })
-
-  it('continues fetching when batch callback throws', async () => {
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    requestMock.mockResolvedValue({
-      statusCode: 200,
-      body: {
-        text: async () => JSON.stringify({ version: '1.2.3' }),
-      },
-    })
-
-    const result = await getAllPackageDataFromJsdelivr(
-      ['demo-a', 'demo-b', 'demo-c', 'demo-d', 'demo-e', 'demo-f'],
-      undefined,
-      undefined,
-      () => {
-        throw new Error('batch callback failed')
-      }
-    )
-
-    expect(requestMock).toHaveBeenCalledTimes(6)
-    expect(result.size).toBe(6)
-    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
-    consoleErrorSpy.mockRestore()
   })
 })

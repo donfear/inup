@@ -1,5 +1,5 @@
-import chalk from 'chalk'
-import { JSDELIVR_CDN_URL } from '../config/constants'
+import { NPM_REGISTRY_URL } from '../config/constants'
+import { fetchExactPackageManifest } from './jsdelivr-registry'
 
 export interface PackageMetadata {
   description: string
@@ -29,43 +29,77 @@ export interface PackageMetadata {
 export class ChangelogFetcher {
   private cache: Map<string, PackageMetadata> = new Map()
   private failureCache: Set<string> = new Set() // Track packages that failed to fetch
+  private inFlight: Map<string, Promise<PackageMetadata | null>> = new Map()
+
+  private getCacheKey(packageName: string, version?: string): string {
+    return `${packageName}@${version?.trim() || 'latest'}`
+  }
 
   /**
    * Fetch package metadata from npm registry
    * Uses a cached approach to avoid repeated requests
    */
-  async fetchPackageMetadata(packageName: string): Promise<PackageMetadata | null> {
+  async fetchPackageMetadata(packageName: string, version?: string): Promise<PackageMetadata | null> {
+    const cacheKey = this.getCacheKey(packageName, version)
+
     // Check if we already have this in cache
-    if (this.cache.has(packageName)) {
-      return this.cache.get(packageName)!
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!
     }
 
     // Check if we already failed to fetch this
-    if (this.failureCache.has(packageName)) {
+    if (this.failureCache.has(cacheKey)) {
       return null
     }
 
+    const inFlight = this.inFlight.get(cacheKey)
+    if (inFlight) {
+      return await inFlight
+    }
+
+    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version).finally(() => {
+      this.inFlight.delete(cacheKey)
+    })
+    this.inFlight.set(cacheKey, lookupPromise)
+    return await lookupPromise
+  }
+
+  private async fetchAndCachePackageMetadata(
+    packageName: string,
+    version?: string
+  ): Promise<PackageMetadata | null> {
+    const cacheKey = this.getCacheKey(packageName, version)
+
     try {
-      // Fetch from npm registry
-      const response = await this.fetchFromRegistry(packageName)
+      const response = await this.fetchPackageManifest(packageName, version)
 
       if (!response) {
-        this.failureCache.add(packageName)
+        this.failureCache.add(cacheKey)
         return null
       }
 
-      const repositoryUrl = this.extractRepositoryUrl(response.repository?.url || '')
+      const repository = response.repository as { url?: string; type?: string } | undefined
+      const bugs = response.bugs as { url?: string } | undefined
+      const keywords = Array.isArray(response.keywords) ? (response.keywords as string[]) : []
+      const author =
+        typeof response.author === 'object' && response.author !== null
+          ? ((response.author as { name?: string }).name ?? response.author)
+          : response.author
+      const repositoryUrl = this.extractRepositoryUrl(repository?.url || '')
       const npmUrl = `https://www.npmjs.com/package/${encodeURIComponent(packageName)}`
       const issuesUrl = repositoryUrl ? `${repositoryUrl}/issues` : undefined
 
       const metadata: PackageMetadata = {
-        description: response.description || 'No description available',
-        homepage: response.homepage,
-        repository: response.repository,
-        bugs: response.bugs,
-        keywords: response.keywords || [],
-        author: response.author?.name || response.author,
-        license: response.license,
+        description:
+          typeof response.description === 'string' && response.description
+            ? response.description
+            : 'No description available',
+        homepage: typeof response.homepage === 'string' ? response.homepage : undefined,
+        repository,
+        bugs,
+        keywords,
+        author: typeof author === 'string' ? author : undefined,
+        license: typeof response.license === 'string' ? response.license : undefined,
         repositoryUrl,
         npmUrl,
         issuesUrl,
@@ -86,24 +120,34 @@ export class ChangelogFetcher {
         // Ignore download stats errors - optional data
       }
 
-      this.cache.set(packageName, metadata)
+      this.cache.set(cacheKey, metadata)
       return metadata
-    } catch (error) {
+    } catch {
       // Cache the failure to avoid retrying
-      this.failureCache.add(packageName)
+      this.failureCache.add(cacheKey)
       return null
     }
   }
 
   /**
-   * Fetch data from jsdelivr CDN
-   * Returns the package data by fetching package.json directly from jsdelivr
+   * Fetch metadata from a lightweight manifest endpoint.
    */
-  private async fetchFromRegistry(packageName: string): Promise<any> {
+  private async fetchPackageManifest(
+    packageName: string,
+    version?: string
+  ): Promise<Record<string, unknown> | null> {
     try {
-      // Fetch package.json directly from jsdelivr CDN (resolves to latest automatically)
+      const normalizedVersion = version?.trim()
+      if (normalizedVersion) {
+        const jsdelivrManifest = await fetchExactPackageManifest(packageName, normalizedVersion)
+        if (jsdelivrManifest) {
+          return jsdelivrManifest
+        }
+      }
+
+      const npmPath = normalizedVersion ? normalizedVersion : 'latest'
       const response = await fetch(
-        `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@latest/package.json`,
+        `${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}/${encodeURIComponent(npmPath)}`,
         {
           method: 'GET',
           headers: {
@@ -116,17 +160,7 @@ export class ChangelogFetcher {
         return null
       }
 
-      const pkgData = (await response.json()) as Record<string, unknown>
-
-      return {
-        description: pkgData.description,
-        homepage: pkgData.homepage as string | undefined,
-        repository: pkgData.repository as any,
-        bugs: pkgData.bugs as any,
-        keywords: (pkgData.keywords || []) as string[],
-        author: pkgData.author as any,
-        license: pkgData.license as string | undefined,
-      }
+      return (await response.json()) as Record<string, unknown>
     } catch {
       return null
     }
@@ -188,7 +222,10 @@ export class ChangelogFetcher {
    * Get repository release URL for a package
    */
   getRepositoryReleaseUrl(packageName: string, version: string): string | null {
-    const metadata = this.cache.get(packageName)
+    const metadata =
+      this.cache.get(this.getCacheKey(packageName, version)) ??
+      this.cache.get(this.getCacheKey(packageName)) ??
+      this.cache.get(packageName)
     if (!metadata || !metadata.releaseNotes) {
       return null
     }
@@ -240,6 +277,7 @@ export class ChangelogFetcher {
   clearCache(): void {
     this.cache.clear()
     this.failureCache.clear()
+    this.inFlight.clear()
   }
 }
 

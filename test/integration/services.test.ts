@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 import { ChangelogFetcher } from '../../src/services/changelog-fetcher'
 import { getAllPackageData } from '../../src/services/npm-registry'
-import { getAllPackageDataFromJsdelivr } from '../../src/services/jsdelivr-registry'
+import { fetchExactPackageManifest } from '../../src/services/jsdelivr-registry'
 import { PACKAGE_NAME } from '../../src/config/constants'
 
 describe('Services Integration Tests', () => {
+  const packageVersion = JSON.parse(
+    readFileSync(join(process.cwd(), 'package.json'), 'utf-8')
+  ).version as string
+
   describe(`ChangelogFetcher with ${PACKAGE_NAME}`, () => {
     let fetcher: ChangelogFetcher
 
@@ -14,7 +20,7 @@ describe('Services Integration Tests', () => {
     })
 
     it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME, packageVersion)
 
       expect(metadata).not.toBeNull()
       expect(metadata?.description).toBeTruthy()
@@ -32,11 +38,11 @@ describe('Services Integration Tests', () => {
 
     it('should use cache on second fetch', async () => {
       const start1 = Date.now()
-      await fetcher.fetchPackageMetadata('inup')
+      await fetcher.fetchPackageMetadata('inup', packageVersion)
       const duration1 = Date.now() - start1
 
       const start2 = Date.now()
-      await fetcher.fetchPackageMetadata('inup')
+      await fetcher.fetchPackageMetadata('inup', packageVersion)
       const duration2 = Date.now() - start2
 
       // Second fetch should be significantly faster (cached)
@@ -85,66 +91,19 @@ describe('Services Integration Tests', () => {
     }, 10000)
   })
 
-  describe(`jsdelivr-registry with ${PACKAGE_NAME}`, () => {
-    it(`should fetch version data for ${PACKAGE_NAME} from jsdelivr`, async () => {
-      const result = await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
+  describe(`jsdelivr exact manifest with ${PACKAGE_NAME}`, () => {
+    it(`should fetch exact package manifest for ${PACKAGE_NAME}`, async () => {
+      const manifest = await fetchExactPackageManifest(PACKAGE_NAME, packageVersion)
 
-      expect(result.size).toBe(1)
-      const testData = result.get(PACKAGE_NAME)
-      expect(testData).toBeDefined()
-      expect(testData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      expect(testData?.allVersions.length).toBeGreaterThan(0)
+      expect(manifest).not.toBeNull()
+      expect(manifest?.name).toBe(PACKAGE_NAME)
+      expect(manifest?.version).toBe(packageVersion)
     }, 10000)
 
-    it('should fetch both latest and major version', async () => {
-      const currentVersions = new Map([[PACKAGE_NAME, '1.0.0']])
+    it('should reject non-exact version lookups', async () => {
+      const manifest = await fetchExactPackageManifest(PACKAGE_NAME, 'latest')
 
-      const result = await getAllPackageDataFromJsdelivr([PACKAGE_NAME], currentVersions)
-
-      const testData = result.get(PACKAGE_NAME)
-      expect(testData).toBeDefined()
-      expect(testData?.allVersions.length).toBeGreaterThanOrEqual(1)
-
-      // Should have at least the latest version
-      expect(testData?.latestVersion).toBeTruthy()
-    }, 10000)
-
-    it('should track progress with callback', async () => {
-      const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
-
-      await getAllPackageDataFromJsdelivr(
-        [PACKAGE_NAME, PACKAGE_NAME, PACKAGE_NAME],
-        undefined,
-        (pkg, completed, total) => {
-          progressUpdates.push({ package: pkg, completed, total })
-        }
-      )
-
-      expect(progressUpdates.length).toBe(3)
-      expect(progressUpdates[0].total).toBe(3)
-      expect(progressUpdates[2].completed).toBe(3)
-    }, 15000)
-  })
-
-  describe('Performance comparison: npm vs jsdelivr', () => {
-    it(`should compare fetch performance for ${PACKAGE_NAME}`, async () => {
-      // Test npm registry
-      const npmStart = Date.now()
-      await getAllPackageData([PACKAGE_NAME])
-      const npmDuration = Date.now() - npmStart
-
-      // Test jsdelivr
-      const jsdelivrStart = Date.now()
-      await getAllPackageDataFromJsdelivr([PACKAGE_NAME])
-      const jsdelivrDuration = Date.now() - jsdelivrStart
-
-      // Both should complete in reasonable time
-      expect(npmDuration).toBeLessThan(10000)
-      expect(jsdelivrDuration).toBeLessThan(10000)
-
-      // Log the comparison (for informational purposes)
-      console.log(`npm registry: ${npmDuration}ms`)
-      console.log(`jsdelivr: ${jsdelivrDuration}ms`)
-    }, 20000)
+      expect(manifest).toBeNull()
+    })
   })
 })

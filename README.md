@@ -53,7 +53,6 @@ inup [options]
 -i, --ignore <packages>       Ignore packages (comma-separated, glob supported)
 --max-depth <number>          Maximum scan depth for package discovery (default: 10)
 --package-manager <name>      Force package manager (npm, yarn, pnpm, bun)
---no-cache                    Bypass cached package metadata and fetch fresh registry data
 --debug                       Write verbose debug logs
 ```
 
@@ -61,7 +60,7 @@ inup [options]
 
 We don't track anything. Ever.
 
-The only network requests made are to the npm registry and jsDelivr CDN to fetch package version data. That's it.
+Version checks and package metadata are fetched from the npm registry. When needed for immutable exact-version manifests, inup may also fetch a pinned `package.json` from jsDelivr. Weekly download counts come from the npm downloads API.
 
 ## 📄 License
 
