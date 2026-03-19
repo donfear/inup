@@ -138,6 +138,7 @@ export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent
 
 export interface RegistryBatchOptions {
   batchSize?: number
+  batchSizes?: number[]
   concurrency?: number
 }
 

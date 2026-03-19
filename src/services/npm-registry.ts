@@ -195,13 +195,18 @@ export async function getAllPackageDataBatched(
     return packageData
   }
 
-  const batchSize = Math.max(1, options.batchSize ?? 20)
+  const batchSizes =
+    options.batchSizes && options.batchSizes.length > 0
+      ? options.batchSizes.map((size) => Math.max(1, size))
+      : [Math.max(1, options.batchSize ?? 20)]
   const concurrency = Math.max(1, options.concurrency ?? 5)
   const total = packageNames.length
   let completedCount = 0
+  let batchStart = 0
+  let batchIndex = 0
 
-  for (let batchStart = 0; batchStart < packageNames.length; batchStart += batchSize) {
-    const batchIndex = Math.floor(batchStart / batchSize)
+  while (batchStart < packageNames.length) {
+    const batchSize = batchSizes[Math.min(batchIndex, batchSizes.length - 1)]
     const batchNames = packageNames.slice(batchStart, batchStart + batchSize)
     const batchResults: RegistryBatchProgressItem[] = new Array(batchNames.length)
 
@@ -220,6 +225,9 @@ export async function getAllPackageDataBatched(
     })
 
     onBatchReady?.(batchResults.filter(Boolean))
+
+    batchStart += batchSize
+    batchIndex++
   }
 
   return packageData

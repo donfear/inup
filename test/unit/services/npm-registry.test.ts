@@ -218,4 +218,25 @@ describe('npm-registry', () => {
     expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
     expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
+
+  it('supports a growing batch-size sequence', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }),
+    })
+
+    const packageNames = Array.from({ length: 50 }, (_, index) => `pkg-${index + 1}`)
+    const batches: number[] = []
+
+    await getAllPackageDataBatched(
+      packageNames,
+      (batch) => {
+        batches.push(batch.length)
+      },
+      undefined,
+      { batchSizes: [10, 15, 20, 25], concurrency: 5 }
+    )
+
+    expect(batches).toEqual([10, 15, 20, 5])
+  })
 })

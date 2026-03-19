@@ -33,7 +33,7 @@ export class PackageDetector {
   private excludePatterns: string[]
   private ignorePackages: string[]
   private maxDepth: number
-  private readonly batchSize = 10
+  private readonly batchSizes = [10, 15, 20, 25]
   private readonly batchConcurrency = 5
 
   constructor(options?: UpgradeOptions) {
@@ -133,7 +133,7 @@ export class PackageDetector {
       },
       prepared.currentVersions,
       {
-        batchSize: this.batchSize,
+        batchSizes: this.batchSizes,
         concurrency: this.batchConcurrency,
       }
     )
