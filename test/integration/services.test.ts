@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { readFileSync } from 'fs'
-import { join } from 'path'
 import { ChangelogFetcher } from '../../src/services/changelog-fetcher'
 import { getAllPackageData } from '../../src/services/npm-registry'
 import { fetchExactPackageManifest } from '../../src/services/jsdelivr-registry'
 import { PACKAGE_NAME } from '../../src/config/constants'
 
 describe('Services Integration Tests', () => {
-  const packageVersion = JSON.parse(
-    readFileSync(join(process.cwd(), 'package.json'), 'utf-8')
-  ).version as string
-
   describe(`ChangelogFetcher with ${PACKAGE_NAME}`, () => {
     let fetcher: ChangelogFetcher
 
@@ -20,6 +14,9 @@ describe('Services Integration Tests', () => {
     })
 
     it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
+      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+
+      expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
       const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME, packageVersion)
 
       expect(metadata).not.toBeNull()
@@ -37,6 +34,8 @@ describe('Services Integration Tests', () => {
     }, 10000)
 
     it('should use cache on second fetch', async () => {
+      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+
       const start1 = Date.now()
       await fetcher.fetchPackageMetadata('inup', packageVersion)
       const duration1 = Date.now() - start1
@@ -93,6 +92,9 @@ describe('Services Integration Tests', () => {
 
   describe(`jsdelivr exact manifest with ${PACKAGE_NAME}`, () => {
     it(`should fetch exact package manifest for ${PACKAGE_NAME}`, async () => {
+      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+
+      expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
       const manifest = await fetchExactPackageManifest(PACKAGE_NAME, packageVersion)
 
       expect(manifest).not.toBeNull()

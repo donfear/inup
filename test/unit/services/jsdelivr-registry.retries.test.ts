@@ -22,7 +22,7 @@ vi.mock('../../../src/config', async () => {
   }
 })
 
-const { fetchExactPackageManifest } = await import('../../../src/services/jsdelivr-registry')
+const { fetchExactPackageManifest, clearExactManifestCache } = await import('../../../src/services/jsdelivr-registry')
 const { JSDELIVR_RETRY_TIMEOUTS } = await import('../../../src/config')
 
 const createTimeoutError = () => {
@@ -37,6 +37,15 @@ describe('jsdelivr-registry retries', () => {
     requestMock.mockReset()
     closeMock.mockReset()
     PoolMock.mockClear()
+    clearExactManifestCache()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
+    )
   })
 
   it('retries jsDelivr exact-manifest request and succeeds', async () => {

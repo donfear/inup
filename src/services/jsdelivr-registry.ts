@@ -7,6 +7,8 @@ import {
   JSDELIVR_POOL_TIMEOUT,
   JSDELIVR_RETRY_TIMEOUTS,
   JSDELIVR_RETRY_DELAYS,
+  NPM_REGISTRY_URL,
+  REQUEST_TIMEOUT,
 } from '../config'
 import { debugLog } from '../utils'
 
@@ -340,6 +342,38 @@ async function fetchPackageManifestFromJsdelivr(
   return null
 }
 
+async function fetchPackageManifestFromNpmRegistry(
+  packageName: string,
+  version: string
+): Promise<Record<string, unknown> | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+
+  try {
+    const response = await fetch(
+      `${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}/${encodeURIComponent(version)}`,
+      {
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+        },
+        signal: controller.signal,
+      }
+    )
+
+    if (!response.ok) {
+      return null
+    }
+
+    return (await response.json()) as Record<string, unknown>
+  } catch (error) {
+    debugLog.warn('npm-registry', `exact manifest fallback failed for ${packageName}@${version}`, error)
+    return null
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 const inFlightManifests = new Map<string, Promise<Record<string, unknown> | null>>()
 
 export async function fetchExactPackageManifest(
@@ -358,11 +392,16 @@ export async function fetchExactPackageManifest(
     return await inFlight
   }
 
-  const lookupPromise = fetchPackageManifestFromJsdelivr(packageName, normalizedVersion).finally(
-    () => {
-      inFlightManifests.delete(cacheKey)
+  const lookupPromise = (async () => {
+    const jsdelivrManifest = await fetchPackageManifestFromJsdelivr(packageName, normalizedVersion)
+    if (jsdelivrManifest) {
+      return jsdelivrManifest
     }
-  )
+
+    return await fetchPackageManifestFromNpmRegistry(packageName, normalizedVersion)
+  })().finally(() => {
+    inFlightManifests.delete(cacheKey)
+  })
   inFlightManifests.set(cacheKey, lookupPromise)
   return await lookupPromise
 }
@@ -456,4 +495,8 @@ export async function getAllPackageDataFromJsdelivr(
  */
 export async function closeJsdelivrPool(): Promise<void> {
   await jsdelivrPool.close()
+}
+
+export function clearExactManifestCache(): void {
+  inFlightManifests.clear()
 }
