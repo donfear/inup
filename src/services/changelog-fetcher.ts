@@ -39,7 +39,10 @@ export class ChangelogFetcher {
    * Fetch package metadata from npm registry
    * Uses a cached approach to avoid repeated requests
    */
-  async fetchPackageMetadata(packageName: string, version?: string): Promise<PackageMetadata | null> {
+  async fetchPackageMetadata(
+    packageName: string,
+    version?: string
+  ): Promise<PackageMetadata | null> {
     const cacheKey = this.getCacheKey(packageName, version)
 
     // Check if we already have this in cache

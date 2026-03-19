@@ -51,9 +51,11 @@ async function getFreshPackageData(
     return await inFlight
   }
 
-  const lookupPromise = fetchPackageFromRegistryWithFallback(packageName, currentVersion).finally(() => {
-    inFlightLookups.delete(cacheKey)
-  })
+  const lookupPromise = fetchPackageFromRegistryWithFallback(packageName, currentVersion).finally(
+    () => {
+      inFlightLookups.delete(cacheKey)
+    }
+  )
   inFlightLookups.set(cacheKey, lookupPromise)
   return await lookupPromise
 }

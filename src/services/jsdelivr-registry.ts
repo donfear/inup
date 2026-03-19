@@ -358,9 +358,11 @@ export async function fetchExactPackageManifest(
     return await inFlight
   }
 
-  const lookupPromise = fetchPackageManifestFromJsdelivr(packageName, normalizedVersion).finally(() => {
-    inFlightManifests.delete(cacheKey)
-  })
+  const lookupPromise = fetchPackageManifestFromJsdelivr(packageName, normalizedVersion).finally(
+    () => {
+      inFlightManifests.delete(cacheKey)
+    }
+  )
   inFlightManifests.set(cacheKey, lookupPromise)
   return await lookupPromise
 }
