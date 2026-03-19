@@ -16,10 +16,25 @@ export interface PackageInfo {
   license?: string // Package license
 }
 
+export type DependencyType =
+  | 'dependencies'
+  | 'devDependencies'
+  | 'optionalDependencies'
+  | 'peerDependencies'
+
+export interface DependencyEntry {
+  name: string
+  version: string
+  type: DependencyType
+  packageJsonPath: string
+}
+
+export type PackageLoadState = 'pending' | 'ready' | 'failed'
+
 export interface PackageUpgradeChoice {
   name: string
   packageJsonPath: string // Path to the package.json file to upgrade
-  dependencyType: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  dependencyType: DependencyType
   upgradeType: 'none' | 'range' | 'latest'
   targetVersion: string
   currentVersionSpecifier: string // Original version specifier with prefix
@@ -34,9 +49,10 @@ export interface PackageSelectionState {
   rangeVersion: string
   latestVersion: string
   selectedOption: 'none' | 'range' | 'latest'
+  loadState: PackageLoadState
   hasRangeUpdate: boolean
   hasMajorUpdate: boolean
-  type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  type: DependencyType
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases
@@ -86,6 +102,52 @@ export interface PackageJson {
   [key: string]: any
 }
 
-export type OnBatchReadyCallback = (
-  batch: Array<{ name: string; data: { latestVersion: string; allVersions: string[] } }>
-) => void
+export interface PackageLoadProgress {
+  discovered: number
+  resolved: number
+  total: number
+  failed: number
+  isLoading: boolean
+}
+
+export interface StreamOutdatedPackagesInitialPayload {
+  allDependencies: DependencyEntry[]
+  uniquePackages: string[]
+  currentVersions: Map<string, string>
+  progress: PackageLoadProgress
+}
+
+export interface StreamOutdatedPackagesBatchItem {
+  packageName: string
+  packageInfo: PackageInfo[]
+  failed: boolean
+}
+
+export type StreamOutdatedPackagesEvent =
+  | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
+  | {
+      type: 'batch'
+      payload: {
+        batch: StreamOutdatedPackagesBatchItem[]
+        progress: PackageLoadProgress
+      }
+    }
+  | { type: 'complete'; payload: { packages: PackageInfo[]; progress: PackageLoadProgress } }
+
+export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
+
+export interface RegistryBatchOptions {
+  batchSize?: number
+  concurrency?: number
+}
+
+export interface RegistryBatchProgressItem {
+  packageName: string
+  data: { latestVersion: string; allVersions: string[] }
+  completed: number
+  total: number
+  batchIndex: number
+  itemIndex: number
+}
+
+export type OnBatchReadyCallback = (batch: RegistryBatchProgressItem[]) => void

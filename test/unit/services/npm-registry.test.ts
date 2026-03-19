@@ -7,7 +7,11 @@ vi.mock('../../../src/services/jsdelivr-registry', () => ({
   getAllPackageDataFromJsdelivr: getAllPackageDataFromJsdelivrMock,
 }))
 
-import { getAllPackageData, clearPackageCache } from '../../../src/services/npm-registry'
+import {
+  clearPackageCache,
+  getAllPackageData,
+  getAllPackageDataBatched,
+} from '../../../src/services/npm-registry'
 
 describe('npm-registry', () => {
   const fetchMock = vi.fn()
@@ -177,5 +181,41 @@ describe('npm-registry', () => {
       { package: 'demo-pkg', completed: 1, total: 2 },
       { package: 'demo-pkg', completed: 2, total: 2 },
     ])
+  })
+
+  it('emits batched results in request order', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('pkg-a')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }),
+        })
+      }
+
+      if (url.includes('pkg-b')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => JSON.stringify({ versions: { '2.0.0': {}, '2.1.0': {} } }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: true,
+        text: async () => JSON.stringify({ versions: { '3.0.0': {}, '3.1.0': {} } }),
+      })
+    })
+
+    const batches: string[][] = []
+    const result = await getAllPackageDataBatched(
+      ['pkg-a', 'pkg-b', 'pkg-c'],
+      (batch) => {
+        batches.push(batch.map((item) => item.packageName))
+      },
+      undefined,
+      { batchSize: 2, concurrency: 1 }
+    )
+
+    expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
+    expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
 })

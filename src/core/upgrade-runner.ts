@@ -2,7 +2,7 @@ import chalk from 'chalk'
 import { PackageDetector } from './package-detector'
 import { InteractiveUI } from '../interactive-ui'
 import { PackageUpgrader } from './upgrader'
-import { UpgradeOptions, PackageManagerInfo } from '../types'
+import { PackageInfo, PackageLoadProgress, PackageSelectionState, UpgradeOptions, PackageManagerInfo } from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
 
 /**
@@ -36,25 +36,79 @@ export class UpgradeRunner {
       // Check prerequisites
       this.checkPrerequisites()
 
-      // Detect packages
-      const packages = await this.detector.getOutdatedPackages()
+      const progress: PackageLoadProgress = {
+        discovered: 0,
+        resolved: 0,
+        total: 0,
+        failed: 0,
+        isLoading: true,
+      }
+      let selectionStates: PackageSelectionState[] = []
+      let refreshUI: (() => void) | undefined
+      let latestPackages: PackageInfo[] = []
+      let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
-      // Display packages table
-      await this.ui.displayPackagesTable(packages)
+      const selectionPromise = new Promise<any[]>((resolve, reject) => {
+        const streamPromise = this.detector.streamOutdatedPackages((event) => {
+          if (event.type === 'initial') {
+            progress.discovered = event.payload.progress.discovered
+            progress.resolved = event.payload.progress.resolved
+            progress.total = event.payload.progress.total
+            progress.failed = event.payload.progress.failed
+            progress.isLoading = event.payload.progress.isLoading
 
-      const outdatedPackages = this.detector.getOutdatedPackagesOnly(packages)
-      if (outdatedPackages.length === 0) {
+            selectionStates = []
+
+            this.ui
+              .selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {
+                refreshUI = refresh
+              })
+              .then(resolve)
+              .catch(reject)
+          }
+
+          if (event.type === 'batch') {
+            latestPackages = latestPackages
+              .filter((pkg) => !event.payload.batch.some((item) => item.packageName === pkg.name))
+              .concat(event.payload.batch.flatMap((item) => item.packageInfo))
+            progress.discovered = event.payload.progress.discovered
+            progress.resolved = event.payload.progress.resolved
+            progress.total = event.payload.progress.total
+            progress.failed = event.payload.progress.failed
+            progress.isLoading = event.payload.progress.isLoading
+            this.ui.appendOutdatedBatchToSelectionStates(
+              selectionStates,
+              event.payload.batch,
+              previousSelections
+            )
+            refreshUI?.()
+          }
+
+          if (event.type === 'complete') {
+            latestPackages = event.payload.packages
+            progress.discovered = event.payload.progress.discovered
+            progress.resolved = event.payload.progress.resolved
+            progress.total = event.payload.progress.total
+            progress.failed = event.payload.progress.failed
+            progress.isLoading = event.payload.progress.isLoading
+            refreshUI?.()
+          }
+        })
+
+        streamPromise.catch(reject)
+      })
+
+      let selectedChoices: any[] = await selectionPromise
+      const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
+      if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
+        console.log(chalk.green('✅ All packages are up to date!'))
         return
       }
 
       // Interactive selection and confirmation loop
-      let selectedChoices: any[] = []
       let shouldProceed: boolean | null = false
-      let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
       while (true) {
-        // Interactive selection
-        selectedChoices = await this.ui.selectPackagesToUpgrade(packages, previousSelections)
 
         if (selectedChoices.length === 0) {
           console.log(chalk.yellow('No packages selected. Exiting...'))
@@ -62,7 +116,7 @@ export class UpgradeRunner {
         }
 
         // Validate selected choices before confirmation
-        this.validateSelectedChoices(selectedChoices, packages)
+        this.validateSelectedChoices(selectedChoices, latestPackages)
 
         // Store current selections for potential return to selection
         previousSelections = new Map()
@@ -85,7 +139,11 @@ export class UpgradeRunner {
           // User pressed N or ESC - go back to selection with current selections preserved
           console.clear()
           console.log(chalk.bold.blue('🚀 inup\n'))
-          // previousSelections is already set from above
+          selectedChoices = progress.isLoading
+            ? await this.ui.selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {
+                refreshUI = refresh
+              })
+            : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
           continue
         }
 
@@ -99,7 +157,7 @@ export class UpgradeRunner {
       }
 
       // Perform upgrade
-      await this.upgrader.upgradePackages(selectedChoices, packages)
+      await this.upgrader.upgradePackages(selectedChoices, latestPackages)
     } catch (error) {
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)
