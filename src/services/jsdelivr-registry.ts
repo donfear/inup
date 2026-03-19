@@ -367,7 +367,11 @@ async function fetchPackageManifestFromNpmRegistry(
 
     return (await response.json()) as Record<string, unknown>
   } catch (error) {
-    debugLog.warn('npm-registry', `exact manifest fallback failed for ${packageName}@${version}`, error)
+    debugLog.warn(
+      'npm-registry',
+      `exact manifest fallback failed for ${packageName}@${version}`,
+      error
+    )
     return null
   } finally {
     clearTimeout(timeoutId)
