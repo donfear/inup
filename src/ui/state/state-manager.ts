@@ -114,7 +114,7 @@ export class StateManager {
 
     const currentRow = this.navigationManager.getCurrentRow()
     const currentState = states[currentRow]
-    if (!currentState) return
+    if (!currentState || currentState.loadState !== 'ready') return
 
     if (direction === 'left') {
       // Move selection left with wraparound: latest -> range -> none -> latest
@@ -159,7 +159,7 @@ export class StateManager {
   bulkSelectMinor(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.hasRangeUpdate) {
+      if (state.loadState === 'ready' && state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -168,9 +168,9 @@ export class StateManager {
   bulkSelectLatest(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.hasMajorUpdate) {
+      if (state.loadState === 'ready' && state.hasMajorUpdate) {
         state.selectedOption = 'latest'
-      } else if (state.hasRangeUpdate) {
+      } else if (state.loadState === 'ready' && state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -179,7 +179,9 @@ export class StateManager {
   bulkUnselectAll(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      state.selectedOption = 'none'
+      if (state.loadState === 'ready') {
+        state.selectedOption = 'none'
+      }
     })
   }
 

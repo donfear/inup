@@ -1,5 +1,10 @@
 import chalk from 'chalk'
-import { PackageSelectionState, RenderableItem, PackageInfo } from '../../types'
+import {
+  PackageInfo,
+  PackageLoadProgress,
+  PackageSelectionState,
+  RenderableItem,
+} from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
 
@@ -54,6 +59,8 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   const isCurrentSelected = state.selectedOption === 'none'
   const isRangeSelected = state.selectedOption === 'range'
   const isLatestSelected = state.selectedOption === 'latest'
+  const isPending = state.loadState === 'pending'
+  const isFailed = state.loadState === 'failed'
 
   // Current version dot and version (show original specifier with prefix)
   const currentDot = isCurrentSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
@@ -62,7 +69,13 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   // Range version dot and version
   let rangeDot = ''
   let rangeVersionText = ''
-  if (state.hasRangeUpdate) {
+  if (isPending) {
+    rangeDot = getThemeColor('dotEmpty')('◌')
+    rangeVersionText = chalk.gray('loading')
+  } else if (isFailed) {
+    rangeDot = getThemeColor('dotEmpty')('◌')
+    rangeVersionText = chalk.gray('unavailable')
+  } else if (state.hasRangeUpdate) {
     rangeDot = isRangeSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const rangeVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
@@ -77,7 +90,13 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   // Latest version dot and version
   let latestDot = ''
   let latestVersionText = ''
-  if (state.hasMajorUpdate) {
+  if (isPending) {
+    latestDot = getThemeColor('dotEmpty')('◌')
+    latestVersionText = chalk.gray('loading')
+  } else if (isFailed) {
+    latestDot = getThemeColor('dotEmpty')('◌')
+    latestVersionText = chalk.gray('unavailable')
+  } else if (state.hasMajorUpdate) {
     latestDot = isLatestSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const latestVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
@@ -137,7 +156,7 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 
   // Range version section with dashes only if needed
   let rangeSection = ''
-  if (state.hasRangeUpdate) {
+  if (isPending || isFailed || state.hasRangeUpdate) {
     rangeSection = `${rangeDot} ${rangeVersionText}`
     const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before padding
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
@@ -150,7 +169,7 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 
   // Latest version section with dashes only if needed
   let latestSection = ''
-  if (state.hasMajorUpdate) {
+  if (isPending || isFailed || state.hasMajorUpdate) {
     latestSection = `${latestDot} ${latestVersionText}`
     const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before padding
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
@@ -198,7 +217,8 @@ export function renderInterface(
   filterMode?: boolean,
   filterQuery?: string,
   totalPackagesBeforeFilter?: number,
-  terminalWidth: number = 80
+  terminalWidth: number = 80,
+  loadingProgress?: PackageLoadProgress
 ): string[] {
   const output: string[] = []
 
@@ -388,6 +408,18 @@ export function renderInterface(
       const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth)
       output.push(line)
     }
+  }
+
+  if (loadingProgress?.isLoading) {
+    const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
+    const failedLabel =
+      loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
+    const loadingLine =
+      '  ' +
+      getThemeColor('textSecondary')(loadingLabel) +
+      (failedLabel ? chalk.yellow(failedLabel) : '')
+    const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
+    output.push(loadingLine + ' '.repeat(loadingPadding))
   }
 
   return output

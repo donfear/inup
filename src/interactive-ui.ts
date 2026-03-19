@@ -3,10 +3,12 @@ import chalk from 'chalk'
 import * as semver from 'semver'
 const keypress = require('keypress')
 import {
+  PackageLoadProgress,
   PackageInfo,
   PackageUpgradeChoice,
   PackageSelectionState,
   PackageManagerInfo,
+  StreamOutdatedPackagesBatchItem,
 } from './types'
 import { Key } from 'node:readline'
 import {
@@ -39,88 +41,157 @@ export class InteractiveUI {
     packages: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): Promise<PackageUpgradeChoice[]> {
-    const outdatedPackages = packages.filter((p) => p.isOutdated)
-
-    if (outdatedPackages.length === 0) {
+    const selectionStates = this.createSelectionStates(packages, previousSelections, false)
+    if (selectionStates.length === 0) {
       return []
     }
 
-    // Deduplicate packages by name and version specifier, but track all package.json paths
-    const uniquePackages = new Map<
-      string,
-      {
-        pkg: PackageInfo
-        packageJsonPaths: Set<string>
-        type: PackageInfo['type']
-      }
-    >()
+    const selectedStates = await this.interactiveTableSelector(selectionStates)
+    return this.createUpgradeChoices(selectedStates)
+  }
 
-    for (const pkg of outdatedPackages) {
+  public createSelectionStates(
+    packages: PackageInfo[],
+    previousSelections?: Map<string, 'none' | 'range' | 'latest'>,
+    includeUpToDate: boolean = true
+  ): PackageSelectionState[] {
+    const relevantPackages = includeUpToDate ? packages : packages.filter((p) => p.isOutdated)
+    const uniquePackages = this.deduplicatePackages(relevantPackages)
+
+    return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
+      const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
+      const rangeClean = semver.coerce(pkg.rangeVersion)?.version || pkg.rangeVersion
+      const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
+      const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
+      const previousSelection = previousSelections?.get(key) || 'none'
+
+      return {
+        name: pkg.name,
+        packageJsonPath: pkg.packageJsonPath,
+        packageJsonPaths: Array.from(packageJsonPaths),
+        currentVersionSpecifier: pkg.currentVersion,
+        currentVersion: currentClean,
+        rangeVersion: rangeClean,
+        latestVersion: latestClean,
+        selectedOption: previousSelection,
+        loadState: 'ready',
+        hasRangeUpdate: pkg.hasRangeUpdate,
+        hasMajorUpdate: pkg.hasMajorUpdate,
+        type: pkg.type,
+      }
+    })
+  }
+
+  public createPendingSelectionStates(
+    packages: Array<Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath'>>,
+    previousSelections?: Map<string, 'none' | 'range' | 'latest'>
+  ): PackageSelectionState[] {
+    const uniquePackages = this.deduplicatePackages(
+      packages.map((pkg) => ({
+        ...pkg,
+        rangeVersion: pkg.currentVersion,
+        latestVersion: pkg.currentVersion,
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+      }))
+    )
+
+    return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
+      const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
+      const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
+      const previousSelection = previousSelections?.get(key) || 'none'
+
+      return {
+        name: pkg.name,
+        packageJsonPath: pkg.packageJsonPath,
+        packageJsonPaths: Array.from(packageJsonPaths),
+        currentVersionSpecifier: pkg.currentVersion,
+        currentVersion: currentClean,
+        rangeVersion: 'loading',
+        latestVersion: 'loading',
+        selectedOption: previousSelection,
+        loadState: 'pending',
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        type: pkg.type,
+      }
+    })
+  }
+
+  public appendOutdatedBatchToSelectionStates(
+    selectionStates: PackageSelectionState[],
+    batch: StreamOutdatedPackagesBatchItem[],
+    previousSelections?: Map<string, 'none' | 'range' | 'latest'>
+  ): void {
+    const outdatedStates = this.createSelectionStates(
+      batch.flatMap((batchItem) => batchItem.packageInfo).filter((pkg) => pkg.isOutdated),
+      previousSelections,
+      false
+    )
+
+    if (outdatedStates.length === 0) {
+      return
+    }
+
+    const seen = new Set(
+      selectionStates.map((state) => `${state.name}@${state.currentVersionSpecifier}@${state.type}`)
+    )
+
+    outdatedStates.forEach((state) => {
+      const key = `${state.name}@${state.currentVersionSpecifier}@${state.type}`
+      if (!seen.has(key)) {
+        selectionStates.push(state)
+        seen.add(key)
+      }
+    })
+  }
+
+  public async selectPackagesToUpgradeProgressive(
+    selectionStates: PackageSelectionState[],
+    progress: PackageLoadProgress,
+    attachRefresh: (refresh: () => void) => void
+  ): Promise<PackageUpgradeChoice[]> {
+    const selectedStates = await this.interactiveTableSelector(
+      selectionStates,
+      progress,
+      attachRefresh
+    )
+    return this.createUpgradeChoices(selectedStates)
+  }
+
+  private deduplicatePackages(
+    packages: PackageInfo[]
+  ): Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }> {
+    const uniquePackages = new Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }>()
+
+    for (const pkg of packages) {
       const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
       if (!uniquePackages.has(key)) {
         uniquePackages.set(key, {
           pkg,
           packageJsonPaths: new Set([pkg.packageJsonPath]),
-          type: pkg.type,
         })
       } else {
         uniquePackages.get(key)!.packageJsonPaths.add(pkg.packageJsonPath)
       }
     }
 
-    // Convert to array and sort alphabetically by name (@scoped packages first, then unscoped)
-    const deduplicatedPackages = Array.from(uniquePackages.values()).map(
-      ({ pkg, packageJsonPaths, type }) => ({
-        ...pkg,
-        packageJsonPaths: Array.from(packageJsonPaths),
-        type,
+    return new Map(
+      Array.from(uniquePackages.entries()).sort(([, a], [, b]) => {
+        const aIsScoped = a.pkg.name.startsWith('@')
+        const bIsScoped = b.pkg.name.startsWith('@')
+        if (aIsScoped && !bIsScoped) return -1
+        if (!aIsScoped && bIsScoped) return 1
+        return a.pkg.name.localeCompare(b.pkg.name)
       })
     )
+  }
 
-    deduplicatedPackages.sort((a, b) => {
-      const aIsScoped = a.name.startsWith('@')
-      const bIsScoped = b.name.startsWith('@')
-
-      // If one is scoped and the other isn't, scoped comes first
-      if (aIsScoped && !bIsScoped) return -1
-      if (!aIsScoped && bIsScoped) return 1
-
-      // Both scoped or both unscoped - sort alphabetically
-      return a.name.localeCompare(b.name)
-    })
-
-    // Create selection states for each unique package
-    const selectionStates: PackageSelectionState[] = deduplicatedPackages.map((pkg) => {
-      const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
-      const rangeClean = semver.coerce(pkg.rangeVersion)?.version || pkg.rangeVersion
-      const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
-
-      // Use previous selection if available, otherwise default to 'none'
-      const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
-      const previousSelection = previousSelections?.get(key) || 'none'
-
-      return {
-        name: pkg.name,
-        packageJsonPath: pkg.packageJsonPaths[0], // Use first path for display
-        packageJsonPaths: pkg.packageJsonPaths, // Store all paths for upgrading
-        currentVersionSpecifier: pkg.currentVersion, // Keep original with prefix
-        currentVersion: currentClean,
-        rangeVersion: rangeClean,
-        latestVersion: latestClean,
-        selectedOption: previousSelection,
-        hasRangeUpdate: pkg.hasRangeUpdate,
-        hasMajorUpdate: pkg.hasMajorUpdate,
-        type: pkg.type,
-      }
-    })
-
-    // Use custom interactive table selector (simplified - no grouping)
-    const selectedStates = await this.interactiveTableSelector(selectionStates)
-
-    // Convert to PackageUpgradeChoice[] - create one choice per package.json path
+  private createUpgradeChoices(selectedStates: PackageSelectionState[]): PackageUpgradeChoice[] {
     const choices: PackageUpgradeChoice[] = []
     selectedStates
-      .filter((state) => state.selectedOption !== 'none')
+      .filter((state) => state.loadState === 'ready' && state.selectedOption !== 'none')
       .forEach((state) => {
         const targetVersion =
           state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion
@@ -129,7 +200,6 @@ export class InteractiveUI {
           targetVersion
         )
 
-        // Create a choice for each package.json path where this package appears
         const pathsToUpdate = state.packageJsonPaths || [state.packageJsonPath]
         pathsToUpdate.forEach((packageJsonPath) => {
           choices.push({
@@ -155,11 +225,14 @@ export class InteractiveUI {
   }
 
   private async interactiveTableSelector(
-    selectionStates: PackageSelectionState[]
+    selectionStates: PackageSelectionState[],
+    loadingProgress?: PackageLoadProgress,
+    attachRefresh?: (refresh: () => void) => void
   ): Promise<PackageSelectionState[]> {
     return new Promise((resolve) => {
-      const states = [...selectionStates]
+      const states = selectionStates
       const stateManager = new StateManager(0, this.getTerminalHeight())
+      let isResolved = false
 
       // No grouping needed - packages are already filtered by type
       // This simplifies scrolling and avoids rendering issues
@@ -215,24 +288,26 @@ export class InteractiveUI {
               // Opening modal - load package info asynchronously
               stateManager.toggleInfoModal()
               const currentState = filteredStates[uiState.currentRow]
-              stateManager.setModalLoading(true)
+              const canFetchMetadata = currentState?.loadState === 'ready'
+              stateManager.setModalLoading(canFetchMetadata)
               renderInterface()
 
-              // Fetch metadata asynchronously
-              changelogFetcher
-                .fetchPackageMetadata(currentState.name, currentState.latestVersion)
-                .then((metadata) => {
-                  if (metadata) {
-                    currentState.description = metadata.description
-                    currentState.homepage = metadata.homepage
-                    currentState.repository = metadata.releaseNotes
-                    currentState.weeklyDownloads = metadata.weeklyDownloads
-                    currentState.author = metadata.author as string | undefined
-                    currentState.license = metadata.license
-                  }
-                  stateManager.setModalLoading(false)
-                  renderInterface()
-                })
+              if (currentState && canFetchMetadata) {
+                changelogFetcher
+                  .fetchPackageMetadata(currentState.name, currentState.latestVersion)
+                  .then((metadata) => {
+                    if (metadata) {
+                      currentState.description = metadata.description
+                      currentState.homepage = metadata.homepage
+                      currentState.repository = metadata.releaseNotes
+                      currentState.weeklyDownloads = metadata.weeklyDownloads
+                      currentState.author = metadata.author as string | undefined
+                      currentState.license = metadata.license
+                    }
+                    stateManager.setModalLoading(false)
+                    renderInterface()
+                  })
+              }
             } else {
               // Closing modal
               stateManager.toggleInfoModal()
@@ -295,6 +370,7 @@ export class InteractiveUI {
       }
 
       const handleConfirm = (selectedStates: PackageSelectionState[]) => {
+        isResolved = true
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
@@ -309,6 +385,7 @@ export class InteractiveUI {
       }
 
       const handleCancel = () => {
+        isResolved = true
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
@@ -414,7 +491,8 @@ export class InteractiveUI {
             uiState.filterMode,
             uiState.filterQuery,
             states.length,
-            terminalWidth
+            terminalWidth,
+            loadingProgress
           )
 
           // Print all lines
@@ -440,6 +518,12 @@ export class InteractiveUI {
 
       // Setup keypress handling
       try {
+        attachRefresh?.(() => {
+          if (!isResolved) {
+            renderInterface()
+          }
+        })
+
         keypress(process.stdin)
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(true)

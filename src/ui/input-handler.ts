@@ -182,7 +182,9 @@ export class InputHandler {
 
       case 'return':
         // Check if any packages are selected
-        const selectedCount = states.filter((s) => s.selectedOption !== 'none').length
+        const selectedCount = states.filter(
+          (s) => s.loadState === 'ready' && s.selectedOption !== 'none'
+        ).length
         if (selectedCount === 0) {
           // Do nothing if no packages selected
           return

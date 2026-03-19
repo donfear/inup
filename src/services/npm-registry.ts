@@ -2,6 +2,7 @@ import * as semver from 'semver'
 import { NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import { ConsoleUtils } from '../ui/utils'
+import { OnBatchReadyCallback, RegistryBatchOptions, RegistryBatchProgressItem } from '../types'
 
 export interface PackageVersionData {
   latestVersion: string
@@ -155,6 +156,78 @@ export async function getAllPackageData(
   // Clear the progress line if no custom progress handler
   if (!onProgress) {
     ConsoleUtils.clearProgress()
+  }
+
+  return packageData
+}
+
+async function runWithConcurrencyLimit<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) {
+    return
+  }
+
+  const limit = Math.max(1, Math.min(concurrency, items.length))
+  let nextIndex = 0
+
+  const runWorker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++
+      await worker(items[currentIndex], currentIndex)
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => runWorker()))
+}
+
+export async function getAllPackageDataBatched(
+  packageNames: string[],
+  onBatchReady?: OnBatchReadyCallback,
+  currentVersions?: Map<string, string>,
+  options: RegistryBatchOptions = {}
+): Promise<Map<string, PackageVersionData>> {
+  const packageData = new Map<string, PackageVersionData>()
+
+  if (packageNames.length === 0) {
+    return packageData
+  }
+
+  const batchSizes =
+    options.batchSizes && options.batchSizes.length > 0
+      ? options.batchSizes.map((size) => Math.max(1, size))
+      : [Math.max(1, options.batchSize ?? 20)]
+  const concurrency = Math.max(1, options.concurrency ?? 5)
+  const total = packageNames.length
+  let completedCount = 0
+  let batchStart = 0
+  let batchIndex = 0
+
+  while (batchStart < packageNames.length) {
+    const batchSize = batchSizes[Math.min(batchIndex, batchSizes.length - 1)]
+    const batchNames = packageNames.slice(batchStart, batchStart + batchSize)
+    const batchResults: RegistryBatchProgressItem[] = new Array(batchNames.length)
+
+    await runWithConcurrencyLimit(batchNames, concurrency, async (packageName, itemIndex) => {
+      const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
+      packageData.set(packageName, data)
+      completedCount++
+      batchResults[itemIndex] = {
+        packageName,
+        data,
+        completed: completedCount,
+        total,
+        batchIndex,
+        itemIndex,
+      }
+    })
+
+    onBatchReady?.(batchResults.filter(Boolean))
+
+    batchStart += batchSize
+    batchIndex++
   }
 
   return packageData

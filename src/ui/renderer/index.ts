@@ -1,4 +1,9 @@
-import { PackageSelectionState, RenderableItem, PackageManagerInfo } from '../../types'
+import {
+  PackageLoadProgress,
+  PackageSelectionState,
+  RenderableItem,
+  PackageManagerInfo,
+} from '../../types'
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from './modal'
@@ -32,7 +37,8 @@ export class UIRenderer {
     filterMode?: boolean,
     filterQuery?: string,
     totalPackagesBeforeFilter?: number,
-    terminalWidth: number = 80
+    terminalWidth: number = 80,
+    loadingProgress?: PackageLoadProgress
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -46,7 +52,8 @@ export class UIRenderer {
       filterMode,
       filterQuery,
       totalPackagesBeforeFilter,
-      terminalWidth
+      terminalWidth,
+      loadingProgress
     )
   }
 
