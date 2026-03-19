@@ -1,116 +1,181 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+const { getAllPackageDataFromJsdelivrMock } = vi.hoisted(() => ({
+  getAllPackageDataFromJsdelivrMock: vi.fn(),
+}))
+
+vi.mock('../../../src/services/jsdelivr-registry', () => ({
+  getAllPackageDataFromJsdelivr: getAllPackageDataFromJsdelivrMock,
+}))
+
 import { getAllPackageData, clearPackageCache } from '../../../src/services/npm-registry'
-import { persistentCache } from '../../../src/services/persistent-cache'
-import { PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('npm-registry', () => {
+  const fetchMock = vi.fn()
+
   beforeEach(() => {
     clearPackageCache()
-    persistentCache.clearCache()
+    fetchMock.mockReset()
+    getAllPackageDataFromJsdelivrMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
   })
 
-  describe('getAllPackageData()', () => {
-    it('should fetch package data for inup from npm registry', async () => {
-      const result = await getAllPackageData([PACKAGE_NAME])
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
 
-      expect(result.size).toBe(1)
-      const inupData = result.get(PACKAGE_NAME)
-      expect(inupData).toBeDefined()
-      expect(inupData?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      expect(inupData?.allVersions).toBeDefined()
-      expect(inupData?.allVersions.length).toBeGreaterThan(0)
-    }, 10000)
-
-    it('should filter out pre-release versions for inup', async () => {
-      const result = await getAllPackageData([PACKAGE_NAME])
-
-      const inupData = result.get(PACKAGE_NAME)
-      expect(inupData).toBeDefined()
-
-      // All versions should be stable (X.Y.Z format, no -beta, -rc, etc.)
-      inupData?.allVersions.forEach((version) => {
-        expect(version).toMatch(/^\d+\.\d+\.\d+$/)
-        expect(version).not.toContain('-')
-        expect(version).not.toContain('alpha')
-        expect(version).not.toContain('beta')
-        expect(version).not.toContain('rc')
-      })
-    }, 10000)
-
-    it('should return empty map for empty input', async () => {
-      const result = await getAllPackageData([])
-
-      expect(result.size).toBe(0)
+  it('fetches version data from npm registry', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          versions: {
+            '1.0.0': {},
+            '1.2.0': {},
+            '2.0.0-beta.1': {},
+            '1.1.0': {},
+          },
+        }),
     })
 
-    it('should cache package data for inup', async () => {
-      const start1 = Date.now()
-      await getAllPackageData([PACKAGE_NAME])
-      const duration1 = Date.now() - start1
+    const result = await getAllPackageData(['demo-pkg'])
 
-      const start2 = Date.now()
-      await getAllPackageData([PACKAGE_NAME])
-      const duration2 = Date.now() - start2
-
-      // Second fetch should be significantly faster (cached)
-      expect(duration2).toBeLessThan(duration1 / 2)
-    }, 10000)
-
-    it('should call progress callback', async () => {
-      const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
-
-      await getAllPackageData([PACKAGE_NAME, PACKAGE_NAME], (pkg, completed, total) => {
-        progressUpdates.push({ package: pkg, completed, total })
-      })
-
-      expect(progressUpdates.length).toBe(2)
-      expect(progressUpdates[0].total).toBe(2)
-      expect(progressUpdates[0].completed).toBe(1)
-      expect(progressUpdates[1].completed).toBe(2)
-    }, 10000)
-
-    it('should sort versions correctly for inup', async () => {
-      const result = await getAllPackageData([PACKAGE_NAME])
-
-      const inupData = result.get(PACKAGE_NAME)
-      expect(inupData).toBeDefined()
-
-      // Versions should be sorted in descending order
-      if (inupData && inupData.allVersions.length > 1) {
-        const versions = inupData.allVersions
-        // First version should be the latest
-        expect(versions[0]).toBe(inupData.latestVersion)
-
-        // Verify descending order
-        for (let i = 0; i < versions.length - 1; i++) {
-          const current = versions[i].split('.').map(Number)
-          const next = versions[i + 1].split('.').map(Number)
-
-          // Current should be >= next
-          const currentNum = current[0] * 10000 + current[1] * 100 + current[2]
-          const nextNum = next[0] * 10000 + next[1] * 100 + next[2]
-          expect(currentNum).toBeGreaterThanOrEqual(nextNum)
-        }
-      }
-    }, 10000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.2.0',
+      allVersions: ['1.2.0', '1.1.0', '1.0.0'],
+    })
   })
 
-  describe('clearPackageCache()', () => {
-    it('should clear the cache for inup', async () => {
-      // First fetch
-      await getAllPackageData([PACKAGE_NAME])
+  it('returns empty map for empty input', async () => {
+    const result = await getAllPackageData([])
 
-      // Clear both in-memory and persistent cache
-      clearPackageCache()
-      persistentCache.clearCache()
+    expect(result.size).toBe(0)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 
-      // Second fetch should hit the network again
-      const start = Date.now()
-      await getAllPackageData([PACKAGE_NAME])
-      const duration = Date.now() - start
+  it('coalesces duplicate in-flight lookups within a run', async () => {
+    let resolveFetch: ((value: { ok: boolean; text: () => Promise<string> }) => void) | undefined
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        })
+    )
 
-      // Should take some time (not instant from cache)
-      expect(duration).toBeGreaterThan(10)
-    }, 10000)
+    const pending = getAllPackageData(['demo-pkg', 'demo-pkg'])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    resolveFetch?.({
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          versions: {
+            '1.0.0': {},
+            '1.1.0': {},
+          },
+        }),
+    })
+
+    const result = await pending
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.1.0',
+      allVersions: ['1.1.0', '1.0.0'],
+    })
+  })
+
+  it('fetches fresh data again on a later call', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ versions: { '1.0.0': {} } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: async () => JSON.stringify({ versions: { '1.1.0': {}, '1.0.0': {} } }),
+      })
+
+    const first = await getAllPackageData(['demo-pkg'])
+    const second = await getAllPackageData(['demo-pkg'])
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(first.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+    expect(second.get('demo-pkg')?.latestVersion).toBe('1.1.0')
+  })
+
+  it('returns unknown for failed packages without aborting the batch', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('good-pkg')) {
+        return Promise.resolve({
+          ok: true,
+          text: async () => JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }),
+        })
+      }
+
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        text: async () => '',
+      })
+    })
+
+    const result = await getAllPackageData(['good-pkg', 'bad-pkg'])
+
+    expect(result.get('good-pkg')).toEqual({
+      latestVersion: '1.1.0',
+      allVersions: ['1.1.0', '1.0.0'],
+    })
+    expect(result.get('bad-pkg')).toEqual({
+      latestVersion: 'unknown',
+      allVersions: [],
+    })
+  })
+
+  it('falls back to jsdelivr when npm responds with a retryable status', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => '',
+    })
+    getAllPackageDataFromJsdelivrMock.mockResolvedValue(
+      new Map([
+        [
+          'demo-pkg',
+          {
+            latestVersion: '1.1.0',
+            allVersions: ['1.1.0', '1.0.0'],
+          },
+        ],
+      ])
+    )
+
+    const currentVersions = new Map([['demo-pkg', '1.0.0']])
+    const result = await getAllPackageData(['demo-pkg'], undefined, currentVersions)
+
+    expect(getAllPackageDataFromJsdelivrMock).toHaveBeenCalledWith(
+      ['demo-pkg'],
+      new Map([['demo-pkg', '1.0.0']])
+    )
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: '1.1.0',
+      allVersions: ['1.1.0', '1.0.0'],
+    })
+  })
+
+  it('calls progress callback once per requested package', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify({ versions: { '1.0.0': {} } }),
+    })
+    const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
+
+    await getAllPackageData(['demo-pkg', 'demo-pkg'], (pkg, completed, total) => {
+      progressUpdates.push({ package: pkg, completed, total })
+    })
+
+    expect(progressUpdates).toEqual([
+      { package: 'demo-pkg', completed: 1, total: 2 },
+      { package: 'demo-pkg', completed: 2, total: 2 },
+    ])
   })
 })

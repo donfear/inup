@@ -1,108 +1,205 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+const { fetchExactPackageManifestMock } = vi.hoisted(() => ({
+  fetchExactPackageManifestMock: vi.fn(),
+}))
+
+vi.mock('../../../src/services/jsdelivr-registry', () => ({
+  fetchExactPackageManifest: fetchExactPackageManifestMock,
+}))
+
 import { ChangelogFetcher } from '../../../src/services/changelog-fetcher'
-import { PACKAGE_NAME } from '../../../src/config/constants'
 
 describe('ChangelogFetcher', () => {
   let fetcher: ChangelogFetcher
+  const fetchMock = vi.fn()
 
   beforeEach(() => {
     fetcher = new ChangelogFetcher()
     fetcher.clearCache()
+    fetchMock.mockReset()
+    fetchExactPackageManifestMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   describe('fetchPackageMetadata()', () => {
-    it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+    it('prefers an exact jsdelivr manifest when a pinned version is provided', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        homepage: 'https://example.com',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+        bugs: { url: 'https://github.com/demo/repo/issues' },
+        keywords: ['demo'],
+        author: { name: 'Demo Author' },
+        license: 'MIT',
+      })
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ downloads: 1234 }),
+      })
 
-      expect(metadata).not.toBeNull()
-      expect(metadata?.description).toBeTruthy()
-      expect(metadata?.repositoryUrl).toBeTruthy()
-      expect(metadata?.repositoryUrl).toContain('github.com')
-      expect(metadata?.npmUrl).toBe(`https://www.npmjs.com/package/${PACKAGE_NAME}`)
-      expect(metadata?.license).toBeTruthy()
-    }, 10000)
+      const metadata = await fetcher.fetchPackageMetadata('demo-pkg', '1.2.3')
 
-    it('should return null for nonexistent package', async () => {
-      const metadata = await fetcher.fetchPackageMetadata('this-package-definitely-does-not-exist-123456789')
+      expect(fetchExactPackageManifestMock).toHaveBeenCalledWith('demo-pkg', '1.2.3')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(metadata?.repositoryUrl).toBe('https://github.com/demo/repo')
+      expect(metadata?.weeklyDownloads).toBe(1234)
+    })
 
-      expect(metadata).toBeNull()
-    }, 10000)
+    it('fetches metadata from npm registry and download stats once', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: 'Demo package',
+            homepage: 'https://example.com',
+            repository: { url: 'git+https://github.com/demo/repo.git' },
+            bugs: { url: 'https://github.com/demo/repo/issues' },
+            keywords: ['demo'],
+            author: { name: 'Demo Author' },
+            license: 'MIT',
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 1234 }),
+        })
 
-    it('should use cache on second fetch', async () => {
-      const start1 = Date.now()
-      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
-      const duration1 = Date.now() - start1
+      const metadata = await fetcher.fetchPackageMetadata('demo-pkg')
 
-      const start2 = Date.now()
-      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
-      const duration2 = Date.now() - start2
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(metadata).toEqual({
+        description: 'Demo package',
+        homepage: 'https://example.com',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+        bugs: { url: 'https://github.com/demo/repo/issues' },
+        keywords: ['demo'],
+        author: 'Demo Author',
+        license: 'MIT',
+        repositoryUrl: 'https://github.com/demo/repo',
+        npmUrl: 'https://www.npmjs.com/package/demo-pkg',
+        issuesUrl: 'https://github.com/demo/repo/issues',
+        releaseNotes: 'https://github.com/demo/repo/releases',
+        weeklyDownloads: 1234,
+      })
+    })
 
-      // Second fetch should be significantly faster (cached)
-      expect(duration2).toBeLessThan(duration1 / 2)
-    }, 10000)
+    it('returns null for nonexistent package and memoizes the failure', async () => {
+      fetchMock.mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+      })
 
-    it('should cache failures to avoid retrying', async () => {
-      const start1 = Date.now()
-      await fetcher.fetchPackageMetadata('nonexistent-package-xyz-123')
-      const duration1 = Date.now() - start1
+      const first = await fetcher.fetchPackageMetadata('missing-pkg')
+      const second = await fetcher.fetchPackageMetadata('missing-pkg')
 
-      const start2 = Date.now()
-      await fetcher.fetchPackageMetadata('nonexistent-package-xyz-123')
-      const duration2 = Date.now() - start2
+      expect(first).toBeNull()
+      expect(second).toBeNull()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
 
-      // Second fetch should be instant (cached failure)
-      expect(duration2).toBeLessThan(10)
-    }, 10000)
+    it('reuses cached metadata on repeated calls', async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: 'Demo package',
+            repository: { url: 'https://github.com/demo/repo.git' },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
 
-    it('should extract repository URL correctly', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      const first = await fetcher.fetchPackageMetadata('demo-pkg')
+      const second = await fetcher.fetchPackageMetadata('demo-pkg')
 
-      expect(metadata).not.toBeNull()
-      expect(metadata?.repositoryUrl).toBeTruthy()
-      // Should not have .git suffix
-      expect(metadata?.repositoryUrl).not.toContain('.git')
-      // Should not have git+ prefix
-      expect(metadata?.repositoryUrl).toMatch(/^https?:\/\//)
-    }, 10000)
+      expect(first).toEqual(second)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
 
-    it('should generate release notes URL', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+    it('dedupes concurrent requests while metadata is in flight', async () => {
+      let resolveRegistry:
+        | ((value: {
+            ok: boolean
+            json: () => Promise<Record<string, unknown>>
+          }) => void)
+        | undefined
+      let resolveDownloads:
+        | ((value: {
+            ok: boolean
+            json: () => Promise<Record<string, unknown>>
+          }) => void)
+        | undefined
 
-      expect(metadata).not.toBeNull()
-      if (metadata?.repositoryUrl) {
-        expect(metadata.releaseNotes).toBe(`${metadata.repositoryUrl}/releases`)
-      }
-    }, 10000)
+      fetchMock
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveRegistry = resolve
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveDownloads = resolve
+            })
+        )
 
-    it('should generate issues URL', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      const first = fetcher.fetchPackageMetadata('demo-pkg')
+      const second = fetcher.fetchPackageMetadata('demo-pkg')
 
-      expect(metadata).not.toBeNull()
-      if (metadata?.repositoryUrl) {
-        expect(metadata.issuesUrl).toBe(`${metadata.repositoryUrl}/issues`)
-      }
-    }, 10000)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    it('should fetch package metadata with optional weekly downloads', async () => {
-      const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      resolveRegistry?.({
+        ok: true,
+        json: async () => ({
+          description: 'Demo package',
+          repository: { url: 'https://github.com/demo/repo.git' },
+        }),
+      })
 
-      expect(metadata).not.toBeNull()
-      // Weekly downloads is optional - may not always be available
-      if (metadata?.weeklyDownloads !== undefined) {
-        expect(metadata.weeklyDownloads).toBeGreaterThanOrEqual(0)
-      }
-    }, 10000)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+
+      resolveDownloads?.({
+        ok: true,
+        json: async () => ({ downloads: 7 }),
+      })
+
+      const [firstResult, secondResult] = await Promise.all([first, second])
+
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(firstResult).toEqual(secondResult)
+    })
   })
 
   describe('getRepositoryReleaseUrl()', () => {
     it('should return release URL for cached package', async () => {
-      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: 'Demo package',
+            repository: { url: 'https://github.com/demo/repo.git' },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 7 }),
+        })
 
-      const releaseUrl = fetcher.getRepositoryReleaseUrl(PACKAGE_NAME, '1.0.0')
+      await fetcher.fetchPackageMetadata('demo-pkg')
+
+      const releaseUrl = fetcher.getRepositoryReleaseUrl('demo-pkg', '1.0.0')
 
       expect(releaseUrl).toBeTruthy()
       expect(releaseUrl).toContain('/releases/tag/v1.0.0')
-    }, 10000)
+    })
 
     it('should return null for uncached package', () => {
       const releaseUrl = fetcher.getRepositoryReleaseUrl('unknown-package', '1.0.0')
@@ -145,21 +242,40 @@ describe('ChangelogFetcher', () => {
 
   describe('clearCache()', () => {
     it('should clear both success and failure caches', async () => {
-      // Fetch test package
-      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: 'Demo package',
+            repository: { url: 'https://github.com/demo/repo.git' },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 7 }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            description: 'Demo package',
+            repository: { url: 'https://github.com/demo/repo.git' },
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 7 }),
+        })
 
-      // Fetch nonexistent package (failure)
-      await fetcher.fetchPackageMetadata('nonexistent-pkg-xyz')
-
-      // Clear cache
+      await fetcher.fetchPackageMetadata('demo-pkg')
+      await fetcher.fetchPackageMetadata('missing-pkg')
       fetcher.clearCache()
+      await fetcher.fetchPackageMetadata('demo-pkg')
 
-      // Both should be refetched
-      const start = Date.now()
-      await fetcher.fetchPackageMetadata(PACKAGE_NAME)
-      const duration = Date.now() - start
-
-      expect(duration).toBeGreaterThan(10)
-    }, 10000)
+      expect(fetchMock).toHaveBeenCalledTimes(5)
+    })
   })
 })

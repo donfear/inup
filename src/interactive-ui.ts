@@ -219,18 +219,20 @@ export class InteractiveUI {
               renderInterface()
 
               // Fetch metadata asynchronously
-              changelogFetcher.fetchPackageMetadata(currentState.name).then((metadata) => {
-                if (metadata) {
-                  currentState.description = metadata.description
-                  currentState.homepage = metadata.homepage
-                  currentState.repository = metadata.releaseNotes
-                  currentState.weeklyDownloads = metadata.weeklyDownloads
-                  currentState.author = metadata.author as string | undefined
-                  currentState.license = metadata.license
-                }
-                stateManager.setModalLoading(false)
-                renderInterface()
-              })
+              changelogFetcher
+                .fetchPackageMetadata(currentState.name, currentState.latestVersion)
+                .then((metadata) => {
+                  if (metadata) {
+                    currentState.description = metadata.description
+                    currentState.homepage = metadata.homepage
+                    currentState.repository = metadata.releaseNotes
+                    currentState.weeklyDownloads = metadata.weeklyDownloads
+                    currentState.author = metadata.author as string | undefined
+                    currentState.license = metadata.license
+                  }
+                  stateManager.setModalLoading(false)
+                  renderInterface()
+                })
             } else {
               // Closing modal
               stateManager.toggleInfoModal()

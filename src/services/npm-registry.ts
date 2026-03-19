@@ -1,19 +1,73 @@
 import * as semver from 'semver'
 import { NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
-import { packageCache, PackageVersionData } from './cache-manager'
+import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import { ConsoleUtils } from '../ui/utils'
+
+export interface PackageVersionData {
+  latestVersion: string
+  allVersions: string[]
+}
+
+const inFlightLookups = new Map<string, Promise<PackageVersionData>>()
+
+const isRetryableStatus = (statusCode: number): boolean =>
+  statusCode === 408 || statusCode === 429 || statusCode >= 500
+
+const isTransientNetworkError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  const maybeCode = (error as Error & { code?: string }).code
+  return (
+    error.name === 'AbortError' ||
+    maybeCode === 'ENOTFOUND' ||
+    maybeCode === 'EAI_AGAIN' ||
+    maybeCode === 'ECONNRESET' ||
+    maybeCode === 'ECONNREFUSED' ||
+    maybeCode === 'ETIMEDOUT' ||
+    maybeCode === 'EPIPE'
+  )
+}
+
+const fetchFromJsdelivrFallback = async (
+  packageName: string,
+  currentVersion: string | undefined
+): Promise<PackageVersionData> => {
+  const jsdelivrData = await getAllPackageDataFromJsdelivr(
+    [packageName],
+    currentVersion ? new Map([[packageName, currentVersion]]) : undefined
+  )
+  return jsdelivrData.get(packageName) ?? { latestVersion: 'unknown', allVersions: [] }
+}
+
+async function getFreshPackageData(
+  packageName: string,
+  currentVersion: string | undefined
+): Promise<PackageVersionData> {
+  const cacheKey = `${packageName}@${currentVersion ?? ''}`
+  const inFlight = inFlightLookups.get(cacheKey)
+  if (inFlight) {
+    return await inFlight
+  }
+
+  const lookupPromise = fetchPackageFromRegistryWithFallback(packageName, currentVersion).finally(
+    () => {
+      inFlightLookups.delete(cacheKey)
+    }
+  )
+  inFlightLookups.set(cacheKey, lookupPromise)
+  return await lookupPromise
+}
 
 /**
  * Fetches package data from npm registry.
- * Uses the shared CacheManager for caching.
+ * Falls back to jsDelivr when npm is temporarily unavailable.
  */
-async function fetchPackageFromRegistry(packageName: string): Promise<PackageVersionData> {
-  // Use CacheManager for unified caching (memory + disk)
-  const cached = packageCache.get(packageName)
-  if (cached) {
-    return cached
-  }
-
+async function fetchPackageFromRegistryWithFallback(
+  packageName: string,
+  currentVersion: string | undefined
+): Promise<PackageVersionData> {
   try {
     const url = `${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}`
 
@@ -32,46 +86,35 @@ async function fetchPackageFromRegistry(packageName: string): Promise<PackageVer
       clearTimeout(timeoutId)
 
       if (!response.ok) {
+        if (isRetryableStatus(response.status)) {
+          return await fetchFromJsdelivrFallback(packageName, currentVersion)
+        }
         throw new Error(`HTTP ${response.status}`)
       }
 
       const text = await response.text()
       const data = JSON.parse(text) as {
         versions?: Record<string, unknown>
-        description?: string
-        homepage?: string
-        repository?: any
-        bugs?: any
-        keywords?: string[]
-        author?: any
-        license?: string
-        'dist-tags'?: Record<string, string>
       }
 
-      // Extract versions and filter to valid semver (X.Y.Z format, no pre-releases)
-      const allVersions = Object.keys(data.versions || {}).filter((version) => {
-        // Match only X.Y.Z format (no pre-release, no build metadata)
-        return /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)
-      })
+      const allVersions = Object.keys(data.versions || {}).filter((version) =>
+        /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)
+      )
 
-      // Sort versions to find the latest
       const sortedVersions = allVersions.sort(semver.rcompare)
       const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
 
-      const result: PackageVersionData = {
+      return {
         latestVersion,
         allVersions,
       }
-
-      // Cache the result using CacheManager (handles both memory and disk)
-      packageCache.set(packageName, result)
-
-      return result
     } finally {
       clearTimeout(timeoutId)
     }
   } catch (error) {
-    // Return fallback data for failed packages
+    if (isTransientNetworkError(error)) {
+      return await fetchFromJsdelivrFallback(packageName, currentVersion)
+    }
     return { latestVersion: 'unknown', allVersions: [] }
   }
 }
@@ -83,7 +126,8 @@ async function fetchPackageFromRegistry(packageName: string): Promise<PackageVer
  */
 export async function getAllPackageData(
   packageNames: string[],
-  onProgress?: (currentPackage: string, completed: number, total: number) => void
+  onProgress?: (currentPackage: string, completed: number, total: number) => void,
+  currentVersions?: Map<string, string>
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
@@ -94,10 +138,8 @@ export async function getAllPackageData(
   const total = packageNames.length
   let completedCount = 0
 
-  // Fire all requests simultaneously
-  // Concurrency is handled naturally by the event loop with fetch
   const allPromises = packageNames.map(async (packageName) => {
-    const data = await fetchPackageFromRegistry(packageName)
+    const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
     packageData.set(packageName, data)
 
     completedCount++
@@ -110,9 +152,6 @@ export async function getAllPackageData(
   // Wait for all requests to complete
   await Promise.all(allPromises)
 
-  // Flush persistent cache to disk
-  packageCache.flush()
-
   // Clear the progress line if no custom progress handler
   if (!onProgress) {
     ConsoleUtils.clearProgress()
@@ -122,8 +161,8 @@ export async function getAllPackageData(
 }
 
 /**
- * Clear the package cache (useful for testing)
+ * Retained for backward compatibility. Registry responses are fresh-by-default.
  */
 export function clearPackageCache(): void {
-  packageCache.clear()
+  inFlightLookups.clear()
 }

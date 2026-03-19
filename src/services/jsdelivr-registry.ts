@@ -1,5 +1,6 @@
 import { Pool, request } from 'undici'
 import * as semver from 'semver'
+import type { PackageVersionData } from './npm-registry'
 import {
   JSDELIVR_CDN_URL,
   MAX_CONCURRENT_REQUESTS,
@@ -7,19 +8,12 @@ import {
   JSDELIVR_RETRY_TIMEOUTS,
   JSDELIVR_RETRY_DELAYS,
 } from '../config'
-import { getAllPackageData } from './npm-registry'
-import { packageCache, PackageVersionData } from './cache-manager'
-import { ConsoleUtils } from '../ui/utils'
-import { OnBatchReadyCallback } from '../types'
 import { debugLog } from '../utils'
-
-// Batch configuration for progressive loading
-const BATCH_SIZE = 5
-const BATCH_TIMEOUT_MS = 500
 
 const DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS = 2000
 const DEFAULT_JSDELIVR_POOL_TIMEOUT_MS = 60000
 const MIN_JSDELIVR_CONNECT_TIMEOUT_MS = 500
+const EXACT_VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 
 const toPositiveInteger = (value: number): number | null => {
   if (!Number.isFinite(value) || value <= 0) {
@@ -257,17 +251,12 @@ const isExpectedTransientError = (error: unknown): boolean =>
   isTimeoutError(error) || isTransientNetworkError(error)
 
 /**
- * Fetches package.json from jsdelivr CDN for a specific version tag using undici pool.
- * Uses connection pooling and keep-alive for maximum performance.
- * Retries on transient failures while keeping a short fallback budget.
- * @param packageName - The npm package name
- * @param versionTag - The version tag (e.g., '14', 'latest')
- * @returns The package.json content or null if not found
+ * Fetches a package.json manifest from jsDelivr for a version tag.
  */
-async function fetchPackageJsonFromJsdelivr(
+async function fetchPackageManifestFromJsdelivr(
   packageName: string,
   versionTag: string
-): Promise<{ version: string } | null> {
+): Promise<Record<string, unknown> | null> {
   const url = `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${versionTag}/package.json`
 
   for (let attempt = 0; attempt < RETRY_TIMEOUTS.length; attempt++) {
@@ -306,14 +295,13 @@ async function fetchPackageJsonFromJsdelivr(
       }
 
       const text = await body.text()
-      const data = JSON.parse(text) as { version?: unknown }
-      const version = typeof data.version === 'string' ? data.version.trim() : ''
-      debugLog.perf(
-        'jsdelivr',
-        `fetch ${packageName}@${versionTag} → ${version || 'no version'}`,
-        tReq
-      )
-      return version ? { version } : null
+      const data = JSON.parse(text) as unknown
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return null
+      }
+
+      debugLog.perf('jsdelivr', `fetch manifest ${packageName}@${versionTag}`, tReq)
+      return data as Record<string, unknown>
     } catch (error) {
       if (
         (isTimeoutError(error) || isTransientNetworkError(error)) &&
@@ -352,22 +340,37 @@ async function fetchPackageJsonFromJsdelivr(
   return null
 }
 
-/**
- * Fetches package version data from jsdelivr CDN for multiple packages.
- * Uses undici connection pool for blazing fast performance with connection reuse.
- * Falls back to npm registry immediately when jsdelivr fails (interleaved, not sequential).
- * Supports batched callbacks for progressive UI updates.
- * @param packageNames - Array of package names to fetch
- * @param currentVersions - Optional map of package names to their current versions
- * @param onProgress - Optional progress callback
- * @param onBatchReady - Optional callback for batch updates (fires every BATCH_SIZE packages or BATCH_TIMEOUT_MS)
- * @returns Map of package names to their version data
- */
+const inFlightManifests = new Map<string, Promise<Record<string, unknown> | null>>()
+
+export async function fetchExactPackageManifest(
+  packageName: string,
+  version: string
+): Promise<Record<string, unknown> | null> {
+  const normalizedVersion = version.trim()
+  if (!EXACT_VERSION_PATTERN.test(normalizedVersion) || !semver.valid(normalizedVersion)) {
+    debugLog.warn('jsdelivr', `skipping non-exact version lookup for ${packageName}@${version}`)
+    return null
+  }
+
+  const cacheKey = `${packageName}@${normalizedVersion}`
+  const inFlight = inFlightManifests.get(cacheKey)
+  if (inFlight) {
+    return await inFlight
+  }
+
+  const lookupPromise = fetchPackageManifestFromJsdelivr(packageName, normalizedVersion).finally(
+    () => {
+      inFlightManifests.delete(cacheKey)
+    }
+  )
+  inFlightManifests.set(cacheKey, lookupPromise)
+  return await lookupPromise
+}
+
 export async function getAllPackageDataFromJsdelivr(
   packageNames: string[],
   currentVersions?: Map<string, string>,
-  onProgress?: (currentPackage: string, completed: number, total: number) => void,
-  onBatchReady?: OnBatchReadyCallback
+  onProgress?: (currentPackage: string, completed: number, total: number) => void
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
@@ -377,138 +380,41 @@ export async function getAllPackageDataFromJsdelivr(
 
   const total = packageNames.length
   let completedCount = 0
-  let progressCallback = onProgress
-  let batchReadyCallback = onBatchReady
-
-  // Batch buffer for progressive updates
-  let batchBuffer: Array<{ name: string; data: PackageVersionData }> = []
-  let batchTimer: NodeJS.Timeout | null = null
-
-  const emitProgress = (packageName: string, completed: number, packageTotal: number) => {
-    if (!progressCallback) {
-      return
-    }
-
-    try {
-      progressCallback(packageName, completed, packageTotal)
-    } catch (error) {
-      console.error('Progress callback failed, disabling progress updates for this run.', error)
-      progressCallback = undefined
-    }
-  }
-
-  const emitBatch = (batch: Array<{ name: string; data: PackageVersionData }>) => {
-    if (!batchReadyCallback) {
-      return
-    }
-
-    try {
-      batchReadyCallback(batch)
-    } catch (error) {
-      console.error('Batch callback failed, disabling batch updates for this run.', error)
-      batchReadyCallback = undefined
-    }
-  }
-
-  // Helper to flush the current batch
-  const flushBatch = () => {
-    if (batchBuffer.length > 0) {
-      const batch = [...batchBuffer]
-      batchBuffer = []
-      emitBatch(batch)
-    }
-    if (batchTimer) {
-      clearTimeout(batchTimer)
-      batchTimer = null
-    }
-  }
-
-  // Helper to add package to batch and flush if needed
-  const addToBatch = (packageName: string, data: PackageVersionData) => {
-    if (!batchReadyCallback) {
-      return
-    }
-
-    batchBuffer.push({ name: packageName, data })
-
-    // Flush if batch is full
-    if (batchBuffer.length >= BATCH_SIZE) {
-      flushBatch()
-    } else if (!batchTimer) {
-      // Set timer to flush batch after timeout
-      batchTimer = setTimeout(flushBatch, BATCH_TIMEOUT_MS)
-    }
-  }
-
-  // Process individual package fetch with immediate npm fallback on failure
   const inFlightLookups = new Map<string, Promise<PackageVersionData | null>>()
 
-  const fetchFromNpmFallback = async (packageName: string): Promise<PackageVersionData | null> => {
-    const tFallback = Date.now()
-    debugLog.info('jsdelivr', `falling back to npm registry for ${packageName}`)
-    try {
-      const npmData = await getAllPackageData([packageName])
-      const result = npmData.get(packageName) ?? null
-
-      if (result) {
-        packageCache.set(packageName, result)
-        debugLog.perf(
-          'jsdelivr',
-          `npm fallback resolved ${packageName} → ${result.latestVersion}`,
-          tFallback
-        )
-      } else {
-        debugLog.warn('jsdelivr', `npm fallback returned no data for ${packageName}`)
-      }
-
-      return result
-    } catch (error) {
-      debugLog.error('jsdelivr', `npm fallback failed for ${packageName}`, error)
-      return null
-    }
-  }
-
-  const fetchFreshPackageData = async (
+  const fetchPackageData = async (
     packageName: string,
     currentVersion: string | undefined
   ): Promise<PackageVersionData | null> => {
-    try {
-      const majorVersion = extractMajorVersion(currentVersion)
+    const latestManifest = await fetchPackageManifestFromJsdelivr(packageName, 'latest')
+    const latestVersion =
+      typeof latestManifest?.version === 'string' ? latestManifest.version.trim() : ''
+    if (!latestVersion) {
+      return null
+    }
 
-      const latestResult = await fetchPackageJsonFromJsdelivr(packageName, 'latest')
-      if (!latestResult) {
-        return await fetchFromNpmFallback(packageName)
-      }
+    const majorVersion = extractMajorVersion(currentVersion)
+    const latestMajorVersion = extractMajorVersion(latestVersion)
+    const shouldFetchMajorVersion = Boolean(
+      majorVersion && (latestMajorVersion === null || latestMajorVersion !== majorVersion)
+    )
+    const majorManifest = shouldFetchMajorVersion
+      ? await fetchPackageManifestFromJsdelivr(packageName, majorVersion as string)
+      : null
+    const majorResolvedVersion =
+      typeof majorManifest?.version === 'string' ? majorManifest.version.trim() : ''
 
-      const latestVersion = latestResult.version
-      const latestMajorVersion = extractMajorVersion(latestVersion)
-      const shouldFetchMajorVersion = Boolean(
-        majorVersion && (latestMajorVersion === null || majorVersion !== latestMajorVersion)
-      )
-      const majorResult = shouldFetchMajorVersion
-        ? await fetchPackageJsonFromJsdelivr(packageName, majorVersion as string)
-        : null
-      const allVersions = [latestVersion]
+    const sortedVersions = sortVersionsDescending(
+      [latestVersion, majorResolvedVersion].filter(Boolean)
+    )
+    const allVersions =
+      sortedVersions[0] === latestVersion
+        ? sortedVersions
+        : [latestVersion, ...sortedVersions.filter((version) => version !== latestVersion)]
 
-      if (majorResult && majorResult.version !== latestVersion) {
-        allVersions.push(majorResult.version)
-      }
-
-      const sortedVersions = sortVersionsDescending(allVersions)
-      const orderedVersions =
-        sortedVersions[0] === latestVersion
-          ? sortedVersions
-          : [latestVersion, ...sortedVersions.filter((version) => version !== latestVersion)]
-
-      const result: PackageVersionData = {
-        latestVersion,
-        allVersions: orderedVersions,
-      }
-
-      packageCache.set(packageName, result)
-      return result
-    } catch {
-      return await fetchFromNpmFallback(packageName)
+    return {
+      latestVersion,
+      allVersions,
     }
   }
 
@@ -516,68 +422,33 @@ export async function getAllPackageDataFromJsdelivr(
     packageName: string,
     currentVersion: string | undefined
   ): Promise<PackageVersionData | null> => {
-    const cached = packageCache.get(packageName)
-    if (cached) {
-      debugLog.info('jsdelivr', `cache hit: ${packageName} → ${cached.latestVersion}`)
-      return cached
-    }
-
     const inFlight = inFlightLookups.get(packageName)
     if (inFlight) {
       return await inFlight
     }
 
-    const lookupPromise = fetchFreshPackageData(packageName, currentVersion).finally(() => {
+    const lookupPromise = fetchPackageData(packageName, currentVersion).finally(() => {
       inFlightLookups.delete(packageName)
     })
     inFlightLookups.set(packageName, lookupPromise)
     return await lookupPromise
   }
 
-  const fetchPackageWithFallback = async (packageName: string): Promise<void> => {
-    try {
-      const currentVersion = currentVersions?.get(packageName)
-      const result = await getPackageData(packageName, currentVersion)
-
-      if (result) {
-        packageData.set(packageName, result)
-        addToBatch(packageName, result)
+  await Promise.all(
+    packageNames.map(async (packageName) => {
+      try {
+        const result = await getPackageData(packageName, currentVersions?.get(packageName))
+        if (result) {
+          packageData.set(packageName, result)
+        }
+      } finally {
+        completedCount++
+        onProgress?.(packageName, completedCount, total)
       }
-    } catch (error) {
-      console.error(
-        `Failed to resolve package data for ${packageName}; continuing with others.`,
-        error
-      )
-    } finally {
-      completedCount++
-      emitProgress(packageName, completedCount, total)
-    }
-  }
-
-  try {
-    // Fire all requests simultaneously - each request internally handles retries/fallback.
-    await Promise.all(packageNames.map(fetchPackageWithFallback))
-  } finally {
-    // Flush any remaining batch items
-    flushBatch()
-
-    // Flush persistent cache to disk
-    packageCache.flush()
-
-    // Clear the progress line if no custom progress handler
-    if (!onProgress) {
-      ConsoleUtils.clearProgress()
-    }
-  }
+    })
+  )
 
   return packageData
-}
-
-/**
- * Clear the package cache (useful for testing)
- */
-export function clearJsdelivrPackageCache(): void {
-  packageCache.clear()
 }
 
 /**
