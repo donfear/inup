@@ -1,7 +1,5 @@
-import inquirer from 'inquirer'
 import chalk from 'chalk'
 import * as semver from 'semver'
-const keypress = require('keypress')
 import {
   AuditProgress,
   PackageLoadProgress,
@@ -12,6 +10,7 @@ import {
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from './types'
+import * as readline from 'node:readline'
 import { Key } from 'node:readline'
 import {
   StateManager,
@@ -60,6 +59,34 @@ export class InteractiveUI {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
     this.options = normalizeVulnerabilityDisplayOptions(options)
+  }
+
+  private enableKeypressInput(): void {
+    readline.emitKeypressEvents(process.stdin)
+    if (process.stdin.setRawMode) {
+      process.stdin.setRawMode(true)
+    }
+    process.stdin.resume()
+  }
+
+  private promptForConfirmationFallback(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      })
+
+      rl.question('Proceed with upgrade? [Y/n] ', (answer) => {
+        rl.close()
+        const normalizedAnswer = answer.trim().toLowerCase()
+        resolve(normalizedAnswer === '' || normalizedAnswer === 'y' || normalizedAnswer === 'yes')
+      })
+
+      rl.on('SIGINT', () => {
+        rl.close()
+        resolve(false)
+      })
+    })
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -666,11 +693,7 @@ export class InteractiveUI {
           }
         })
 
-        keypress(process.stdin)
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(true)
-        }
-        process.stdin.resume()
+        this.enableKeypressInput()
         process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key, states))
 
         // Setup resize handler
@@ -711,25 +734,12 @@ export class InteractiveUI {
 
       // Setup keypress handling
       try {
-        keypress(process.stdin)
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(true)
-        }
+        this.enableKeypressInput()
         CursorUtils.hide()
-        process.stdin.resume()
         process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key))
       } catch (error) {
-        // Fallback to inquirer
-        inquirer
-          .prompt([
-            {
-              type: 'confirm',
-              name: 'proceed',
-              message: 'Proceed with upgrade?',
-              default: true,
-            },
-          ])
-          .then((answer) => resolve(answer.proceed))
+        this.promptForConfirmationFallback()
+          .then(resolve)
           .catch(() => resolve(false))
       }
     })
