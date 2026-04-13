@@ -10,7 +10,6 @@ import {
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from './types'
-import * as readline from 'node:readline'
 import { Key } from 'node:readline'
 import {
   StateManager,
@@ -21,6 +20,7 @@ import {
   VersionUtils,
   CursorUtils,
   ConsoleUtils,
+  TerminalInput,
 } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { PackageListRenderOptions } from './ui/renderer/package-list'
@@ -59,34 +59,6 @@ export class InteractiveUI {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
     this.options = normalizeVulnerabilityDisplayOptions(options)
-  }
-
-  private enableKeypressInput(): void {
-    readline.emitKeypressEvents(process.stdin)
-    if (process.stdin.setRawMode) {
-      process.stdin.setRawMode(true)
-    }
-    process.stdin.resume()
-  }
-
-  private promptForConfirmationFallback(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      })
-
-      rl.question('Proceed with upgrade? [Y/n] ', (answer) => {
-        rl.close()
-        const normalizedAnswer = answer.trim().toLowerCase()
-        resolve(normalizedAnswer === '' || normalizedAnswer === 'y' || normalizedAnswer === 'yes')
-      })
-
-      rl.on('SIGINT', () => {
-        rl.close()
-        resolve(false)
-      })
-    })
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -488,6 +460,8 @@ export class InteractiveUI {
         showPeerDependencyVulnerabilities: this.options.showPeerDependencyVulnerabilities,
         showOptionalDependencyVulnerabilities: this.options.showOptionalDependencyVulnerabilities,
       }
+      const keypressHandler = (str: string, key: Key) =>
+        inputHandler.handleKeypress(str, key, states)
 
       const buildRemainingViewport = (
         terminalWidth: number,
@@ -546,15 +520,12 @@ export class InteractiveUI {
         stateManager.markRendered([])
       }
 
-      const cleanupInteractiveSession = () => {
+      let cleanupInteractiveSession = () => {
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(false)
-        }
-        process.stdin.removeAllListeners('keypress')
+        process.stdin.off('keypress', keypressHandler)
         process.stdin.pause()
-        process.removeAllListeners('SIGWINCH')
+        process.off('SIGWINCH', handleResize)
         this.refreshView = undefined
       }
 
@@ -693,8 +664,12 @@ export class InteractiveUI {
           }
         })
 
-        this.enableKeypressInput()
-        process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key, states))
+        const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
+        const previousCleanup = cleanupInteractiveSession
+        cleanupInteractiveSession = () => {
+          keypressSession.close()
+          previousCleanup()
+        }
 
         // Setup resize handler
         process.on('SIGWINCH', handleResize)
@@ -726,19 +701,28 @@ export class InteractiveUI {
     console.log(this.renderer.renderConfirmation(choices))
 
     return new Promise((resolve) => {
+      let cleanupConfirmationSession = () => {
+        CursorUtils.show()
+      }
+
       const handleConfirm = (confirmed: boolean | null) => {
+        cleanupConfirmationSession()
         resolve(confirmed)
       }
 
       const inputHandler = new ConfirmationInputHandler(handleConfirm)
+      const keypressHandler = (str: string, key: Key) => inputHandler.handleKeypress(str, key)
 
       // Setup keypress handling
       try {
-        this.enableKeypressInput()
+        const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
+        cleanupConfirmationSession = () => {
+          keypressSession.close()
+          CursorUtils.show()
+        }
         CursorUtils.hide()
-        process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key))
       } catch (error) {
-        this.promptForConfirmationFallback()
+        TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
           .then(resolve)
           .catch(() => resolve(false))
       }
