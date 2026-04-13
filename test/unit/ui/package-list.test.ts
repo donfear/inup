@@ -110,6 +110,92 @@ describe('package-list renderer', () => {
     expect(line).not.toContain('[MOD ]')
   })
 
+  it('hides peer dependency vulnerability badges by default', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        type: 'peerDependencies',
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-peer',
+          advisories: [],
+        },
+      },
+      0,
+      false,
+      120
+    )
+
+    expect(line).not.toContain('[HIGH]')
+    expect(line).toContain('[P]')
+  })
+
+  it('shows peer dependency vulnerability badges when enabled', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        type: 'peerDependencies',
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-peer',
+          advisories: [],
+        },
+      },
+      0,
+      false,
+      120,
+      { showPeerDependencyVulnerabilities: true }
+    )
+
+    expect(line).toContain('[HIGH]')
+    expect(line).toContain('[P]')
+  })
+
+  it('hides optional dependency vulnerability badges by default', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        type: 'optionalDependencies',
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-optional',
+          advisories: [],
+        },
+      },
+      0,
+      false,
+      120
+    )
+
+    expect(line).not.toContain('[HIGH]')
+    expect(line).toContain('[O]')
+  })
+
+  it('shows optional dependency vulnerability badges when enabled', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        type: 'optionalDependencies',
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-optional',
+          advisories: [],
+        },
+      },
+      0,
+      false,
+      120,
+      { showOptionalDependencyVulnerabilities: true }
+    )
+
+    expect(line).toContain('[HIGH]')
+    expect(line).toContain('[O]')
+  })
+
   it('pads rendered list rows to the terminal width', () => {
     const lines = renderInterface([baseState], 0, 0, 10, false, [], 'Deps', undefined, false, '', 1, 120)
 

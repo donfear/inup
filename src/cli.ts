@@ -85,6 +85,10 @@ program
       maxDepth,
       ignorePackages,
       packageManager,
+      showPeerDependencyVulnerabilities:
+        projectConfig.showPeerDependencyVulnerabilities ?? false,
+      showOptionalDependencyVulnerabilities:
+        projectConfig.showOptionalDependencyVulnerabilities ?? false,
       debug: options.debug || process.env.INUP_DEBUG === '1',
     })
     await upgrader.run()

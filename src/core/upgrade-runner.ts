@@ -34,7 +34,11 @@ export class UpgradeRunner {
     }
 
     this.detector = new PackageDetector(options)
-    this.ui = new InteractiveUI(this.packageManager)
+    this.ui = new InteractiveUI(this.packageManager, {
+      showPeerDependencyVulnerabilities: options?.showPeerDependencyVulnerabilities ?? false,
+      showOptionalDependencyVulnerabilities:
+        options?.showOptionalDependencyVulnerabilities ?? false,
+    })
     this.upgrader = new PackageUpgrader(this.packageManager)
   }
 

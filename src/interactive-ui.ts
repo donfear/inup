@@ -26,16 +26,27 @@ import { PackageInfoModalController, VulnerabilityAuditController } from './ui/c
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
 
+interface InteractiveUIOptions {
+  showPeerDependencyVulnerabilities?: boolean
+  showOptionalDependencyVulnerabilities?: boolean
+}
+
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
+  private readonly options: Required<InteractiveUIOptions>
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
 
-  constructor(packageManager: PackageManagerInfo) {
+  constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
+    this.options = {
+      showPeerDependencyVulnerabilities: options?.showPeerDependencyVulnerabilities ?? false,
+      showOptionalDependencyVulnerabilities:
+        options?.showOptionalDependencyVulnerabilities ?? false,
+    }
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -599,7 +610,12 @@ export class InteractiveUI {
             states.length,
             terminalWidth,
             loadingProgress,
-            auditProgress
+            auditProgress,
+            {
+              showPeerDependencyVulnerabilities: this.options.showPeerDependencyVulnerabilities,
+              showOptionalDependencyVulnerabilities:
+                this.options.showOptionalDependencyVulnerabilities,
+            }
           )
 
           const viewportLines = [

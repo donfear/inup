@@ -10,6 +10,11 @@ import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
 import { getVulnerabilityBadge } from '../presenters/vulnerability'
 
+export interface PackageListRenderOptions {
+  showPeerDependencyVulnerabilities?: boolean
+  showOptionalDependencyVulnerabilities?: boolean
+}
+
 function padLineToWidth(line: string, terminalWidth: number): string {
   const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
   return line + ' '.repeat(padding)
@@ -43,7 +48,8 @@ export function renderPackageLine(
   state: PackageSelectionState,
   index: number,
   isCurrentRow: boolean,
-  terminalWidth: number = 80
+  terminalWidth: number = 80,
+  options: PackageListRenderOptions = {}
 ): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
@@ -158,7 +164,13 @@ export function renderPackageLine(
 
   // Package name with dashes and badge at the end
   const typeBadge = getTypeBadge(state.type)
-  const vulnBadge = getVulnerabilityBadge(state.vulnerability)
+  const shouldShowVulnerability =
+    (state.type === 'peerDependencies'
+      ? options.showPeerDependencyVulnerabilities === true
+      : state.type === 'optionalDependencies'
+        ? options.showOptionalDependencyVulnerabilities === true
+        : true)
+  const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0 // +1 for space
   const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth) // -1 for space after package name
@@ -253,7 +265,8 @@ export function renderInterface(
   totalPackagesBeforeFilter?: number,
   terminalWidth: number = 80,
   loadingProgress?: PackageLoadProgress,
-  auditProgress?: AuditProgress
+  auditProgress?: AuditProgress,
+  options: PackageListRenderOptions = {}
 ): string[] {
   const output: string[] = []
 
@@ -489,7 +502,8 @@ export function renderInterface(
           item.state,
           item.originalIndex,
           item.originalIndex === currentRow,
-          terminalWidth
+          terminalWidth,
+          options
         )
         output.push(line)
       }
@@ -497,7 +511,7 @@ export function renderInterface(
   } else {
     // Fallback to flat rendering (legacy mode)
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth)
+      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth, options)
       output.push(line)
     }
   }

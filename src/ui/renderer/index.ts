@@ -8,13 +8,19 @@ import {
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from '../modal'
+import { PackageListRenderOptions } from './package-list'
 
 /**
  * Main UI renderer class that composes all rendering parts
  */
 export class UIRenderer {
-  renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
-    return PackageList.renderPackageLine(state, index, isCurrentRow)
+  renderPackageLine(
+    state: PackageSelectionState,
+    index: number,
+    isCurrentRow: boolean,
+    options?: PackageListRenderOptions
+  ): string {
+    return PackageList.renderPackageLine(state, index, isCurrentRow, 80, options)
   }
 
   renderSectionHeader(title: string, sectionType: 'main' | 'peer' | 'optional'): string {
@@ -39,7 +45,8 @@ export class UIRenderer {
     totalPackagesBeforeFilter?: number,
     terminalWidth: number = 80,
     loadingProgress?: PackageLoadProgress,
-    auditProgress?: AuditProgress
+    auditProgress?: AuditProgress,
+    options?: PackageListRenderOptions
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -55,7 +62,8 @@ export class UIRenderer {
       totalPackagesBeforeFilter,
       terminalWidth,
       loadingProgress,
-      auditProgress
+      auditProgress,
+      options
     )
   }
 

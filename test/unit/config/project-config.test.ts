@@ -92,6 +92,26 @@ describe('project-config', () => {
       const config = loadProjectConfig(testDir)
       expect(config.ignore).toEqual(['valid', 'also-valid', 'still-valid'])
     })
+
+    it('should load showPeerDependencyVulnerabilities when set to a boolean', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({ showPeerDependencyVulnerabilities: true })
+      )
+
+      const config = loadProjectConfig(testDir)
+      expect(config.showPeerDependencyVulnerabilities).toBe(true)
+    })
+
+    it('should load showOptionalDependencyVulnerabilities when set to a boolean', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({ showOptionalDependencyVulnerabilities: true })
+      )
+
+      const config = loadProjectConfig(testDir)
+      expect(config.showOptionalDependencyVulnerabilities).toBe(true)
+    })
   })
 
   describe('isPackageIgnored()', () => {
