@@ -1,7 +1,5 @@
-import inquirer from 'inquirer'
 import chalk from 'chalk'
 import * as semver from 'semver'
-const keypress = require('keypress')
 import {
   AuditProgress,
   PackageLoadProgress,
@@ -22,6 +20,7 @@ import {
   VersionUtils,
   CursorUtils,
   ConsoleUtils,
+  TerminalInput,
 } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { PackageListRenderOptions } from './ui/renderer/package-list'
@@ -461,6 +460,8 @@ export class InteractiveUI {
         showPeerDependencyVulnerabilities: this.options.showPeerDependencyVulnerabilities,
         showOptionalDependencyVulnerabilities: this.options.showOptionalDependencyVulnerabilities,
       }
+      const keypressHandler = (str: string, key: Key) =>
+        inputHandler.handleKeypress(str, key, states)
 
       const buildRemainingViewport = (
         terminalWidth: number,
@@ -519,15 +520,12 @@ export class InteractiveUI {
         stateManager.markRendered([])
       }
 
-      const cleanupInteractiveSession = () => {
+      let cleanupInteractiveSession = () => {
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(false)
-        }
-        process.stdin.removeAllListeners('keypress')
+        process.stdin.off('keypress', keypressHandler)
         process.stdin.pause()
-        process.removeAllListeners('SIGWINCH')
+        process.off('SIGWINCH', handleResize)
         this.refreshView = undefined
       }
 
@@ -666,12 +664,12 @@ export class InteractiveUI {
           }
         })
 
-        keypress(process.stdin)
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(true)
+        const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
+        const previousCleanup = cleanupInteractiveSession
+        cleanupInteractiveSession = () => {
+          keypressSession.close()
+          previousCleanup()
         }
-        process.stdin.resume()
-        process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key, states))
 
         // Setup resize handler
         process.on('SIGWINCH', handleResize)
@@ -703,33 +701,29 @@ export class InteractiveUI {
     console.log(this.renderer.renderConfirmation(choices))
 
     return new Promise((resolve) => {
+      let cleanupConfirmationSession = () => {
+        CursorUtils.show()
+      }
+
       const handleConfirm = (confirmed: boolean | null) => {
+        cleanupConfirmationSession()
         resolve(confirmed)
       }
 
       const inputHandler = new ConfirmationInputHandler(handleConfirm)
+      const keypressHandler = (str: string, key: Key) => inputHandler.handleKeypress(str, key)
 
       // Setup keypress handling
       try {
-        keypress(process.stdin)
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(true)
+        const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
+        cleanupConfirmationSession = () => {
+          keypressSession.close()
+          CursorUtils.show()
         }
         CursorUtils.hide()
-        process.stdin.resume()
-        process.stdin.on('keypress', (str, key) => inputHandler.handleKeypress(str, key))
       } catch (error) {
-        // Fallback to inquirer
-        inquirer
-          .prompt([
-            {
-              type: 'confirm',
-              name: 'proceed',
-              message: 'Proceed with upgrade?',
-              default: true,
-            },
-          ])
-          .then((answer) => resolve(answer.proceed))
+        TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
+          .then(resolve)
           .catch(() => resolve(false))
       }
     })
