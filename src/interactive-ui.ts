@@ -457,6 +457,7 @@ export class InteractiveUI {
       }
 
       const inputHandler = new InputHandler(stateManager, handleAction, handleConfirm, handleCancel)
+      const resetAnsiPattern = /\x1b\[(?:0|49)m/g
 
       const buildRemainingViewport = (
         terminalWidth: number,
@@ -468,12 +469,15 @@ export class InteractiveUI {
         return Array.from({ length: remainingLines }, () => blankLine)
       }
 
-      const writeFrame = (lines: string[]) => {
+      const applyBackgroundToLine = (line: string, bgCode: string): string =>
+        `${bgCode}${line.replace(resetAnsiPattern, (match) => `${match}${bgCode}`)}${getTerminalResetCode()}`
+
+      const writeFrame = (lines: string[], bgCode: string) => {
         if (lines.length === 0) {
           return
         }
 
-        process.stdout.write(lines.join('\n'))
+        process.stdout.write(lines.map((line) => applyBackgroundToLine(line, bgCode)).join('\n'))
       }
 
       const renderInterface = () => {
@@ -512,7 +516,7 @@ export class InteractiveUI {
             terminalHeight
           )
 
-          writeFrame([...headerLines, ...modalLines])
+          writeFrame([...headerLines, ...modalLines], bgCode)
 
           // Clear any remaining lines from previous render
           CursorUtils.clearToEndOfScreen()
@@ -540,7 +544,7 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            writeFrame([...headerLines, ...modalLines])
+            writeFrame([...headerLines, ...modalLines], bgCode)
           } else {
             // Show full info
             const modalLines = this.renderer.renderPackageInfoModal(
@@ -548,7 +552,7 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            writeFrame([...headerLines, ...modalLines])
+            writeFrame([...headerLines, ...modalLines], bgCode)
           }
 
           // Clear any remaining lines from previous render
@@ -576,8 +580,11 @@ export class InteractiveUI {
             auditProgress
           )
 
-          const viewportLines = [...lines, ...buildRemainingViewport(terminalWidth, terminalHeight, lines.length)]
-          writeFrame(viewportLines)
+          const viewportLines = [
+            ...lines,
+            ...buildRemainingViewport(terminalWidth, terminalHeight, lines.length),
+          ]
+          writeFrame(viewportLines, bgCode)
 
           stateManager.markRendered(lines)
         }
