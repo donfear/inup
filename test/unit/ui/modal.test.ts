@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../src/ui/modal'
 import { PackageSelectionState } from '../../../src/types'
+import { getVisualLength } from '../../../src/ui/utils'
 
 const baseState: PackageSelectionState = {
   name: 'next',
@@ -86,5 +87,32 @@ describe('modal renderer', () => {
     expect(lines.length).toBeLessThanOrEqual(12)
     expect(lines.some((line) => line.includes('╭'))).toBe(true)
     expect(lines.some((line) => line.includes('╰'))).toBe(true)
+  })
+
+  it('keeps vulnerability rows aligned with the modal frame width', () => {
+    const lines = renderPackageInfoModal(
+      {
+        ...baseState,
+        vulnerability: {
+          count: 6,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-q4gf-8mx6-v5v3',
+          advisories: [
+            {
+              id: 1,
+              title: 'Next.js has a Denial of Service with Server Components',
+              severity: 'high',
+              url: 'https://github.com/advisories/GHSA-q4gf-8mx6-v5v3',
+            },
+          ],
+        },
+      },
+      120,
+      24
+    )
+
+    const framedLines = lines.filter((line) => line.includes('│') || line.includes('╭') || line.includes('╰') || line.includes('├'))
+    const widths = framedLines.map((line) => getVisualLength(line))
+    expect(new Set(widths).size).toBe(1)
   })
 })

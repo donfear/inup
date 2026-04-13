@@ -7,7 +7,7 @@ import {
   getVulnerabilitySeverityColor,
   selectRepresentativeAdvisory,
 } from '../presenters/vulnerability'
-import { truncatePlainText, wrapPlainText } from '../utils'
+import { getVisualLength, truncatePlainText, wrapPlainText } from '../utils'
 
 function formatNumber(num: number | undefined): string {
   if (!num) return 'N/A'
@@ -63,20 +63,24 @@ export function buildPackageInfoSections(
     const severityColor = getVulnerabilitySeverityColor(state.vulnerability.highestSeverity)
     const vulnerabilityRows = [
       chalk.red.bold(
-        `⚠ ${state.vulnerability.count} known vulnerabilit${state.vulnerability.count === 1 ? 'y' : 'ies'} (${severityColor(state.vulnerability.highestSeverity.toUpperCase())})`
+        `${state.vulnerability.count} known vulnerabilit${state.vulnerability.count === 1 ? 'y' : 'ies'} (${severityColor(state.vulnerability.highestSeverity.toUpperCase())})`
       ),
     ]
 
     if (representative) {
+      const severityLabel = ` ${severityColor(`[${representative.severity.toUpperCase()}]`)} `
+      const availableTitleWidth = Math.max(0, modalWidth - 4 - getVisualLength(severityLabel))
       vulnerabilityRows.push(
-        ` ${severityColor(`[${representative.severity.toUpperCase()}]`)} ${truncatePlainText(representative.title, modalWidth - 14)}`
+        `${severityLabel}${truncatePlainText(representative.title, availableTitleWidth)}`
       )
     }
 
     const detailsUrl = state.vulnerability.detailsUrl || representative?.url
     if (detailsUrl) {
+      const linkPrefix = ` ${getVulnerabilityLinkLabel(detailsUrl)} `
+      const availableLinkWidth = Math.max(0, modalWidth - 4 - getVisualLength(linkPrefix))
       vulnerabilityRows.push(
-        ` ${getVulnerabilityLinkLabel(detailsUrl)} ${chalk.underline(getThemeColor('primary')(truncatePlainText(detailsUrl, modalWidth - 14)))}`
+        `${linkPrefix}${chalk.underline(getThemeColor('primary')(truncatePlainText(detailsUrl, availableLinkWidth)))}`
       )
     }
 

@@ -35,4 +35,9 @@ describe('modal layout primitives', () => {
     renderModalRow(2, 20, `${chalk.red('abc')}🙂`)
     expect(getVisualLength(`${chalk.red('abc')}🙂`)).toBe(5)
   })
+
+  it('treats emoji variation selectors as zero-width', () => {
+    expect(getVisualLength('ℹ️')).toBe(2)
+    expect(getVisualLength('⚠')).toBe(2)
+  })
 })

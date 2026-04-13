@@ -6,14 +6,40 @@ export function stripAnsi(text: string): string {
 
 export function getVisualLength(text: string): number {
   const cleaned = stripAnsi(text)
+  const SegmenterCtor = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locales?: string | string[],
+        options?: { granularity: 'grapheme' }
+      ) => {
+        segment(input: string): Iterable<{ segment: string }>
+      }
+    }
+  ).Segmenter
   let length = 0
 
-  for (const char of cleaned) {
-    const codePoint = char.codePointAt(0) ?? 0
-    if (codePoint >= 0x1f000 || codePoint >= 0x2600) {
+  const segments = SegmenterCtor
+    ? SegmenterCtor.prototype.segment.call(
+        new SegmenterCtor(undefined, { granularity: 'grapheme' }),
+        cleaned
+      )
+    : cleaned
+
+  for (const item of segments) {
+    const segment = typeof item === 'string' ? item : item.segment
+    if (/\p{Extended_Pictographic}/u.test(segment) || segment.includes('\uFE0F')) {
       length += 2
     } else {
-      length += 1
+      for (const char of segment) {
+        const codePoint = char.codePointAt(0) ?? 0
+        if (
+          (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+          (codePoint >= 0x0300 && codePoint <= 0x036f)
+        ) {
+          continue
+        }
+        length += 1
+      }
     }
   }
 

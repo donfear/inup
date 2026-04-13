@@ -15,10 +15,16 @@ export function getModalWidth(terminalWidth: number, minWidth: number, maxWidth:
 
 export function renderModalRow(padding: number, modalWidth: number, text: string): string {
   const rowLength = getVisualLength(text)
-  const rowPadding = Math.max(0, modalWidth - 3 - rowLength)
+  const rowPadding = Math.max(0, modalWidth - 4 - rowLength)
 
   return (
-    ' '.repeat(padding) + chalk.gray('│') + ' ' + text + ' '.repeat(rowPadding) + chalk.gray('│')
+    ' '.repeat(padding) +
+    chalk.gray('│') +
+    ' ' +
+    text +
+    ' '.repeat(rowPadding) +
+    ' ' +
+    chalk.gray('│')
   )
 }
 
