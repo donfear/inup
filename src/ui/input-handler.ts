@@ -27,6 +27,7 @@ export type InputAction =
       type: 'toggle_dep_type_filter'
       depType: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
     }
+  | { type: 'trigger_audit_scan' }
 
 export class InputHandler {
   private stateManager: StateManager
@@ -232,6 +233,13 @@ export class InputHandler {
       case 'i':
       case 'I':
         this.onAction({ type: 'toggle_info_modal' })
+        break
+
+      case 's':
+      case 'S':
+        if (!uiState.showInfoModal && !uiState.showThemeModal) {
+          this.onAction({ type: 'trigger_audit_scan' })
+        }
         break
 
       case 't':

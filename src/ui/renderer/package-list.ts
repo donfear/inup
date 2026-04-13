@@ -1,12 +1,24 @@
 import chalk from 'chalk'
 import {
+  AuditProgress,
   PackageInfo,
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
+  VulnerabilityDisplayOptions,
 } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
+import {
+  getVulnerabilityBadge,
+  shouldDisplayVulnerabilityForDependency,
+} from '../presenters/vulnerability'
+
+function padLineToWidth(line: string, terminalWidth: number): string {
+  const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
+  return line + ' '.repeat(padding)
+}
+export type PackageListRenderOptions = VulnerabilityDisplayOptions
 
 /**
  * Get type badge for dependency type (theme-aware)
@@ -32,7 +44,13 @@ function getTypeBadge(type: PackageInfo['type']): string {
  * @param isCurrentRow Whether this is the current/highlighted row
  * @param terminalWidth Terminal width for dynamic truncation (default 80)
  */
-export function renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean, terminalWidth: number = 80): string {
+export function renderPackageLine(
+  state: PackageSelectionState,
+  index: number,
+  isCurrentRow: boolean,
+  terminalWidth: number = 80,
+  options: PackageListRenderOptions = {}
+): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
   // Package name with special formatting for scoped packages (@author/package)
@@ -44,12 +62,16 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
       const packagePart = parts.slice(1).join('/') // package name
 
       if (isCurrentRow) {
-        packageName = chalk.bold(getThemeColor('packageAuthor')(author)) + getThemeColor('packageName')('/' + packagePart)
+        packageName =
+          chalk.bold(getThemeColor('packageAuthor')(author)) +
+          getThemeColor('packageName')('/' + packagePart)
       } else {
         packageName = chalk.bold.white(author) + chalk.white('/' + packagePart)
       }
     } else {
-      packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
+      packageName = isCurrentRow
+        ? getThemeColor('packageName')(state.name)
+        : chalk.white(state.name)
     }
   } else {
     packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
@@ -118,10 +140,14 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
   // Package name width: max 50 chars (after which ellipsis kicks in), but scales down on small terminals
   const maxPackageNameWidth = 50
   const minPackageNameWidth = 24
-  const otherColumnsWidth = currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
+  const otherColumnsWidth =
+    currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
   const prefixWidth = 2
   const availableForPackageName = terminalWidth - prefixWidth - otherColumnsWidth - 1
-  const packageNameWidth = Math.min(maxPackageNameWidth, Math.max(minPackageNameWidth, availableForPackageName))
+  const packageNameWidth = Math.min(
+    maxPackageNameWidth,
+    Math.max(minPackageNameWidth, availableForPackageName)
+  )
 
   // Apply ellipsis truncation if package name exceeds available width
   const badgeWidth = state.type === 'dependencies' ? 0 : 3 // [X] without leading space
@@ -138,20 +164,28 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 
   // Package name with dashes and badge at the end
   const typeBadge = getTypeBadge(state.type)
+  const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
+  const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
+  const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0 // +1 for space
   const nameLength = VersionUtils.getVisualLength(truncatedName)
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth) // -1 for space after package name, -badgeWidth for badge at end
-  const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
+  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth) // -1 for space after package name
+  const nameDashes = shouldShowDashes(namePadding)
+    ? dashColor('-').repeat(namePadding)
+    : ' '.repeat(namePadding)
 
-  // Place badge at the end of dashes: name ------[D]
+  // Place badges at the end of dashes: name ------⚠[D]
+  const vulnSuffix = vulnBadge ? ` ${vulnBadge}` : ''
   const packageNameSection = typeBadge
-    ? `${displayName} ${nameDashes}${typeBadge}`
-    : `${displayName} ${nameDashes}`
+    ? `${displayName} ${nameDashes}${vulnSuffix}${typeBadge}`
+    : `${displayName} ${nameDashes}${vulnSuffix}`
 
   // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
   const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1 // +1 for space before padding
   const currentPadding = Math.max(0, currentColumnWidth - currentSectionLength)
-  const currentPaddingText = shouldShowDashes(currentPadding) ? dashColor('-').repeat(currentPadding) : ' '.repeat(currentPadding)
+  const currentPaddingText = shouldShowDashes(currentPadding)
+    ? dashColor('-').repeat(currentPadding)
+    : ' '.repeat(currentPadding)
   const currentWithPadding = currentSection + ' ' + currentPaddingText
 
   // Range version section with dashes only if needed
@@ -160,7 +194,9 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
     rangeSection = `${rangeDot} ${rangeVersionText}`
     const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1 // +1 for space before padding
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
-    const rangePaddingText = shouldShowDashes(rangePadding) ? dashColor('-').repeat(rangePadding) : ' '.repeat(rangePadding)
+    const rangePaddingText = shouldShowDashes(rangePadding)
+      ? dashColor('-').repeat(rangePadding)
+      : ' '.repeat(rangePadding)
     rangeSection += ' ' + rangePaddingText
   } else {
     // Empty slot - maintain column width
@@ -173,7 +209,9 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
     latestSection = `${latestDot} ${latestVersionText}`
     const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1 // +1 for space before padding
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
-    const latestPaddingText = shouldShowDashes(latestPadding) ? dashColor('-').repeat(latestPadding) : ' '.repeat(latestPadding)
+    const latestPaddingText = shouldShowDashes(latestPadding)
+      ? dashColor('-').repeat(latestPadding)
+      : ' '.repeat(latestPadding)
     latestSection += ' ' + latestPaddingText
   } else {
     // Empty slot - maintain column width
@@ -189,7 +227,10 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 /**
  * Render section header
  */
-export function renderSectionHeader(title: string, sectionType: 'main' | 'peer' | 'optional'): string {
+export function renderSectionHeader(
+  title: string,
+  sectionType: 'main' | 'peer' | 'optional'
+): string {
   const colorFn =
     sectionType === 'main' ? chalk.cyan : sectionType === 'peer' ? chalk.magenta : chalk.yellow
   return '  ' + colorFn.bold(title)
@@ -218,7 +259,9 @@ export function renderInterface(
   filterQuery?: string,
   totalPackagesBeforeFilter?: number,
   terminalWidth: number = 80,
-  loadingProgress?: PackageLoadProgress
+  loadingProgress?: PackageLoadProgress,
+  auditProgress?: AuditProgress,
+  options: PackageListRenderOptions = {}
 ): string[] {
   const output: string[] = []
 
@@ -235,21 +278,36 @@ export function renderInterface(
     // Each character in "inup" gets a different color
     const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
     const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
-    const headerLine = '  ' + chalk.bold(pmColor('🚀')) + ' ' + coloredInup + getThemeColor('textSecondary')(` (${packageManager.displayName})`)
+    const headerLine =
+      '  ' +
+      chalk.bold(pmColor('🚀')) +
+      ' ' +
+      coloredInup +
+      getThemeColor('textSecondary')(` (${packageManager.displayName})`)
 
     // Show filter state (always show, including "All")
     const fullHeaderLine = activeFilterLabel
-      ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
+      ? headerLine +
+        getThemeColor('textSecondary')(' - ') +
+        getThemeColor('primary')(activeFilterLabel)
       : headerLine
     // Pad to terminal width to clear any leftover characters
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
     output.push(fullHeaderLine + ' '.repeat(headerPadding))
   } else {
-    const headerLine = '  ' + chalk.bold.blue('🚀 ') + chalk.bold.red('i') + chalk.bold.yellow('n') + chalk.bold.blue('u') + chalk.bold.magenta('p')
+    const headerLine =
+      '  ' +
+      chalk.bold.blue('🚀 ') +
+      chalk.bold.red('i') +
+      chalk.bold.yellow('n') +
+      chalk.bold.blue('u') +
+      chalk.bold.magenta('p')
 
     // Show filter state (always show, including "All")
     const fullHeaderLine = activeFilterLabel
-      ? headerLine + getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
+      ? headerLine +
+        getThemeColor('textSecondary')(' - ') +
+        getThemeColor('primary')(activeFilterLabel)
       : headerLine
     // Pad to terminal width to clear any leftover characters
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
@@ -259,13 +317,21 @@ export function renderInterface(
 
   if (filterMode) {
     // Show filter input with cursor when actively filtering
-    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery || '') + getThemeColor('border')('█')
+    const filterDisplay =
+      '  ' +
+      chalk.bold.white('Search: ') +
+      getThemeColor('primary')(filterQuery || '') +
+      getThemeColor('border')('█')
     // Pad to terminal width to clear any leftover characters from backspace
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
   } else if (filterQuery) {
     // Show applied filter when not in filter mode but filter is active
-    const filterDisplay = '  ' + chalk.bold.white('Search: ') + getThemeColor('primary')(filterQuery) + getThemeColor('textSecondary')(' (press / to edit)')
+    const filterDisplay =
+      '  ' +
+      chalk.bold.white('Search: ') +
+      getThemeColor('primary')(filterQuery) +
+      getThemeColor('textSecondary')(' (press / to edit)')
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
   } else {
@@ -286,6 +352,9 @@ export function renderInterface(
         '  ' +
         chalk.bold.white('I ') +
         getThemeColor('textSecondary')('Info') +
+        '  ' +
+        chalk.bold.white('S ') +
+        getThemeColor('textSecondary')('Vulnerable') +
         '  ' +
         chalk.bold.white('M ') +
         getThemeColor('textSecondary')('Minor') +
@@ -311,66 +380,97 @@ export function renderInterface(
   if (filterMode) {
     // In filter mode, show Enter to apply and ESC to clear
     if (totalPackages === 0) {
-      statusLine = getThemeColor('warning')(`No matches found`) +
+      statusLine =
+        getThemeColor('warning')(`No matches found`) +
         '  ' +
-        chalk.bold.white('Esc ') + chalk.gray('Clear')
+        chalk.bold.white('Esc ') +
+        chalk.gray('Clear')
     } else if (totalVisualItems > maxVisibleItems) {
-      statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
-      ) +
+      statusLine =
+        getThemeColor('textSecondary')(
+          `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
+        ) +
         '  ' +
-        chalk.bold.white('Enter ') + chalk.gray('Apply') +
+        chalk.bold.white('Enter ') +
+        chalk.gray('Apply') +
         '  ' +
-        chalk.bold.white('Esc ') + chalk.gray('Clear')
+        chalk.bold.white('Esc ') +
+        chalk.gray('Clear')
     } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
+      statusLine =
+        getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
         '  ' +
-        chalk.bold.white('Enter ') + chalk.gray('Apply') +
+        chalk.bold.white('Enter ') +
+        chalk.gray('Apply') +
         '  ' +
-        chalk.bold.white('Esc ') + chalk.gray('Clear')
+        chalk.bold.white('Esc ') +
+        chalk.gray('Clear')
     }
   } else if (totalPackages < totalBeforeFilter) {
     // Filter is applied but not in filter mode
     if (totalVisualItems > maxVisibleItems) {
-      statusLine = getThemeColor('textSecondary')(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
-      ) +
+      statusLine =
+        getThemeColor('textSecondary')(
+          `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
+        ) +
         '  ' +
-        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
+        chalk.bold.white('D/P/O ') +
+        chalk.gray('Filter') +
         '  ' +
-        chalk.bold.white('M ') + chalk.gray('Minor') +
+        chalk.bold.white('M ') +
+        chalk.gray('Minor') +
         '  ' +
-        chalk.bold.white('L ') + chalk.gray('All') +
+        chalk.bold.white('L ') +
+        chalk.gray('All') +
         '  ' +
-        chalk.bold.white('U ') + chalk.gray('None') +
+        chalk.bold.white('U ') +
+        chalk.gray('None') +
         '  ' +
-        chalk.bold.white('Esc ') + chalk.gray('Clear')
+        chalk.bold.white('Esc ') +
+        chalk.gray('Clear')
     } else {
-      statusLine = getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
+      statusLine =
+        getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
         '  ' +
-        chalk.bold.white('D/P/O ') + chalk.gray('Filter') +
+        chalk.bold.white('D/P/O ') +
+        chalk.gray('Filter') +
         '  ' +
-        chalk.bold.white('M ') + chalk.gray('Minor') +
+        chalk.bold.white('M ') +
+        chalk.gray('Minor') +
         '  ' +
-        chalk.bold.white('L ') + chalk.gray('All') +
+        chalk.bold.white('L ') +
+        chalk.gray('All') +
         '  ' +
-        chalk.bold.white('U ') + chalk.gray('None') +
+        chalk.bold.white('U ') +
+        chalk.gray('None') +
         '  ' +
-        chalk.bold.white('Esc ') + chalk.gray('Clear')
+        chalk.bold.white('Esc ') +
+        chalk.gray('Clear')
     }
   } else {
     // No filter applied
     if (totalVisualItems > maxVisibleItems) {
-      statusLine = chalk.gray(
-        `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
-      ) +
+      statusLine =
+        chalk.gray(
+          `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
+        ) +
         '  ' +
-        chalk.bold.white('Enter ') + chalk.gray('Confirm')
+        chalk.bold.white('Enter ') +
+        chalk.gray('Confirm')
     } else {
-      statusLine = chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
+      statusLine =
+        chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
         '  ' +
-        chalk.bold.white('Enter ') + chalk.gray('Confirm')
+        chalk.bold.white('Enter ') +
+        chalk.gray('Confirm')
     }
+  }
+
+  if (auditProgress && auditProgress.total > 0) {
+    const auditLabel = auditProgress.isRunning
+      ? `Audit ${auditProgress.completed}/${auditProgress.total}`
+      : `Audit ${auditProgress.total}/${auditProgress.total}`
+    statusLine += '  ' + getThemeColor('textSecondary')(auditLabel)
   }
 
   // Pad status line to terminal width to clear any leftover characters
@@ -397,7 +497,8 @@ export function renderInterface(
           item.state,
           item.originalIndex,
           item.originalIndex === currentRow,
-          terminalWidth
+          terminalWidth,
+          options
         )
         output.push(line)
       }
@@ -405,15 +506,14 @@ export function renderInterface(
   } else {
     // Fallback to flat rendering (legacy mode)
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth)
+      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth, options)
       output.push(line)
     }
   }
 
   if (loadingProgress?.isLoading) {
     const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
-    const failedLabel =
-      loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
+    const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
     const loadingLine =
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
@@ -422,7 +522,7 @@ export function renderInterface(
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }
 
-  return output
+  return output.map((line) => padLineToWidth(line, terminalWidth))
 }
 
 /**

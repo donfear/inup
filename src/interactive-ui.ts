@@ -3,12 +3,14 @@ import chalk from 'chalk'
 import * as semver from 'semver'
 const keypress = require('keypress')
 import {
+  AuditProgress,
   PackageLoadProgress,
   PackageInfo,
   PackageUpgradeChoice,
   PackageSelectionState,
   PackageManagerInfo,
   StreamOutdatedPackagesBatchItem,
+  VulnerabilityDisplayOptions,
 } from './types'
 import { Key } from 'node:readline'
 import {
@@ -19,18 +21,45 @@ import {
   InputAction,
   VersionUtils,
   CursorUtils,
+  ConsoleUtils,
 } from './ui'
-import { changelogFetcher } from './services'
+import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
+import { PackageListRenderOptions } from './ui/renderer/package-list'
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
+
+type InteractiveUIOptions = VulnerabilityDisplayOptions
+
+const DEFAULT_VULNERABILITY_DISPLAY_OPTIONS: Required<VulnerabilityDisplayOptions> = {
+  showPeerDependencyVulnerabilities: false,
+  showOptionalDependencyVulnerabilities: false,
+}
+
+function normalizeVulnerabilityDisplayOptions(
+  options?: VulnerabilityDisplayOptions
+): Required<VulnerabilityDisplayOptions> {
+  return {
+    showPeerDependencyVulnerabilities:
+      options?.showPeerDependencyVulnerabilities ??
+      DEFAULT_VULNERABILITY_DISPLAY_OPTIONS.showPeerDependencyVulnerabilities,
+    showOptionalDependencyVulnerabilities:
+      options?.showOptionalDependencyVulnerabilities ??
+      DEFAULT_VULNERABILITY_DISPLAY_OPTIONS.showOptionalDependencyVulnerabilities,
+  }
+}
 
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
+  private readonly options: Required<InteractiveUIOptions>
+  private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
+  private readonly packageInfoModalController = new PackageInfoModalController()
+  private refreshView?: () => void
 
-  constructor(packageManager: PackageManagerInfo) {
+  constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
+    this.options = normalizeVulnerabilityDisplayOptions(options)
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -78,6 +107,11 @@ export class InteractiveUI {
         hasRangeUpdate: pkg.hasRangeUpdate,
         hasMajorUpdate: pkg.hasMajorUpdate,
         type: pkg.type,
+        vulnerability: this.vulnerabilityAuditController.getCachedSummary(
+          pkg.name,
+          pkg.currentVersion,
+          pkg.type
+        ),
       }
     })
   }
@@ -115,6 +149,11 @@ export class InteractiveUI {
         hasRangeUpdate: false,
         hasMajorUpdate: false,
         type: pkg.type,
+        vulnerability: this.vulnerabilityAuditController.getCachedSummary(
+          pkg.name,
+          pkg.currentVersion,
+          pkg.type
+        ),
       }
     })
   }
@@ -145,6 +184,8 @@ export class InteractiveUI {
         seen.add(key)
       }
     })
+
+    this.enqueueSecurityAudit(selectionStates)
   }
 
   public async selectPackagesToUpgradeProgressive(
@@ -152,12 +193,17 @@ export class InteractiveUI {
     progress: PackageLoadProgress,
     attachRefresh: (refresh: () => void) => void
   ): Promise<PackageUpgradeChoice[]> {
+    this.enqueueSecurityAudit(selectionStates)
     const selectedStates = await this.interactiveTableSelector(
       selectionStates,
       progress,
       attachRefresh
     )
     return this.createUpgradeChoices(selectedStates)
+  }
+
+  public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {
+    this.vulnerabilityAuditController.enqueueStates(selectionStates, () => this.refreshView?.())
   }
 
   private deduplicatePackages(
@@ -218,7 +264,11 @@ export class InteractiveUI {
 
   private getTerminalHeight(): number {
     // Check if stdout is a TTY and has rows property
-    if (process.stdout.isTTY && typeof process.stdout.rows === 'number' && process.stdout.rows > 0) {
+    if (
+      process.stdout.isTTY &&
+      typeof process.stdout.rows === 'number' &&
+      process.stdout.rows > 0
+    ) {
       return process.stdout.rows
     }
     return 24 // Fallback default
@@ -233,6 +283,28 @@ export class InteractiveUI {
       const states = selectionStates
       const stateManager = new StateManager(0, this.getTerminalHeight())
       let isResolved = false
+      let ownsAlternateScreen = false
+      const vulnerabilityDisplayOptions: VulnerabilityDisplayOptions = this.options
+
+      const claimInteractiveScreen = () => {
+        if (ownsAlternateScreen) {
+          return
+        }
+
+        ConsoleUtils.clearProgress()
+        CursorUtils.enterAlternateScreen()
+        CursorUtils.clearScreen()
+        ownsAlternateScreen = true
+      }
+
+      const releaseInteractiveScreen = () => {
+        if (!ownsAlternateScreen) {
+          return
+        }
+
+        CursorUtils.exitAlternateScreen()
+        ownsAlternateScreen = false
+      }
 
       // No grouping needed - packages are already filtered by type
       // This simplifies scrolling and avoids rendering issues
@@ -240,7 +312,7 @@ export class InteractiveUI {
 
       const handleAction = (action: InputAction) => {
         const uiState = stateManager.getUIState()
-        const filteredStates = stateManager.getFilteredStates(states)
+        const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
 
         switch (action.type) {
           case 'navigate_up':
@@ -293,17 +365,13 @@ export class InteractiveUI {
               renderInterface()
 
               if (currentState && canFetchMetadata) {
-                changelogFetcher
-                  .fetchPackageMetadata(currentState.name, currentState.latestVersion)
+                this.packageInfoModalController
+                  .hydrate(currentState)
                   .then((metadata) => {
-                    if (metadata) {
-                      currentState.description = metadata.description
-                      currentState.homepage = metadata.homepage
-                      currentState.repository = metadata.releaseNotes
-                      currentState.weeklyDownloads = metadata.weeklyDownloads
-                      currentState.author = metadata.author as string | undefined
-                      currentState.license = metadata.license
-                    }
+                    stateManager.setModalLoading(false)
+                    renderInterface()
+                  })
+                  .catch(() => {
                     stateManager.setModalLoading(false)
                     renderInterface()
                   })
@@ -360,6 +428,16 @@ export class InteractiveUI {
           case 'theme_confirm':
             stateManager.confirmTheme()
             break
+          case 'trigger_audit_scan':
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
+              const auditProgress = this.vulnerabilityAuditController.getProgress()
+              if (auditProgress.hasData) {
+                stateManager.toggleVulnerableFilter()
+              } else if (!auditProgress.isRunning) {
+                this.enqueueSecurityAudit(states)
+              }
+            }
+            break
           case 'cancel':
             handleCancel()
             return
@@ -370,47 +448,107 @@ export class InteractiveUI {
       }
 
       const handleConfirm = (selectedStates: PackageSelectionState[]) => {
-        isResolved = true
-        // Reset terminal colors
-        process.stdout.write(getTerminalResetCode())
-        CursorUtils.show()
-        // Clean up listeners
-        if (process.stdin.setRawMode) {
-          process.stdin.setRawMode(false)
-        }
-        process.stdin.removeAllListeners('keypress')
-        process.stdin.pause()
-        process.removeAllListeners('SIGWINCH')
-        resolve(selectedStates)
+        finalizeSelection(selectedStates)
       }
 
       const handleCancel = () => {
-        isResolved = true
-        // Reset terminal colors
+        finalizeSelection(states.map((s) => ({ ...s, selectedOption: 'none' })))
+      }
+
+      const inputHandler = new InputHandler(stateManager, handleAction, handleConfirm, handleCancel)
+      const resetAnsiPattern = /\x1b\[(?:0|49)m/g
+      const packageListRenderOptions: PackageListRenderOptions = {
+        showPeerDependencyVulnerabilities: this.options.showPeerDependencyVulnerabilities,
+        showOptionalDependencyVulnerabilities: this.options.showOptionalDependencyVulnerabilities,
+      }
+
+      const buildRemainingViewport = (
+        terminalWidth: number,
+        terminalHeight: number,
+        usedLines: number
+      ): string[] => {
+        const remainingLines = Math.max(0, terminalHeight - usedLines)
+        const blankLine = ' '.repeat(terminalWidth)
+        return Array.from({ length: remainingLines }, () => blankLine)
+      }
+
+      const applyBackgroundToLine = (line: string, bgCode: string): string =>
+        `${bgCode}${line.replace(resetAnsiPattern, (match) => `${match}${bgCode}`)}${getTerminalResetCode()}`
+
+      const writeFrame = (lines: string[], bgCode: string) => {
+        if (lines.length === 0) {
+          return
+        }
+
+        process.stdout.write(lines.map((line) => applyBackgroundToLine(line, bgCode)).join('\n'))
+      }
+
+      const buildModalHeaderLines = (shortcutLabel: string): string[] => [
+        '  ' + chalk.bold.magenta('🚀 inup'),
+        '',
+        '  ' + shortcutLabel,
+        '',
+      ]
+
+      const renderViewport = (
+        lines: string[],
+        terminalWidth: number,
+        terminalHeight: number,
+        bgCode: string
+      ) => {
+        const viewportLines = [
+          ...lines,
+          ...buildRemainingViewport(terminalWidth, terminalHeight, lines.length),
+        ]
+        writeFrame(viewportLines, bgCode)
+      }
+
+      const renderModalViewport = (
+        shortcutLabel: string,
+        modalLines: string[],
+        terminalWidth: number,
+        terminalHeight: number,
+        bgCode: string
+      ) => {
+        renderViewport(
+          [...buildModalHeaderLines(shortcutLabel), ...modalLines],
+          terminalWidth,
+          terminalHeight,
+          bgCode
+        )
+        stateManager.markRendered([])
+      }
+
+      const cleanupInteractiveSession = () => {
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
-        // Clean up listeners
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
         }
         process.stdin.removeAllListeners('keypress')
         process.stdin.pause()
         process.removeAllListeners('SIGWINCH')
-        resolve(states.map((s) => ({ ...s, selectedOption: 'none' })))
+        this.refreshView = undefined
       }
 
-      const inputHandler = new InputHandler(stateManager, handleAction, handleConfirm, handleCancel)
+      const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
+        isResolved = true
+        releaseInteractiveScreen()
+        cleanupInteractiveSession()
+        resolve(selectedStates)
+      }
 
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
-        const filteredStates = stateManager.getFilteredStates(states)
+        const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
+        const auditProgress = this.vulnerabilityAuditController.getProgress()
 
         // Apply terminal background color
         const bgCode = getTerminalBgColorCode()
         process.stdout.write(bgCode)
 
         if (uiState.forceFullRender) {
-          console.clear()
+          CursorUtils.clearScreen()
           CursorUtils.hide()
         } else {
           CursorUtils.moveToHome()
@@ -422,62 +560,62 @@ export class InteractiveUI {
           const terminalHeight = this.getTerminalHeight()
           const themeManager = stateManager.getThemeManager()
 
-          // Render header
-          const headerLines: string[] = []
-          headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
-          headerLines.push('')
-          headerLines.push(
-            '  ' +
-              chalk.bold.white('T ') +
-              chalk.gray('/ Esc Exit theme selector')
-          )
-          headerLines.push('')
-          headerLines.forEach((line) => console.log(line))
-
           const modalLines = this.renderer.renderThemeSelectorModal(
             themeManager.getCurrentTheme(),
             themeManager.getPreviewTheme(),
             terminalWidth,
             terminalHeight
           )
-          modalLines.forEach((line) => console.log(line))
 
-          // Clear any remaining lines from previous render
-          CursorUtils.clearToEndOfScreen()
-          stateManager.markRendered([])
-        } else if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
+          renderModalViewport(
+            chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'),
+            modalLines,
+            terminalWidth,
+            terminalHeight,
+            bgCode
+          )
+        } else if (
+          uiState.showInfoModal &&
+          uiState.infoModalRow >= 0 &&
+          uiState.infoModalRow < filteredStates.length
+        ) {
           const selectedState = filteredStates[uiState.infoModalRow]
           const terminalWidth = process.stdout.columns || 80
           const terminalHeight = this.getTerminalHeight()
 
-          // Render header
-          const headerLines: string[] = []
-          headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
-          headerLines.push('')
-          headerLines.push(
-            '  ' +
-              chalk.bold.white('I / Esc ') +
-              chalk.gray('Exit this view')
-          )
-          headerLines.push('')
-          headerLines.forEach((line) => console.log(line))
-
           if (uiState.isLoadingModalInfo) {
             // Show loading state
-            const modalLines = this.renderer.renderPackageInfoLoading(selectedState, terminalWidth, terminalHeight)
-            modalLines.forEach((line) => console.log(line))
+            const modalLines = this.renderer.renderPackageInfoLoading(
+              selectedState,
+              terminalWidth,
+              Math.max(8, terminalHeight - 4)
+            )
+            renderModalViewport(
+              chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
+              modalLines,
+              terminalWidth,
+              terminalHeight,
+              bgCode
+            )
           } else {
             // Show full info
-            const modalLines = this.renderer.renderPackageInfoModal(selectedState, terminalWidth, terminalHeight)
-            modalLines.forEach((line) => console.log(line))
+            const modalLines = this.renderer.renderPackageInfoModal(
+              selectedState,
+              terminalWidth,
+              Math.max(8, terminalHeight - 4)
+            )
+            renderModalViewport(
+              chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
+              modalLines,
+              terminalWidth,
+              terminalHeight,
+              bgCode
+            )
           }
-
-          // Clear any remaining lines from previous render
-          CursorUtils.clearToEndOfScreen()
-          stateManager.markRendered([])
         } else {
           // Normal list view (flat rendering - no grouping)
           const terminalWidth = process.stdout.columns || 80
+          const terminalHeight = this.getTerminalHeight()
           const activeFilterLabel = stateManager.getActiveFilterLabel()
           const lines = this.renderer.renderInterface(
             filteredStates,
@@ -492,16 +630,12 @@ export class InteractiveUI {
             uiState.filterQuery,
             states.length,
             terminalWidth,
-            loadingProgress
+            loadingProgress,
+            auditProgress,
+            packageListRenderOptions
           )
 
-          // Print all lines
-          lines.forEach((line) => console.log(line))
-
-          // Clear any remaining lines from previous render
-          if (!uiState.forceFullRender) {
-            CursorUtils.clearToEndOfScreen()
-          }
+          renderViewport(lines, terminalWidth, terminalHeight, bgCode)
 
           stateManager.markRendered(lines)
         }
@@ -518,6 +652,14 @@ export class InteractiveUI {
 
       // Setup keypress handling
       try {
+        claimInteractiveScreen()
+
+        this.refreshView = () => {
+          if (!isResolved) {
+            renderInterface()
+          }
+        }
+
         attachRefresh?.(() => {
           if (!isResolved) {
             renderInterface()
@@ -538,15 +680,18 @@ export class InteractiveUI {
         // This handles cases where process.stdout.rows might not be accurate at startup
         const currentHeight = this.getTerminalHeight()
         if (stateManager.updateTerminalHeight(currentHeight)) {
-          const initialFiltered = stateManager.getFilteredStates(states)
+          const initialFiltered = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
           stateManager.resetForResize(initialFiltered.length)
         }
 
         // Initial render
         renderInterface()
+        this.enqueueSecurityAudit(states)
       } catch (error) {
+        releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
+        this.refreshView = undefined
         // Fallback to simple interface if raw mode fails
         console.log(chalk.yellow('Raw mode not available, using fallback interface...'))
         resolve(states)

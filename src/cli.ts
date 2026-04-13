@@ -16,17 +16,20 @@ const program = new Command()
 
 program
   .name('inup')
-  .description('Interactive upgrade tool for package managers. Auto-detects and works with npm, yarn, pnpm, and bun.')
+  .description(
+    'Interactive upgrade tool for package managers. Auto-detects and works with npm, yarn, pnpm, and bun.'
+  )
   .version(packageJson.version)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
-  .option('-i, --ignore <packages>', 'ignore packages (comma-separated, supports glob patterns like @babel/*)')
+  .option(
+    '-i, --ignore <packages>',
+    'ignore packages (comma-separated, supports glob patterns like @babel/*)'
+  )
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .action(async (options) => {
-    console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
-
     const cwd = resolve(options.dir)
 
     if (options.debug || process.env.INUP_DEBUG === '1') {
@@ -82,6 +85,10 @@ program
       maxDepth,
       ignorePackages,
       packageManager,
+      showPeerDependencyVulnerabilities:
+        projectConfig.showPeerDependencyVulnerabilities ?? false,
+      showOptionalDependencyVulnerabilities:
+        projectConfig.showOptionalDependencyVulnerabilities ?? false,
       debug: options.debug || process.env.INUP_DEBUG === '1',
     })
     await upgrader.run()
@@ -90,9 +97,7 @@ program
     const updateCheck = await updateCheckPromise
     if (updateCheck?.isOutdated) {
       console.log('')
-      console.log(
-        chalk.yellow('┌' + '─'.repeat(78) + '┐')
-      )
+      console.log(chalk.yellow('┌' + '─'.repeat(78) + '┐'))
       console.log(
         chalk.yellow('│') +
           ' ' +
@@ -100,7 +105,9 @@ program
           chalk.gray(`${updateCheck.currentVersion}`) +
           ' → ' +
           chalk.green(`${updateCheck.latestVersion}`) +
-          ' '.repeat(78 - 19 - updateCheck.currentVersion.length - 3 - updateCheck.latestVersion.length - 1) +
+          ' '.repeat(
+            78 - 19 - updateCheck.currentVersion.length - 3 - updateCheck.latestVersion.length - 1
+          ) +
           chalk.yellow('│')
       )
       console.log(
@@ -111,9 +118,7 @@ program
           ' '.repeat(78 - 6 - updateCheck.updateCommand.length - 1) +
           chalk.yellow('│')
       )
-      console.log(
-        chalk.yellow('└' + '─'.repeat(78) + '┘')
-      )
+      console.log(chalk.yellow('└' + '─'.repeat(78) + '┘'))
       console.log('')
     }
   })

@@ -1,4 +1,4 @@
-import { PackageSelectionState, RenderableItem } from '../../types'
+import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
 import { NavigationManager, NavigationState } from './navigation-manager'
 import { ModalManager, ModalState } from './modal-manager'
 import { FilterManager, FilterState } from './filter-manager'
@@ -235,8 +235,11 @@ export class StateManager {
     this.navigationManager.setScrollOffset(0)
   }
 
-  getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {
-    return this.filterManager.getFilteredStates(allStates)
+  getFilteredStates(
+    allStates: PackageSelectionState[],
+    options?: VulnerabilityDisplayOptions
+  ): PackageSelectionState[] {
+    return this.filterManager.getFilteredStates(allStates, options)
   }
 
   toggleDependencyTypeFilter(type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'): void {
@@ -245,6 +248,16 @@ export class StateManager {
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
     // Use incremental render (no blink)
+  }
+
+  toggleVulnerableFilter(): void {
+    this.filterManager.toggleVulnerableFilter()
+    this.navigationManager.setCurrentRow(0)
+    this.navigationManager.setScrollOffset(0)
+  }
+
+  isVulnerableFilterActive(): boolean {
+    return this.filterManager.isVulnerableFilterActive()
   }
 
   getActiveFilterLabel(): string {

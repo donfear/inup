@@ -1,3 +1,15 @@
+export interface VulnerabilitySummary {
+  count: number
+  highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+  detailsUrl?: string
+  advisories: Array<{
+    id: number
+    title: string
+    severity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+    url: string
+  }>
+}
+
 export interface PackageInfo {
   name: string
   currentVersion: string // Raw version specifier from package.json (with ^/~ prefixes)
@@ -14,6 +26,7 @@ export interface PackageInfo {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
 }
 
 export type DependencyType =
@@ -59,6 +72,7 @@ export interface PackageSelectionState {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
 }
 
 export interface GroupedPackages {
@@ -83,7 +97,12 @@ export interface PackageManagerInfo {
   color: any // chalk instance
 }
 
-export interface UpgradeOptions {
+export interface VulnerabilityDisplayOptions {
+  showPeerDependencyVulnerabilities?: boolean
+  showOptionalDependencyVulnerabilities?: boolean
+}
+
+export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   cwd?: string
   excludePatterns?: string[]
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
@@ -108,6 +127,13 @@ export interface PackageLoadProgress {
   total: number
   failed: number
   isLoading: boolean
+}
+
+export interface AuditProgress {
+  completed: number
+  total: number
+  isRunning: boolean
+  hasData: boolean
 }
 
 export interface StreamOutdatedPackagesInitialPayload {
