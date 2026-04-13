@@ -516,10 +516,17 @@ export class InteractiveUI {
             terminalHeight
           )
 
-          writeFrame([...headerLines, ...modalLines], bgCode)
+          const viewportLines = [
+            ...headerLines,
+            ...modalLines,
+            ...buildRemainingViewport(
+              terminalWidth,
+              terminalHeight,
+              headerLines.length + modalLines.length
+            ),
+          ]
+          writeFrame(viewportLines, bgCode)
 
-          // Clear any remaining lines from previous render
-          CursorUtils.clearToEndOfScreen()
           stateManager.markRendered([])
         } else if (
           uiState.showInfoModal &&
@@ -544,7 +551,16 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            writeFrame([...headerLines, ...modalLines], bgCode)
+            const viewportLines = [
+              ...headerLines,
+              ...modalLines,
+              ...buildRemainingViewport(
+                terminalWidth,
+                terminalHeight,
+                headerLines.length + modalLines.length
+              ),
+            ]
+            writeFrame(viewportLines, bgCode)
           } else {
             // Show full info
             const modalLines = this.renderer.renderPackageInfoModal(
@@ -552,11 +568,17 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            writeFrame([...headerLines, ...modalLines], bgCode)
+            const viewportLines = [
+              ...headerLines,
+              ...modalLines,
+              ...buildRemainingViewport(
+                terminalWidth,
+                terminalHeight,
+                headerLines.length + modalLines.length
+              ),
+            ]
+            writeFrame(viewportLines, bgCode)
           }
-
-          // Clear any remaining lines from previous render
-          CursorUtils.clearToEndOfScreen()
           stateManager.markRendered([])
         } else {
           // Normal list view (flat rendering - no grouping)
