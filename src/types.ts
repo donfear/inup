@@ -1,6 +1,7 @@
 export interface VulnerabilitySummary {
   count: number
   highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+  detailsUrl?: string
   advisories: Array<{
     id: number
     title: string
@@ -103,7 +104,6 @@ export interface UpgradeOptions {
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
-  audit?: boolean // Auto-run vulnerability scan on startup
 }
 
 export interface PackageJson {
@@ -122,6 +122,13 @@ export interface PackageLoadProgress {
   total: number
   failed: number
   isLoading: boolean
+}
+
+export interface AuditProgress {
+  completed: number
+  total: number
+  isRunning: boolean
+  hasData: boolean
 }
 
 export interface StreamOutdatedPackagesInitialPayload {

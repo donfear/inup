@@ -1,14 +1,10 @@
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../types'
+import { PackageSelectionState, VulnerabilitySummary } from '../../types'
 import { getThemeColor } from '../themes-colors'
 import { VersionUtils } from '../utils'
 
-// Use shared ANSI stripping utility
 const stripAnsi = VersionUtils.stripAnsi
 
-/**
- * Format a number for display (e.g., 1000000 -> "1M", 1000 -> "1K")
- */
 function formatNumber(num: number | undefined): string {
   if (!num) return 'N/A'
   if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
@@ -16,13 +12,11 @@ function formatNumber(num: number | undefined): string {
   return num.toString()
 }
 
-/**
- * Wrap text to fit within max width
- */
 function wrapText(text: string, maxWidth: number): string[] {
   if (text.length <= maxWidth) {
     return [text]
   }
+
   const lines: string[] = []
   let current = ''
   const words = text.split(' ')
@@ -35,273 +29,256 @@ function wrapText(text: string, maxWidth: number): string[] {
       current = current ? current + ' ' + word : word
     }
   }
-  if (current) lines.push(current)
+
+  if (current) {
+    lines.push(current)
+  }
+
   return lines
 }
 
-/**
- * Render a loading state for the info modal
- */
+function renderModalRow(padding: number, modalWidth: number, text: string): string {
+  const rowLength = stripAnsi(text).length
+  const rowPadding = Math.max(0, modalWidth - 3 - rowLength)
+  return (
+    ' '.repeat(padding) + chalk.gray('│') + ' ' + text + ' '.repeat(rowPadding) + chalk.gray('│')
+  )
+}
+
+function renderSeparator(padding: number, modalWidth: number): string {
+  return ' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤')
+}
+
+function truncatePlainText(text: string, maxWidth: number): string {
+  if (text.length <= maxWidth) {
+    return text
+  }
+
+  return text.substring(0, Math.max(0, maxWidth - 3)) + '...'
+}
+
+function getSeverityColor(
+  severity: VulnerabilitySummary['highestSeverity']
+): (text: string) => string {
+  switch (severity) {
+    case 'critical':
+      return chalk.bgRed.white.bold
+    case 'high':
+      return chalk.red.bold
+    case 'moderate':
+      return chalk.yellow
+    case 'low':
+    case 'info':
+    default:
+      return chalk.gray
+  }
+}
+
+function selectRepresentativeAdvisory(
+  vulnerability: VulnerabilitySummary
+): VulnerabilitySummary['advisories'][number] | undefined {
+  return vulnerability.advisories[0]
+}
+
+function buildDescriptionSection(
+  state: PackageSelectionState,
+  modalWidth: number,
+  maxLines: number
+): string[] {
+  if (!state.description || maxLines <= 0) {
+    return []
+  }
+
+  const wrapped = wrapText(state.description, modalWidth - 4)
+  return wrapped.slice(0, maxLines).map((line, index) => {
+    if (index === maxLines - 1 && wrapped.length > maxLines) {
+      return truncatePlainText(line, modalWidth - 4)
+    }
+    return line
+  })
+}
+
+function buildVulnerabilitySection(state: PackageSelectionState, modalWidth: number): string[] {
+  if (!state.vulnerability || state.vulnerability.count === 0) {
+    return []
+  }
+
+  const representative = selectRepresentativeAdvisory(state.vulnerability)
+  const severityColor = getSeverityColor(state.vulnerability.highestSeverity)
+  const rows: string[] = []
+
+  rows.push(
+    chalk.red.bold(
+      `⚠ ${state.vulnerability.count} known vulnerabilit${state.vulnerability.count === 1 ? 'y' : 'ies'} (${severityColor(state.vulnerability.highestSeverity.toUpperCase())})`
+    )
+  )
+
+  if (representative) {
+    const label = severityColor(`[${representative.severity.toUpperCase()}]`)
+    const title = truncatePlainText(representative.title, modalWidth - 14)
+    rows.push(` ${label} ${title}`)
+  }
+
+  const detailsUrl = state.vulnerability.detailsUrl || representative?.url
+  if (detailsUrl) {
+    const linkLabel = detailsUrl.includes('/advisories') ? 'Security:' : 'Details:'
+    const link = truncatePlainText(detailsUrl, modalWidth - 14)
+    rows.push(` ${linkLabel} ${chalk.underline(getThemeColor('primary')(link))}`)
+  }
+
+  if (state.vulnerability.count > 1) {
+    rows.push(chalk.gray(` ... and ${state.vulnerability.count - 1} more`))
+  }
+
+  return rows
+}
+
+function fitSections(
+  sections: Array<{ key: string; rows: string[]; required: boolean }>,
+  maxHeight: number
+): Array<{ key: string; rows: string[]; required: boolean }> {
+  const totalLines = () =>
+    2 +
+    sections
+      .filter((section) => section.rows.length > 0)
+      .reduce((sum, section, index, active) => {
+        return (
+          sum +
+          section.rows.length +
+          (active.filter((item) => item.rows.length > 0)[0] === section ? 0 : 1)
+        )
+      }, 0)
+
+  while (totalLines() > maxHeight) {
+    const homepage = sections.find(
+      (section) => section.key === 'homepage' && section.rows.length > 0 && !section.required
+    )
+    if (homepage) {
+      homepage.rows = []
+      continue
+    }
+
+    const changelog = sections.find(
+      (section) => section.key === 'changelog' && section.rows.length > 0 && !section.required
+    )
+    if (changelog) {
+      changelog.rows = []
+      continue
+    }
+
+    const description = sections.find(
+      (section) => section.key === 'description' && section.rows.length > 0 && !section.required
+    )
+    if (description) {
+      description.rows = description.rows.slice(0, -1)
+      continue
+    }
+
+    const meta = sections.find((section) => section.key === 'meta' && section.rows.length > 1)
+    if (meta) {
+      meta.rows = meta.rows.slice(0, 1)
+      continue
+    }
+
+    break
+  }
+
+  return sections.filter((section) => section.rows.length > 0)
+}
+
 export function renderPackageInfoLoading(
   state: PackageSelectionState,
   terminalWidth: number = 80,
   terminalHeight: number = 24
 ): string[] {
-  const modalWidth = Math.min(terminalWidth - 6, 120)
+  const modalWidth = Math.min(Math.max(50, terminalWidth - 6), 120)
   const padding = Math.floor((terminalWidth - modalWidth) / 2)
+  const modalHeight = 4
+  const topPadding = Math.max(1, Math.floor((terminalHeight - modalHeight) / 2))
   const lines: string[] = []
 
-  // Top padding to center vertically
-  const topPadding = Math.max(1, Math.floor((terminalHeight - 10) / 2))
   for (let i = 0; i < topPadding; i++) {
     lines.push('')
   }
 
-  // Modal border
   lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
-
-  // Loading message
-  const loadingMsg = '⏳ Loading package info...'
-  const msgPadding = modalWidth - 4 - stripAnsi(loadingMsg).length
-  lines.push(
-    ' '.repeat(padding) +
-      chalk.gray('│') +
-      ' ' +
-      chalk.cyan(loadingMsg) +
-      ' '.repeat(Math.max(0, msgPadding)) +
-      chalk.gray('│')
-  )
-
-  // Package name
-  const nameMsg = `${state.name}`
-  const namePadding = modalWidth - 4 - nameMsg.length
-  lines.push(
-    ' '.repeat(padding) +
-      chalk.gray('│') +
-      ' ' +
-      chalk.white(nameMsg) +
-      ' '.repeat(Math.max(0, namePadding)) +
-      chalk.gray('│')
-  )
-
+  lines.push(renderModalRow(padding, modalWidth, chalk.cyan('⏳ Loading package info...')))
+  lines.push(renderModalRow(padding, modalWidth, chalk.white(state.name)))
   lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
 
   return lines
 }
 
-/**
- * Render a full-screen modal overlay showing package information
- * Similar to Turbo's help menu - centered with disabled background
- */
 export function renderPackageInfoModal(
   state: PackageSelectionState,
   terminalWidth: number = 80,
   terminalHeight: number = 24
 ): string[] {
-  const modalWidth = Math.min(terminalWidth - 6, 120) // Leave margins
+  const modalWidth = Math.min(Math.max(60, terminalWidth - 6), 120)
   const padding = Math.floor((terminalWidth - modalWidth) / 2)
-  const lines: string[] = []
+  const maxModalHeight = Math.max(10, terminalHeight - 2)
 
-  // Top padding to center vertically
-  const topPadding = Math.max(1, Math.floor((terminalHeight - 20) / 2))
-  for (let i = 0; i < topPadding; i++) {
-    lines.push('')
-  }
-
-  // Modal border and header
-  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
-
-  // Title with package name
-  const title = ` ℹ️  ${state.name}`
-  const titleLength = stripAnsi(title).length
-  const titlePadding = Math.max(0, modalWidth - 2 - titleLength)
-  lines.push(
-    ' '.repeat(padding) +
-      chalk.gray('│') +
-      chalk.cyan.bold(title) +
-      ' '.repeat(titlePadding) +
-      chalk.gray('│')
-  )
-
-  // License and author line
-  const authorLicense = `${state.author || 'Unknown'} • ${state.license || 'MIT'}`
-  const authorLength = authorLicense.length
-  const authorPadding = Math.max(0, modalWidth - 3 - authorLength)
-  lines.push(
-    ' '.repeat(padding) +
-      chalk.gray('│') +
-      ' ' +
-      chalk.gray(authorLicense) +
-      ' '.repeat(authorPadding) +
-      chalk.gray('│')
-  )
-
-  lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
-
-  // Current and target versions
+  const title = chalk.cyan.bold(` ℹ️  ${state.name}`)
+  const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
   const targetVersion = chalk.green(
     state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion
   )
-  const versionText = `Current: ${currentVersion} → Target: ${targetVersion}`
-  const versionLength = stripAnsi(versionText).length
-  const versionPadding = Math.max(0, modalWidth - 3 - versionLength)
-  lines.push(
-    ' '.repeat(padding) +
-      chalk.gray('│') +
-      ' ' +
-      versionText +
-      ' '.repeat(versionPadding) +
-      chalk.gray('│')
+
+  const metaRows = [`Current: ${currentVersion} → Target: ${targetVersion}`]
+  if (state.weeklyDownloads !== undefined) {
+    metaRows.push(
+      getThemeColor('primary')(`📊 ${formatNumber(state.weeklyDownloads)} downloads/week`)
+    )
+  }
+
+  const descriptionRows = buildDescriptionSection(state, modalWidth, 4)
+  const vulnerabilityRows = buildVulnerabilitySection(state, modalWidth)
+  const changelogRows = state.repository
+    ? [
+        `Changelog: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.repository, modalWidth - 15)))}`,
+      ]
+    : []
+  const homepageRows = state.homepage
+    ? [
+        `Homepage: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.homepage, modalWidth - 14)))}`,
+      ]
+    : []
+
+  const sections = fitSections(
+    [
+      { key: 'header', rows: [title, authorLicense], required: true },
+      { key: 'meta', rows: metaRows, required: true },
+      { key: 'description', rows: descriptionRows, required: false },
+      { key: 'vulnerability', rows: vulnerabilityRows, required: vulnerabilityRows.length > 0 },
+      { key: 'changelog', rows: changelogRows, required: false },
+      { key: 'homepage', rows: homepageRows, required: false },
+    ],
+    maxModalHeight
   )
 
-  // Weekly downloads
-  if (state.weeklyDownloads !== undefined) {
-    const downloadsText = `📊 ${formatNumber(state.weeklyDownloads)} downloads/week`
-    const downloadsLength = stripAnsi(downloadsText).length
-    const downloadsPadding = Math.max(0, modalWidth - 3 - downloadsLength)
-    lines.push(
-      ' '.repeat(padding) +
-        chalk.gray('│') +
-        ' ' +
-        getThemeColor('primary')(downloadsText) +
-        ' '.repeat(downloadsPadding) +
-        chalk.gray('│')
-    )
+  const lines: string[] = []
+  const contentHeight =
+    2 +
+    sections.reduce((sum, section, index) => sum + section.rows.length + (index === 0 ? 0 : 1), 0)
+  const topPadding = Math.max(1, Math.floor((terminalHeight - contentHeight) / 2))
+
+  for (let i = 0; i < topPadding; i++) {
+    lines.push('')
   }
 
-  // Description
-  if (state.description) {
-    lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
-    const descriptionLines = wrapText(state.description, modalWidth - 4)
-    for (const descLine of descriptionLines) {
-      const descLength = descLine.length
-      const descPadding = Math.max(0, modalWidth - 3 - descLength)
-      lines.push(
-        ' '.repeat(padding) +
-          chalk.gray('│') +
-          ' ' +
-          chalk.white(descLine) +
-          ' '.repeat(descPadding) +
-          chalk.gray('│')
-      )
-    }
-  }
+  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
 
-  // Security vulnerabilities section
-  if (state.vulnerability && state.vulnerability.count > 0) {
-    lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
-
-    const severityColors: Record<string, (text: string) => string> = {
-      critical: chalk.bgRed.white.bold,
-      high: chalk.red.bold,
-      moderate: chalk.yellow,
-      low: chalk.gray,
-      info: chalk.gray,
+  sections.forEach((section, index) => {
+    if (index > 0) {
+      lines.push(renderSeparator(padding, modalWidth))
     }
 
-    const sevColor = severityColors[state.vulnerability.highestSeverity] || chalk.white
-    const vulnHeader = `⚠ ${state.vulnerability.count} known vulnerabilit${state.vulnerability.count > 1 ? 'ies' : 'y'} (${sevColor(state.vulnerability.highestSeverity.toUpperCase())})`
-    const vulnHeaderLength = stripAnsi(vulnHeader).length
-    const vulnHeaderPadding = Math.max(0, modalWidth - 3 - vulnHeaderLength)
-    lines.push(
-      ' '.repeat(padding) +
-        chalk.gray('│') +
-        ' ' +
-        chalk.red.bold(vulnHeader) +
-        ' '.repeat(vulnHeaderPadding) +
-        chalk.gray('│')
-    )
+    section.rows.forEach((row) => {
+      lines.push(renderModalRow(padding, modalWidth, row))
+    })
+  })
 
-    // Show up to 5 advisories with title, severity and link
-    const advisoriesToShow = state.vulnerability.advisories.slice(0, 5)
-    for (const advisory of advisoriesToShow) {
-      const advColor = severityColors[advisory.severity] || chalk.white
-      const sevLabel = advColor(advisory.severity.toUpperCase().padEnd(8))
-      const titleMaxWidth = modalWidth - 16
-      const truncatedTitle =
-        advisory.title.length > titleMaxWidth
-          ? advisory.title.substring(0, titleMaxWidth - 3) + '...'
-          : advisory.title
-      const advisoryLine = `  ${sevLabel} ${truncatedTitle}`
-      const advisoryLength = stripAnsi(advisoryLine).length
-      const advisoryPadding = Math.max(0, modalWidth - 3 - advisoryLength)
-      lines.push(
-        ' '.repeat(padding) +
-          chalk.gray('│') +
-          ' ' +
-          advisoryLine +
-          ' '.repeat(advisoryPadding) +
-          chalk.gray('│')
-      )
-
-      // Show advisory URL
-      const urlLine = `           ${advisory.url}`
-      const urlMaxWidth = modalWidth - 4
-      const truncatedUrl = urlLine.length > urlMaxWidth ? urlLine.substring(0, urlMaxWidth - 3) + '...' : urlLine
-      const urlLength = stripAnsi(truncatedUrl).length
-      const urlPadding = Math.max(0, modalWidth - 3 - urlLength)
-      lines.push(
-        ' '.repeat(padding) +
-          chalk.gray('│') +
-          ' ' +
-          chalk.underline(getThemeColor('primary')(truncatedUrl)) +
-          ' '.repeat(urlPadding) +
-          chalk.gray('│')
-      )
-    }
-
-    if (state.vulnerability.advisories.length > 5) {
-      const moreText = `  ... and ${state.vulnerability.advisories.length - 5} more`
-      const morePadding = Math.max(0, modalWidth - 3 - moreText.length)
-      lines.push(
-        ' '.repeat(padding) +
-          chalk.gray('│') +
-          ' ' +
-          chalk.gray(moreText) +
-          ' '.repeat(morePadding) +
-          chalk.gray('│')
-      )
-    }
-  }
-
-  // Changelog/Releases section (moved to middle)
-  if (state.repository) {
-    lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
-    const repoLabel = 'Changelog:'
-    const repoUrl = state.repository.substring(0, modalWidth - 20)
-    const repoText = ` ${repoLabel} ${chalk.underline(getThemeColor('primary')(repoUrl))}`
-    const repoLength = stripAnsi(repoText).length
-    const repoPadding = Math.max(0, modalWidth - 3 - repoLength)
-    lines.push(
-      ' '.repeat(padding) +
-        chalk.gray('│') +
-        repoText +
-        ' '.repeat(repoPadding) +
-        chalk.gray('│')
-    )
-  }
-
-  // Links section
-  if (state.homepage) {
-    lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
-
-    const homeLabel = 'Homepage:'
-    const homeUrl = state.homepage.substring(0, modalWidth - 20)
-    const homeText = ` ${homeLabel} ${chalk.underline(getThemeColor('primary')(homeUrl))}`
-    const homeLength = stripAnsi(homeText).length
-    const homePadding = Math.max(0, modalWidth - 3 - homeLength)
-    lines.push(
-      ' '.repeat(padding) +
-        chalk.gray('│') +
-        homeText +
-        ' '.repeat(homePadding) +
-        chalk.gray('│')
-    )
-  }
-
-  // Footer
   lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
-
   return lines
 }

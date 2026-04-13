@@ -1,4 +1,5 @@
 import {
+  AuditProgress,
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
@@ -38,7 +39,8 @@ export class UIRenderer {
     filterQuery?: string,
     totalPackagesBeforeFilter?: number,
     terminalWidth: number = 80,
-    loadingProgress?: PackageLoadProgress
+    loadingProgress?: PackageLoadProgress,
+    auditProgress?: AuditProgress
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -53,7 +55,8 @@ export class UIRenderer {
       filterQuery,
       totalPackagesBeforeFilter,
       terminalWidth,
-      loadingProgress
+      loadingProgress,
+      auditProgress
     )
   }
 
@@ -87,7 +90,12 @@ export class UIRenderer {
     terminalWidth: number = 80,
     terminalHeight: number = 24
   ): string[] {
-    return ThemeSelector.renderThemeSelectorModal(currentTheme, previewTheme, terminalWidth, terminalHeight)
+    return ThemeSelector.renderThemeSelectorModal(
+      currentTheme,
+      previewTheme,
+      terminalWidth,
+      terminalHeight
+    )
   }
 }
 

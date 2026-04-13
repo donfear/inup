@@ -3,6 +3,7 @@ import chalk from 'chalk'
 import * as semver from 'semver'
 const keypress = require('keypress')
 import {
+  AuditProgress,
   PackageLoadProgress,
   PackageInfo,
   PackageUpgradeChoice,
@@ -21,23 +22,21 @@ import {
   VersionUtils,
   CursorUtils,
 } from './ui'
-import { changelogFetcher, fetchVulnerabilities } from './services'
+import { BackgroundAuditTracker, changelogFetcher, fetchVulnerabilities } from './services'
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
-
-export interface InteractiveUIOptions {
-  audit?: boolean
-}
 
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
-  private autoAudit: boolean
+  private readonly auditTracker = new BackgroundAuditTracker()
+  private readonly vulnerabilityCache = new Map<string, VulnerabilitySummary>()
+  private refreshView?: () => void
+  private auditDrainPromise: Promise<void> | null = null
 
-  constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
+  constructor(packageManager: PackageManagerInfo) {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
-    this.autoAudit = options?.audit ?? false
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -85,6 +84,7 @@ export class InteractiveUI {
         hasRangeUpdate: pkg.hasRangeUpdate,
         hasMajorUpdate: pkg.hasMajorUpdate,
         type: pkg.type,
+        vulnerability: this.vulnerabilityCache.get(key),
       }
     })
   }
@@ -122,6 +122,7 @@ export class InteractiveUI {
         hasRangeUpdate: false,
         hasMajorUpdate: false,
         type: pkg.type,
+        vulnerability: this.vulnerabilityCache.get(key),
       }
     })
   }
@@ -152,6 +153,8 @@ export class InteractiveUI {
         seen.add(key)
       }
     })
+
+    this.enqueueSecurityAudit(selectionStates)
   }
 
   public async selectPackagesToUpgradeProgressive(
@@ -159,12 +162,25 @@ export class InteractiveUI {
     progress: PackageLoadProgress,
     attachRefresh: (refresh: () => void) => void
   ): Promise<PackageUpgradeChoice[]> {
+    this.enqueueSecurityAudit(selectionStates)
     const selectedStates = await this.interactiveTableSelector(
       selectionStates,
       progress,
       attachRefresh
     )
     return this.createUpgradeChoices(selectedStates)
+  }
+
+  public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {
+    const packages = selectionStates.map((state) => ({
+      name: state.name,
+      version: state.currentVersionSpecifier,
+    }))
+
+    const added = this.auditTracker.enqueue(packages)
+    if (added > 0) {
+      this.drainSecurityAudit(selectionStates)
+    }
   }
 
   private deduplicatePackages(
@@ -225,10 +241,96 @@ export class InteractiveUI {
 
   private getTerminalHeight(): number {
     // Check if stdout is a TTY and has rows property
-    if (process.stdout.isTTY && typeof process.stdout.rows === 'number' && process.stdout.rows > 0) {
+    if (
+      process.stdout.isTTY &&
+      typeof process.stdout.rows === 'number' &&
+      process.stdout.rows > 0
+    ) {
       return process.stdout.rows
     }
     return 24 // Fallback default
+  }
+
+  private createVulnerabilitySummary(
+    state: PackageSelectionState,
+    advisories: VulnerabilitySummary['advisories'],
+    highestSeverity: VulnerabilitySummary['highestSeverity']
+  ): VulnerabilitySummary {
+    const detailsUrl = state.vulnerability?.detailsUrl || advisories[0]?.url
+    return {
+      count: advisories.length,
+      highestSeverity,
+      detailsUrl,
+      advisories,
+    }
+  }
+
+  private updateStateVulnerability(
+    state: PackageSelectionState,
+    summary: VulnerabilitySummary
+  ): void {
+    state.vulnerability = {
+      ...summary,
+      detailsUrl: state.vulnerability?.detailsUrl || summary.detailsUrl,
+    }
+    const cacheKey = `${state.name}@${state.currentVersionSpecifier}@${state.type}`
+    this.vulnerabilityCache.set(cacheKey, state.vulnerability)
+  }
+
+  private drainSecurityAudit(selectionStates: PackageSelectionState[]): void {
+    if (this.auditDrainPromise) {
+      return
+    }
+
+    this.auditDrainPromise = (async () => {
+      while (true) {
+        const batch = this.auditTracker.reserveNextBatch(20)
+        if (batch.packageNames.length === 0) {
+          break
+        }
+
+        try {
+          const vulnerabilityData = await fetchVulnerabilities(batch.packages)
+          const batchNames = new Set(batch.packageNames)
+
+          for (const state of selectionStates) {
+            if (!batchNames.has(state.name)) continue
+            const vulnerability = vulnerabilityData.get(state.name)
+            if (
+              !vulnerability ||
+              vulnerability.vulnerabilities.length === 0 ||
+              !vulnerability.highestSeverity
+            ) {
+              continue
+            }
+
+            this.updateStateVulnerability(
+              state,
+              this.createVulnerabilitySummary(
+                state,
+                vulnerability.vulnerabilities.map((item) => ({
+                  id: item.id,
+                  title: item.title,
+                  severity: item.severity,
+                  url: item.url,
+                })),
+                vulnerability.highestSeverity
+              )
+            )
+          }
+        } catch {
+          // Security audit is best-effort only. Ignore failures and keep the UI responsive.
+        } finally {
+          this.auditTracker.markCompleted(batch.packageNames)
+          this.refreshView?.()
+        }
+      }
+    })().finally(() => {
+      this.auditDrainPromise = null
+      if (this.auditTracker.getProgress().isRunning) {
+        this.drainSecurityAudit(selectionStates)
+      }
+    })
   }
 
   private async interactiveTableSelector(
@@ -240,8 +342,6 @@ export class InteractiveUI {
       const states = selectionStates
       const stateManager = new StateManager(0, this.getTerminalHeight())
       let isResolved = false
-      let auditScanned = false
-      let auditScanning = false
 
       // No grouping needed - packages are already filtered by type
       // This simplifies scrolling and avoids rendering issues
@@ -316,6 +416,10 @@ export class InteractiveUI {
                     stateManager.setModalLoading(false)
                     renderInterface()
                   })
+                  .catch(() => {
+                    stateManager.setModalLoading(false)
+                    renderInterface()
+                  })
               }
             } else {
               // Closing modal
@@ -371,47 +475,11 @@ export class InteractiveUI {
             break
           case 'trigger_audit_scan':
             if (!uiState.showInfoModal && !uiState.showThemeModal) {
-              if (auditScanned) {
-                // Already scanned — toggle the "show only vulnerable" filter
+              const auditProgress = this.auditTracker.getProgress()
+              if (auditProgress.hasData) {
                 stateManager.toggleVulnerableFilter()
-              } else if (!auditScanning) {
-                // First press — run the scan
-                auditScanning = true
-                const currentVersions = new Map<string, string>()
-                for (const s of states) {
-                  if (!currentVersions.has(s.name)) {
-                    currentVersions.set(s.name, s.currentVersionSpecifier)
-                  }
-                }
-                fetchVulnerabilities(currentVersions)
-                  .then((vulnData) => {
-                    for (const s of states) {
-                      const vuln = vulnData.get(s.name)
-                      if (vuln && vuln.vulnerabilities.length > 0) {
-                        s.vulnerability = {
-                          count: vuln.vulnerabilities.length,
-                          highestSeverity: vuln.highestSeverity!,
-                          advisories: vuln.vulnerabilities.map((v) => ({
-                            id: v.id,
-                            title: v.title,
-                            severity: v.severity,
-                            url: v.url,
-                          })),
-                        }
-                      }
-                    }
-                    auditScanned = true
-                    auditScanning = false
-                    if (!isResolved) {
-                      renderInterface()
-                    }
-                  })
-                  .catch(() => {
-                    auditScanning = false
-                    if (!isResolved) {
-                      renderInterface()
-                    }
-                  })
+              } else if (!auditProgress.isRunning) {
+                this.enqueueSecurityAudit(states)
               }
             }
             break
@@ -436,6 +504,7 @@ export class InteractiveUI {
         process.stdin.removeAllListeners('keypress')
         process.stdin.pause()
         process.removeAllListeners('SIGWINCH')
+        this.refreshView = undefined
         resolve(selectedStates)
       }
 
@@ -451,6 +520,7 @@ export class InteractiveUI {
         process.stdin.removeAllListeners('keypress')
         process.stdin.pause()
         process.removeAllListeners('SIGWINCH')
+        this.refreshView = undefined
         resolve(states.map((s) => ({ ...s, selectedOption: 'none' })))
       }
 
@@ -459,6 +529,7 @@ export class InteractiveUI {
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states)
+        const auditProgress = this.auditTracker.getProgress()
 
         // Apply terminal background color
         const bgCode = getTerminalBgColorCode()
@@ -481,11 +552,7 @@ export class InteractiveUI {
           const headerLines: string[] = []
           headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
           headerLines.push('')
-          headerLines.push(
-            '  ' +
-              chalk.bold.white('T ') +
-              chalk.gray('/ Esc Exit theme selector')
-          )
+          headerLines.push('  ' + chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'))
           headerLines.push('')
           headerLines.forEach((line) => console.log(line))
 
@@ -500,7 +567,11 @@ export class InteractiveUI {
           // Clear any remaining lines from previous render
           CursorUtils.clearToEndOfScreen()
           stateManager.markRendered([])
-        } else if (uiState.showInfoModal && uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
+        } else if (
+          uiState.showInfoModal &&
+          uiState.infoModalRow >= 0 &&
+          uiState.infoModalRow < filteredStates.length
+        ) {
           const selectedState = filteredStates[uiState.infoModalRow]
           const terminalWidth = process.stdout.columns || 80
           const terminalHeight = this.getTerminalHeight()
@@ -509,21 +580,25 @@ export class InteractiveUI {
           const headerLines: string[] = []
           headerLines.push('  ' + chalk.bold.magenta('🚀 inup'))
           headerLines.push('')
-          headerLines.push(
-            '  ' +
-              chalk.bold.white('I / Esc ') +
-              chalk.gray('Exit this view')
-          )
+          headerLines.push('  ' + chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'))
           headerLines.push('')
           headerLines.forEach((line) => console.log(line))
 
           if (uiState.isLoadingModalInfo) {
             // Show loading state
-            const modalLines = this.renderer.renderPackageInfoLoading(selectedState, terminalWidth, terminalHeight)
+            const modalLines = this.renderer.renderPackageInfoLoading(
+              selectedState,
+              terminalWidth,
+              Math.max(8, terminalHeight - headerLines.length)
+            )
             modalLines.forEach((line) => console.log(line))
           } else {
             // Show full info
-            const modalLines = this.renderer.renderPackageInfoModal(selectedState, terminalWidth, terminalHeight)
+            const modalLines = this.renderer.renderPackageInfoModal(
+              selectedState,
+              terminalWidth,
+              Math.max(8, terminalHeight - headerLines.length)
+            )
             modalLines.forEach((line) => console.log(line))
           }
 
@@ -547,7 +622,8 @@ export class InteractiveUI {
             uiState.filterQuery,
             states.length,
             terminalWidth,
-            loadingProgress
+            loadingProgress,
+            auditProgress
           )
 
           // Print all lines
@@ -573,6 +649,12 @@ export class InteractiveUI {
 
       // Setup keypress handling
       try {
+        this.refreshView = () => {
+          if (!isResolved) {
+            renderInterface()
+          }
+        }
+
         attachRefresh?.(() => {
           if (!isResolved) {
             renderInterface()
@@ -599,46 +681,11 @@ export class InteractiveUI {
 
         // Initial render
         renderInterface()
-
-        // Auto-trigger audit scan if --audit flag was passed
-        if (this.autoAudit && !auditScanned && !auditScanning) {
-          auditScanning = true
-          const currentVersions = new Map<string, string>()
-          for (const s of states) {
-            if (!currentVersions.has(s.name)) {
-              currentVersions.set(s.name, s.currentVersionSpecifier)
-            }
-          }
-          fetchVulnerabilities(currentVersions)
-            .then((vulnData) => {
-              for (const s of states) {
-                const vuln = vulnData.get(s.name)
-                if (vuln && vuln.vulnerabilities.length > 0) {
-                  s.vulnerability = {
-                    count: vuln.vulnerabilities.length,
-                    highestSeverity: vuln.highestSeverity!,
-                    advisories: vuln.vulnerabilities.map((v) => ({
-                      id: v.id,
-                      title: v.title,
-                      severity: v.severity,
-                      url: v.url,
-                    })),
-                  }
-                }
-              }
-              auditScanned = true
-              auditScanning = false
-              if (!isResolved) {
-                renderInterface()
-              }
-            })
-            .catch(() => {
-              auditScanning = false
-            })
-        }
+        this.enqueueSecurityAudit(states)
       } catch (error) {
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
+        this.refreshView = undefined
         // Fallback to simple interface if raw mode fails
         console.log(chalk.yellow('Raw mode not available, using fallback interface...'))
         resolve(states)
