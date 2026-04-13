@@ -1,4 +1,7 @@
 export * from './utils'
 export * from './state'
 export * from './renderer'
+export * from './modal'
+export * from './presenters'
+export * from './controllers'
 export * from './input-handler'

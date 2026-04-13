@@ -10,7 +10,6 @@ import {
   PackageSelectionState,
   PackageManagerInfo,
   StreamOutdatedPackagesBatchItem,
-  VulnerabilitySummary,
 } from './types'
 import { Key } from 'node:readline'
 import {
@@ -22,17 +21,16 @@ import {
   VersionUtils,
   CursorUtils,
 } from './ui'
-import { BackgroundAuditTracker, changelogFetcher, fetchVulnerabilities } from './services'
+import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
 
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
-  private readonly auditTracker = new BackgroundAuditTracker()
-  private readonly vulnerabilityCache = new Map<string, VulnerabilitySummary>()
+  private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
+  private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
-  private auditDrainPromise: Promise<void> | null = null
 
   constructor(packageManager: PackageManagerInfo) {
     this.renderer = new UIRenderer()
@@ -84,7 +82,11 @@ export class InteractiveUI {
         hasRangeUpdate: pkg.hasRangeUpdate,
         hasMajorUpdate: pkg.hasMajorUpdate,
         type: pkg.type,
-        vulnerability: this.vulnerabilityCache.get(key),
+        vulnerability: this.vulnerabilityAuditController.getCachedSummary(
+          pkg.name,
+          pkg.currentVersion,
+          pkg.type
+        ),
       }
     })
   }
@@ -122,7 +124,11 @@ export class InteractiveUI {
         hasRangeUpdate: false,
         hasMajorUpdate: false,
         type: pkg.type,
-        vulnerability: this.vulnerabilityCache.get(key),
+        vulnerability: this.vulnerabilityAuditController.getCachedSummary(
+          pkg.name,
+          pkg.currentVersion,
+          pkg.type
+        ),
       }
     })
   }
@@ -172,15 +178,7 @@ export class InteractiveUI {
   }
 
   public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {
-    const packages = selectionStates.map((state) => ({
-      name: state.name,
-      version: state.currentVersionSpecifier,
-    }))
-
-    const added = this.auditTracker.enqueue(packages)
-    if (added > 0) {
-      this.drainSecurityAudit(selectionStates)
-    }
+    this.vulnerabilityAuditController.enqueueStates(selectionStates, () => this.refreshView?.())
   }
 
   private deduplicatePackages(
@@ -249,88 +247,6 @@ export class InteractiveUI {
       return process.stdout.rows
     }
     return 24 // Fallback default
-  }
-
-  private createVulnerabilitySummary(
-    state: PackageSelectionState,
-    advisories: VulnerabilitySummary['advisories'],
-    highestSeverity: VulnerabilitySummary['highestSeverity']
-  ): VulnerabilitySummary {
-    const detailsUrl = state.vulnerability?.detailsUrl || advisories[0]?.url
-    return {
-      count: advisories.length,
-      highestSeverity,
-      detailsUrl,
-      advisories,
-    }
-  }
-
-  private updateStateVulnerability(
-    state: PackageSelectionState,
-    summary: VulnerabilitySummary
-  ): void {
-    state.vulnerability = {
-      ...summary,
-      detailsUrl: state.vulnerability?.detailsUrl || summary.detailsUrl,
-    }
-    const cacheKey = `${state.name}@${state.currentVersionSpecifier}@${state.type}`
-    this.vulnerabilityCache.set(cacheKey, state.vulnerability)
-  }
-
-  private drainSecurityAudit(selectionStates: PackageSelectionState[]): void {
-    if (this.auditDrainPromise) {
-      return
-    }
-
-    this.auditDrainPromise = (async () => {
-      while (true) {
-        const batch = this.auditTracker.reserveNextBatch(20)
-        if (batch.packageNames.length === 0) {
-          break
-        }
-
-        try {
-          const vulnerabilityData = await fetchVulnerabilities(batch.packages)
-          const batchNames = new Set(batch.packageNames)
-
-          for (const state of selectionStates) {
-            if (!batchNames.has(state.name)) continue
-            const vulnerability = vulnerabilityData.get(state.name)
-            if (
-              !vulnerability ||
-              vulnerability.vulnerabilities.length === 0 ||
-              !vulnerability.highestSeverity
-            ) {
-              continue
-            }
-
-            this.updateStateVulnerability(
-              state,
-              this.createVulnerabilitySummary(
-                state,
-                vulnerability.vulnerabilities.map((item) => ({
-                  id: item.id,
-                  title: item.title,
-                  severity: item.severity,
-                  url: item.url,
-                })),
-                vulnerability.highestSeverity
-              )
-            )
-          }
-        } catch {
-          // Security audit is best-effort only. Ignore failures and keep the UI responsive.
-        } finally {
-          this.auditTracker.markCompleted(batch.packageNames)
-          this.refreshView?.()
-        }
-      }
-    })().finally(() => {
-      this.auditDrainPromise = null
-      if (this.auditTracker.getProgress().isRunning) {
-        this.drainSecurityAudit(selectionStates)
-      }
-    })
   }
 
   private async interactiveTableSelector(
@@ -402,17 +318,9 @@ export class InteractiveUI {
               renderInterface()
 
               if (currentState && canFetchMetadata) {
-                changelogFetcher
-                  .fetchPackageMetadata(currentState.name, currentState.latestVersion)
+                this.packageInfoModalController
+                  .hydrate(currentState)
                   .then((metadata) => {
-                    if (metadata) {
-                      currentState.description = metadata.description
-                      currentState.homepage = metadata.homepage
-                      currentState.repository = metadata.releaseNotes
-                      currentState.weeklyDownloads = metadata.weeklyDownloads
-                      currentState.author = metadata.author as string | undefined
-                      currentState.license = metadata.license
-                    }
                     stateManager.setModalLoading(false)
                     renderInterface()
                   })
@@ -475,7 +383,7 @@ export class InteractiveUI {
             break
           case 'trigger_audit_scan':
             if (!uiState.showInfoModal && !uiState.showThemeModal) {
-              const auditProgress = this.auditTracker.getProgress()
+              const auditProgress = this.vulnerabilityAuditController.getProgress()
               if (auditProgress.hasData) {
                 stateManager.toggleVulnerableFilter()
               } else if (!auditProgress.isRunning) {
@@ -529,7 +437,7 @@ export class InteractiveUI {
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states)
-        const auditProgress = this.auditTracker.getProgress()
+        const auditProgress = this.vulnerabilityAuditController.getProgress()
 
         // Apply terminal background color
         const bgCode = getTerminalBgColorCode()

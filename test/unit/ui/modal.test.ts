@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderPackageInfoModal } from '../../../src/ui/renderer/modal'
+import { renderPackageInfoModal } from '../../../src/ui/modal'
 import { PackageSelectionState } from '../../../src/types'
 
 const baseState: PackageSelectionState = {

@@ -7,8 +7,7 @@ import {
 } from '../../types'
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
-import * as Modal from './modal'
-import * as ThemeSelector from './theme-selector'
+import * as Modal from '../modal'
 
 /**
  * Main UI renderer class that composes all rendering parts
@@ -90,17 +89,11 @@ export class UIRenderer {
     terminalWidth: number = 80,
     terminalHeight: number = 24
   ): string[] {
-    return ThemeSelector.renderThemeSelectorModal(
-      currentTheme,
-      previewTheme,
-      terminalWidth,
-      terminalHeight
-    )
+    return Modal.renderThemeSelectorModal(currentTheme, previewTheme, terminalWidth, terminalHeight)
   }
 }
 
 // Re-export all functions for direct use if needed
 export * from './package-list'
 export * from './confirmation'
-export * from './modal'
-export * from './theme-selector'
+export * from '../modal'

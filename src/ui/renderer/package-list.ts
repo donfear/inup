@@ -5,31 +5,10 @@ import {
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
-  VulnerabilitySummary,
 } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
-
-/**
- * Get vulnerability indicator for a package
- */
-function getVulnBadge(vulnerability: VulnerabilitySummary | undefined): string {
-  if (!vulnerability) return ''
-  switch (vulnerability.highestSeverity) {
-    case 'critical':
-      return chalk.bgRed.white.bold('[CRIT]')
-    case 'high':
-      return chalk.red('[HIGH]')
-    case 'moderate':
-      return chalk.yellow('[MOD ]')
-    case 'low':
-      return chalk.gray('[LOW ]')
-    case 'info':
-      return chalk.gray('[INFO]')
-    default:
-      return ''
-  }
-}
+import { getVulnerabilityBadge } from '../presenters/vulnerability'
 
 /**
  * Get type badge for dependency type (theme-aware)
@@ -174,7 +153,7 @@ export function renderPackageLine(
 
   // Package name with dashes and badge at the end
   const typeBadge = getTypeBadge(state.type)
-  const vulnBadge = getVulnBadge(state.vulnerability)
+  const vulnBadge = getVulnerabilityBadge(state.vulnerability)
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0 // +1 for space
   const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth) // -1 for space after package name
