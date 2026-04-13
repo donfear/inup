@@ -20,6 +20,7 @@ import {
   InputAction,
   VersionUtils,
   CursorUtils,
+  ConsoleUtils,
 } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { themeNames, themes } from './ui/themes'
@@ -258,6 +259,27 @@ export class InteractiveUI {
       const states = selectionStates
       const stateManager = new StateManager(0, this.getTerminalHeight())
       let isResolved = false
+      let ownsAlternateScreen = false
+
+      const claimInteractiveScreen = () => {
+        if (ownsAlternateScreen) {
+          return
+        }
+
+        ConsoleUtils.clearProgress()
+        CursorUtils.enterAlternateScreen()
+        CursorUtils.clearScreen()
+        ownsAlternateScreen = true
+      }
+
+      const releaseInteractiveScreen = () => {
+        if (!ownsAlternateScreen) {
+          return
+        }
+
+        CursorUtils.exitAlternateScreen()
+        ownsAlternateScreen = false
+      }
 
       // No grouping needed - packages are already filtered by type
       // This simplifies scrolling and avoids rendering issues
@@ -402,6 +424,7 @@ export class InteractiveUI {
 
       const handleConfirm = (selectedStates: PackageSelectionState[]) => {
         isResolved = true
+        releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
@@ -418,6 +441,7 @@ export class InteractiveUI {
 
       const handleCancel = () => {
         isResolved = true
+        releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
         CursorUtils.show()
@@ -434,6 +458,24 @@ export class InteractiveUI {
 
       const inputHandler = new InputHandler(stateManager, handleAction, handleConfirm, handleCancel)
 
+      const buildRemainingViewport = (
+        terminalWidth: number,
+        terminalHeight: number,
+        usedLines: number
+      ): string[] => {
+        const remainingLines = Math.max(0, terminalHeight - usedLines)
+        const blankLine = ' '.repeat(terminalWidth)
+        return Array.from({ length: remainingLines }, () => blankLine)
+      }
+
+      const writeFrame = (lines: string[]) => {
+        if (lines.length === 0) {
+          return
+        }
+
+        process.stdout.write(lines.join('\n'))
+      }
+
       const renderInterface = () => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states)
@@ -444,7 +486,7 @@ export class InteractiveUI {
         process.stdout.write(bgCode)
 
         if (uiState.forceFullRender) {
-          console.clear()
+          CursorUtils.clearScreen()
           CursorUtils.hide()
         } else {
           CursorUtils.moveToHome()
@@ -462,7 +504,6 @@ export class InteractiveUI {
           headerLines.push('')
           headerLines.push('  ' + chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'))
           headerLines.push('')
-          headerLines.forEach((line) => console.log(line))
 
           const modalLines = this.renderer.renderThemeSelectorModal(
             themeManager.getCurrentTheme(),
@@ -470,7 +511,8 @@ export class InteractiveUI {
             terminalWidth,
             terminalHeight
           )
-          modalLines.forEach((line) => console.log(line))
+
+          writeFrame([...headerLines, ...modalLines])
 
           // Clear any remaining lines from previous render
           CursorUtils.clearToEndOfScreen()
@@ -490,7 +532,6 @@ export class InteractiveUI {
           headerLines.push('')
           headerLines.push('  ' + chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'))
           headerLines.push('')
-          headerLines.forEach((line) => console.log(line))
 
           if (uiState.isLoadingModalInfo) {
             // Show loading state
@@ -499,7 +540,7 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            modalLines.forEach((line) => console.log(line))
+            writeFrame([...headerLines, ...modalLines])
           } else {
             // Show full info
             const modalLines = this.renderer.renderPackageInfoModal(
@@ -507,7 +548,7 @@ export class InteractiveUI {
               terminalWidth,
               Math.max(8, terminalHeight - headerLines.length)
             )
-            modalLines.forEach((line) => console.log(line))
+            writeFrame([...headerLines, ...modalLines])
           }
 
           // Clear any remaining lines from previous render
@@ -516,6 +557,7 @@ export class InteractiveUI {
         } else {
           // Normal list view (flat rendering - no grouping)
           const terminalWidth = process.stdout.columns || 80
+          const terminalHeight = this.getTerminalHeight()
           const activeFilterLabel = stateManager.getActiveFilterLabel()
           const lines = this.renderer.renderInterface(
             filteredStates,
@@ -534,13 +576,8 @@ export class InteractiveUI {
             auditProgress
           )
 
-          // Print all lines
-          lines.forEach((line) => console.log(line))
-
-          // Clear any remaining lines from previous render
-          if (!uiState.forceFullRender) {
-            CursorUtils.clearToEndOfScreen()
-          }
+          const viewportLines = [...lines, ...buildRemainingViewport(terminalWidth, terminalHeight, lines.length)]
+          writeFrame(viewportLines)
 
           stateManager.markRendered(lines)
         }
@@ -557,6 +594,8 @@ export class InteractiveUI {
 
       // Setup keypress handling
       try {
+        claimInteractiveScreen()
+
         this.refreshView = () => {
           if (!isResolved) {
             renderInterface()
@@ -591,6 +630,7 @@ export class InteractiveUI {
         renderInterface()
         this.enqueueSecurityAudit(states)
       } catch (error) {
+        releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
         this.refreshView = undefined

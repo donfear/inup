@@ -10,6 +10,7 @@ import {
   PackageManagerInfo,
 } from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
+import { ConsoleUtils } from '../ui/utils'
 
 /**
  * Main orchestrator for the inup upgrade process
@@ -142,8 +143,7 @@ export class UpgradeRunner {
 
         if (shouldProceed === null) {
           // User pressed N or ESC - go back to selection with current selections preserved
-          console.clear()
-          console.log(chalk.bold.blue('🚀 inup\n'))
+          ConsoleUtils.clearProgress()
           selectedChoices = progress.isLoading
             ? await this.ui.selectPackagesToUpgradeProgressive(
                 selectionStates,

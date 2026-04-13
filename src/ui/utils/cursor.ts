@@ -4,6 +4,20 @@
 
 export const CursorUtils = {
   /**
+   * Switch to the terminal alternate screen buffer.
+   */
+  enterAlternateScreen(): void {
+    process.stdout.write('\x1b[?1049h')
+  },
+
+  /**
+   * Return to the terminal primary screen buffer.
+   */
+  exitAlternateScreen(): void {
+    process.stdout.write('\x1b[?1049l')
+  },
+
+  /**
    * Hide the cursor in the terminal
    */
   hide(): void {
@@ -22,6 +36,13 @@ export const CursorUtils = {
    */
   moveToHome(): void {
     process.stdout.write('\x1b[H')
+  },
+
+  /**
+   * Clear the full screen and move the cursor to the top-left corner.
+   */
+  clearScreen(): void {
+    process.stdout.write('\x1b[2J\x1b[H')
   },
 
   /**

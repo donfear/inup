@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderPackageLine } from '../../../src/ui/renderer/package-list'
+import { renderInterface, renderPackageLine } from '../../../src/ui/renderer/package-list'
 import { PackageSelectionState } from '../../../src/types'
 import { VersionUtils } from '../../../src/ui/utils'
 
@@ -87,7 +87,32 @@ describe('package-list renderer', () => {
     )
 
     expect(highLine).toContain('[HIGH]')
-    expect(lowLine).toContain('[LOW ]')
-    expect(VersionUtils.getVisualLength(highLine)).toBe(VersionUtils.getVisualLength(lowLine))
+    expect(lowLine).toContain('[LOW]')
+  })
+
+  it('renders moderate badge without internal padding', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'moderate',
+          detailsUrl: 'https://github.com/advisories/GHSA-mod',
+          advisories: [],
+        },
+      },
+      0,
+      false,
+      120
+    )
+
+    expect(line).toContain('[MOD]')
+    expect(line).not.toContain('[MOD ]')
+  })
+
+  it('pads rendered list rows to the terminal width', () => {
+    const lines = renderInterface([baseState], 0, 0, 10, false, [], 'Deps', undefined, false, '', 1, 120)
+
+    expect(lines.every((line) => VersionUtils.getVisualLength(line) >= 120)).toBe(true)
   })
 })

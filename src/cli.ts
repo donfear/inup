@@ -30,15 +30,6 @@ program
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .action(async (options) => {
-    console.log(
-      chalk.bold.blue(`🚀 `) +
-        chalk.bold.red(`i`) +
-        chalk.bold.yellow(`n`) +
-        chalk.bold.blue(`u`) +
-        chalk.bold.magenta(`p`) +
-        `\n`
-    )
-
     const cwd = resolve(options.dir)
 
     if (options.debug || process.env.INUP_DEBUG === '1') {

@@ -10,6 +10,11 @@ import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
 import { getVulnerabilityBadge } from '../presenters/vulnerability'
 
+function padLineToWidth(line: string, terminalWidth: number): string {
+  const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
+  return line + ' '.repeat(padding)
+}
+
 /**
  * Get type badge for dependency type (theme-aware)
  */
@@ -508,7 +513,7 @@ export function renderInterface(
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }
 
-  return output
+  return output.map((line) => padLineToWidth(line, terminalWidth))
 }
 
 /**
