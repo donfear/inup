@@ -1,4 +1,5 @@
-import { PackageSelectionState } from '../../types'
+import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../types'
+import { shouldDisplayVulnerabilityForDependency } from '../presenters/vulnerability'
 
 export interface FilterState {
   filterMode: boolean // Whether we're in filter/search input mode
@@ -103,7 +104,10 @@ export class FilterManager {
     return this.state.showOnlyVulnerable ? label + ' (vulnerable only)' : label
   }
 
-  getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {
+  getFilteredStates(
+    allStates: PackageSelectionState[],
+    options: VulnerabilityDisplayOptions = {}
+  ): PackageSelectionState[] {
     let filtered = allStates
 
     // Apply text filter
@@ -130,7 +134,12 @@ export class FilterManager {
 
     // Apply vulnerability filter
     if (this.state.showOnlyVulnerable) {
-      filtered = filtered.filter((state) => state.vulnerability && state.vulnerability.count > 0)
+      filtered = filtered.filter(
+        (state) =>
+          shouldDisplayVulnerabilityForDependency(state.type, options) &&
+          !!state.vulnerability &&
+          state.vulnerability.count > 0
+      )
     }
 
     return filtered

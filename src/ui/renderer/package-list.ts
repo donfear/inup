@@ -5,20 +5,20 @@ import {
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
+  VulnerabilityDisplayOptions,
 } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
-import { getVulnerabilityBadge } from '../presenters/vulnerability'
-
-export interface PackageListRenderOptions {
-  showPeerDependencyVulnerabilities?: boolean
-  showOptionalDependencyVulnerabilities?: boolean
-}
+import {
+  getVulnerabilityBadge,
+  shouldDisplayVulnerabilityForDependency,
+} from '../presenters/vulnerability'
 
 function padLineToWidth(line: string, terminalWidth: number): string {
   const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
   return line + ' '.repeat(padding)
 }
+export type PackageListRenderOptions = VulnerabilityDisplayOptions
 
 /**
  * Get type badge for dependency type (theme-aware)
@@ -164,12 +164,7 @@ export function renderPackageLine(
 
   // Package name with dashes and badge at the end
   const typeBadge = getTypeBadge(state.type)
-  const shouldShowVulnerability =
-    (state.type === 'peerDependencies'
-      ? options.showPeerDependencyVulnerabilities === true
-      : state.type === 'optionalDependencies'
-        ? options.showOptionalDependencyVulnerabilities === true
-        : true)
+  const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
   const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0 // +1 for space
   const nameLength = VersionUtils.getVisualLength(truncatedName)
