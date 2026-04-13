@@ -24,6 +24,7 @@ program
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
+  .option('--audit', 'run security vulnerability scan on startup (press S in UI to scan on demand)')
   .action(async (options) => {
     console.log(chalk.bold.blue(`🚀 `) + chalk.bold.red(`i`) + chalk.bold.yellow(`n`) + chalk.bold.blue(`u`) + chalk.bold.magenta(`p`) + `\n`)
 
@@ -83,6 +84,7 @@ program
       ignorePackages,
       packageManager,
       debug: options.debug || process.env.INUP_DEBUG === '1',
+      audit: options.audit || false,
     })
     await upgrader.run()
 

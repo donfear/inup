@@ -33,7 +33,7 @@ export class UpgradeRunner {
     }
 
     this.detector = new PackageDetector(options)
-    this.ui = new InteractiveUI(this.packageManager)
+    this.ui = new InteractiveUI(this.packageManager, { audit: options?.audit })
     this.upgrader = new PackageUpgrader(this.packageManager)
   }
 

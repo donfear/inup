@@ -9,6 +9,7 @@ import {
   PackageSelectionState,
   PackageManagerInfo,
   StreamOutdatedPackagesBatchItem,
+  VulnerabilitySummary,
 } from './types'
 import { Key } from 'node:readline'
 import {
@@ -20,17 +21,23 @@ import {
   VersionUtils,
   CursorUtils,
 } from './ui'
-import { changelogFetcher } from './services'
+import { changelogFetcher, fetchVulnerabilities } from './services'
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
+
+export interface InteractiveUIOptions {
+  audit?: boolean
+}
 
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
+  private autoAudit: boolean
 
-  constructor(packageManager: PackageManagerInfo) {
+  constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
+    this.autoAudit = options?.audit ?? false
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -233,6 +240,8 @@ export class InteractiveUI {
       const states = selectionStates
       const stateManager = new StateManager(0, this.getTerminalHeight())
       let isResolved = false
+      let auditScanned = false
+      let auditScanning = false
 
       // No grouping needed - packages are already filtered by type
       // This simplifies scrolling and avoids rendering issues
@@ -359,6 +368,52 @@ export class InteractiveUI {
           }
           case 'theme_confirm':
             stateManager.confirmTheme()
+            break
+          case 'trigger_audit_scan':
+            if (!uiState.showInfoModal && !uiState.showThemeModal) {
+              if (auditScanned) {
+                // Already scanned — toggle the "show only vulnerable" filter
+                stateManager.toggleVulnerableFilter()
+              } else if (!auditScanning) {
+                // First press — run the scan
+                auditScanning = true
+                const currentVersions = new Map<string, string>()
+                for (const s of states) {
+                  if (!currentVersions.has(s.name)) {
+                    currentVersions.set(s.name, s.currentVersionSpecifier)
+                  }
+                }
+                fetchVulnerabilities(currentVersions)
+                  .then((vulnData) => {
+                    for (const s of states) {
+                      const vuln = vulnData.get(s.name)
+                      if (vuln && vuln.vulnerabilities.length > 0) {
+                        s.vulnerability = {
+                          count: vuln.vulnerabilities.length,
+                          highestSeverity: vuln.highestSeverity!,
+                          advisories: vuln.vulnerabilities.map((v) => ({
+                            id: v.id,
+                            title: v.title,
+                            severity: v.severity,
+                            url: v.url,
+                          })),
+                        }
+                      }
+                    }
+                    auditScanned = true
+                    auditScanning = false
+                    if (!isResolved) {
+                      renderInterface()
+                    }
+                  })
+                  .catch(() => {
+                    auditScanning = false
+                    if (!isResolved) {
+                      renderInterface()
+                    }
+                  })
+              }
+            }
             break
           case 'cancel':
             handleCancel()
@@ -544,6 +599,43 @@ export class InteractiveUI {
 
         // Initial render
         renderInterface()
+
+        // Auto-trigger audit scan if --audit flag was passed
+        if (this.autoAudit && !auditScanned && !auditScanning) {
+          auditScanning = true
+          const currentVersions = new Map<string, string>()
+          for (const s of states) {
+            if (!currentVersions.has(s.name)) {
+              currentVersions.set(s.name, s.currentVersionSpecifier)
+            }
+          }
+          fetchVulnerabilities(currentVersions)
+            .then((vulnData) => {
+              for (const s of states) {
+                const vuln = vulnData.get(s.name)
+                if (vuln && vuln.vulnerabilities.length > 0) {
+                  s.vulnerability = {
+                    count: vuln.vulnerabilities.length,
+                    highestSeverity: vuln.highestSeverity!,
+                    advisories: vuln.vulnerabilities.map((v) => ({
+                      id: v.id,
+                      title: v.title,
+                      severity: v.severity,
+                      url: v.url,
+                    })),
+                  }
+                }
+              }
+              auditScanned = true
+              auditScanning = false
+              if (!isResolved) {
+                renderInterface()
+              }
+            })
+            .catch(() => {
+              auditScanning = false
+            })
+        }
       } catch (error) {
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())

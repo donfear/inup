@@ -8,6 +8,7 @@ export interface FilterState {
   showDevDependencies: boolean
   showPeerDependencies: boolean
   showOptionalDependencies: boolean
+  showOnlyVulnerable: boolean // When true, only show packages with vulnerabilities
 }
 
 export class FilterManager {
@@ -21,6 +22,7 @@ export class FilterManager {
       showDevDependencies: true,
       showPeerDependencies: true,
       showOptionalDependencies: true,
+      showOnlyVulnerable: false,
     }
   }
 
@@ -81,6 +83,14 @@ export class FilterManager {
     }
   }
 
+  toggleVulnerableFilter(): void {
+    this.state.showOnlyVulnerable = !this.state.showOnlyVulnerable
+  }
+
+  isVulnerableFilterActive(): boolean {
+    return this.state.showOnlyVulnerable
+  }
+
   getActiveFilterLabel(): string {
     const activeTypes: string[] = []
     if (this.state.showDependencies) activeTypes.push('Deps')
@@ -89,7 +99,8 @@ export class FilterManager {
     if (this.state.showOptionalDependencies) activeTypes.push('Optional')
 
     if (activeTypes.length === 0) return 'None'
-    return activeTypes.join(', ')
+    const label = activeTypes.join(', ')
+    return this.state.showOnlyVulnerable ? label + ' (vulnerable only)' : label
   }
 
   getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {
@@ -116,6 +127,11 @@ export class FilterManager {
           return true
       }
     })
+
+    // Apply vulnerability filter
+    if (this.state.showOnlyVulnerable) {
+      filtered = filtered.filter((state) => state.vulnerability && state.vulnerability.count > 0)
+    }
 
     return filtered
   }

@@ -188,6 +188,83 @@ export function renderPackageInfoModal(
     }
   }
 
+  // Security vulnerabilities section
+  if (state.vulnerability && state.vulnerability.count > 0) {
+    lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))
+
+    const severityColors: Record<string, (text: string) => string> = {
+      critical: chalk.bgRed.white.bold,
+      high: chalk.red.bold,
+      moderate: chalk.yellow,
+      low: chalk.gray,
+      info: chalk.gray,
+    }
+
+    const sevColor = severityColors[state.vulnerability.highestSeverity] || chalk.white
+    const vulnHeader = `⚠ ${state.vulnerability.count} known vulnerabilit${state.vulnerability.count > 1 ? 'ies' : 'y'} (${sevColor(state.vulnerability.highestSeverity.toUpperCase())})`
+    const vulnHeaderLength = stripAnsi(vulnHeader).length
+    const vulnHeaderPadding = Math.max(0, modalWidth - 3 - vulnHeaderLength)
+    lines.push(
+      ' '.repeat(padding) +
+        chalk.gray('│') +
+        ' ' +
+        chalk.red.bold(vulnHeader) +
+        ' '.repeat(vulnHeaderPadding) +
+        chalk.gray('│')
+    )
+
+    // Show up to 5 advisories with title, severity and link
+    const advisoriesToShow = state.vulnerability.advisories.slice(0, 5)
+    for (const advisory of advisoriesToShow) {
+      const advColor = severityColors[advisory.severity] || chalk.white
+      const sevLabel = advColor(advisory.severity.toUpperCase().padEnd(8))
+      const titleMaxWidth = modalWidth - 16
+      const truncatedTitle =
+        advisory.title.length > titleMaxWidth
+          ? advisory.title.substring(0, titleMaxWidth - 3) + '...'
+          : advisory.title
+      const advisoryLine = `  ${sevLabel} ${truncatedTitle}`
+      const advisoryLength = stripAnsi(advisoryLine).length
+      const advisoryPadding = Math.max(0, modalWidth - 3 - advisoryLength)
+      lines.push(
+        ' '.repeat(padding) +
+          chalk.gray('│') +
+          ' ' +
+          advisoryLine +
+          ' '.repeat(advisoryPadding) +
+          chalk.gray('│')
+      )
+
+      // Show advisory URL
+      const urlLine = `           ${advisory.url}`
+      const urlMaxWidth = modalWidth - 4
+      const truncatedUrl = urlLine.length > urlMaxWidth ? urlLine.substring(0, urlMaxWidth - 3) + '...' : urlLine
+      const urlLength = stripAnsi(truncatedUrl).length
+      const urlPadding = Math.max(0, modalWidth - 3 - urlLength)
+      lines.push(
+        ' '.repeat(padding) +
+          chalk.gray('│') +
+          ' ' +
+          chalk.underline(getThemeColor('primary')(truncatedUrl)) +
+          ' '.repeat(urlPadding) +
+          chalk.gray('│')
+      )
+    }
+
+    if (state.vulnerability.advisories.length > 5) {
+      const moreText = `  ... and ${state.vulnerability.advisories.length - 5} more`
+      const morePadding = Math.max(0, modalWidth - 3 - moreText.length)
+      lines.push(
+        ' '.repeat(padding) +
+          chalk.gray('│') +
+          ' ' +
+          chalk.gray(moreText) +
+          ' '.repeat(morePadding) +
+          chalk.gray('│')
+      )
+    }
+  }
+
   // Changelog/Releases section (moved to middle)
   if (state.repository) {
     lines.push(' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤'))

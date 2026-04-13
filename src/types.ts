@@ -1,3 +1,14 @@
+export interface VulnerabilitySummary {
+  count: number
+  highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+  advisories: Array<{
+    id: number
+    title: string
+    severity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+    url: string
+  }>
+}
+
 export interface PackageInfo {
   name: string
   currentVersion: string // Raw version specifier from package.json (with ^/~ prefixes)
@@ -14,6 +25,7 @@ export interface PackageInfo {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
 }
 
 export type DependencyType =
@@ -59,6 +71,7 @@ export interface PackageSelectionState {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
 }
 
 export interface GroupedPackages {
@@ -90,6 +103,7 @@ export interface UpgradeOptions {
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
+  audit?: boolean // Auto-run vulnerability scan on startup
 }
 
 export interface PackageJson {

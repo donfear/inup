@@ -4,9 +4,30 @@ import {
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
+  VulnerabilitySummary,
 } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor } from '../themes-colors'
+
+/**
+ * Get vulnerability indicator for a package
+ */
+function getVulnBadge(vulnerability: VulnerabilitySummary | undefined): string {
+  if (!vulnerability) return ''
+  switch (vulnerability.highestSeverity) {
+    case 'critical':
+      return chalk.bgRed.white.bold(' CRIT ')
+    case 'high':
+      return chalk.red.bold('⚠')
+    case 'moderate':
+      return chalk.yellow('⚠')
+    case 'low':
+    case 'info':
+      return chalk.gray('⚠')
+    default:
+      return ''
+  }
+}
 
 /**
  * Get type badge for dependency type (theme-aware)
@@ -138,14 +159,17 @@ export function renderPackageLine(state: PackageSelectionState, index: number, i
 
   // Package name with dashes and badge at the end
   const typeBadge = getTypeBadge(state.type)
+  const vulnBadge = getVulnBadge(state.vulnerability)
+  const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0 // +1 for space
   const nameLength = VersionUtils.getVisualLength(truncatedName)
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth) // -1 for space after package name, -badgeWidth for badge at end
+  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth) // -1 for space after package name
   const nameDashes = shouldShowDashes(namePadding) ? dashColor('-').repeat(namePadding) : ' '.repeat(namePadding)
 
-  // Place badge at the end of dashes: name ------[D]
+  // Place badges at the end of dashes: name ------⚠[D]
+  const vulnSuffix = vulnBadge ? ` ${vulnBadge}` : ''
   const packageNameSection = typeBadge
-    ? `${displayName} ${nameDashes}${typeBadge}`
-    : `${displayName} ${nameDashes}`
+    ? `${displayName} ${nameDashes}${vulnSuffix}${typeBadge}`
+    : `${displayName} ${nameDashes}${vulnSuffix}`
 
   // Current version section with dashes only if needed
   const currentSection = `${currentDot} ${currentVersion}`
@@ -286,6 +310,9 @@ export function renderInterface(
         '  ' +
         chalk.bold.white('I ') +
         getThemeColor('textSecondary')('Info') +
+        '  ' +
+        chalk.bold.white('S ') +
+        getThemeColor('textSecondary')('Audit') +
         '  ' +
         chalk.bold.white('M ') +
         getThemeColor('textSecondary')('Minor') +

@@ -247,6 +247,16 @@ export class StateManager {
     // Use incremental render (no blink)
   }
 
+  toggleVulnerableFilter(): void {
+    this.filterManager.toggleVulnerableFilter()
+    this.navigationManager.setCurrentRow(0)
+    this.navigationManager.setScrollOffset(0)
+  }
+
+  isVulnerableFilterActive(): boolean {
+    return this.filterManager.isVulnerableFilterActive()
+  }
+
   getActiveFilterLabel(): string {
     return this.filterManager.getActiveFilterLabel()
   }
