@@ -68,32 +68,38 @@ export class ReleaseNotesService {
     const repoUrl = metadata?.repositoryUrl || ''
 
     if (repoUrl.includes('github.com')) {
-      const githubSources = PREFER_GITHUB_RELEASE_PAGE
-        ? [
-            () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
-            () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
-          ]
-        : [
-            () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
-            () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
-          ]
-
-      for (const loadSource of githubSources) {
+      for (const loadSource of this.getGitHubSources(repoUrl, version, signal)) {
         const notes = await loadSource()
         if (notes) return notes
       }
-
-      const releaseListNotes = await this.fetchGitHubReleaseListNotes(repoUrl, version, signal)
-      if (releaseListNotes) return releaseListNotes
-
-      const rawChangelog = await this.fetchGitHubChangelogMd(repoUrl, version, signal)
-      if (rawChangelog) return rawChangelog
     }
 
     const changelogNotes = await this.fetchJsdelivrChangelog(packageName, version, signal)
     if (changelogNotes) return changelogNotes
 
     return null
+  }
+
+  private getGitHubSources(
+    repoUrl: string,
+    version: string,
+    signal: AbortSignal
+  ): Array<() => Promise<string | null>> {
+    const directReleaseSources = PREFER_GITHUB_RELEASE_PAGE
+      ? [
+          () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
+          () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
+        ]
+      : [
+          () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
+          () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
+        ]
+
+    return [
+      ...directReleaseSources,
+      () => this.fetchGitHubReleaseListNotes(repoUrl, version, signal),
+      () => this.fetchGitHubChangelogMd(repoUrl, version, signal),
+    ]
   }
 
   private async fetchGitHubReleasePageNotes(

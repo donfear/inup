@@ -1,11 +1,10 @@
 import { NpmRegistryClient } from '../clients/npm-registry-client'
-import { extractRepositoryUrl } from '../parsers/repository-ref'
+import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
 import { fetchExactPackageManifest } from '../../../services/jsdelivr-registry'
 
 export class PackageMetadataService {
-  private cache = new Map<string, PackageMetadata>()
-  private failureCache = new Set<string>()
+  private cache = new Map<string, PackageMetadata | null>()
   private inFlight = new Map<string, Promise<PackageMetadata | null>>()
 
   constructor(
@@ -15,17 +14,17 @@ export class PackageMetadataService {
 
   clearCache(): void {
     this.cache.clear()
-    this.failureCache.clear()
     this.inFlight.clear()
   }
 
   getCached(packageName: string, version?: string): PackageMetadata | null {
-    return (
-      this.cache.get(this.getCacheKey(packageName, version)) ??
-      this.cache.get(this.getCacheKey(packageName)) ??
-      this.cache.get(packageName) ??
-      null
-    )
+    for (const key of [this.getCacheKey(packageName, version), this.getCacheKey(packageName), packageName]) {
+      if (this.cache.has(key)) {
+        return this.cache.get(key) ?? null
+      }
+    }
+
+    return null
   }
 
   async fetchPackageMetadata(
@@ -36,11 +35,7 @@ export class PackageMetadataService {
     const cacheKey = this.getCacheKey(packageName, version)
 
     if (this.cache.has(cacheKey)) {
-      return this.cache.get(cacheKey)!
-    }
-
-    if (this.failureCache.has(cacheKey)) {
-      return null
+      return this.cache.get(cacheKey) ?? null
     }
 
     const inFlight = this.inFlight.get(cacheKey)
@@ -98,11 +93,11 @@ export class PackageMetadataService {
 
       const manifest = await this.fetchPackageManifest(packageName, version, signal)
       if (!manifest) {
-        this.failureCache.add(cacheKey)
+        this.cache.set(cacheKey, null)
         return null
       }
 
-      const metadata = this.buildMetadata(packageName, manifest)
+      const metadata = mapPackageManifestToMetadata(packageName, manifest)
 
       try {
         signal?.throwIfAborted()
@@ -121,7 +116,7 @@ export class PackageMetadataService {
         throw error
       }
 
-      this.failureCache.add(cacheKey)
+      this.cache.set(cacheKey, null)
       return null
     }
   }
@@ -151,37 +146,6 @@ export class PackageMetadataService {
   }
 
   private buildMetadata(packageName: string, rawData: PackageManifestInput): PackageMetadata {
-    const repository = rawData.repository as { url?: string; type?: string } | undefined
-    const bugs = rawData.bugs as { url?: string } | undefined
-    const keywords = Array.isArray(rawData.keywords) ? (rawData.keywords as string[]) : []
-    const author =
-      typeof rawData.author === 'object' && rawData.author !== null
-        ? ((rawData.author as { name?: string }).name ?? rawData.author)
-        : rawData.author
-    const repositoryUrl = extractRepositoryUrl(repository?.url || '')
-    const npmUrl = `https://www.npmjs.com/package/${encodeURIComponent(packageName)}`
-    const issuesUrl = repositoryUrl ? `${repositoryUrl}/issues` : undefined
-
-    const metadata: PackageMetadata = {
-      description:
-        typeof rawData.description === 'string' && rawData.description
-          ? rawData.description
-          : 'No description available',
-      homepage: typeof rawData.homepage === 'string' ? rawData.homepage : undefined,
-      repository,
-      bugs,
-      keywords,
-      author: typeof author === 'string' ? author : undefined,
-      license: typeof rawData.license === 'string' ? rawData.license : undefined,
-      repositoryUrl,
-      npmUrl,
-      issuesUrl,
-    }
-
-    if (repositoryUrl) {
-      metadata.releaseNotes = `${repositoryUrl}/releases`
-    }
-
-    return metadata
+    return mapPackageManifestToMetadata(packageName, rawData)
   }
 }
