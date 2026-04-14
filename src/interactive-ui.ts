@@ -389,7 +389,6 @@ export class InteractiveUI {
             {
               const didScroll = stateManager.scrollInfoModalUp()
               if (
-                didScroll &&
                 uiState.infoModalRow >= 0 &&
                 uiState.infoModalRow < filteredStates.length
               ) {
@@ -422,7 +421,6 @@ export class InteractiveUI {
                 this.packageInfoModalController
                   .loadNextVersion(currentState, () => renderInterface())
                   .finally(() => {
-                    currentState.releaseNotesLoadMoreArmed = true
                     renderInterface()
                   })
               }

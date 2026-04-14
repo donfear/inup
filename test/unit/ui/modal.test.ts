@@ -57,7 +57,44 @@ describe('modal renderer', () => {
     )
 
     expect(result.usesInternalScroll).toBe(false)
-    expect(result.lines.join('\n')).toContain('More versions available')
+    expect(result.lines.join('\n')).toContain('Press Down to load older versions')
+  })
+
+  it('renders homepage and vulnerability before changelog notes', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-1',
+          advisories: [
+            {
+              id: 1,
+              title: 'Critical auth bypass in middleware',
+              severity: 'high',
+              url: 'https://github.com/advisories/GHSA-1',
+            },
+          ],
+        },
+        releaseNotesVersions: ['16.2.3', '16.2.2'],
+        releaseNotesLoaded: new Map([['16.2.3', '## Added\n- Faster startup']]),
+        releaseNotesNextIndex: 1,
+      },
+      120,
+      30
+    )
+
+    const rendered = result.lines.join('\n')
+    const homepageIndex = rendered.indexOf('Homepage:')
+    const vulnerabilityIndex = rendered.indexOf('1 known vulnerability')
+    const changelogIndex = rendered.indexOf('Changelog:')
+    const versionIndex = rendered.indexOf('Version 16.2.3')
+
+    expect(homepageIndex).toBeGreaterThan(-1)
+    expect(vulnerabilityIndex).toBeGreaterThan(homepageIndex)
+    expect(changelogIndex).toBeGreaterThan(vulnerabilityIndex)
+    expect(versionIndex).toBeGreaterThan(changelogIndex)
   })
 
   it('shows one canonical vulnerability link instead of many advisory URLs', () => {
@@ -118,6 +155,24 @@ describe('modal renderer', () => {
     expect(rendered).not.toContain('ℹ️')
     expect(rendered).not.toContain('📊')
     expect(rendered).not.toContain('⏳')
+  })
+
+  it('renders contributor mentions as terminal hyperlinks', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3'],
+        releaseNotesLoaded: new Map([
+          ['16.2.3', '### Credits\n\nHuge thanks to @icyJoseph and @sokra for helping!'],
+        ]),
+      },
+      100,
+      24
+    )
+
+    const rendered = result.lines.join('\n')
+    expect(rendered).toContain('\u001b]8;;https://github.com/icyJoseph\u0007@icyJoseph\u001b]8;;\u0007')
+    expect(rendered).toContain('\u001b]8;;https://github.com/sokra\u0007@sokra\u001b]8;;\u0007')
   })
 
   it('fits inside short terminal heights by trimming low-priority content', () => {

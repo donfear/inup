@@ -66,9 +66,8 @@ export class PackageInfoModalController {
   }
 
   /**
-   * Load the next unloaded version(s) release notes.
-   * If a version has no notes, keeps loading the next one (up to a batch limit)
-   * so the user doesn't scroll through empty entries.
+   * Load the next unloaded version's release notes.
+   * Only fetches one version per user trigger.
    * Returns true if a load was triggered, false if nothing to load.
    */
   async loadNextVersion(
@@ -78,32 +77,22 @@ export class PackageInfoModalController {
     if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
     if (state.releaseNotesLoadingVersion) return false // Already loading
 
-    const maxBatch = 5 // Try up to 5 versions to find one with content
     let cursor = this.normalizeReleaseNotesCursor(state)
     if (cursor >= state.releaseNotesVersions.length) return false
 
-    let loaded = false
+    const nextVersion = state.releaseNotesVersions[cursor]
+    cursor++
 
-    for (let i = 0; i < maxBatch; i++) {
-      if (cursor >= state.releaseNotesVersions.length) break
+    state.releaseNotesLoadingVersion = nextVersion
+    onLoaded() // Re-render to show loading indicator
 
-      const nextVersion = state.releaseNotesVersions[cursor]
-      cursor++
-
-      state.releaseNotesLoadingVersion = nextVersion
-      if (!loaded) onLoaded() // Re-render to show loading indicator on first attempt
-
-      const notes = await changelogFetcher.fetchReleaseNotesForVersion(state.name, nextVersion)
-      state.releaseNotesLoaded!.set(nextVersion, notes)
-      state.releaseNotesLoadingVersion = undefined
-      loaded = true
-
-      if (notes) break // Found content, stop loading more
-    }
+    const notes = await changelogFetcher.fetchReleaseNotesForVersion(state.name, nextVersion)
+    state.releaseNotesLoaded.set(nextVersion, notes)
+    state.releaseNotesLoadingVersion = undefined
 
     state.releaseNotesNextIndex = cursor
-    if (loaded) onLoaded() // Re-render with new content
-    return loaded
+    onLoaded() // Re-render with new content
+    return true
   }
 
   /**

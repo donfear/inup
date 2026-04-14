@@ -115,7 +115,7 @@ describe('PackageInfoModalController', () => {
     expect(state.releaseNotesLoadMoreArmed).toBe(true)
   })
 
-  it('loads release notes sequentially with a cursor and skips empty versions in one batch', async () => {
+  it('loads exactly one release note version per request', async () => {
     const controller = new PackageInfoModalController()
     const state: PackageSelectionState = {
       ...baseState,
@@ -125,20 +125,15 @@ describe('PackageInfoModalController', () => {
     }
     const onLoaded = vi.fn()
 
-    mocks.fetchReleaseNotesForVersion
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('second release')
+    mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce(null)
 
     const loaded = await controller.loadNextVersion(state, onLoaded)
 
     expect(loaded).toBe(true)
-    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([
-      ['next', '16.2.2'],
-      ['next', '16.2.1'],
-    ])
+    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.2']])
     expect(state.releaseNotesLoaded?.get('16.2.2')).toBeNull()
-    expect(state.releaseNotesLoaded?.get('16.2.1')).toBe('second release')
-    expect(state.releaseNotesNextIndex).toBe(3)
+    expect(state.releaseNotesLoaded?.has('16.2.1')).toBe(false)
+    expect(state.releaseNotesNextIndex).toBe(2)
     expect(controller.hasMoreVersions(state)).toBe(true)
     expect(onLoaded).toHaveBeenCalledTimes(2)
   })

@@ -9,15 +9,6 @@ export type KeypressSession = {
   close: () => void
 }
 
-function isMouseSequence(str: string, key: Key | undefined): boolean {
-  const sequence = key?.sequence ?? str
-  if (!sequence) {
-    return false
-  }
-
-  return sequence.startsWith('\x1b[<') || sequence.startsWith('\x1b[M')
-}
-
 export const TerminalInput = {
   startKeypressSession(onKeypress: KeypressListener): KeypressSession {
     const rl = readline.createInterface({
@@ -31,18 +22,11 @@ export const TerminalInput = {
       process.stdin.setRawMode(true)
     }
     process.stdin.resume()
-    const filteredKeypressListener: KeypressListener = (str, key) => {
-      if (isMouseSequence(str, key)) {
-        return
-      }
-
-      onKeypress(str, key)
-    }
-    process.stdin.on('keypress', filteredKeypressListener)
+    process.stdin.on('keypress', onKeypress)
 
     return {
       close: () => {
-        process.stdin.off('keypress', filteredKeypressListener)
+        process.stdin.off('keypress', onKeypress)
         rl.close()
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
@@ -73,8 +57,4 @@ export const TerminalInput = {
       rl.on('SIGINT', () => finish(false))
     })
   },
-}
-
-export const TerminalInputInternals = {
-  isMouseSequence,
 }

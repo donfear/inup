@@ -9,6 +9,10 @@ import {
 } from '../presenters/vulnerability'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../utils'
 
+function formatTerminalLink(label: string, url: string): string {
+  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`
+}
+
 function sanitizeMarkdownText(text: string): string {
   return text
     .replace(/<[^>]+>/g, '')
@@ -16,6 +20,12 @@ function sanitizeMarkdownText(text: string): string {
     .replace(/[`*_~]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function linkifyContributorMentions(text: string): string {
+  return text.replace(/(^|[\s(])@([a-zA-Z0-9-]+)/g, (match, prefix: string, username: string) => {
+    return `${prefix}${formatTerminalLink(`@${username}`, `https://github.com/${username}`)}`
+  })
 }
 
 function pushWrappedLines(
@@ -84,7 +94,7 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
 
     const quoteMatch = trimmed.match(/^>\s*(.+)/)
     if (quoteMatch) {
-      const quoteBody = sanitizeMarkdownText(quoteMatch[1])
+      const quoteBody = linkifyContributorMentions(sanitizeMarkdownText(quoteMatch[1]))
       const admonitionMatch = quoteBody.match(/^\[!([A-Z]+)\]$/i)
       if (admonitionMatch) {
         const label = `${admonitionMatch[1][0]}${admonitionMatch[1].slice(1).toLowerCase()}`
@@ -127,7 +137,14 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
       const prefix = `  ${'  '.repeat(indentLevel)}${chalk.gray('•')} `
       const restPrefix = `  ${'  '.repeat(indentLevel + 1)}`
       const style = /breaking/i.test(bulletMatch[2]) ? chalk.red : undefined
-      pushWrappedLines(lines, sanitizeMarkdownText(bulletMatch[2]), width, prefix, restPrefix, style)
+      pushWrappedLines(
+        lines,
+        linkifyContributorMentions(sanitizeMarkdownText(bulletMatch[2])),
+        width,
+        prefix,
+        restPrefix,
+        style
+      )
       continue
     }
 
@@ -137,12 +154,18 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
       const marker = `${orderedMatch[2]}.`
       const prefix = `  ${'  '.repeat(indentLevel)}${marker} `
       const restPrefix = `  ${'  '.repeat(indentLevel)}${' '.repeat(marker.length + 1)}`
-      pushWrappedLines(lines, sanitizeMarkdownText(orderedMatch[3]), width, prefix, restPrefix)
+      pushWrappedLines(
+        lines,
+        linkifyContributorMentions(sanitizeMarkdownText(orderedMatch[3])),
+        width,
+        prefix,
+        restPrefix
+      )
       continue
     }
 
     const style = isLowSignalTrailerLine(cleaned) ? chalk.gray : undefined
-    pushWrappedLines(lines, cleaned, width, '  ', '  ', style)
+    pushWrappedLines(lines, linkifyContributorMentions(cleaned), width, '  ', '  ', style)
   }
 
   while (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -209,7 +232,7 @@ export function buildReleaseNotesSections(
   if (!allLoaded && !state.releaseNotesLoadingVersion) {
     sections.push({
       key: 'release-more',
-      rows: [chalk.gray('More versions available')],
+      rows: [chalk.gray('Press Down to load older versions')],
       behavior: 'status',
     })
   }
@@ -263,6 +286,16 @@ export function buildPackageInfoSections(
     },
   ]
 
+  if (state.homepage) {
+    sections.push({
+      key: 'homepage',
+      rows: [
+        `Homepage: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.homepage, modalWidth - 14)))}`,
+      ],
+      behavior: 'pinned',
+    })
+  }
+
   if (state.description) {
     sections.push({
       key: 'description',
@@ -276,10 +309,6 @@ export function buildPackageInfoSections(
       behavior: 'pinned',
     })
   }
-
-  // Release notes sections (after description, before vulnerability)
-  const releaseNotesSections = buildReleaseNotesSections(state, modalWidth)
-  sections.push(...releaseNotesSections)
 
   if (state.vulnerability && state.vulnerability.count > 0) {
     const representative = selectRepresentativeAdvisory(state.vulnerability)
@@ -329,15 +358,8 @@ export function buildPackageInfoSections(
     })
   }
 
-  if (state.homepage) {
-    sections.push({
-      key: 'homepage',
-      rows: [
-        `Homepage: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.homepage, modalWidth - 14)))}`,
-      ],
-      behavior: 'pinned',
-    })
-  }
+  const releaseNotesSections = buildReleaseNotesSections(state, modalWidth)
+  sections.push(...releaseNotesSections)
 
   return sections
 }
