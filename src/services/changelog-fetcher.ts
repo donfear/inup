@@ -292,11 +292,7 @@ export class ChangelogFetcher {
    * Get versions between fromVersion (exclusive) and toVersion (inclusive),
    * sorted newest-first. Used to build the lazy-load list for release notes.
    */
-  getVersionsBetween(
-    allVersions: string[],
-    fromVersion: string,
-    toVersion: string
-  ): string[] {
+  getVersionsBetween(allVersions: string[], fromVersion: string, toVersion: string): string[] {
     const cleanFrom = semver.clean(fromVersion)
     const cleanTo = semver.clean(toVersion)
     if (!cleanFrom || !cleanTo) return []
@@ -315,10 +311,7 @@ export class ChangelogFetcher {
    * Tries GitHub Releases API first, then CHANGELOG.md from jsDelivr.
    * Returns the markdown text or null if unavailable.
    */
-  async fetchReleaseNotesForVersion(
-    packageName: string,
-    version: string
-  ): Promise<string | null> {
+  async fetchReleaseNotesForVersion(packageName: string, version: string): Promise<string | null> {
     const notesCacheKey = `release-notes:${packageName}@${version}`
 
     // Check cache
@@ -341,10 +334,7 @@ export class ChangelogFetcher {
     return await promise
   }
 
-  private async doFetchReleaseNotes(
-    packageName: string,
-    version: string
-  ): Promise<string | null> {
+  private async doFetchReleaseNotes(packageName: string, version: string): Promise<string | null> {
     // Get the repository URL for GitHub API
     const metadata =
       this.cache.get(this.getCacheKey(packageName, version)) ??
@@ -370,10 +360,7 @@ export class ChangelogFetcher {
     return null
   }
 
-  private async fetchGitHubReleaseNotes(
-    repoUrl: string,
-    version: string
-  ): Promise<string | null> {
+  private async fetchGitHubReleaseNotes(repoUrl: string, version: string): Promise<string | null> {
     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
     if (!match) return null
 
@@ -412,10 +399,7 @@ export class ChangelogFetcher {
    * Fetch CHANGELOG.md from a GitHub repo's default branch and extract the
    * section for the requested version. Caches the full file per-repo.
    */
-  private async fetchGitHubChangelogMd(
-    repoUrl: string,
-    version: string
-  ): Promise<string | null> {
+  private async fetchGitHubChangelogMd(repoUrl: string, version: string): Promise<string | null> {
     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
     if (!match) return null
 
@@ -432,10 +416,7 @@ export class ChangelogFetcher {
     return this.extractVersionSection(fullText, version)
   }
 
-  private async downloadGitHubChangelog(
-    owner: string,
-    repo: string
-  ): Promise<string | null> {
+  private async downloadGitHubChangelog(owner: string, repo: string): Promise<string | null> {
     // Try common branch names and file names
     const branches = ['main', 'master']
     const filenames = ['CHANGELOG.md', 'CHANGES.md', 'HISTORY.md']
@@ -462,10 +443,7 @@ export class ChangelogFetcher {
     return null
   }
 
-  private async fetchChangelogMd(
-    packageName: string,
-    version: string
-  ): Promise<string | null> {
+  private async fetchChangelogMd(packageName: string, version: string): Promise<string | null> {
     try {
       const response = await fetch(
         `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${version}/CHANGELOG.md`,
@@ -491,10 +469,7 @@ export class ChangelogFetcher {
   private extractVersionSection(changelog: string, version: string): string | null {
     const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     // Match ## v1.2.3, ## [v1.2.3], ## 1.2.3, ## [1.2.3] (with optional date/text after)
-    const sectionRegex = new RegExp(
-      `^##\\s+\\[?v?${escapedVersion}\\]?[^\\n]*\\n`,
-      'm'
-    )
+    const sectionRegex = new RegExp(`^##\\s+\\[?v?${escapedVersion}\\]?[^\\n]*\\n`, 'm')
 
     const match = sectionRegex.exec(changelog)
     if (!match) return null
@@ -502,9 +477,7 @@ export class ChangelogFetcher {
     const startIndex = match.index + match[0].length
     // Find the next ## header (next version section)
     const nextSectionMatch = /^## /m.exec(changelog.slice(startIndex))
-    const endIndex = nextSectionMatch
-      ? startIndex + nextSectionMatch.index
-      : changelog.length
+    const endIndex = nextSectionMatch ? startIndex + nextSectionMatch.index : changelog.length
 
     const section = changelog.slice(startIndex, endIndex).trim()
     if (section.length === 0) return null
