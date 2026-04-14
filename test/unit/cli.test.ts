@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   loadProjectConfig: vi.fn(),
   checkForUpdateAsync: vi.fn(),
   getGitWorkingTreeState: vi.fn(),
-  promptForConfirmation: vi.fn(),
+  promptForImmediateConfirmation: vi.fn(),
 }))
 
 vi.mock('../../src/index', () => ({
@@ -28,7 +28,7 @@ vi.mock('../../src/utils/git', () => ({
 
 vi.mock('../../src/ui/utils/terminal-input', () => ({
   TerminalInput: {
-    promptForConfirmation: mocks.promptForConfirmation,
+    promptForImmediateConfirmation: mocks.promptForImmediateConfirmation,
   },
 }))
 
@@ -41,15 +41,13 @@ describe('CLI git dirty preflight', () => {
     mocks.loadProjectConfig.mockReturnValue({})
     mocks.checkForUpdateAsync.mockResolvedValue(null)
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
-    mocks.promptForConfirmation.mockResolvedValue(true)
+    mocks.promptForImmediateConfirmation.mockResolvedValue(true)
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
   })
 
   it('aborts before running upgrades when repo is dirty and user declines', async () => {
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
-    mocks.promptForConfirmation.mockResolvedValue(false)
-
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    mocks.promptForImmediateConfirmation.mockResolvedValue(false)
 
     await runCli({
       dir: '/repo',
@@ -58,15 +56,16 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForConfirmation).toHaveBeenCalledWith('Proceed anyway? [y/N] ', false)
+    expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledWith(
+      expect.stringContaining('Warning: dirty working tree. Proceed anyway? [y/N] '),
+      false
+    )
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('uncommitted changes detected'))
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('branch is not clean'))
   })
 
   it('continues when repo is dirty and user confirms', async () => {
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
-    mocks.promptForConfirmation.mockResolvedValue(true)
+    mocks.promptForImmediateConfirmation.mockResolvedValue(true)
 
     await runCli({
       dir: '/repo',
@@ -75,7 +74,10 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForConfirmation).toHaveBeenCalledWith('Proceed anyway? [y/N] ', false)
+    expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledWith(
+      expect.stringContaining('Warning: dirty working tree. Proceed anyway? [y/N] '),
+      false
+    )
     expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
   })
 
@@ -89,7 +91,7 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForConfirmation).not.toHaveBeenCalled()
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
     expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
   })
 
@@ -103,13 +105,13 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForConfirmation).not.toHaveBeenCalled()
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
     expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
   })
 
   it('treats Ctrl+C at the prompt as cancel', async () => {
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
-    mocks.promptForConfirmation.mockResolvedValue(false)
+    mocks.promptForImmediateConfirmation.mockResolvedValue(false)
 
     await runCli({
       dir: '/repo',

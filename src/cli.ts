@@ -34,11 +34,10 @@ export async function runCli(options: CliOptions): Promise<void> {
 
   const gitState = getGitWorkingTreeState(cwd)
   if (gitState.isRepo && gitState.isDirty) {
-    console.log(chalk.yellow('\nWarning: uncommitted changes detected in this git working tree.'))
-    console.log(chalk.yellow('Your branch is not clean.'))
-    console.log(chalk.gray('Recommended: run upgrades from a clean branch / clean working tree.\n'))
-
-    const shouldProceed = await TerminalInput.promptForConfirmation('Proceed anyway? [y/N] ', false)
+    const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
+      chalk.yellow('Warning: dirty working tree. Proceed anyway? [y/N] '),
+      false
+    )
     if (!shouldProceed) {
       console.log(chalk.yellow('Upgrade cancelled.'))
       return
