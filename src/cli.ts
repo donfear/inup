@@ -35,7 +35,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   const gitState = getGitWorkingTreeState(cwd)
   if (gitState.isRepo && gitState.isDirty) {
     const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
-      chalk.yellow('Warning: dirty working tree. Proceed anyway? [y/N] '),
+      `${chalk.yellow('Warning:')} dirty working tree. Proceed anyway? ${chalk.dim('[y/N]')} `,
       false
     )
     if (!shouldProceed) {
