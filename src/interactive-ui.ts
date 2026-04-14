@@ -312,6 +312,8 @@ export class InteractiveUI {
 
       // Track the current max scroll offset for the info modal
       let infoModalMaxScrollOffset = 0
+      let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
+      let previousModalViewportLineCount: number | null = null
       const handleAction = (action: InputAction) => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
@@ -564,18 +566,30 @@ export class InteractiveUI {
       }
 
       const renderModalViewport = (
+        mode: 'info-modal' | 'theme-modal',
         shortcutLabel: string,
         modalLines: string[],
         terminalWidth: number,
         terminalHeight: number,
         bgCode: string
       ) => {
+        const viewportLineCount = buildModalHeaderLines(shortcutLabel).length + modalLines.length
+        const shouldClearBeforeRender =
+          previousViewportMode !== mode || previousModalViewportLineCount !== viewportLineCount
+
+        if (shouldClearBeforeRender) {
+          CursorUtils.clearScreen()
+          CursorUtils.hide()
+        }
+
         renderViewport(
           [...buildModalHeaderLines(shortcutLabel), ...modalLines],
           terminalWidth,
           terminalHeight,
           bgCode
         )
+        previousViewportMode = mode
+        previousModalViewportLineCount = viewportLineCount
         stateManager.markRendered([])
       }
 
@@ -626,6 +640,7 @@ export class InteractiveUI {
           )
 
           renderModalViewport(
+            'theme-modal',
             chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'),
             modalLines,
             terminalWidth,
@@ -650,6 +665,7 @@ export class InteractiveUI {
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
             renderModalViewport(
+              'info-modal',
               chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
               result.lines,
               terminalWidth,
@@ -671,6 +687,7 @@ export class InteractiveUI {
                 ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
                 : ''
             renderModalViewport(
+              'info-modal',
               scrollHint +
                 chalk.bold.white('←/→ ') +
                 chalk.gray('Version  ·  ') +
@@ -706,7 +723,8 @@ export class InteractiveUI {
           )
 
           renderViewport(lines, terminalWidth, terminalHeight, bgCode)
-
+          previousViewportMode = 'list'
+          previousModalViewportLineCount = null
           stateManager.markRendered(lines)
         }
 
