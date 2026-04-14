@@ -36,7 +36,7 @@ export const TerminalInput = {
     }
   },
 
-  promptForConfirmation(prompt: string): Promise<boolean> {
+  promptForConfirmation(prompt: string, defaultValue = true): Promise<boolean> {
     return new Promise((resolve) => {
       const rl = readline.createInterface({
         input: process.stdin,
@@ -51,7 +51,12 @@ export const TerminalInput = {
 
       rl.question(prompt, (answer) => {
         const normalizedAnswer = answer.trim().toLowerCase()
-        finish(normalizedAnswer === '' || normalizedAnswer === 'y' || normalizedAnswer === 'yes')
+        if (normalizedAnswer === '') {
+          finish(defaultValue)
+          return
+        }
+
+        finish(normalizedAnswer === 'y' || normalizedAnswer === 'yes')
       })
 
       rl.on('SIGINT', () => finish(false))
