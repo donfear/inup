@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   fetchPackageMetadata: vi.fn(),
+  getVersionsBetween: vi.fn().mockReturnValue([]),
+  fetchReleaseNotesForVersion: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../../../../src/services', () => ({
   changelogFetcher: {
     fetchPackageMetadata: mocks.fetchPackageMetadata,
+    getVersionsBetween: mocks.getVersionsBetween,
+    fetchReleaseNotesForVersion: mocks.fetchReleaseNotesForVersion,
   },
 }))
 

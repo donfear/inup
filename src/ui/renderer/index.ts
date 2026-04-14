@@ -8,6 +8,7 @@ import {
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from '../modal'
+import { ModalRenderResult } from '../modal'
 import { PackageListRenderOptions } from './package-list'
 
 /**
@@ -79,16 +80,17 @@ export class UIRenderer {
     state: PackageSelectionState,
     terminalWidth: number = 80,
     terminalHeight: number = 24
-  ): string[] {
+  ): ModalRenderResult {
     return Modal.renderPackageInfoLoading(state, terminalWidth, terminalHeight)
   }
 
   renderPackageInfoModal(
     state: PackageSelectionState,
     terminalWidth: number = 80,
-    terminalHeight: number = 24
-  ): string[] {
-    return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight)
+    terminalHeight: number = 24,
+    scrollOffset: number = 0
+  ): ModalRenderResult {
+    return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight, scrollOffset)
   }
 
   renderThemeSelectorModal(

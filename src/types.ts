@@ -27,6 +27,7 @@ export interface PackageInfo {
   author?: string // Package author
   license?: string // Package license
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
+  allVersions?: string[] // All available versions from registry
 }
 
 export type DependencyType =
@@ -73,6 +74,10 @@ export interface PackageSelectionState {
   author?: string // Package author
   license?: string // Package license
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
+  allVersions?: string[] // All available versions (for release notes version range)
+  releaseNotesVersions?: string[] // Versions between current and target (newest first)
+  releaseNotesLoaded?: Map<string, string | null> // version → content (null = unavailable)
+  releaseNotesLoadingVersion?: string // Currently loading this version's notes
 }
 
 export interface GroupedPackages {

@@ -27,7 +27,7 @@ const baseState: PackageSelectionState = {
 
 describe('modal renderer', () => {
   it('shows one canonical vulnerability link instead of many advisory URLs', () => {
-    const lines = renderPackageInfoModal(
+    const result = renderPackageInfoModal(
       {
         ...baseState,
         vulnerability: {
@@ -54,7 +54,7 @@ describe('modal renderer', () => {
       24
     )
 
-    const rendered = lines.join('\n')
+    const rendered = result.lines.join('\n')
     expect(rendered).toContain('Security:')
     expect(rendered).toContain('https://github.com/advisories/GHSA-1')
     expect(rendered).toContain('... and 2 more')
@@ -62,7 +62,7 @@ describe('modal renderer', () => {
   })
 
   it('fits inside short terminal heights by trimming low-priority content', () => {
-    const lines = renderPackageInfoModal(
+    const result = renderPackageInfoModal(
       {
         ...baseState,
         vulnerability: {
@@ -84,13 +84,13 @@ describe('modal renderer', () => {
       12
     )
 
-    expect(lines.length).toBeLessThanOrEqual(12)
-    expect(lines.some((line) => line.includes('╭'))).toBe(true)
-    expect(lines.some((line) => line.includes('╰'))).toBe(true)
+    expect(result.lines.length).toBeLessThanOrEqual(12)
+    expect(result.lines.some((line) => line.includes('╭'))).toBe(true)
+    expect(result.lines.some((line) => line.includes('╰'))).toBe(true)
   })
 
   it('keeps vulnerability rows aligned with the modal frame width', () => {
-    const lines = renderPackageInfoModal(
+    const result = renderPackageInfoModal(
       {
         ...baseState,
         vulnerability: {
@@ -111,7 +111,7 @@ describe('modal renderer', () => {
       24
     )
 
-    const framedLines = lines.filter((line) => line.includes('│') || line.includes('╭') || line.includes('╰') || line.includes('├'))
+    const framedLines = result.lines.filter((line) => line.includes('│') || line.includes('╭') || line.includes('╰') || line.includes('├'))
     const widths = framedLines.map((line) => getVisualLength(line))
     expect(new Set(widths).size).toBe(1)
   })
