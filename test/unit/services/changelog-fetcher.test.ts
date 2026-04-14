@@ -124,16 +124,10 @@ describe('ChangelogFetcher', () => {
 
     it('dedupes concurrent requests while metadata is in flight', async () => {
       let resolveRegistry:
-        | ((value: {
-            ok: boolean
-            json: () => Promise<Record<string, unknown>>
-          }) => void)
+        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
         | undefined
       let resolveDownloads:
-        | ((value: {
-            ok: boolean
-            json: () => Promise<Record<string, unknown>>
-          }) => void)
+        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
         | undefined
 
       fetchMock
@@ -411,8 +405,39 @@ describe('ChangelogFetcher', () => {
 
       // Abort before calling so the signal is already aborted
       controller.abort()
-      const result = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0', controller.signal)
-      expect(result).toBeNull()
+      await expect(
+        fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0', controller.signal)
+      ).rejects.toThrow()
+    })
+
+    it('does not cache aborted release notes fetches as missing', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            body: '## Changes\n- Successful retry',
+          }),
+        })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+
+      await expect(
+        fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0', AbortSignal.abort())
+      ).rejects.toThrow()
+
+      const retry = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
+
+      expect(retry).toContain('Successful retry')
+      expect(fetchMock).toHaveBeenCalledTimes(2)
     })
   })
 

@@ -104,7 +104,10 @@ export class PackageInfoModalController {
       )
       state.releaseNotesLoaded.set(version, notes)
       return true
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return false
+      }
       state.releaseNotesLoaded.set(version, null)
       return true
     } finally {

@@ -247,4 +247,26 @@ describe('PackageInfoModalController', () => {
     expect(state.releaseNotesLoaded?.get('16.2.2')).toBeNull()
     expect(onLoaded).toHaveBeenCalledTimes(2)
   })
+
+  it('does not cache aborted version fetches as missing notes', async () => {
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3'],
+      releaseNotesLoaded: new Map(),
+      releaseNotesViewIndex: 0,
+    }
+    const onLoaded = vi.fn()
+
+    mocks.fetchReleaseNotesForVersion.mockRejectedValueOnce(
+      new DOMException('The operation was aborted.', 'AbortError')
+    )
+
+    const loaded = await controller.loadVersionAtIndex(state, 0, onLoaded)
+
+    expect(loaded).toBe(false)
+    expect(state.releaseNotesLoadingVersion).toBeUndefined()
+    expect(state.releaseNotesLoaded?.has('16.2.3')).toBe(false)
+    expect(onLoaded).toHaveBeenCalledTimes(2)
+  })
 })

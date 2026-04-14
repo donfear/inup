@@ -85,9 +85,11 @@ export class ChangelogFetcher {
       return await inFlight
     }
 
-    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version, signal).finally(() => {
-      this.inFlight.delete(cacheKey)
-    })
+    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version, signal).finally(
+      () => {
+        this.inFlight.delete(cacheKey)
+      }
+    )
     this.inFlight.set(cacheKey, lookupPromise)
     return await lookupPromise
   }
@@ -360,11 +362,14 @@ export class ChangelogFetcher {
       return await inFlight
     }
 
-    const promise = this.doFetchReleaseNotes(packageName, version, signal).then((result) => {
-      this.releaseNotesCache.set(notesCacheKey, result)
-      this.releaseNotesInFlight.delete(notesCacheKey)
-      return result
-    })
+    const promise = this.doFetchReleaseNotes(packageName, version, signal)
+      .then((result) => {
+        this.releaseNotesCache.set(notesCacheKey, result)
+        return result
+      })
+      .finally(() => {
+        this.releaseNotesInFlight.delete(notesCacheKey)
+      })
     this.releaseNotesInFlight.set(notesCacheKey, promise)
     return await promise
   }
@@ -375,9 +380,9 @@ export class ChangelogFetcher {
     callerSignal?: AbortSignal
   ): Promise<string | null> {
     const timeoutSignal = AbortSignal.timeout(RELEASE_NOTES_FETCH_TIMEOUT_MS)
-    const signal = callerSignal
-      ? AbortSignal.any([callerSignal, timeoutSignal])
-      : timeoutSignal
+    const signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal
+
+    signal.throwIfAborted()
 
     // Get the repository URL for GitHub API
     const metadata =
@@ -435,7 +440,10 @@ export class ChangelogFetcher {
         if (data.body && data.body.trim().length > 0) {
           return data.body.trim()
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error
+        }
         // Continue to next tag format or fallback
       }
     }
@@ -500,7 +508,10 @@ export class ChangelogFetcher {
         if (pageReleases.length < 100) {
           break
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error
+        }
         break
       }
     }
