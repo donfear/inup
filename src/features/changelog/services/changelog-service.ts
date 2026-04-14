@@ -1,4 +1,3 @@
-import * as semver from 'semver'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
 import { PackageMetadataService } from './package-metadata-service'
 import { ReleaseNotesService } from './release-notes-service'
@@ -21,20 +20,6 @@ export class ChangelogFetcher {
 
   cacheMetadata(packageName: string, rawData: PackageManifestInput): void {
     this.metadataService.cacheMetadata(packageName, rawData)
-  }
-
-  getVersionsBetween(allVersions: string[], fromVersion: string, toVersion: string): string[] {
-    const cleanFrom = semver.clean(fromVersion)
-    const cleanTo = semver.clean(toVersion)
-    if (!cleanFrom || !cleanTo) return []
-
-    return allVersions
-      .filter((version) => {
-        const cleaned = semver.clean(version)
-        if (!cleaned) return false
-        return semver.gt(cleaned, cleanFrom) && semver.lte(cleaned, cleanTo)
-      })
-      .sort(semver.rcompare)
   }
 
   async fetchReleaseNotesForVersion(

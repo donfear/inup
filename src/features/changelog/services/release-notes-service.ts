@@ -1,9 +1,9 @@
 import * as semver from 'semver'
 import { GitHubClient } from '../clients/github-client'
-import { JsdelivrClient } from '../clients/jsdelivr-client'
 import { extractVersionSection, normalizeReleaseTag } from '../parsers/changelog-parser'
 import { extractReleaseNotesFromHtml } from '../parsers/github-release-html-parser'
 import { PackageMetadataService } from './package-metadata-service'
+import { JSDELIVR_CDN_URL } from '../../../config/constants'
 
 const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
 const PREFER_GITHUB_RELEASE_PAGE = true
@@ -14,8 +14,7 @@ export class ReleaseNotesService {
 
   constructor(
     private readonly metadataService: PackageMetadataService,
-    private readonly githubClient = new GitHubClient(),
-    private readonly jsdelivrClient = new JsdelivrClient()
+    private readonly githubClient = new GitHubClient()
   ) {}
 
   clearCache(): void {
@@ -167,9 +166,35 @@ export class ReleaseNotesService {
     version: string,
     signal: AbortSignal
   ): Promise<string | null> {
-    const fullText = await this.jsdelivrClient.fetchChangelog(packageName, version, signal)
+    const fullText = await this.fetchPublishedPackageChangelog(packageName, version, signal)
     if (!fullText) return null
 
     return extractVersionSection(fullText, version)
+  }
+
+  private async fetchPublishedPackageChangelog(
+    packageName: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
+    try {
+      const response = await fetch(
+        `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${version}/CHANGELOG.md`,
+        {
+          method: 'GET',
+          signal,
+        }
+      )
+
+      if (!response.ok) return null
+
+      return await response.text()
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
+
+      return null
+    }
   }
 }

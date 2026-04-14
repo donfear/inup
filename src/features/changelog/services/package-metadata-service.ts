@@ -1,7 +1,7 @@
-import { JsdelivrClient } from '../clients/jsdelivr-client'
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { extractRepositoryUrl } from '../parsers/repository-ref'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
+import { fetchExactPackageManifest } from '../../../services/jsdelivr-registry'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata>()
@@ -10,7 +10,7 @@ export class PackageMetadataService {
 
   constructor(
     private readonly npmRegistryClient = new NpmRegistryClient(),
-    private readonly jsdelivrClient = new JsdelivrClient()
+    private readonly exactManifestFetcher = fetchExactPackageManifest
   ) {}
 
   clearCache(): void {
@@ -135,10 +135,7 @@ export class PackageMetadataService {
 
     const normalizedVersion = version?.trim()
     if (normalizedVersion) {
-      const jsdelivrManifest = await this.jsdelivrClient.fetchExactPackageManifest(
-        packageName,
-        normalizedVersion
-      )
+      const jsdelivrManifest = await this.exactManifestFetcher(packageName, normalizedVersion)
       if (jsdelivrManifest) {
         return jsdelivrManifest
       }
