@@ -223,6 +223,29 @@ describe('modal renderer', () => {
     expect(result.maxScrollOffset).toBeGreaterThan(0)
   })
 
+  it('shows a visible loading indicator while fetching the next version in scroll mode', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3', '16.2.2'],
+        releaseNotesLoaded: new Map([
+          [
+            '16.2.3',
+            Array.from({ length: 18 }, (_, index) => `- Change number ${index + 1}`).join('\n'),
+          ],
+        ]),
+        releaseNotesNextIndex: 1,
+        releaseNotesLoadingVersion: '16.2.2',
+      },
+      90,
+      16,
+      0
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.lines.join('\n')).toContain('Loading release notes for v16.2.2')
+  })
+
   it('keeps vulnerability rows aligned with the modal frame width', () => {
     const result = renderPackageInfoModal(
       {

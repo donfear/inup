@@ -101,7 +101,22 @@ export function renderPackageInfoModal(
   const totalScrollableRows = bodyRows.length
   const maxScroll = Math.max(0, totalScrollableRows - availableForBody)
   const clampedOffset = Math.min(scrollOffset, maxScroll)
-  const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + availableForBody)
+  const hasMoreVersions =
+    !!state.releaseNotesVersions &&
+    (state.releaseNotesNextIndex ?? 0) < state.releaseNotesVersions.length
+  const footerStatus = state.releaseNotesLoadingVersion
+    ? chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)
+    : hasMoreVersions && clampedOffset >= maxScroll
+      ? chalk.gray('Press Down to load older versions')
+      : maxScroll > 0
+        ? clampedOffset < maxScroll
+          ? chalk.gray(
+              `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + availableForBody, totalScrollableRows)} of ${totalScrollableRows}`
+            )
+          : chalk.gray('End of release notes')
+        : null
+  const visibleBodyRows = footerStatus ? Math.max(1, availableForBody - 1) : availableForBody
+  const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
   const lines: string[] = []
   const topPadding = Math.max(0, Math.floor((terminalHeight - fixedModalHeight) / 2))
   for (let i = 0; i < topPadding; i++) {
@@ -133,24 +148,19 @@ export function renderPackageInfoModal(
     renderedScrollRows++
   }
 
-  const usedContentRows = pinnedRowCount + (bodySections.length > 0 ? 1 : 0) + renderedScrollRows
+  const usedContentRows =
+    pinnedRowCount +
+    (bodySections.length > 0 ? 1 : 0) +
+    renderedScrollRows +
+    (footerStatus ? 1 : 0)
   const totalContentSlots = fixedModalHeight - 2
   const emptyRows = Math.max(0, totalContentSlots - usedContentRows)
   for (let i = 0; i < emptyRows; i++) {
     lines.push(renderModalRow(padding, modalWidth, ''))
   }
 
-  if (maxScroll > 0) {
-    if (emptyRows > 0) {
-      lines.pop()
-    }
-    const indicator =
-      clampedOffset < maxScroll
-        ? chalk.gray(
-            `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + availableForBody, totalScrollableRows)} of ${totalScrollableRows}`
-          )
-        : chalk.gray('End of release notes')
-    lines.push(renderModalRow(padding, modalWidth, indicator))
+  if (footerStatus) {
+    lines.push(renderModalRow(padding, modalWidth, footerStatus))
   }
 
   lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))

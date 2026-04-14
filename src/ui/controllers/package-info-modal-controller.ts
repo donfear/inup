@@ -51,6 +51,7 @@ export class PackageInfoModalController {
     state.releaseNotesLoaded = new Map()
     state.releaseNotesNextIndex = 0
     state.releaseNotesLoadMoreArmed = true
+    state.releaseNotesLoadCooldownUntil = 0
 
     // Fetch release notes for the first (target) version
     if (state.releaseNotesVersions.length > 0) {

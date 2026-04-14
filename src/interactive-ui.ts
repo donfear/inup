@@ -312,6 +312,7 @@ export class InteractiveUI {
 
       // Track the current max scroll offset for the info modal
       let infoModalMaxScrollOffset = 0
+      const releaseNotesLoadCooldownMs = 250
 
       const handleAction = (action: InputAction) => {
         const uiState = stateManager.getUIState()
@@ -392,7 +393,9 @@ export class InteractiveUI {
                 uiState.infoModalRow >= 0 &&
                 uiState.infoModalRow < filteredStates.length
               ) {
-                filteredStates[uiState.infoModalRow].releaseNotesLoadMoreArmed = true
+                const currentState = filteredStates[uiState.infoModalRow]
+                currentState.releaseNotesLoadMoreArmed = true
+                currentState.releaseNotesLoadCooldownUntil = 0
               }
             }
             break
@@ -407,10 +410,12 @@ export class InteractiveUI {
 
                 if (didScroll) {
                   currentState.releaseNotesLoadMoreArmed = true
+                  currentState.releaseNotesLoadCooldownUntil = 0
                   break
                 }
 
                 if (
+                  (currentState.releaseNotesLoadCooldownUntil ?? 0) > Date.now() ||
                   currentState.releaseNotesLoadMoreArmed === false ||
                   !this.packageInfoModalController.hasMoreVersions(currentState)
                 ) {
@@ -421,6 +426,9 @@ export class InteractiveUI {
                 this.packageInfoModalController
                   .loadNextVersion(currentState, () => renderInterface())
                   .finally(() => {
+                    currentState.releaseNotesLoadMoreArmed = true
+                    currentState.releaseNotesLoadCooldownUntil =
+                      Date.now() + releaseNotesLoadCooldownMs
                     renderInterface()
                   })
               }
