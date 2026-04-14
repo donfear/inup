@@ -13,6 +13,7 @@ export interface PackageInfoModalHydrationResult {
 
 export class PackageInfoModalController {
   private abortController: AbortController | null = null
+  private pendingReleaseNotesVersion: string | null = null
 
   /**
    * Cancel any in-flight hydrate/release-notes fetches.
@@ -21,6 +22,7 @@ export class PackageInfoModalController {
   cancel(): void {
     this.abortController?.abort()
     this.abortController = null
+    this.pendingReleaseNotesVersion = null
   }
 
   async hydrate(state: PackageSelectionState): Promise<PackageInfoModalHydrationResult | null> {
@@ -71,6 +73,7 @@ export class PackageInfoModalController {
     state.releaseNotesLoaded = new Map()
     state.releaseNotesViewIndex = 0
     state.releaseNotesLoadingVersion = undefined
+    this.pendingReleaseNotesVersion = null
 
     return result
   }
@@ -86,12 +89,27 @@ export class PackageInfoModalController {
   ): Promise<boolean> {
     if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
     if (index < 0 || index >= state.releaseNotesVersions.length) return false
-    if (state.releaseNotesLoadingVersion) return false // Already loading
 
     const version = state.releaseNotesVersions[index]
 
     // Already loaded
     if (state.releaseNotesLoaded.has(version)) return false
+
+    if (state.releaseNotesLoadingVersion) {
+      this.pendingReleaseNotesVersion = version
+      return false
+    }
+
+    return await this.loadVersion(state, version, onLoaded)
+  }
+
+  private async loadVersion(
+    state: PackageSelectionState,
+    version: string,
+    onLoaded: () => void
+  ): Promise<boolean> {
+    const loadedNotes = state.releaseNotesLoaded
+    if (!loadedNotes) return false
 
     state.releaseNotesLoadingVersion = version
     onLoaded() // Re-render to show loading indicator
@@ -102,17 +120,29 @@ export class PackageInfoModalController {
         version,
         this.abortController?.signal
       )
-      state.releaseNotesLoaded.set(version, notes)
+      loadedNotes.set(version, notes)
       return true
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
         return false
       }
-      state.releaseNotesLoaded.set(version, null)
+      loadedNotes.set(version, null)
       return true
     } finally {
       state.releaseNotesLoadingVersion = undefined
       onLoaded() // Re-render with new content or recovered state
+
+      const pendingVersion = this.pendingReleaseNotesVersion
+      this.pendingReleaseNotesVersion = null
+
+      if (
+        pendingVersion &&
+        pendingVersion !== version &&
+        loadedNotes &&
+        !loadedNotes.has(pendingVersion)
+      ) {
+        void this.loadVersion(state, pendingVersion, onLoaded)
+      }
     }
   }
 

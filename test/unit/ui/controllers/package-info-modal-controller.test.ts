@@ -269,4 +269,44 @@ describe('PackageInfoModalController', () => {
     expect(state.releaseNotesLoaded?.has('16.2.3')).toBe(false)
     expect(onLoaded).toHaveBeenCalledTimes(2)
   })
+
+  it('queues the latest requested version while another release notes fetch is in flight', async () => {
+    let resolveFirstLoad: ((value: string | null) => void) | undefined
+
+    mocks.fetchReleaseNotesForVersion
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirstLoad = resolve
+          })
+      )
+      .mockResolvedValueOnce('queued release notes')
+
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3', '16.2.2', '16.2.1'],
+      releaseNotesLoaded: new Map(),
+      releaseNotesViewIndex: 0,
+    }
+    const onLoaded = vi.fn()
+
+    const firstLoad = controller.loadVersionAtIndex(state, 0, onLoaded)
+    const queued = await controller.loadVersionAtIndex(state, 2, onLoaded)
+
+    expect(queued).toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).toHaveBeenCalledTimes(1)
+    expect(state.releaseNotesLoadingVersion).toBe('16.2.3')
+
+    resolveFirstLoad?.('first release notes')
+    await firstLoad
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([
+      ['next', '16.2.3', undefined],
+      ['next', '16.2.1', undefined],
+    ])
+    expect(state.releaseNotesLoaded?.get('16.2.3')).toBe('first release notes')
+    expect(state.releaseNotesLoaded?.get('16.2.1')).toBe('queued release notes')
+  })
 })
