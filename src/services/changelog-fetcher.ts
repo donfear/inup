@@ -673,19 +673,36 @@ export class ChangelogFetcher {
   }
 
   private extractReleaseNotesFromHtml(html: string): string | null {
-    const startMarker = 'data-test-selector="body-content"'
-    const endMarker = 'class="Box-footer"'
-    const startIndex = html.indexOf(startMarker)
-    if (startIndex === -1) return null
+    const bodyContentIndex = html.indexOf('data-test-selector="body-content"')
+    if (bodyContentIndex === -1) return null
 
-    const contentStart = html.indexOf('>', startIndex)
+    const markdownBodyIndex = html.indexOf('class="markdown-body', bodyContentIndex)
+    if (markdownBodyIndex === -1) return null
+
+    const contentStart = html.indexOf('>', markdownBodyIndex)
     if (contentStart === -1) return null
 
-    const endIndex = html.indexOf(endMarker, contentStart)
-    if (endIndex === -1) return null
+    let depth = 1
+    let cursor = contentStart + 1
+    while (depth > 0 && cursor < html.length) {
+      const nextOpen = html.indexOf('<div', cursor)
+      const nextClose = html.indexOf('</div>', cursor)
+
+      if (nextClose === -1) return null
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        depth += 1
+        cursor = nextOpen + 4
+      } else {
+        depth -= 1
+        cursor = nextClose + 6
+      }
+    }
+
+    if (depth !== 0) return null
 
     const normalized = html
-      .slice(contentStart + 1, endIndex)
+      .slice(contentStart + 1, cursor - 6)
       .replace(/<svg[\s\S]*?<\/svg>/g, '')
       .replace(/<h([1-6])[^>]*>/g, (_full, level: string) => `${'#'.repeat(Number(level))} `)
       .replace(/<\/h[1-6]>/g, '\n\n')
