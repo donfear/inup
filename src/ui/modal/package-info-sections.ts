@@ -9,19 +9,61 @@ import {
 } from '../presenters/vulnerability'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../utils'
 
-/**
- * Format markdown release notes for terminal display.
- * Applies syntax highlighting for headers, breaking changes, and bullet points.
- */
+function sanitizeMarkdownText(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/[`*_~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function pushWrappedLines(
+  lines: string[],
+  text: string,
+  width: number,
+  firstPrefix: string,
+  restPrefix: string = firstPrefix,
+  style?: (value: string) => string
+): void {
+  const firstWidth = Math.max(1, width - getVisualLength(firstPrefix))
+  const restWidth = Math.max(1, width - getVisualLength(restPrefix))
+  const segments = wrapPlainText(text, firstWidth)
+
+  if (segments.length === 0) {
+    lines.push(firstPrefix.trimEnd())
+    return
+  }
+
+  lines.push(firstPrefix + (style ? style(segments[0]) : segments[0]))
+  for (let i = 1; i < segments.length; i++) {
+    const wrappedSegments = wrapPlainText(segments[i], restWidth)
+    for (const segment of wrappedSegments) {
+      lines.push(restPrefix + (style ? style(segment) : segment))
+    }
+  }
+}
+
+function isLowSignalTrailerLine(text: string): boolean {
+  const normalized = text.toLowerCase()
+  return (
+    normalized.startsWith('compare') ||
+    normalized.startsWith('full changelog') ||
+    normalized.startsWith('see full changelog') ||
+    normalized.startsWith('release notes') ||
+    normalized.includes('/compare/') ||
+    /^\w+: https?:\/\//.test(normalized)
+  )
+}
+
 function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
   const lines: string[] = []
   const rawLines = markdown.split('\n')
   let prevBlank = false
 
   for (const rawLine of rawLines) {
-    const trimmed = rawLine.trimEnd()
+    const trimmed = rawLine.trim()
 
-    // Collapse multiple blank lines
     if (trimmed === '') {
       if (!prevBlank && lines.length > 0) {
         lines.push('')
@@ -31,54 +73,78 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
     }
     prevBlank = false
 
-    // Strip HTML tags
-    const cleaned = trimmed.replace(/<[^>]+>/g, '')
+    if (/^```/.test(trimmed) || /^---+$/.test(trimmed)) {
+      continue
+    }
 
-    // Headers: ### Breaking Changes, ### Features, ### Bug Fixes, etc.
-    const headerMatch = cleaned.match(/^(#{1,4})\s+(.+)/)
-    if (headerMatch) {
-      const title = headerMatch[2]
-      const lower = title.toLowerCase()
-      if (lower.includes('breaking')) {
-        lines.push(chalk.red.bold(`  ${title}`))
-      } else if (lower.includes('feature') || lower.includes('added')) {
-        lines.push(chalk.green.bold(`  ${title}`))
-      } else if (lower.includes('fix') || lower.includes('bug')) {
-        lines.push(chalk.yellow.bold(`  ${title}`))
-      } else if (lower.includes('deprecat')) {
-        lines.push(chalk.magenta.bold(`  ${title}`))
+    const cleaned = sanitizeMarkdownText(trimmed)
+    if (!cleaned) {
+      continue
+    }
+
+    const quoteMatch = trimmed.match(/^>\s*(.+)/)
+    if (quoteMatch) {
+      const quoteBody = sanitizeMarkdownText(quoteMatch[1])
+      const admonitionMatch = quoteBody.match(/^\[!([A-Z]+)\]$/i)
+      if (admonitionMatch) {
+        const label = `${admonitionMatch[1][0]}${admonitionMatch[1].slice(1).toLowerCase()}`
+        if (lines.length > 0 && lines[lines.length - 1] !== '') {
+          lines.push('')
+        }
+        lines.push(chalk.blue.bold(`  ${label}`))
       } else {
-        lines.push(chalk.white.bold(`  ${title}`))
+        pushWrappedLines(lines, quoteBody, width, '  ', '  ', chalk.gray)
       }
       continue
     }
 
-    // Bullet points: - item, * item
+    const headerMatch = cleaned.match(/^(#{1,6})\s+(.+)/)
+    if (headerMatch) {
+      const title = sanitizeMarkdownText(headerMatch[2])
+      const lower = title.toLowerCase()
+      let style = chalk.white.bold
+
+      if (lower.includes('breaking')) {
+        style = chalk.red.bold
+      } else if (lower.includes('feature') || lower.includes('added') || lower.includes('improvement')) {
+        style = chalk.green.bold
+      } else if (lower.includes('fix') || lower.includes('bug')) {
+        style = chalk.yellow.bold
+      } else if (lower.includes('deprecat')) {
+        style = chalk.magenta.bold
+      }
+
+      if (lines.length > 0 && lines[lines.length - 1] !== '') {
+        lines.push('')
+      }
+      lines.push(style(`  ${title}`))
+      continue
+    }
+
     const bulletMatch = cleaned.match(/^(\s*)[*-]\s+(.+)/)
     if (bulletMatch) {
-      const indent = Math.min(bulletMatch[1].length, 4)
-      const text = bulletMatch[2]
-      // Check for BREAKING in bullet text
-      const styledText = /breaking/i.test(text) ? chalk.red(text) : text
-      const prefix = ' '.repeat(indent + 2) + chalk.gray('•') + ' '
-      const wrapped = wrapPlainText(text, width - indent - 4)
-      if (wrapped.length > 0) {
-        lines.push(prefix + (/breaking/i.test(text) ? chalk.red(wrapped[0]) : wrapped[0]))
-        for (let i = 1; i < wrapped.length; i++) {
-          lines.push(' '.repeat(indent + 4) + (/breaking/i.test(text) ? chalk.red(wrapped[i]) : wrapped[i]))
-        }
-      }
+      const indentLevel = Math.min(2, Math.floor(bulletMatch[1].length / 2))
+      const prefix = `  ${'  '.repeat(indentLevel)}${chalk.gray('•')} `
+      const restPrefix = `  ${'  '.repeat(indentLevel + 1)}`
+      const style = /breaking/i.test(bulletMatch[2]) ? chalk.red : undefined
+      pushWrappedLines(lines, sanitizeMarkdownText(bulletMatch[2]), width, prefix, restPrefix, style)
       continue
     }
 
-    // Regular text — wrap to width
-    const wrapped = wrapPlainText(cleaned, width - 2)
-    for (const line of wrapped) {
-      lines.push('  ' + line)
+    const orderedMatch = cleaned.match(/^(\s*)(\d+)\.\s+(.+)/)
+    if (orderedMatch) {
+      const indentLevel = Math.min(2, Math.floor(orderedMatch[1].length / 2))
+      const marker = `${orderedMatch[2]}.`
+      const prefix = `  ${'  '.repeat(indentLevel)}${marker} `
+      const restPrefix = `  ${'  '.repeat(indentLevel)}${' '.repeat(marker.length + 1)}`
+      pushWrappedLines(lines, sanitizeMarkdownText(orderedMatch[3]), width, prefix, restPrefix)
+      continue
     }
+
+    const style = isLowSignalTrailerLine(cleaned) ? chalk.gray : undefined
+    pushWrappedLines(lines, cleaned, width, '  ', '  ', style)
   }
 
-  // Trim trailing blank lines
   while (lines.length > 0 && lines[lines.length - 1] === '') {
     lines.pop()
   }
@@ -102,26 +168,24 @@ export function buildReleaseNotesSections(
 
   const loaded = state.releaseNotesLoaded
   if (!loaded || loaded.size === 0) {
-    // Still loading the first version
     if (state.releaseNotesLoadingVersion) {
       sections.push({
         key: 'release-loading',
-        rows: [chalk.gray(`  ⏳ Loading release notes for v${state.releaseNotesLoadingVersion}...`)],
+        rows: [chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)],
+        behavior: 'status',
       })
     }
     return sections
   }
 
-  // Render each loaded version's notes
   for (const version of state.releaseNotesVersions) {
     if (!loaded.has(version)) break // Stop at first unloaded version
 
     const content = loaded.get(version)
 
-    // Skip versions with no release notes — don't clutter with empty entries
     if (!content) continue
 
-    const versionHeader = getThemeColor('primary')(`  v${version}`)
+    const versionHeader = getThemeColor('primary')(`Version ${version}`)
     const rows: string[] = [chalk.bold(versionHeader)]
     const formatted = formatReleaseNotesMarkdown(content, modalWidth - 4)
     rows.push(...formatted)
@@ -129,31 +193,32 @@ export function buildReleaseNotesSections(
     sections.push({
       key: `release-${version}`,
       rows,
+      behavior: 'body',
     })
   }
 
-  // Show loading indicator for in-flight version
   if (state.releaseNotesLoadingVersion && !loaded.has(state.releaseNotesLoadingVersion)) {
     sections.push({
       key: 'release-loading',
-      rows: [chalk.gray(`  ⏳ Loading v${state.releaseNotesLoadingVersion}...`)],
+      rows: [chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)],
+      behavior: 'status',
     })
   }
 
-  // Show hint if more versions are available
-  const allLoaded = state.releaseNotesVersions.every((v) => loaded.has(v))
+  const allLoaded = (state.releaseNotesNextIndex ?? 0) >= state.releaseNotesVersions.length
   if (!allLoaded && !state.releaseNotesLoadingVersion) {
     sections.push({
       key: 'release-more',
-      rows: [chalk.gray('  ↓ Scroll for older versions')],
+      rows: [chalk.gray('More versions available')],
+      behavior: 'status',
     })
   }
 
-  // If all versions were checked but none had notes, show a single message
   if (allLoaded && sections.length === 0) {
     sections.push({
       key: 'release-none',
-      rows: [chalk.gray.italic('  No release notes found for any version in this range')],
+      rows: [chalk.gray.italic('No release notes found for this version range')],
+      behavior: 'status',
     })
   }
 
@@ -171,7 +236,7 @@ export function buildPackageInfoSections(
   state: PackageSelectionState,
   modalWidth: number
 ): ModalSection[] {
-  const title = chalk.cyan.bold(` ℹ️  ${state.name}`)
+  const title = chalk.cyan.bold(`Package: ${state.name}`)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
   const targetVersion = chalk.green(
@@ -183,16 +248,18 @@ export function buildPackageInfoSections(
       key: 'header',
       rows: [title, authorLicense],
       required: true,
+      behavior: 'pinned',
     },
     {
       key: 'meta',
       rows: [
-        `Current: ${currentVersion} → Target: ${targetVersion}`,
+        `Current: ${currentVersion}  Target: ${targetVersion}`,
         ...(state.weeklyDownloads !== undefined
-          ? [getThemeColor('primary')(`📊 ${formatNumber(state.weeklyDownloads)} downloads/week`)]
+          ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
           : []),
       ],
       required: true,
+      behavior: 'pinned',
     },
   ]
 
@@ -206,6 +273,7 @@ export function buildPackageInfoSections(
             ? truncatePlainText(line, modalWidth - 4)
             : line
         ),
+      behavior: 'pinned',
     })
   }
 
@@ -247,6 +315,7 @@ export function buildPackageInfoSections(
       key: 'vulnerability',
       rows: vulnerabilityRows,
       required: true,
+      behavior: 'pinned',
     })
   }
 
@@ -256,6 +325,7 @@ export function buildPackageInfoSections(
       rows: [
         `Changelog: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.repository, modalWidth - 15)))}`,
       ],
+      behavior: 'pinned',
     })
   }
 
@@ -265,6 +335,7 @@ export function buildPackageInfoSections(
       rows: [
         `Homepage: ${chalk.underline(getThemeColor('primary')(truncatePlainText(state.homepage, modalWidth - 14)))}`,
       ],
+      behavior: 'pinned',
     })
   }
 

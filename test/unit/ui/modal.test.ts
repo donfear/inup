@@ -26,6 +26,40 @@ const baseState: PackageSelectionState = {
 }
 
 describe('modal renderer', () => {
+  it('keeps short release notes compact instead of forcing a tall scroll area', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3'],
+        releaseNotesLoaded: new Map([
+          ['16.2.3', '## Added\n- Faster startup\n- Better caching'],
+        ]),
+      },
+      100,
+      24
+    )
+
+    expect(result.usesInternalScroll).toBe(false)
+    expect(result.maxScrollOffset).toBe(0)
+    expect(result.lines.filter((line) => line.includes('│')).length).toBeLessThan(14)
+  })
+
+  it('does not force scroll mode for status-only release note sections', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3', '16.2.2'],
+        releaseNotesLoaded: new Map([['16.2.3', null]]),
+        releaseNotesNextIndex: 1,
+      },
+      100,
+      24
+    )
+
+    expect(result.usesInternalScroll).toBe(false)
+    expect(result.lines.join('\n')).toContain('More versions available')
+  })
+
   it('shows one canonical vulnerability link instead of many advisory URLs', () => {
     const result = renderPackageInfoModal(
       {
@@ -61,6 +95,31 @@ describe('modal renderer', () => {
     expect(rendered).not.toContain('https://github.com/advisories/GHSA-2')
   })
 
+  it('formats release notes into readable headings and bullets without emoji copy', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3'],
+        releaseNotesLoaded: new Map([
+          [
+            '16.2.3',
+            '## Breaking Changes\n\n- Remove legacy mode\n- Add new cache\n\nFull Changelog: https://example.com/compare',
+          ],
+        ]),
+      },
+      100,
+      24
+    )
+
+    const rendered = result.lines.join('\n')
+    expect(rendered).toContain('Package: next')
+    expect(rendered).toContain('Breaking Changes')
+    expect(rendered).toContain('• Remove legacy mode')
+    expect(rendered).not.toContain('ℹ️')
+    expect(rendered).not.toContain('📊')
+    expect(rendered).not.toContain('⏳')
+  })
+
   it('fits inside short terminal heights by trimming low-priority content', () => {
     const result = renderPackageInfoModal(
       {
@@ -87,6 +146,26 @@ describe('modal renderer', () => {
     expect(result.lines.length).toBeLessThanOrEqual(12)
     expect(result.lines.some((line) => line.includes('╭'))).toBe(true)
     expect(result.lines.some((line) => line.includes('╰'))).toBe(true)
+  })
+
+  it('uses internal scrolling only when release notes really overflow', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        releaseNotesVersions: ['16.2.3'],
+        releaseNotesLoaded: new Map([
+          [
+            '16.2.3',
+            Array.from({ length: 18 }, (_, index) => `- Change number ${index + 1}`).join('\n'),
+          ],
+        ]),
+      },
+      90,
+      16
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.maxScrollOffset).toBeGreaterThan(0)
   })
 
   it('keeps vulnerability rows aligned with the modal frame width', () => {

@@ -78,6 +78,8 @@ export interface PackageSelectionState {
   releaseNotesVersions?: string[] // Versions between current and target (newest first)
   releaseNotesLoaded?: Map<string, string | null> // version → content (null = unavailable)
   releaseNotesLoadingVersion?: string // Currently loading this version's notes
+  releaseNotesNextIndex?: number // Next version index to attempt for lazy changelog loading
+  releaseNotesLoadMoreArmed?: boolean // Guards repeated bottom-trigger fetches until re-armed
 }
 
 export interface GroupedPackages {

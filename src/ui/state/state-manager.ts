@@ -204,18 +204,22 @@ export class StateManager {
     this.renderState.forceFullRender = true
   }
 
-  scrollInfoModalUp(): void {
-    this.modalManager.scrollModalUp()
+  scrollInfoModalUp(): boolean {
+    return this.modalManager.scrollModalUp()
     // Don't force full render — modal viewport handles its own overwrite
   }
 
-  scrollInfoModalDown(maxOffset: number): void {
-    this.modalManager.scrollModalDown(maxOffset)
+  scrollInfoModalDown(maxOffset: number): boolean {
+    return this.modalManager.scrollModalDown(maxOffset)
     // Don't force full render — modal viewport handles its own overwrite
   }
 
   getInfoModalScrollOffset(): number {
     return this.modalManager.getScrollOffset()
+  }
+
+  clampInfoModalScrollOffset(maxOffset: number): boolean {
+    return this.modalManager.clampScrollOffset(maxOffset)
   }
 
   // Filter delegation

@@ -37,16 +37,30 @@ export class ModalManager {
     return this.state.infoModalScrollOffset
   }
 
-  scrollModalUp(): void {
-    if (this.state.infoModalScrollOffset > 0) {
-      this.state.infoModalScrollOffset--
+  clampScrollOffset(maxOffset: number): boolean {
+    const nextOffset = Math.max(0, Math.min(this.state.infoModalScrollOffset, maxOffset))
+    if (nextOffset === this.state.infoModalScrollOffset) {
+      return false
     }
+
+    this.state.infoModalScrollOffset = nextOffset
+    return true
   }
 
-  scrollModalDown(maxOffset: number): void {
+  scrollModalUp(): boolean {
+    if (this.state.infoModalScrollOffset > 0) {
+      this.state.infoModalScrollOffset--
+      return true
+    }
+    return false
+  }
+
+  scrollModalDown(maxOffset: number): boolean {
     if (this.state.infoModalScrollOffset < maxOffset) {
       this.state.infoModalScrollOffset++
+      return true
     }
+    return false
   }
 
   toggleInfoModal(currentRow: number): void {

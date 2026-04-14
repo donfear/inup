@@ -39,15 +39,7 @@ export function fitModalSections(
 ): ModalSection[] {
   const activeSections = sections.map((section) => ({ ...section, rows: [...section.rows] }))
 
-  const getTotalLines = (): number => {
-    const visible = activeSections.filter((section) => section.rows.length > 0)
-    return (
-      2 +
-      visible.reduce((sum, section, index) => sum + section.rows.length + (index > 0 ? 1 : 0), 0)
-    )
-  }
-
-  while (getTotalLines() > maxHeight) {
+  while (getModalFrameHeight(activeSections) > maxHeight) {
     let trimmed = false
 
     for (const key of trimOrder) {
@@ -75,11 +67,19 @@ export function fitModalSections(
   return activeSections.filter((section) => section.rows.length > 0)
 }
 
+export function getModalSectionRowCount(sections: ModalSection[]): number {
+  const visible = sections.filter((section) => section.rows.length > 0)
+  return visible.reduce((sum, section, index) => sum + section.rows.length + (index > 0 ? 1 : 0), 0)
+}
+
+export function getModalFrameHeight(sections: ModalSection[]): number {
+  return 2 + getModalSectionRowCount(sections)
+}
+
 export function renderModalFrame(sections: ModalSection[], options: RenderModalOptions): string[] {
   const modalWidth = getModalWidth(options.terminalWidth, options.minWidth, options.maxWidth)
   const padding = Math.floor((options.terminalWidth - modalWidth) / 2)
-  const contentHeight =
-    2 + sections.reduce((sum, section, index) => sum + section.rows.length + (index > 0 ? 1 : 0), 0)
+  const contentHeight = getModalFrameHeight(sections)
   const topPadding = Math.max(0, Math.floor((options.terminalHeight - contentHeight) / 2))
   const lines: string[] = []
 

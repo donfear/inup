@@ -1,3 +1,4 @@
+import * as semver from 'semver'
 import { changelogFetcher } from '../../services'
 import { PackageSelectionState } from '../../types'
 
@@ -37,7 +38,7 @@ export class PackageInfoModalController {
     const targetVersion =
       state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion
     if (state.allVersions && state.allVersions.length > 0) {
-      state.releaseNotesVersions = changelogFetcher.getVersionsBetween(
+      state.releaseNotesVersions = this.buildReleaseNotesVersionQueue(
         state.allVersions,
         state.currentVersion,
         targetVersion
@@ -48,6 +49,8 @@ export class PackageInfoModalController {
     }
 
     state.releaseNotesLoaded = new Map()
+    state.releaseNotesNextIndex = 0
+    state.releaseNotesLoadMoreArmed = true
 
     // Fetch release notes for the first (target) version
     if (state.releaseNotesVersions.length > 0) {
@@ -55,6 +58,7 @@ export class PackageInfoModalController {
       state.releaseNotesLoadingVersion = firstVersion
       const notes = await changelogFetcher.fetchReleaseNotesForVersion(state.name, firstVersion)
       state.releaseNotesLoaded.set(firstVersion, notes)
+      state.releaseNotesNextIndex = 1
       state.releaseNotesLoadingVersion = undefined
     }
 
@@ -75,13 +79,16 @@ export class PackageInfoModalController {
     if (state.releaseNotesLoadingVersion) return false // Already loading
 
     const maxBatch = 5 // Try up to 5 versions to find one with content
+    let cursor = this.normalizeReleaseNotesCursor(state)
+    if (cursor >= state.releaseNotesVersions.length) return false
+
     let loaded = false
 
     for (let i = 0; i < maxBatch; i++) {
-      const nextVersion = state.releaseNotesVersions.find(
-        (v) => !state.releaseNotesLoaded!.has(v)
-      )
-      if (!nextVersion) break // All versions loaded
+      if (cursor >= state.releaseNotesVersions.length) break
+
+      const nextVersion = state.releaseNotesVersions[cursor]
+      cursor++
 
       state.releaseNotesLoadingVersion = nextVersion
       if (!loaded) onLoaded() // Re-render to show loading indicator on first attempt
@@ -94,6 +101,7 @@ export class PackageInfoModalController {
       if (notes) break // Found content, stop loading more
     }
 
+    state.releaseNotesNextIndex = cursor
     if (loaded) onLoaded() // Re-render with new content
     return loaded
   }
@@ -103,6 +111,57 @@ export class PackageInfoModalController {
    */
   hasMoreVersions(state: PackageSelectionState): boolean {
     if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
-    return state.releaseNotesVersions.some((v) => !state.releaseNotesLoaded!.has(v))
+    return this.normalizeReleaseNotesCursor(state) < state.releaseNotesVersions.length
+  }
+
+  private normalizeReleaseNotesCursor(state: PackageSelectionState): number {
+    if (!state.releaseNotesVersions || !state.releaseNotesLoaded) {
+      return 0
+    }
+
+    let cursor = state.releaseNotesNextIndex ?? 0
+    while (
+      cursor < state.releaseNotesVersions.length &&
+      state.releaseNotesLoaded.has(state.releaseNotesVersions[cursor])
+    ) {
+      cursor++
+    }
+
+    state.releaseNotesNextIndex = cursor
+    return cursor
+  }
+
+  private buildReleaseNotesVersionQueue(
+    allVersions: string[],
+    currentVersion: string,
+    targetVersion: string
+  ): string[] {
+    const cleanTarget = semver.clean(targetVersion)
+    if (!cleanTarget) {
+      return []
+    }
+
+    const cleanCurrent = semver.clean(currentVersion)
+    const versionsAtOrBelowTarget = Array.from(
+      new Set(
+        allVersions
+          .map((version) => semver.clean(version))
+          .filter((version): version is string => version !== null)
+          .filter((version) => semver.lte(version, cleanTarget))
+      )
+    ).sort(semver.rcompare)
+
+    if (!cleanCurrent) {
+      return versionsAtOrBelowTarget
+    }
+
+    const upgradeRangeVersions = versionsAtOrBelowTarget.filter((version) =>
+      semver.gt(version, cleanCurrent)
+    )
+    const olderVersions = versionsAtOrBelowTarget.filter((version) =>
+      semver.lte(version, cleanCurrent)
+    )
+
+    return [...upgradeRangeVersions, ...olderVersions]
   }
 }

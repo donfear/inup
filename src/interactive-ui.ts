@@ -386,23 +386,45 @@ export class InteractiveUI {
             }
             break
           case 'scroll_info_modal_up':
-            stateManager.scrollInfoModalUp()
+            {
+              const didScroll = stateManager.scrollInfoModalUp()
+              if (
+                didScroll &&
+                uiState.infoModalRow >= 0 &&
+                uiState.infoModalRow < filteredStates.length
+              ) {
+                filteredStates[uiState.infoModalRow].releaseNotesLoadMoreArmed = true
+              }
+            }
             break
           case 'scroll_info_modal_down':
-            stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)
-            // Check if near bottom and trigger lazy load of next version
             {
-              const scrollOffset = stateManager.getInfoModalScrollOffset()
+              const didScroll = stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)
               if (
-                scrollOffset >= infoModalMaxScrollOffset - 3 &&
                 uiState.infoModalRow >= 0 &&
                 uiState.infoModalRow < filteredStates.length
               ) {
                 const currentState = filteredStates[uiState.infoModalRow]
-                if (this.packageInfoModalController.hasMoreVersions(currentState)) {
-                  this.packageInfoModalController
-                    .loadNextVersion(currentState, () => renderInterface())
+
+                if (didScroll) {
+                  currentState.releaseNotesLoadMoreArmed = true
+                  break
                 }
+
+                if (
+                  currentState.releaseNotesLoadMoreArmed === false ||
+                  !this.packageInfoModalController.hasMoreVersions(currentState)
+                ) {
+                  break
+                }
+
+                currentState.releaseNotesLoadMoreArmed = false
+                this.packageInfoModalController
+                  .loadNextVersion(currentState, () => renderInterface())
+                  .finally(() => {
+                    currentState.releaseNotesLoadMoreArmed = true
+                    renderInterface()
+                  })
               }
             }
             break
@@ -630,7 +652,8 @@ export class InteractiveUI {
               uiState.infoModalScrollOffset
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
-            const scrollHint = result.maxScrollOffset > 0
+            stateManager.clampInfoModalScrollOffset(infoModalMaxScrollOffset)
+            const scrollHint = result.usesInternalScroll && result.maxScrollOffset > 0
               ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
               : ''
             renderModalViewport(
