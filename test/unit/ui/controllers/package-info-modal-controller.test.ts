@@ -47,6 +47,7 @@ const baseState: PackageSelectionState = {
 
 describe('PackageInfoModalController', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     mocks.fetchPackageMetadata.mockReset()
     mocks.getVersionsBetween.mockReset()
     mocks.fetchReleaseNotesForVersion.mockReset()
@@ -116,6 +117,8 @@ describe('PackageInfoModalController', () => {
   })
 
   it('loads the requested release note version by index', async () => {
+    vi.useFakeTimers()
+
     const controller = new PackageInfoModalController()
     const state: PackageSelectionState = {
       ...baseState,
@@ -127,7 +130,9 @@ describe('PackageInfoModalController', () => {
 
     mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce(null)
 
-    const loaded = await controller.loadVersionAtIndex(state, 1, onLoaded)
+    const pendingLoad = controller.loadVersionAtIndex(state, 1, onLoaded)
+    await vi.runAllTimersAsync()
+    const loaded = await pendingLoad
 
     expect(loaded).toBe(true)
     expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.2', undefined]])
@@ -201,6 +206,8 @@ describe('PackageInfoModalController', () => {
   })
 
   it('passes abort signal to fetchReleaseNotesForVersion during loadVersionAtIndex', async () => {
+    vi.useFakeTimers()
+
     mocks.fetchPackageMetadata.mockResolvedValue({
       description: 'Framework',
       releaseNotes: 'https://github.com/vercel/next.js/releases',
@@ -218,7 +225,9 @@ describe('PackageInfoModalController', () => {
     await controller.hydrate(state)
 
     const onLoaded = vi.fn()
-    await controller.loadVersionAtIndex(state, 0, onLoaded)
+    const pendingLoad = controller.loadVersionAtIndex(state, 0, onLoaded)
+    await vi.runAllTimersAsync()
+    await pendingLoad
 
     // Verify signal was passed as third argument
     expect(mocks.fetchReleaseNotesForVersion).toHaveBeenCalledWith(
@@ -229,6 +238,8 @@ describe('PackageInfoModalController', () => {
   })
 
   it('clears the loading state when a lazy release notes fetch throws', async () => {
+    vi.useFakeTimers()
+
     const controller = new PackageInfoModalController()
     const state: PackageSelectionState = {
       ...baseState,
@@ -240,7 +251,9 @@ describe('PackageInfoModalController', () => {
 
     mocks.fetchReleaseNotesForVersion.mockRejectedValueOnce(new Error('network failed'))
 
-    const loaded = await controller.loadVersionAtIndex(state, 1, onLoaded)
+    const pendingLoad = controller.loadVersionAtIndex(state, 1, onLoaded)
+    await vi.runAllTimersAsync()
+    const loaded = await pendingLoad
 
     expect(loaded).toBe(true)
     expect(state.releaseNotesLoadingVersion).toBeUndefined()
@@ -249,6 +262,8 @@ describe('PackageInfoModalController', () => {
   })
 
   it('does not cache aborted version fetches as missing notes', async () => {
+    vi.useFakeTimers()
+
     const controller = new PackageInfoModalController()
     const state: PackageSelectionState = {
       ...baseState,
@@ -262,7 +277,9 @@ describe('PackageInfoModalController', () => {
       new DOMException('The operation was aborted.', 'AbortError')
     )
 
-    const loaded = await controller.loadVersionAtIndex(state, 0, onLoaded)
+    const pendingLoad = controller.loadVersionAtIndex(state, 0, onLoaded)
+    await vi.runAllTimersAsync()
+    const loaded = await pendingLoad
 
     expect(loaded).toBe(false)
     expect(state.releaseNotesLoadingVersion).toBeUndefined()
@@ -271,6 +288,8 @@ describe('PackageInfoModalController', () => {
   })
 
   it('queues the latest requested version while another release notes fetch is in flight', async () => {
+    vi.useFakeTimers()
+
     let resolveFirstLoad: ((value: string | null) => void) | undefined
 
     mocks.fetchReleaseNotesForVersion
@@ -292,6 +311,7 @@ describe('PackageInfoModalController', () => {
     const onLoaded = vi.fn()
 
     const firstLoad = controller.loadVersionAtIndex(state, 0, onLoaded)
+    await vi.runAllTimersAsync()
     const queued = await controller.loadVersionAtIndex(state, 2, onLoaded)
 
     expect(queued).toBe(false)
@@ -300,7 +320,8 @@ describe('PackageInfoModalController', () => {
 
     resolveFirstLoad?.('first release notes')
     await firstLoad
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([
       ['next', '16.2.3', undefined],
@@ -308,5 +329,35 @@ describe('PackageInfoModalController', () => {
     ])
     expect(state.releaseNotesLoaded?.get('16.2.3')).toBe('first release notes')
     expect(state.releaseNotesLoaded?.get('16.2.1')).toBe('queued release notes')
+  })
+
+  it('debounces rapid release note navigation and only fetches the last requested version', async () => {
+    vi.useFakeTimers()
+
+    mocks.fetchReleaseNotesForVersion.mockResolvedValue('latest requested notes')
+
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3', '16.2.2', '16.2.1'],
+      releaseNotesLoaded: new Map(),
+      releaseNotesViewIndex: 0,
+    }
+    const onLoaded = vi.fn()
+
+    void controller.loadVersionAtIndex(state, 0, onLoaded)
+    void controller.loadVersionAtIndex(state, 1, onLoaded)
+    const lastLoad = controller.loadVersionAtIndex(state, 2, onLoaded)
+
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+
+    await vi.runAllTimersAsync()
+    const loaded = await lastLoad
+
+    expect(loaded).toBe(true)
+    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.1', undefined]])
+    expect(state.releaseNotesLoaded?.has('16.2.3')).toBe(false)
+    expect(state.releaseNotesLoaded?.has('16.2.2')).toBe(false)
+    expect(state.releaseNotesLoaded?.get('16.2.1')).toBe('latest requested notes')
   })
 })

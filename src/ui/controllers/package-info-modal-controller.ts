@@ -11,9 +11,13 @@ export interface PackageInfoModalHydrationResult {
   license?: string
 }
 
+const RELEASE_NOTES_LOAD_DEBOUNCE_MS = 120
+
 export class PackageInfoModalController {
   private abortController: AbortController | null = null
   private pendingReleaseNotesVersion: string | null = null
+  private releaseNotesDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  private resolveDebouncedLoad: ((loaded: boolean) => void) | null = null
 
   /**
    * Cancel any in-flight hydrate/release-notes fetches.
@@ -23,6 +27,12 @@ export class PackageInfoModalController {
     this.abortController?.abort()
     this.abortController = null
     this.pendingReleaseNotesVersion = null
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
+    }
+    this.resolveDebouncedLoad?.(false)
+    this.resolveDebouncedLoad = null
   }
 
   async hydrate(state: PackageSelectionState): Promise<PackageInfoModalHydrationResult | null> {
@@ -74,6 +84,12 @@ export class PackageInfoModalController {
     state.releaseNotesViewIndex = 0
     state.releaseNotesLoadingVersion = undefined
     this.pendingReleaseNotesVersion = null
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
+    }
+    this.resolveDebouncedLoad?.(false)
+    this.resolveDebouncedLoad = null
 
     return result
   }
@@ -100,7 +116,39 @@ export class PackageInfoModalController {
       return false
     }
 
-    return await this.loadVersion(state, version, onLoaded)
+    return await this.scheduleVersionLoad(state, version, onLoaded)
+  }
+
+  private scheduleVersionLoad(
+    state: PackageSelectionState,
+    version: string,
+    onLoaded: () => void
+  ): Promise<boolean> {
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
+    }
+    this.resolveDebouncedLoad?.(false)
+
+    this.pendingReleaseNotesVersion = version
+
+    return new Promise((resolve) => {
+      this.resolveDebouncedLoad = resolve
+      this.releaseNotesDebounceTimer = setTimeout(() => {
+        this.releaseNotesDebounceTimer = null
+        this.resolveDebouncedLoad = null
+
+        const nextVersion = this.pendingReleaseNotesVersion
+        this.pendingReleaseNotesVersion = null
+
+        if (!nextVersion || state.releaseNotesLoadingVersion) {
+          resolve(false)
+          return
+        }
+
+        void this.loadVersion(state, nextVersion, onLoaded).then(resolve)
+      }, RELEASE_NOTES_LOAD_DEBOUNCE_MS)
+    })
   }
 
   private async loadVersion(
