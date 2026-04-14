@@ -7,7 +7,7 @@ vi.mock('../../../src/services/jsdelivr-registry', () => ({
   fetchExactPackageManifest: fetchExactPackageManifestMock,
 }))
 
-import { ChangelogFetcher } from '../../../src/services/changelog-fetcher'
+import { ChangelogFetcher } from '../../../src/features/changelog'
 
 describe('ChangelogFetcher', () => {
   let fetcher: ChangelogFetcher
