@@ -266,6 +266,154 @@ describe('ChangelogFetcher', () => {
         'https://api.github.com/repos/demo/repo/releases/tags/v1.9.0'
       )
     })
+
+    it('falls back to the releases list when exact tag lookups fail', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [
+            {
+              tag_name: 'next-v1.9.0',
+              body: '## Changes\n- Release list fallback worked',
+            },
+          ],
+        })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+      const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
+
+      expect(notes).toContain('Release list fallback worked')
+      expect(fetchMock.mock.calls[3]?.[0]).toBe(
+        'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
+      )
+    })
+
+    it('caches the releases list fallback across multiple version lookups', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => [
+            {
+              tag_name: 'release-1.9.0',
+              body: 'Older notes',
+            },
+            {
+              tag_name: 'release-1.8.0',
+              body: 'Even older notes',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          json: async () => ({}),
+        })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+
+      const firstNotes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
+      const secondNotes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.8.0')
+
+      expect(firstNotes).toContain('Older notes')
+      expect(secondNotes).toContain('Even older notes')
+      expect(fetchMock).toHaveBeenCalledTimes(6)
+      expect(
+        fetchMock.mock.calls.filter(
+          ([url]) => url === 'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
+        )
+      ).toHaveLength(1)
+    })
+  })
+
+  describe('abort signal support', () => {
+    it('aborts metadata fetch when signal is triggered', async () => {
+      const controller = new AbortController()
+      let fetchResolve: ((value: any) => void) | undefined
+
+      fetchMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            fetchResolve = resolve
+          })
+      )
+
+      const promise = fetcher.fetchPackageMetadata('demo-pkg', '1.0.0', controller.signal)
+      controller.abort()
+
+      await expect(promise).rejects.toThrow()
+    })
+
+    it('aborts release notes fetch when signal is triggered', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ downloads: 42 }),
+      })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+
+      const controller = new AbortController()
+      fetchMock.mockImplementation(
+        (_url: string, options?: { signal?: AbortSignal }) =>
+          new Promise((resolve, reject) => {
+            const signal = options?.signal
+            if (signal?.aborted) {
+              reject(new DOMException('The operation was aborted.', 'AbortError'))
+              return
+            }
+            const onAbort = () => {
+              reject(new DOMException('The operation was aborted.', 'AbortError'))
+            }
+            signal?.addEventListener('abort', onAbort, { once: true })
+          })
+      )
+
+      // Abort before calling so the signal is already aborted
+      controller.abort()
+      const result = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0', controller.signal)
+      expect(result).toBeNull()
+    })
   })
 
   describe('clearCache()', () => {

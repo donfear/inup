@@ -2,6 +2,9 @@ import * as semver from 'semver'
 import { NPM_REGISTRY_URL, JSDELIVR_CDN_URL } from '../config/constants'
 import { fetchExactPackageManifest } from './jsdelivr-registry'
 
+const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
+const GITHUB_RELEASES_PAGE_LIMIT = 3
+
 export interface PackageMetadata {
   description: string
   homepage?: string
@@ -23,6 +26,12 @@ export interface PackageMetadata {
   npmUrl?: string
 }
 
+interface GitHubRelease {
+  tag_name?: string
+  body?: string
+  draft?: boolean
+}
+
 /**
  * Fetches package metadata from npm registry
  * Includes description, repository info, and basic metadata
@@ -34,6 +43,7 @@ export class ChangelogFetcher {
   private releaseNotesCache: Map<string, string | null> = new Map()
   private releaseNotesInFlight: Map<string, Promise<string | null>> = new Map()
   private rawChangelogCache: Map<string, string | null> = new Map()
+  private githubReleasesCache: Map<string, GitHubRelease[] | null> = new Map()
 
   private getCacheKey(packageName: string, version?: string): string {
     return `${packageName}@${version?.trim() || 'latest'}`
@@ -55,7 +65,8 @@ export class ChangelogFetcher {
    */
   async fetchPackageMetadata(
     packageName: string,
-    version?: string
+    version?: string,
+    signal?: AbortSignal
   ): Promise<PackageMetadata | null> {
     const cacheKey = this.getCacheKey(packageName, version)
 
@@ -74,7 +85,7 @@ export class ChangelogFetcher {
       return await inFlight
     }
 
-    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version).finally(() => {
+    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version, signal).finally(() => {
       this.inFlight.delete(cacheKey)
     })
     this.inFlight.set(cacheKey, lookupPromise)
@@ -83,12 +94,15 @@ export class ChangelogFetcher {
 
   private async fetchAndCachePackageMetadata(
     packageName: string,
-    version?: string
+    version?: string,
+    signal?: AbortSignal
   ): Promise<PackageMetadata | null> {
     const cacheKey = this.getCacheKey(packageName, version)
 
     try {
-      const response = await this.fetchPackageManifest(packageName, version)
+      signal?.throwIfAborted()
+
+      const response = await this.fetchPackageManifest(packageName, version, signal)
 
       if (!response) {
         this.failureCache.add(cacheKey)
@@ -129,7 +143,8 @@ export class ChangelogFetcher {
 
       // Try to get weekly download count
       try {
-        const downloadsData = await this.fetchDownloadStats(packageName)
+        signal?.throwIfAborted()
+        const downloadsData = await this.fetchDownloadStats(packageName, signal)
         if (downloadsData) {
           metadata.weeklyDownloads = downloadsData.downloads
         }
@@ -139,7 +154,10 @@ export class ChangelogFetcher {
 
       this.cachePackageMetadata(packageName, cacheKey, metadata)
       return metadata
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
       // Cache the failure to avoid retrying
       this.failureCache.add(cacheKey)
       return null
@@ -151,9 +169,12 @@ export class ChangelogFetcher {
    */
   private async fetchPackageManifest(
     packageName: string,
-    version?: string
+    version?: string,
+    signal?: AbortSignal
   ): Promise<Record<string, unknown> | null> {
     try {
+      signal?.throwIfAborted()
+
       const normalizedVersion = version?.trim()
       if (normalizedVersion) {
         const jsdelivrManifest = await fetchExactPackageManifest(packageName, normalizedVersion)
@@ -161,6 +182,8 @@ export class ChangelogFetcher {
           return jsdelivrManifest
         }
       }
+
+      signal?.throwIfAborted()
 
       const npmPath = normalizedVersion ? normalizedVersion : 'latest'
       const response = await fetch(
@@ -170,6 +193,7 @@ export class ChangelogFetcher {
           headers: {
             accept: 'application/json',
           },
+          signal,
         }
       )
 
@@ -178,7 +202,10 @@ export class ChangelogFetcher {
       }
 
       return (await response.json()) as Record<string, unknown>
-    } catch {
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error
+      }
       return null
     }
   }
@@ -210,7 +237,10 @@ export class ChangelogFetcher {
   /**
    * Fetch weekly download statistics from npm
    */
-  private async fetchDownloadStats(packageName: string): Promise<{ downloads: number } | null> {
+  private async fetchDownloadStats(
+    packageName: string,
+    signal?: AbortSignal
+  ): Promise<{ downloads: number } | null> {
     try {
       const response = await fetch(
         `https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(packageName)}`,
@@ -219,6 +249,7 @@ export class ChangelogFetcher {
           headers: {
             accept: 'application/json',
           },
+          signal,
         }
       )
 
@@ -311,7 +342,11 @@ export class ChangelogFetcher {
    * Tries GitHub Releases API first, then CHANGELOG.md from jsDelivr.
    * Returns the markdown text or null if unavailable.
    */
-  async fetchReleaseNotesForVersion(packageName: string, version: string): Promise<string | null> {
+  async fetchReleaseNotesForVersion(
+    packageName: string,
+    version: string,
+    signal?: AbortSignal
+  ): Promise<string | null> {
     const notesCacheKey = `release-notes:${packageName}@${version}`
 
     // Check cache
@@ -325,7 +360,7 @@ export class ChangelogFetcher {
       return await inFlight
     }
 
-    const promise = this.doFetchReleaseNotes(packageName, version).then((result) => {
+    const promise = this.doFetchReleaseNotes(packageName, version, signal).then((result) => {
       this.releaseNotesCache.set(notesCacheKey, result)
       this.releaseNotesInFlight.delete(notesCacheKey)
       return result
@@ -334,7 +369,16 @@ export class ChangelogFetcher {
     return await promise
   }
 
-  private async doFetchReleaseNotes(packageName: string, version: string): Promise<string | null> {
+  private async doFetchReleaseNotes(
+    packageName: string,
+    version: string,
+    callerSignal?: AbortSignal
+  ): Promise<string | null> {
+    const timeoutSignal = AbortSignal.timeout(RELEASE_NOTES_FETCH_TIMEOUT_MS)
+    const signal = callerSignal
+      ? AbortSignal.any([callerSignal, timeoutSignal])
+      : timeoutSignal
+
     // Get the repository URL for GitHub API
     const metadata =
       this.cache.get(this.getCacheKey(packageName, version)) ??
@@ -345,22 +389,26 @@ export class ChangelogFetcher {
 
     // Try GitHub Releases API if we have a GitHub repo
     if (repoUrl.includes('github.com')) {
-      const ghNotes = await this.fetchGitHubReleaseNotes(repoUrl, version)
+      const ghNotes = await this.fetchGitHubReleaseNotes(repoUrl, version, signal)
       if (ghNotes) return ghNotes
 
       // Fallback: try CHANGELOG.md from the GitHub repo (raw)
-      const rawChangelog = await this.fetchGitHubChangelogMd(repoUrl, version)
+      const rawChangelog = await this.fetchGitHubChangelogMd(repoUrl, version, signal)
       if (rawChangelog) return rawChangelog
     }
 
     // Fallback: try CHANGELOG.md from jsDelivr (npm package)
-    const changelogNotes = await this.fetchChangelogMd(packageName, version)
+    const changelogNotes = await this.fetchChangelogMd(packageName, version, signal)
     if (changelogNotes) return changelogNotes
 
     return null
   }
 
-  private async fetchGitHubReleaseNotes(repoUrl: string, version: string): Promise<string | null> {
+  private async fetchGitHubReleaseNotes(
+    repoUrl: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
     if (!match) return null
 
@@ -377,7 +425,7 @@ export class ChangelogFetcher {
               accept: 'application/vnd.github.v3+json',
               'user-agent': 'inup-cli',
             },
-            signal: AbortSignal.timeout(10000),
+            signal,
           }
         )
 
@@ -392,14 +440,97 @@ export class ChangelogFetcher {
       }
     }
 
+    const releases = await this.fetchGitHubReleases(owner, repo, signal)
+    if (!releases) return null
+
+    const normalizedVersion = semver.clean(version)
+    if (!normalizedVersion) return null
+
+    for (const release of releases) {
+      if (release.draft) continue
+
+      const releaseVersion = this.normalizeReleaseTag(release.tag_name)
+      if (releaseVersion !== normalizedVersion) continue
+
+      if (release.body && release.body.trim().length > 0) {
+        return release.body.trim()
+      }
+    }
+
     return null
+  }
+
+  private async fetchGitHubReleases(
+    owner: string,
+    repo: string,
+    signal: AbortSignal
+  ): Promise<GitHubRelease[] | null> {
+    const cacheKey = `github-releases:${owner}/${repo}`
+    if (this.githubReleasesCache.has(cacheKey)) {
+      return this.githubReleasesCache.get(cacheKey)!
+    }
+
+    const releases: GitHubRelease[] = []
+
+    for (let page = 1; page <= GITHUB_RELEASES_PAGE_LIMIT; page += 1) {
+      try {
+        const response = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/releases?per_page=100&page=${page}`,
+          {
+            method: 'GET',
+            headers: {
+              accept: 'application/vnd.github.v3+json',
+              'user-agent': 'inup-cli',
+            },
+            signal,
+          }
+        )
+
+        if (!response.ok) {
+          break
+        }
+
+        const pageReleases = (await response.json()) as GitHubRelease[]
+        if (!Array.isArray(pageReleases) || pageReleases.length === 0) {
+          break
+        }
+
+        releases.push(...pageReleases)
+
+        if (pageReleases.length < 100) {
+          break
+        }
+      } catch {
+        break
+      }
+    }
+
+    const result = releases.length > 0 ? releases : null
+    this.githubReleasesCache.set(cacheKey, result)
+    return result
+  }
+
+  private normalizeReleaseTag(tagName?: string): string | null {
+    if (!tagName) return null
+
+    const cleanedTag = semver.clean(tagName)
+    if (cleanedTag) return cleanedTag
+
+    const semverMatch = tagName.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z-.]+)?(?:\+[0-9A-Za-z-.]+)?/)
+    if (!semverMatch) return null
+
+    return semver.clean(semverMatch[0])
   }
 
   /**
    * Fetch CHANGELOG.md from a GitHub repo's default branch and extract the
    * section for the requested version. Caches the full file per-repo.
    */
-  private async fetchGitHubChangelogMd(repoUrl: string, version: string): Promise<string | null> {
+  private async fetchGitHubChangelogMd(
+    repoUrl: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
     const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
     if (!match) return null
 
@@ -408,7 +539,7 @@ export class ChangelogFetcher {
 
     let fullText = this.rawChangelogCache.get(cacheKey)
     if (fullText === undefined) {
-      fullText = await this.downloadGitHubChangelog(owner, repo)
+      fullText = await this.downloadGitHubChangelog(owner, repo, signal)
       this.rawChangelogCache.set(cacheKey, fullText)
     }
 
@@ -416,7 +547,11 @@ export class ChangelogFetcher {
     return this.extractVersionSection(fullText, version)
   }
 
-  private async downloadGitHubChangelog(owner: string, repo: string): Promise<string | null> {
+  private async downloadGitHubChangelog(
+    owner: string,
+    repo: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
     // Try common branch names and file names
     const branches = ['main', 'master']
     const filenames = ['CHANGELOG.md', 'CHANGES.md', 'HISTORY.md']
@@ -428,7 +563,7 @@ export class ChangelogFetcher {
             `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filename}`,
             {
               method: 'GET',
-              signal: AbortSignal.timeout(10000),
+              signal,
             }
           )
           if (response.ok) {
@@ -443,13 +578,17 @@ export class ChangelogFetcher {
     return null
   }
 
-  private async fetchChangelogMd(packageName: string, version: string): Promise<string | null> {
+  private async fetchChangelogMd(
+    packageName: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
     try {
       const response = await fetch(
         `${JSDELIVR_CDN_URL}/${encodeURIComponent(packageName)}@${version}/CHANGELOG.md`,
         {
           method: 'GET',
-          signal: AbortSignal.timeout(10000),
+          signal,
         }
       )
 
@@ -500,6 +639,7 @@ export class ChangelogFetcher {
     this.releaseNotesCache.clear()
     this.releaseNotesInFlight.clear()
     this.rawChangelogCache.clear()
+    this.githubReleasesCache.clear()
   }
 }
 

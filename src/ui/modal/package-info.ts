@@ -76,7 +76,9 @@ export function renderPackageInfoModal(
   const fixedModalHeight = maxHeight
   const padding = Math.floor((terminalWidth - modalWidth) / 2)
 
-  const pinnedSections = allSections.filter((section) => (section.behavior ?? 'pinned') === 'pinned')
+  const pinnedSections = allSections.filter(
+    (section) => (section.behavior ?? 'pinned') === 'pinned'
+  )
   const bodySections = allSections.filter((section) => (section.behavior ?? 'pinned') !== 'pinned')
   const minBodyRows = 3
   const reservedBodyRows = minBodyRows + (bodySections.length > 0 ? 1 : 0)
@@ -101,19 +103,24 @@ export function renderPackageInfoModal(
   const totalScrollableRows = bodyRows.length
   const maxScroll = Math.max(0, totalScrollableRows - availableForBody)
   const clampedOffset = Math.min(scrollOffset, maxScroll)
-  const hasMoreVersions =
-    !!state.releaseNotesVersions &&
-    (state.releaseNotesNextIndex ?? 0) < state.releaseNotesVersions.length
+  const totalVersions = state.releaseNotesVersions?.length ?? 0
+  const viewIndex = state.releaseNotesViewIndex ?? 0
+  const canGoNewer = viewIndex > 0
+  const canGoOlder = viewIndex < totalVersions - 1
   const footerStatus = state.releaseNotesLoadingVersion
     ? chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)
-    : hasMoreVersions && clampedOffset >= maxScroll
-      ? chalk.gray('Press Down to load older versions')
-      : maxScroll > 0
-        ? clampedOffset < maxScroll
-          ? chalk.gray(
-              `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + availableForBody, totalScrollableRows)} of ${totalScrollableRows}`
-            )
-          : chalk.gray('End of release notes')
+    : maxScroll > 0
+      ? clampedOffset < maxScroll
+        ? chalk.gray(
+            `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + availableForBody, totalScrollableRows)} of ${totalScrollableRows}`
+          )
+        : chalk.gray('End of release notes')
+      : canGoNewer || canGoOlder
+        ? chalk.gray(
+            [canGoNewer ? '← newer version' : null, canGoOlder ? '→ older version' : null]
+              .filter((hint): hint is string => Boolean(hint))
+              .join('  ·  ')
+          )
         : null
   const visibleBodyRows = footerStatus ? Math.max(1, availableForBody - 1) : availableForBody
   const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
@@ -149,10 +156,7 @@ export function renderPackageInfoModal(
   }
 
   const usedContentRows =
-    pinnedRowCount +
-    (bodySections.length > 0 ? 1 : 0) +
-    renderedScrollRows +
-    (footerStatus ? 1 : 0)
+    pinnedRowCount + (bodySections.length > 0 ? 1 : 0) + renderedScrollRows + (footerStatus ? 1 : 0)
   const totalContentSlots = fixedModalHeight - 2
   const emptyRows = Math.max(0, totalContentSlots - usedContentRows)
   for (let i = 0; i < emptyRows; i++) {

@@ -97,7 +97,6 @@ describe('PackageInfoModalController', () => {
       description: 'Framework',
       releaseNotes: 'https://github.com/vercel/next.js/releases',
     })
-    mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce('first release')
 
     const controller = new PackageInfoModalController()
     const state = {
@@ -110,31 +109,142 @@ describe('PackageInfoModalController', () => {
     await controller.hydrate(state)
 
     expect(state.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1'])
-    expect(state.releaseNotesLoaded?.get('16.2.3')).toBe('first release')
-    expect(state.releaseNotesNextIndex).toBe(1)
-    expect(state.releaseNotesLoadMoreArmed).toBe(true)
+    expect(state.releaseNotesLoaded?.size).toBe(0)
+    expect(state.releaseNotesViewIndex).toBe(0)
+    expect(state.releaseNotesLoadingVersion).toBeUndefined()
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
   })
 
-  it('loads exactly one release note version per request', async () => {
+  it('loads the requested release note version by index', async () => {
     const controller = new PackageInfoModalController()
     const state: PackageSelectionState = {
       ...baseState,
       releaseNotesVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
       releaseNotesLoaded: new Map([['16.2.3', 'first release']]),
-      releaseNotesNextIndex: 1,
+      releaseNotesViewIndex: 0,
     }
     const onLoaded = vi.fn()
 
     mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce(null)
 
-    const loaded = await controller.loadNextVersion(state, onLoaded)
+    const loaded = await controller.loadVersionAtIndex(state, 1, onLoaded)
 
     expect(loaded).toBe(true)
-    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.2']])
+    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.2', undefined]])
     expect(state.releaseNotesLoaded?.get('16.2.2')).toBeNull()
     expect(state.releaseNotesLoaded?.has('16.2.1')).toBe(false)
-    expect(state.releaseNotesNextIndex).toBe(2)
-    expect(controller.hasMoreVersions(state)).toBe(true)
+    expect(onLoaded).toHaveBeenCalledTimes(2)
+  })
+
+  it('navigates between available release note versions', () => {
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3', '16.2.2', '16.2.1'],
+      releaseNotesLoaded: new Map(),
+      releaseNotesViewIndex: 1,
+    }
+
+    expect(controller.canNavigate(state, 'newer')).toBe(true)
+    expect(controller.canNavigate(state, 'older')).toBe(true)
+    expect(controller.navigateVersion(state, 'newer')).toBe(0)
+    expect(state.releaseNotesViewIndex).toBe(0)
+    expect(controller.navigateVersion(state, 'newer')).toBe(-1)
+    expect(controller.navigateVersion(state, 'older')).toBe(1)
+    expect(controller.navigateVersion(state, 'older')).toBe(2)
+    expect(controller.canNavigate(state, 'older')).toBe(false)
+    expect(controller.navigateVersion(state, 'older')).toBe(-1)
+  })
+
+  it('passes abort signal to fetchPackageMetadata during hydration', async () => {
+    mocks.fetchPackageMetadata.mockResolvedValue({
+      description: 'Framework',
+      releaseNotes: 'https://github.com/vercel/next.js/releases',
+    })
+
+    const controller = new PackageInfoModalController()
+    const state = { ...baseState, allVersions: ['16.2.3', '16.2.2', '16.2.1'] }
+    await controller.hydrate(state)
+
+    // Verify signal was passed as third argument
+    expect(mocks.fetchPackageMetadata).toHaveBeenCalledWith(
+      'next',
+      '16.2.3',
+      expect.objectContaining({ aborted: false })
+    )
+  })
+
+  it('cancel() aborts in-flight hydration', async () => {
+    let resolveMetadata: ((value: any) => void) | undefined
+    mocks.fetchPackageMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveMetadata = resolve
+        })
+    )
+
+    const controller = new PackageInfoModalController()
+    const state = { ...baseState }
+    const hydratePromise = controller.hydrate(state)
+
+    // Cancel before metadata resolves
+    controller.cancel()
+
+    // Verify the signal passed to fetchPackageMetadata is now aborted
+    const passedSignal = mocks.fetchPackageMetadata.mock.calls[0][2] as AbortSignal
+    expect(passedSignal.aborted).toBe(true)
+
+    // Resolve the metadata to let the promise settle
+    resolveMetadata?.(null)
+    const result = await hydratePromise
+    expect(result).toBeNull()
+  })
+
+  it('passes abort signal to fetchReleaseNotesForVersion during loadVersionAtIndex', async () => {
+    mocks.fetchPackageMetadata.mockResolvedValue({
+      description: 'Framework',
+      releaseNotes: 'https://github.com/vercel/next.js/releases',
+    })
+    mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce('release content')
+
+    const controller = new PackageInfoModalController()
+    const state = {
+      ...baseState,
+      currentVersion: '16.2.1',
+      currentVersionSpecifier: '^16.2.1',
+      selectedOption: 'latest' as const,
+      allVersions: ['16.2.3', '16.2.2', '16.2.1'],
+    }
+    await controller.hydrate(state)
+
+    const onLoaded = vi.fn()
+    await controller.loadVersionAtIndex(state, 0, onLoaded)
+
+    // Verify signal was passed as third argument
+    expect(mocks.fetchReleaseNotesForVersion).toHaveBeenCalledWith(
+      'next',
+      '16.2.3',
+      expect.objectContaining({ aborted: false })
+    )
+  })
+
+  it('clears the loading state when a lazy release notes fetch throws', async () => {
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3', '16.2.2'],
+      releaseNotesLoaded: new Map([['16.2.3', 'first release']]),
+      releaseNotesViewIndex: 0,
+    }
+    const onLoaded = vi.fn()
+
+    mocks.fetchReleaseNotesForVersion.mockRejectedValueOnce(new Error('network failed'))
+
+    const loaded = await controller.loadVersionAtIndex(state, 1, onLoaded)
+
+    expect(loaded).toBe(true)
+    expect(state.releaseNotesLoadingVersion).toBeUndefined()
+    expect(state.releaseNotesLoaded?.get('16.2.2')).toBeNull()
     expect(onLoaded).toHaveBeenCalledTimes(2)
   })
 })

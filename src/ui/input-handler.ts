@@ -15,6 +15,7 @@ export type InputAction =
   | { type: 'toggle_info_modal' }
   | { type: 'scroll_info_modal_up' }
   | { type: 'scroll_info_modal_down' }
+  | { type: 'navigate_info_modal_version'; direction: 'newer' | 'older' }
   | { type: 'toggle_theme_modal' }
   | { type: 'theme_navigate_up' }
   | { type: 'theme_navigate_down' }
@@ -112,6 +113,12 @@ export class InputHandler {
             return
           case 'down':
             this.onAction({ type: 'scroll_info_modal_down' })
+            return
+          case 'left':
+            this.onAction({ type: 'navigate_info_modal_version', direction: 'newer' })
+            return
+          case 'right':
+            this.onAction({ type: 'navigate_info_modal_version', direction: 'older' })
             return
           default:
             return // Consume all other keys while modal is open

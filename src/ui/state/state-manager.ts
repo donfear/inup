@@ -188,10 +188,11 @@ export class StateManager {
   }
 
   // Modal delegation
-  toggleInfoModal(): void {
+  toggleInfoModal(): number {
     const currentRow = this.navigationManager.getCurrentRow()
-    this.modalManager.toggleInfoModal(currentRow)
+    const sessionId = this.modalManager.toggleInfoModal(currentRow)
     this.renderState.forceFullRender = true
+    return sessionId
   }
 
   closeInfoModal(): void {
@@ -199,9 +200,20 @@ export class StateManager {
     this.renderState.forceFullRender = true
   }
 
-  setModalLoading(isLoading: boolean): void {
-    this.modalManager.setModalLoading(isLoading)
-    this.renderState.forceFullRender = true
+  setModalLoading(isLoading: boolean, sessionId?: number): boolean {
+    const updated = this.modalManager.setModalLoading(isLoading, sessionId)
+    if (updated) {
+      this.renderState.forceFullRender = true
+    }
+    return updated
+  }
+
+  getInfoModalSessionId(): number {
+    return this.modalManager.getSessionId()
+  }
+
+  resetInfoModalScroll(): void {
+    this.modalManager.resetScroll()
   }
 
   scrollInfoModalUp(): boolean {
@@ -262,7 +274,9 @@ export class StateManager {
     return this.filterManager.getFilteredStates(allStates, options)
   }
 
-  toggleDependencyTypeFilter(type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'): void {
+  toggleDependencyTypeFilter(
+    type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
+  ): void {
     this.filterManager.toggleDependencyType(type)
     // Reset navigation when filter changes
     this.navigationManager.setCurrentRow(0)
@@ -310,7 +324,10 @@ export class StateManager {
   }
 
   resetForResize(totalFilteredItems?: number): void {
-    const totalItems = totalFilteredItems || this.renderState.renderableItems.length || this.displayState.maxVisibleItems
+    const totalItems =
+      totalFilteredItems ||
+      this.renderState.renderableItems.length ||
+      this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
   }

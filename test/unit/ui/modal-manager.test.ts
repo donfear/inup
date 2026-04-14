@@ -14,4 +14,21 @@ describe('ModalManager', () => {
     expect(manager.clampScrollOffset(0)).toBe(true)
     expect(manager.getScrollOffset()).toBe(0)
   })
+
+  it('ignores stale loading updates from an older modal session', () => {
+    const manager = new ModalManager()
+
+    const firstSessionId = manager.toggleInfoModal(0)
+    expect(manager.setModalLoading(true, firstSessionId)).toBe(true)
+
+    manager.closeInfoModal()
+    const secondSessionId = manager.toggleInfoModal(1)
+
+    expect(secondSessionId).toBeGreaterThan(firstSessionId)
+    expect(manager.setModalLoading(false, firstSessionId)).toBe(false)
+    expect(manager.isLoading()).toBe(false)
+
+    expect(manager.setModalLoading(true, secondSessionId)).toBe(true)
+    expect(manager.isLoading()).toBe(true)
+  })
 })
