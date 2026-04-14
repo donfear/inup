@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../src/ui/modal'
 import { PackageSelectionState } from '../../../src/types'
-import { getVisualLength } from '../../../src/ui/utils'
+import { getVisualLength, stripAnsi } from '../../../src/ui/utils'
 
 const baseState: PackageSelectionState = {
   name: 'next',
@@ -174,6 +174,49 @@ describe('modal renderer', () => {
     const rendered = result.lines.join('\n')
     expect(rendered).toContain('\u001b]8;;https://github.com/icyJoseph\u0007@icyJoseph\u001b]8;;\u0007')
     expect(rendered).toContain('\u001b]8;;https://github.com/sokra\u0007@sokra\u001b]8;;\u0007')
+  })
+
+  it('renders pull request numbers and commit hashes as repository hyperlinks', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        repository: 'https://github.com/vercel/next.js/releases',
+        releaseNotesVersions: ['16.2.3'],
+        releaseNotesLoaded: new Map([
+          ['16.2.3', '### Patch Changes\n\n- #13128 6c0b8e4 Thanks @pavelivanov!'],
+        ]),
+      },
+      100,
+      24
+    )
+
+    const rendered = result.lines.join('\n')
+    expect(rendered).toContain('\u001b]8;;https://github.com/vercel/next.js/pull/13128\u0007#13128\u001b]8;;\u0007')
+    expect(rendered).toContain('\u001b]8;;https://github.com/vercel/next.js/commit/6c0b8e4\u00076c0b8e4\u001b]8;;\u0007')
+  })
+
+  it('keeps inline repository links on the same wrapped line when space allows', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...baseState,
+        repository: 'https://github.com/TanStack/query/releases',
+        releaseNotesVersions: ['4.1.5'],
+        releaseNotesLoaded: new Map([
+          [
+            '4.1.5',
+            '### Patch Changes\n\n- #13155 3ba1583 Thanks @jerelmiller! - Fix an issue where useQuery would poll with pollInterval when skip was initialized to true.',
+          ],
+        ]),
+      },
+      120,
+      24
+    )
+
+    const visibleLines = result.lines.map((line) => stripAnsi(line))
+    const linkedLine = visibleLines.find((line) => line.includes('#13155'))
+
+    expect(linkedLine).toBeDefined()
+    expect(linkedLine).toContain('#13155 3ba1583 Thanks @jerelmiller!')
   })
 
   it('fits inside short terminal heights by trimming low-priority content', () => {

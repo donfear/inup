@@ -13,6 +13,14 @@ function formatTerminalLink(label: string, url: string): string {
   return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`
 }
 
+function getRepositoryBaseUrl(repositoryUrl: string | undefined): string | null {
+  if (!repositoryUrl) {
+    return null
+  }
+
+  return repositoryUrl.replace(/\/releases\/?$/, '')
+}
+
 function sanitizeMarkdownText(text: string): string {
   return text
     .replace(/<[^>]+>/g, '')
@@ -26,6 +34,25 @@ function linkifyContributorMentions(text: string): string {
   return text.replace(/(^|[\s(])@([a-zA-Z0-9-]+)/g, (match, prefix: string, username: string) => {
     return `${prefix}${formatTerminalLink(`@${username}`, `https://github.com/${username}`)}`
   })
+}
+
+function linkifyRepositoryReferences(text: string, repositoryUrl?: string): string {
+  const repoBaseUrl = getRepositoryBaseUrl(repositoryUrl)
+  if (!repoBaseUrl || !repoBaseUrl.includes('github.com')) {
+    return text
+  }
+
+  return text
+    .replace(/(^|[\s(])#(\d+)\b/g, (match, prefix: string, number: string) => {
+      return `${prefix}${formatTerminalLink(`#${number}`, `${repoBaseUrl}/pull/${number}`)}`
+    })
+    .replace(/(^|[\s(])([0-9a-f]{7,40})\b/gi, (match, prefix: string, hash: string) => {
+      return `${prefix}${formatTerminalLink(hash, `${repoBaseUrl}/commit/${hash}`)}`
+    })
+}
+
+function linkifyMarkdownText(text: string, repositoryUrl?: string): string {
+  return linkifyRepositoryReferences(linkifyContributorMentions(text), repositoryUrl)
 }
 
 function pushWrappedLines(
@@ -66,7 +93,11 @@ function isLowSignalTrailerLine(text: string): boolean {
   )
 }
 
-function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
+function formatReleaseNotesMarkdown(
+  markdown: string,
+  width: number,
+  repositoryUrl?: string
+): string[] {
   const lines: string[] = []
   const rawLines = markdown.split('\n')
   let prevBlank = false
@@ -94,7 +125,7 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
 
     const quoteMatch = trimmed.match(/^>\s*(.+)/)
     if (quoteMatch) {
-      const quoteBody = linkifyContributorMentions(sanitizeMarkdownText(quoteMatch[1]))
+      const quoteBody = linkifyMarkdownText(sanitizeMarkdownText(quoteMatch[1]), repositoryUrl)
       const admonitionMatch = quoteBody.match(/^\[!([A-Z]+)\]$/i)
       if (admonitionMatch) {
         const label = `${admonitionMatch[1][0]}${admonitionMatch[1].slice(1).toLowerCase()}`
@@ -139,7 +170,7 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
       const style = /breaking/i.test(bulletMatch[2]) ? chalk.red : undefined
       pushWrappedLines(
         lines,
-        linkifyContributorMentions(sanitizeMarkdownText(bulletMatch[2])),
+        linkifyMarkdownText(sanitizeMarkdownText(bulletMatch[2]), repositoryUrl),
         width,
         prefix,
         restPrefix,
@@ -156,7 +187,7 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
       const restPrefix = `  ${'  '.repeat(indentLevel)}${' '.repeat(marker.length + 1)}`
       pushWrappedLines(
         lines,
-        linkifyContributorMentions(sanitizeMarkdownText(orderedMatch[3])),
+        linkifyMarkdownText(sanitizeMarkdownText(orderedMatch[3]), repositoryUrl),
         width,
         prefix,
         restPrefix
@@ -165,7 +196,14 @@ function formatReleaseNotesMarkdown(markdown: string, width: number): string[] {
     }
 
     const style = isLowSignalTrailerLine(cleaned) ? chalk.gray : undefined
-    pushWrappedLines(lines, linkifyContributorMentions(cleaned), width, '  ', '  ', style)
+    pushWrappedLines(
+      lines,
+      linkifyMarkdownText(cleaned, repositoryUrl),
+      width,
+      '  ',
+      '  ',
+      style
+    )
   }
 
   while (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -210,7 +248,7 @@ export function buildReleaseNotesSections(
 
     const versionHeader = getThemeColor('primary')(`Version ${version}`)
     const rows: string[] = [chalk.bold(versionHeader)]
-    const formatted = formatReleaseNotesMarkdown(content, modalWidth - 4)
+    const formatted = formatReleaseNotesMarkdown(content, modalWidth - 4, state.repository)
     rows.push(...formatted)
 
     sections.push({
