@@ -71,6 +71,8 @@ describe('PackageInfoModalController', () => {
     const controller = new PackageInfoModalController()
     const state = {
       ...baseState,
+      currentVersion: '16.2.1',
+      currentVersionSpecifier: '^16.2.1',
       selectedOption: 'latest' as const,
       allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
     }
@@ -100,12 +102,14 @@ describe('PackageInfoModalController', () => {
     const controller = new PackageInfoModalController()
     const state = {
       ...baseState,
+      currentVersion: '16.2.1',
+      currentVersionSpecifier: '^16.2.1',
       selectedOption: 'latest' as const,
       allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
     }
     await controller.hydrate(state)
 
-    expect(state.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1', '16.2.0'])
+    expect(state.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1'])
     expect(state.releaseNotesLoaded?.get('16.2.3')).toBe('first release')
     expect(state.releaseNotesNextIndex).toBe(1)
     expect(state.releaseNotesLoadMoreArmed).toBe(true)

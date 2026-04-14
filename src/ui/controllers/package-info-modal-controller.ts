@@ -155,13 +155,10 @@ export class PackageInfoModalController {
       return versionsAtOrBelowTarget
     }
 
-    const upgradeRangeVersions = versionsAtOrBelowTarget.filter((version) =>
-      semver.gt(version, cleanCurrent)
-    )
-    const olderVersions = versionsAtOrBelowTarget.filter((version) =>
-      semver.lte(version, cleanCurrent)
+    const relevantVersions = versionsAtOrBelowTarget.filter((version) =>
+      semver.gte(version, cleanCurrent)
     )
 
-    return [...upgradeRangeVersions, ...olderVersions]
+    return relevantVersions
   }
 }
