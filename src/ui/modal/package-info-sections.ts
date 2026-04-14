@@ -220,6 +220,8 @@ export function buildReleaseNotesSections(
     })
   }
 
+  const hasRenderedReleaseNotes = sections.some((section) => section.behavior === 'body')
+
   if (state.releaseNotesLoadingVersion && !loaded.has(state.releaseNotesLoadingVersion)) {
     sections.push({
       key: 'release-loading',
@@ -229,7 +231,7 @@ export function buildReleaseNotesSections(
   }
 
   const allLoaded = (state.releaseNotesNextIndex ?? 0) >= state.releaseNotesVersions.length
-  if (!allLoaded && !state.releaseNotesLoadingVersion) {
+  if (!allLoaded && !state.releaseNotesLoadingVersion && hasRenderedReleaseNotes) {
     sections.push({
       key: 'release-more',
       rows: [chalk.gray('Press Down to load older versions')],
@@ -237,7 +239,7 @@ export function buildReleaseNotesSections(
     })
   }
 
-  if (allLoaded && sections.length === 0) {
+  if (sections.length === 0) {
     sections.push({
       key: 'release-none',
       rows: [chalk.gray.italic('No release notes found for this version range')],

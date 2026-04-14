@@ -44,7 +44,7 @@ describe('modal renderer', () => {
     expect(result.lines.filter((line) => line.includes('│')).length).toBeLessThan(14)
   })
 
-  it('does not force scroll mode for status-only release note sections', () => {
+  it('shows no-release-notes message instead of load-more hint when no notes are found', () => {
     const result = renderPackageInfoModal(
       {
         ...baseState,
@@ -57,7 +57,8 @@ describe('modal renderer', () => {
     )
 
     expect(result.usesInternalScroll).toBe(false)
-    expect(result.lines.join('\n')).toContain('Press Down to load older versions')
+    expect(result.lines.join('\n')).toContain('No release notes found for this version range')
+    expect(result.lines.join('\n')).not.toContain('Press Down to load older versions')
   })
 
   it('renders homepage and vulnerability before changelog notes', () => {
