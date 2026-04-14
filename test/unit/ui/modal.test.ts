@@ -31,9 +31,7 @@ describe('modal renderer', () => {
       {
         ...baseState,
         releaseNotesVersions: ['16.2.3'],
-        releaseNotesLoaded: new Map([
-          ['16.2.3', '## Added\n- Faster startup\n- Better caching'],
-        ]),
+        releaseNotesLoaded: new Map([['16.2.3', '## Added\n- Faster startup\n- Better caching']]),
       },
       100,
       24
@@ -50,15 +48,15 @@ describe('modal renderer', () => {
         ...baseState,
         releaseNotesVersions: ['16.2.3', '16.2.2'],
         releaseNotesLoaded: new Map([['16.2.3', null]]),
-        releaseNotesNextIndex: 1,
+        releaseNotesViewIndex: 0,
       },
       100,
       24
     )
 
     expect(result.usesInternalScroll).toBe(false)
-    expect(result.lines.join('\n')).toContain('No release notes found for this version range')
-    expect(result.lines.join('\n')).not.toContain('Press Down to load older versions')
+    expect(result.lines.join('\n')).toContain('No release notes found for v16.2.3')
+    expect(result.lines.join('\n')).toContain('→ older')
   })
 
   it('renders homepage and vulnerability before changelog notes', () => {
@@ -80,7 +78,7 @@ describe('modal renderer', () => {
         },
         releaseNotesVersions: ['16.2.3', '16.2.2'],
         releaseNotesLoaded: new Map([['16.2.3', '## Added\n- Faster startup']]),
-        releaseNotesNextIndex: 1,
+        releaseNotesViewIndex: 0,
       },
       120,
       30
@@ -172,7 +170,9 @@ describe('modal renderer', () => {
     )
 
     const rendered = result.lines.join('\n')
-    expect(rendered).toContain('\u001b]8;;https://github.com/icyJoseph\u0007@icyJoseph\u001b]8;;\u0007')
+    expect(rendered).toContain(
+      '\u001b]8;;https://github.com/icyJoseph\u0007@icyJoseph\u001b]8;;\u0007'
+    )
     expect(rendered).toContain('\u001b]8;;https://github.com/sokra\u0007@sokra\u001b]8;;\u0007')
   })
 
@@ -191,8 +191,12 @@ describe('modal renderer', () => {
     )
 
     const rendered = result.lines.join('\n')
-    expect(rendered).toContain('\u001b]8;;https://github.com/vercel/next.js/pull/13128\u0007#13128\u001b]8;;\u0007')
-    expect(rendered).toContain('\u001b]8;;https://github.com/vercel/next.js/commit/6c0b8e4\u00076c0b8e4\u001b]8;;\u0007')
+    expect(rendered).toContain(
+      '\u001b]8;;https://github.com/vercel/next.js/pull/13128\u0007#13128\u001b]8;;\u0007'
+    )
+    expect(rendered).toContain(
+      '\u001b]8;;https://github.com/vercel/next.js/commit/6c0b8e4\u00076c0b8e4\u001b]8;;\u0007'
+    )
   })
 
   it('keeps inline repository links on the same wrapped line when space allows', () => {
@@ -267,7 +271,27 @@ describe('modal renderer', () => {
     expect(result.maxScrollOffset).toBeGreaterThan(0)
   })
 
-  it('shows a visible loading indicator while fetching the next version in scroll mode', () => {
+  it('can scroll all the way to the final release note row', () => {
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3'],
+      releaseNotesLoaded: new Map([
+        [
+          '16.2.3',
+          Array.from({ length: 18 }, (_, index) => `- Change number ${index + 1}`).join('\n'),
+        ],
+      ]),
+    }
+
+    const initial = renderPackageInfoModal(state, 90, 16)
+    const atBottom = renderPackageInfoModal(state, 90, 16, initial.maxScrollOffset)
+    const rendered = atBottom.lines.join('\n')
+
+    expect(rendered).toContain('Change number 18')
+    expect(rendered).toContain('End of release notes')
+  })
+
+  it('shows a visible loading indicator while fetching a different version in scroll mode', () => {
     const result = renderPackageInfoModal(
       {
         ...baseState,
@@ -278,7 +302,7 @@ describe('modal renderer', () => {
             Array.from({ length: 18 }, (_, index) => `- Change number ${index + 1}`).join('\n'),
           ],
         ]),
-        releaseNotesNextIndex: 1,
+        releaseNotesViewIndex: 0,
         releaseNotesLoadingVersion: '16.2.2',
       },
       90,
@@ -312,7 +336,9 @@ describe('modal renderer', () => {
       24
     )
 
-    const framedLines = result.lines.filter((line) => line.includes('│') || line.includes('╭') || line.includes('╰') || line.includes('├'))
+    const framedLines = result.lines.filter(
+      (line) => line.includes('│') || line.includes('╭') || line.includes('╰') || line.includes('├')
+    )
     const widths = framedLines.map((line) => getVisualLength(line))
     expect(new Set(widths).size).toBe(1)
   })

@@ -3,6 +3,7 @@ export interface ModalState {
   infoModalRow: number // Which package's info to show
   isLoadingModalInfo: boolean // Whether we're fetching package info for the modal
   infoModalScrollOffset: number // Scroll position within the info modal content
+  infoModalSessionId: number // Monotonic id for async modal work isolation
 }
 
 export class ModalManager {
@@ -14,6 +15,7 @@ export class ModalManager {
       infoModalRow: -1,
       isLoadingModalInfo: false,
       infoModalScrollOffset: 0,
+      infoModalSessionId: 0,
     }
   }
 
@@ -37,6 +39,10 @@ export class ModalManager {
     return this.state.infoModalScrollOffset
   }
 
+  getSessionId(): number {
+    return this.state.infoModalSessionId
+  }
+
   clampScrollOffset(maxOffset: number): boolean {
     const nextOffset = Math.max(0, Math.min(this.state.infoModalScrollOffset, maxOffset))
     if (nextOffset === this.state.infoModalScrollOffset) {
@@ -45,6 +51,10 @@ export class ModalManager {
 
     this.state.infoModalScrollOffset = nextOffset
     return true
+  }
+
+  resetScroll(): void {
+    this.state.infoModalScrollOffset = 0
   }
 
   scrollModalUp(): boolean {
@@ -63,16 +73,20 @@ export class ModalManager {
     return false
   }
 
-  toggleInfoModal(currentRow: number): void {
+  toggleInfoModal(currentRow: number): number {
     if (this.state.showInfoModal) {
       // Close the modal
       this.closeInfoModal()
-    } else {
-      // Open the modal for the current package
-      this.state.showInfoModal = true
-      this.state.infoModalRow = currentRow
-      this.state.infoModalScrollOffset = 0
+      return this.state.infoModalSessionId
     }
+
+    // Open the modal for the current package
+    this.state.showInfoModal = true
+    this.state.infoModalRow = currentRow
+    this.state.infoModalScrollOffset = 0
+    this.state.isLoadingModalInfo = false
+    this.state.infoModalSessionId += 1
+    return this.state.infoModalSessionId
   }
 
   closeInfoModal(): void {
@@ -80,9 +94,15 @@ export class ModalManager {
     this.state.infoModalRow = -1
     this.state.isLoadingModalInfo = false
     this.state.infoModalScrollOffset = 0
+    this.state.infoModalSessionId += 1
   }
 
-  setModalLoading(isLoading: boolean): void {
+  setModalLoading(isLoading: boolean, sessionId?: number): boolean {
+    if (sessionId !== undefined && sessionId !== this.state.infoModalSessionId) {
+      return false
+    }
+
     this.state.isLoadingModalInfo = isLoading
+    return true
   }
 }

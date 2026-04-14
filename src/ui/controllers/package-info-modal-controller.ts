@@ -11,9 +11,41 @@ export interface PackageInfoModalHydrationResult {
   license?: string
 }
 
+const RELEASE_NOTES_LOAD_DEBOUNCE_MS = 120
+
 export class PackageInfoModalController {
+  private abortController: AbortController | null = null
+  private pendingReleaseNotesVersion: string | null = null
+  private releaseNotesDebounceTimer: ReturnType<typeof setTimeout> | null = null
+  private resolveDebouncedLoad: ((loaded: boolean) => void) | null = null
+
+  /**
+   * Cancel any in-flight hydrate/release-notes fetches.
+   * Safe to call multiple times or when nothing is in flight.
+   */
+  cancel(): void {
+    this.abortController?.abort()
+    this.abortController = null
+    this.pendingReleaseNotesVersion = null
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
+    }
+    this.resolveDebouncedLoad?.(false)
+    this.resolveDebouncedLoad = null
+  }
+
   async hydrate(state: PackageSelectionState): Promise<PackageInfoModalHydrationResult | null> {
-    const metadata = await changelogFetcher.fetchPackageMetadata(state.name, state.latestVersion)
+    // Abort any previous session
+    this.cancel()
+    const controller = new AbortController()
+    this.abortController = controller
+
+    const metadata = await changelogFetcher.fetchPackageMetadata(
+      state.name,
+      state.latestVersion,
+      controller.signal
+    )
     if (!metadata) {
       return null
     }
@@ -49,76 +81,159 @@ export class PackageInfoModalController {
     }
 
     state.releaseNotesLoaded = new Map()
-    state.releaseNotesNextIndex = 0
-    state.releaseNotesLoadMoreArmed = true
-    state.releaseNotesLoadCooldownUntil = 0
-
-    // Fetch release notes for the first (target) version
-    if (state.releaseNotesVersions.length > 0) {
-      const firstVersion = state.releaseNotesVersions[0]
-      state.releaseNotesLoadingVersion = firstVersion
-      const notes = await changelogFetcher.fetchReleaseNotesForVersion(state.name, firstVersion)
-      state.releaseNotesLoaded.set(firstVersion, notes)
-      state.releaseNotesNextIndex = 1
-      state.releaseNotesLoadingVersion = undefined
+    state.releaseNotesViewIndex = 0
+    state.releaseNotesLoadingVersion = undefined
+    this.pendingReleaseNotesVersion = null
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
     }
+    this.resolveDebouncedLoad?.(false)
+    this.resolveDebouncedLoad = null
 
     return result
   }
 
   /**
-   * Load the next unloaded version's release notes.
-   * Only fetches one version per user trigger.
+   * Load release notes for a specific version by index.
    * Returns true if a load was triggered, false if nothing to load.
    */
-  async loadNextVersion(
+  async loadVersionAtIndex(
     state: PackageSelectionState,
+    index: number,
     onLoaded: () => void
   ): Promise<boolean> {
     if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
-    if (state.releaseNotesLoadingVersion) return false // Already loading
+    if (index < 0 || index >= state.releaseNotesVersions.length) return false
 
-    let cursor = this.normalizeReleaseNotesCursor(state)
-    if (cursor >= state.releaseNotesVersions.length) return false
+    const version = state.releaseNotesVersions[index]
 
-    const nextVersion = state.releaseNotesVersions[cursor]
-    cursor++
+    // Already loaded
+    if (state.releaseNotesLoaded.has(version)) return false
 
-    state.releaseNotesLoadingVersion = nextVersion
+    if (state.releaseNotesLoadingVersion) {
+      this.pendingReleaseNotesVersion = version
+      return false
+    }
+
+    return await this.scheduleVersionLoad(state, version, onLoaded)
+  }
+
+  private scheduleVersionLoad(
+    state: PackageSelectionState,
+    version: string,
+    onLoaded: () => void
+  ): Promise<boolean> {
+    if (this.releaseNotesDebounceTimer) {
+      clearTimeout(this.releaseNotesDebounceTimer)
+      this.releaseNotesDebounceTimer = null
+    }
+    this.resolveDebouncedLoad?.(false)
+
+    this.pendingReleaseNotesVersion = version
+
+    return new Promise((resolve) => {
+      this.resolveDebouncedLoad = resolve
+      this.releaseNotesDebounceTimer = setTimeout(() => {
+        this.releaseNotesDebounceTimer = null
+        this.resolveDebouncedLoad = null
+
+        const nextVersion = this.pendingReleaseNotesVersion
+        this.pendingReleaseNotesVersion = null
+
+        if (!nextVersion || state.releaseNotesLoadingVersion) {
+          resolve(false)
+          return
+        }
+
+        void this.loadVersion(state, nextVersion, onLoaded).then(resolve)
+      }, RELEASE_NOTES_LOAD_DEBOUNCE_MS)
+    })
+  }
+
+  private async loadVersion(
+    state: PackageSelectionState,
+    version: string,
+    onLoaded: () => void
+  ): Promise<boolean> {
+    const loadedNotes = state.releaseNotesLoaded
+    if (!loadedNotes) return false
+
+    state.releaseNotesLoadingVersion = version
     onLoaded() // Re-render to show loading indicator
 
-    const notes = await changelogFetcher.fetchReleaseNotesForVersion(state.name, nextVersion)
-    state.releaseNotesLoaded.set(nextVersion, notes)
-    state.releaseNotesLoadingVersion = undefined
+    try {
+      const notes = await changelogFetcher.fetchReleaseNotesForVersion(
+        state.name,
+        version,
+        this.abortController?.signal
+      )
+      loadedNotes.set(version, notes)
+      return true
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return false
+      }
+      loadedNotes.set(version, null)
+      return true
+    } finally {
+      state.releaseNotesLoadingVersion = undefined
+      onLoaded() // Re-render with new content or recovered state
 
-    state.releaseNotesNextIndex = cursor
-    onLoaded() // Re-render with new content
-    return true
+      const pendingVersion = this.pendingReleaseNotesVersion
+      this.pendingReleaseNotesVersion = null
+
+      if (
+        pendingVersion &&
+        pendingVersion !== version &&
+        loadedNotes &&
+        !loadedNotes.has(pendingVersion)
+      ) {
+        void this.loadVersion(state, pendingVersion, onLoaded)
+      }
+    }
   }
 
   /**
-   * Check if there are more versions to load.
+   * Navigate to the next or previous version in the release notes list.
+   * Returns the new view index, or -1 if navigation is not possible.
    */
-  hasMoreVersions(state: PackageSelectionState): boolean {
-    if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
-    return this.normalizeReleaseNotesCursor(state) < state.releaseNotesVersions.length
+  navigateVersion(state: PackageSelectionState, direction: 'newer' | 'older'): number {
+    if (!state.releaseNotesVersions || state.releaseNotesVersions.length === 0) return -1
+
+    const currentIndex = state.releaseNotesViewIndex ?? 0
+    const newIndex = direction === 'older' ? currentIndex + 1 : currentIndex - 1
+
+    if (newIndex < 0 || newIndex >= state.releaseNotesVersions.length) return -1
+
+    state.releaseNotesViewIndex = newIndex
+    return newIndex
   }
 
-  private normalizeReleaseNotesCursor(state: PackageSelectionState): number {
-    if (!state.releaseNotesVersions || !state.releaseNotesLoaded) {
-      return 0
-    }
+  /**
+   * Check if the version at the given index is already loaded.
+   */
+  isVersionLoaded(state: PackageSelectionState, index: number): boolean {
+    if (!state.releaseNotesVersions || !state.releaseNotesLoaded) return false
+    if (index < 0 || index >= state.releaseNotesVersions.length) return false
+    return state.releaseNotesLoaded.has(state.releaseNotesVersions[index])
+  }
 
-    let cursor = state.releaseNotesNextIndex ?? 0
-    while (
-      cursor < state.releaseNotesVersions.length &&
-      state.releaseNotesLoaded.has(state.releaseNotesVersions[cursor])
-    ) {
-      cursor++
-    }
+  /**
+   * Get the total number of versions available.
+   */
+  getVersionCount(state: PackageSelectionState): number {
+    return state.releaseNotesVersions?.length ?? 0
+  }
 
-    state.releaseNotesNextIndex = cursor
-    return cursor
+  /**
+   * Check if navigation in a direction is possible.
+   */
+  canNavigate(state: PackageSelectionState, direction: 'newer' | 'older'): boolean {
+    if (!state.releaseNotesVersions || state.releaseNotesVersions.length === 0) return false
+    const currentIndex = state.releaseNotesViewIndex ?? 0
+    if (direction === 'newer') return currentIndex > 0
+    return currentIndex < state.releaseNotesVersions.length - 1
   }
 
   private buildReleaseNotesVersionQueue(

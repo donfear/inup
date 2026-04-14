@@ -147,7 +147,11 @@ function formatReleaseNotesMarkdown(
 
       if (lower.includes('breaking')) {
         style = chalk.red.bold
-      } else if (lower.includes('feature') || lower.includes('added') || lower.includes('improvement')) {
+      } else if (
+        lower.includes('feature') ||
+        lower.includes('added') ||
+        lower.includes('improvement')
+      ) {
         style = chalk.green.bold
       } else if (lower.includes('fix') || lower.includes('bug')) {
         style = chalk.yellow.bold
@@ -196,14 +200,7 @@ function formatReleaseNotesMarkdown(
     }
 
     const style = isLowSignalTrailerLine(cleaned) ? chalk.gray : undefined
-    pushWrappedLines(
-      lines,
-      linkifyMarkdownText(cleaned, repositoryUrl),
-      width,
-      '  ',
-      '  ',
-      style
-    )
+    pushWrappedLines(lines, linkifyMarkdownText(cleaned, repositoryUrl), width, '  ', '  ', style)
   }
 
   while (lines.length > 0 && lines[lines.length - 1] === '') {
@@ -214,8 +211,8 @@ function formatReleaseNotesMarkdown(
 }
 
 /**
- * Build release notes sections from loaded version data.
- * Returns one section per loaded version, plus loading/hint indicators.
+ * Build release notes sections for the currently viewed version.
+ * Shows one version at a time with navigation indicators.
  */
 export function buildReleaseNotesSections(
   state: PackageSelectionState,
@@ -228,59 +225,65 @@ export function buildReleaseNotesSections(
   }
 
   const loaded = state.releaseNotesLoaded
-  if (!loaded || loaded.size === 0) {
-    if (state.releaseNotesLoadingVersion) {
-      sections.push({
-        key: 'release-loading',
-        rows: [chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)],
-        behavior: 'status',
-      })
-    }
+  const viewIndex = state.releaseNotesViewIndex ?? 0
+  const totalVersions = state.releaseNotesVersions.length
+  const currentVersion = state.releaseNotesVersions[viewIndex]
+
+  if (!currentVersion) return sections
+
+  // Show loading state for the viewed version
+  if (state.releaseNotesLoadingVersion === currentVersion) {
+    sections.push({
+      key: 'release-loading',
+      rows: [chalk.gray(`Loading release notes for v${currentVersion}...`)],
+      behavior: 'status',
+    })
     return sections
   }
 
-  for (const version of state.releaseNotesVersions) {
-    if (!loaded.has(version)) break // Stop at first unloaded version
+  // Version not yet loaded (and not currently loading)
+  if (!loaded || !loaded.has(currentVersion)) {
+    sections.push({
+      key: 'release-pending',
+      rows: [chalk.gray(`Press ←/→ to load release notes for v${currentVersion}`)],
+      behavior: 'status',
+    })
+    return sections
+  }
 
-    const content = loaded.get(version)
+  const content = loaded.get(currentVersion)
 
-    if (!content) continue
-
-    const versionHeader = getThemeColor('primary')(`Version ${version}`)
-    const rows: string[] = [chalk.bold(versionHeader)]
+  if (!content) {
+    // Version was loaded but had no release notes
+    sections.push({
+      key: 'release-none',
+      rows: [chalk.gray.italic(`No release notes found for v${currentVersion}`)],
+      behavior: 'status',
+    })
+  } else {
+    const versionHeader = getThemeColor('primary')(`Version ${currentVersion}`)
+    const navHint = totalVersions > 1 ? chalk.gray(` (${viewIndex + 1}/${totalVersions})`) : ''
+    const rows: string[] = [chalk.bold(versionHeader) + navHint]
     const formatted = formatReleaseNotesMarkdown(content, modalWidth - 4, state.repository)
     rows.push(...formatted)
 
     sections.push({
-      key: `release-${version}`,
+      key: `release-${currentVersion}`,
       rows,
       behavior: 'body',
     })
   }
 
-  const hasRenderedReleaseNotes = sections.some((section) => section.behavior === 'body')
-
-  if (state.releaseNotesLoadingVersion && !loaded.has(state.releaseNotesLoadingVersion)) {
+  // Navigation hints
+  const canGoNewer = viewIndex > 0
+  const canGoOlder = viewIndex < totalVersions - 1
+  if (canGoNewer || canGoOlder) {
+    const hints: string[] = []
+    if (canGoNewer) hints.push('← newer')
+    if (canGoOlder) hints.push('→ older')
     sections.push({
-      key: 'release-loading',
-      rows: [chalk.gray(`Loading release notes for v${state.releaseNotesLoadingVersion}`)],
-      behavior: 'status',
-    })
-  }
-
-  const allLoaded = (state.releaseNotesNextIndex ?? 0) >= state.releaseNotesVersions.length
-  if (!allLoaded && !state.releaseNotesLoadingVersion && hasRenderedReleaseNotes) {
-    sections.push({
-      key: 'release-more',
-      rows: [chalk.gray('Press Down to load older versions')],
-      behavior: 'status',
-    })
-  }
-
-  if (sections.length === 0) {
-    sections.push({
-      key: 'release-none',
-      rows: [chalk.gray.italic('No release notes found for this version range')],
+      key: 'release-nav',
+      rows: [chalk.gray(hints.join('  ·  '))],
       behavior: 'status',
     })
   }

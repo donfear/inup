@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { ChangelogFetcher } from '../../src/services/changelog-fetcher'
+import { ChangelogFetcher } from '../../src/features/changelog'
 import { getAllPackageData } from '../../src/services/npm-registry'
 import { fetchExactPackageManifest } from '../../src/services/jsdelivr-registry'
 import { PACKAGE_NAME } from '../../src/config/constants'

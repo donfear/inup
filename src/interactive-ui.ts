@@ -312,8 +312,8 @@ export class InteractiveUI {
 
       // Track the current max scroll offset for the info modal
       let infoModalMaxScrollOffset = 0
-      const releaseNotesLoadCooldownMs = 250
-
+      let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
+      let previousModalViewportLineCount: number | null = null
       const handleAction = (action: InputAction) => {
         const uiState = stateManager.getUIState()
         const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
@@ -362,75 +362,82 @@ export class InteractiveUI {
           case 'toggle_info_modal':
             if (!uiState.showInfoModal) {
               // Opening modal - load package info asynchronously
-              stateManager.toggleInfoModal()
+              const modalSessionId = stateManager.toggleInfoModal()
               const currentState = filteredStates[uiState.currentRow]
               const canFetchMetadata = currentState?.loadState === 'ready'
-              stateManager.setModalLoading(canFetchMetadata)
+              stateManager.setModalLoading(canFetchMetadata, modalSessionId)
               renderInterface()
 
               if (currentState && canFetchMetadata) {
                 this.packageInfoModalController
                   .hydrate(currentState)
-                  .then((metadata) => {
-                    stateManager.setModalLoading(false)
+                  .then(() => {
+                    if (isResolved || stateManager.getInfoModalSessionId() !== modalSessionId)
+                      return
+
+                    stateManager.setModalLoading(false, modalSessionId)
                     renderInterface()
+
+                    // Auto-load the first version's release notes
+                    if (
+                      stateManager.getInfoModalSessionId() === modalSessionId &&
+                      this.packageInfoModalController.getVersionCount(currentState) > 0
+                    ) {
+                      this.packageInfoModalController.loadVersionAtIndex(currentState, 0, () => {
+                        if (!isResolved) renderInterface()
+                      })
+                    }
                   })
                   .catch(() => {
-                    stateManager.setModalLoading(false)
+                    if (isResolved || stateManager.getInfoModalSessionId() !== modalSessionId)
+                      return
+                    stateManager.setModalLoading(false, modalSessionId)
                     renderInterface()
                   })
               }
             } else {
-              // Closing modal
+              // Closing modal - cancel in-flight fetches
+              this.packageInfoModalController.cancel()
               stateManager.toggleInfoModal()
               renderInterface()
             }
             break
           case 'scroll_info_modal_up':
-            {
-              const didScroll = stateManager.scrollInfoModalUp()
-              if (
-                uiState.infoModalRow >= 0 &&
-                uiState.infoModalRow < filteredStates.length
-              ) {
-                const currentState = filteredStates[uiState.infoModalRow]
-                currentState.releaseNotesLoadMoreArmed = true
-                currentState.releaseNotesLoadCooldownUntil = 0
-              }
+            if (!stateManager.scrollInfoModalUp()) {
+              return
             }
             break
           case 'scroll_info_modal_down':
+            if (!stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)) {
+              return
+            }
+            break
+          case 'navigate_info_modal_version':
             {
-              const didScroll = stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)
-              if (
-                uiState.infoModalRow >= 0 &&
-                uiState.infoModalRow < filteredStates.length
-              ) {
+              if (uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
                 const currentState = filteredStates[uiState.infoModalRow]
-
-                if (didScroll) {
-                  currentState.releaseNotesLoadMoreArmed = true
-                  currentState.releaseNotesLoadCooldownUntil = 0
-                  break
+                const newIndex = this.packageInfoModalController.navigateVersion(
+                  currentState,
+                  action.direction
+                )
+                if (newIndex >= 0) {
+                  // Reset scroll to top when switching versions
+                  stateManager.resetInfoModalScroll()
+                  // Load the version if not already loaded
+                  if (!this.packageInfoModalController.isVersionLoaded(currentState, newIndex)) {
+                    this.packageInfoModalController.loadVersionAtIndex(
+                      currentState,
+                      newIndex,
+                      () => {
+                        if (!isResolved) renderInterface()
+                      }
+                    )
+                  }
+                } else {
+                  return
                 }
-
-                if (
-                  (currentState.releaseNotesLoadCooldownUntil ?? 0) > Date.now() ||
-                  currentState.releaseNotesLoadMoreArmed === false ||
-                  !this.packageInfoModalController.hasMoreVersions(currentState)
-                ) {
-                  break
-                }
-
-                currentState.releaseNotesLoadMoreArmed = false
-                this.packageInfoModalController
-                  .loadNextVersion(currentState, () => renderInterface())
-                  .finally(() => {
-                    currentState.releaseNotesLoadMoreArmed = true
-                    currentState.releaseNotesLoadCooldownUntil =
-                      Date.now() + releaseNotesLoadCooldownMs
-                    renderInterface()
-                  })
+              } else {
+                return
               }
             }
             break
@@ -491,6 +498,7 @@ export class InteractiveUI {
             }
             break
           case 'cancel':
+            this.packageInfoModalController.cancel()
             handleCancel()
             return
         }
@@ -558,18 +566,30 @@ export class InteractiveUI {
       }
 
       const renderModalViewport = (
+        mode: 'info-modal' | 'theme-modal',
         shortcutLabel: string,
         modalLines: string[],
         terminalWidth: number,
         terminalHeight: number,
         bgCode: string
       ) => {
+        const viewportLineCount = buildModalHeaderLines(shortcutLabel).length + modalLines.length
+        const shouldClearBeforeRender =
+          previousViewportMode !== mode || previousModalViewportLineCount !== viewportLineCount
+
+        if (shouldClearBeforeRender) {
+          CursorUtils.clearScreen()
+          CursorUtils.hide()
+        }
+
         renderViewport(
           [...buildModalHeaderLines(shortcutLabel), ...modalLines],
           terminalWidth,
           terminalHeight,
           bgCode
         )
+        previousViewportMode = mode
+        previousModalViewportLineCount = viewportLineCount
         stateManager.markRendered([])
       }
 
@@ -584,6 +604,7 @@ export class InteractiveUI {
 
       const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
         isResolved = true
+        this.packageInfoModalController.cancel()
         releaseInteractiveScreen()
         cleanupInteractiveSession()
         resolve(selectedStates)
@@ -619,6 +640,7 @@ export class InteractiveUI {
           )
 
           renderModalViewport(
+            'theme-modal',
             chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'),
             modalLines,
             terminalWidth,
@@ -643,6 +665,7 @@ export class InteractiveUI {
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
             renderModalViewport(
+              'info-modal',
               chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
               result.lines,
               terminalWidth,
@@ -659,11 +682,17 @@ export class InteractiveUI {
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
             stateManager.clampInfoModalScrollOffset(infoModalMaxScrollOffset)
-            const scrollHint = result.usesInternalScroll && result.maxScrollOffset > 0
-              ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
-              : ''
+            const scrollHint =
+              result.usesInternalScroll && result.maxScrollOffset > 0
+                ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
+                : ''
             renderModalViewport(
-              scrollHint + chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
+              'info-modal',
+              scrollHint +
+                chalk.bold.white('←/→ ') +
+                chalk.gray('Version  ·  ') +
+                chalk.bold.white('I / Esc ') +
+                chalk.gray('Exit this view'),
               result.lines,
               terminalWidth,
               terminalHeight,
@@ -694,7 +723,8 @@ export class InteractiveUI {
           )
 
           renderViewport(lines, terminalWidth, terminalHeight, bgCode)
-
+          previousViewportMode = 'list'
+          previousModalViewportLineCount = null
           stateManager.markRendered(lines)
         }
 
@@ -738,7 +768,10 @@ export class InteractiveUI {
         // This handles cases where process.stdout.rows might not be accurate at startup
         const currentHeight = this.getTerminalHeight()
         if (stateManager.updateTerminalHeight(currentHeight)) {
-          const initialFiltered = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
+          const initialFiltered = stateManager.getFilteredStates(
+            states,
+            vulnerabilityDisplayOptions
+          )
           stateManager.resetForResize(initialFiltered.length)
         }
 
