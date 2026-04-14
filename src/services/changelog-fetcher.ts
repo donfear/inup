@@ -4,6 +4,7 @@ import { fetchExactPackageManifest } from './jsdelivr-registry'
 
 const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
 const GITHUB_RELEASES_PAGE_LIMIT = 3
+const PREFER_GITHUB_RELEASE_PAGE = true
 
 export interface PackageMetadata {
   description: string
@@ -394,8 +395,23 @@ export class ChangelogFetcher {
 
     // Try GitHub Releases API if we have a GitHub repo
     if (repoUrl.includes('github.com')) {
-      const ghNotes = await this.fetchGitHubReleaseNotes(repoUrl, version, signal)
-      if (ghNotes) return ghNotes
+      const githubSources = PREFER_GITHUB_RELEASE_PAGE
+        ? [
+            () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
+            () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
+          ]
+        : [
+            () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
+            () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
+          ]
+
+      for (const loadSource of githubSources) {
+        const notes = await loadSource()
+        if (notes) return notes
+      }
+
+      const releaseListNotes = await this.fetchGitHubReleaseListNotes(repoUrl, version, signal)
+      if (releaseListNotes) return releaseListNotes
 
       // Fallback: try CHANGELOG.md from the GitHub repo (raw)
       const rawChangelog = await this.fetchGitHubChangelogMd(repoUrl, version, signal)
@@ -405,6 +421,38 @@ export class ChangelogFetcher {
     // Fallback: try CHANGELOG.md from jsDelivr (npm package)
     const changelogNotes = await this.fetchChangelogMd(packageName, version, signal)
     if (changelogNotes) return changelogNotes
+
+    return null
+  }
+
+  private async fetchGitHubReleasePageNotes(
+    repoUrl: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
+    if (!match) return null
+
+    const [, owner, repo] = match
+
+    for (const tag of [`v${version}`, version]) {
+      try {
+        const response = await fetch(`https://github.com/${owner}/${repo}/releases/tag/${tag}`, {
+          method: 'GET',
+          signal,
+        })
+
+        if (!response.ok) continue
+
+        const html = await response.text()
+        const extracted = this.extractReleaseNotesFromHtml(html)
+        if (extracted) return extracted
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error
+        }
+      }
+    }
 
     return null
   }
@@ -448,6 +496,18 @@ export class ChangelogFetcher {
       }
     }
 
+    return null
+  }
+
+  private async fetchGitHubReleaseListNotes(
+    repoUrl: string,
+    version: string,
+    signal: AbortSignal
+  ): Promise<string | null> {
+    const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/)
+    if (!match) return null
+
+    const [, owner, repo] = match
     const releases = await this.fetchGitHubReleases(owner, repo, signal)
     if (!releases) return null
 
@@ -610,6 +670,51 @@ export class ChangelogFetcher {
     } catch {
       return null
     }
+  }
+
+  private extractReleaseNotesFromHtml(html: string): string | null {
+    const startMarker = 'data-test-selector="body-content"'
+    const endMarker = 'class="Box-footer"'
+    const startIndex = html.indexOf(startMarker)
+    if (startIndex === -1) return null
+
+    const contentStart = html.indexOf('>', startIndex)
+    if (contentStart === -1) return null
+
+    const endIndex = html.indexOf(endMarker, contentStart)
+    if (endIndex === -1) return null
+
+    const normalized = html
+      .slice(contentStart + 1, endIndex)
+      .replace(/<svg[\s\S]*?<\/svg>/g, '')
+      .replace(/<h([1-6])[^>]*>/g, (_full, level: string) => `${'#'.repeat(Number(level))} `)
+      .replace(/<\/h[1-6]>/g, '\n\n')
+      .replace(/<li[^>]*>/g, '- ')
+      .replace(/<\/li>/g, '\n')
+      .replace(/<p[^>]*>/g, '')
+      .replace(/<\/p>/g, '\n\n')
+      .replace(/<br\s*\/?>/g, '\n')
+      .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/g, '$1')
+      .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/g, '**$1**')
+      .replace(/<code[^>]*>([\s\S]*?)<\/code>/g, '`$1`')
+      .replace(/<[^>]+>/g, '')
+
+    const decoded = normalized
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+
+    const cleaned = decoded
+      .split('\n')
+      .map((line) => line.trimEnd())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+
+    return cleaned.length > 0 ? cleaned : null
   }
 
   /**

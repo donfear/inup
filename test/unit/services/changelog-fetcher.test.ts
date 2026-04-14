@@ -246,6 +246,14 @@ describe('ChangelogFetcher', () => {
           json: async () => ({ downloads: 42 }),
         })
         .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
             body: '## Changes\n- Fixed older release',
@@ -256,7 +264,7 @@ describe('ChangelogFetcher', () => {
       const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(notes).toContain('Fixed older release')
-      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      expect(fetchMock.mock.calls[3]?.[0]).toBe(
         'https://api.github.com/repos/demo/repo/releases/tags/v1.9.0'
       )
     })
@@ -271,6 +279,14 @@ describe('ChangelogFetcher', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
         })
         .mockResolvedValueOnce({
           ok: false,
@@ -294,9 +310,35 @@ describe('ChangelogFetcher', () => {
       const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(notes).toContain('Release list fallback worked')
-      expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      expect(fetchMock.mock.calls[5]?.[0]).toBe(
         'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
       )
+    })
+
+    it('falls back to the public GitHub release page when the API path has no body', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () =>
+            '<div data-pjax="true" data-test-selector="body-content" data-view-component="true" class="markdown-body tmp-my-3"><p>Intro paragraph.</p><h3>Core Changes</h3><ul><li>Fix critical bug</li></ul></div></div><div data-view-component="true" class="Box-footer">',
+        })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+      const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
+
+      expect(notes).toContain('Intro paragraph.')
+      expect(notes).toContain('### Core Changes')
+      expect(notes).toContain('- Fix critical bug')
+      expect(fetchMock.mock.calls[1]?.[0]).toBe('https://github.com/demo/repo/releases/tag/v1.9.0')
     })
 
     it('caches the releases list fallback across multiple version lookups', async () => {
@@ -309,6 +351,14 @@ describe('ChangelogFetcher', () => {
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
         })
         .mockResolvedValueOnce({
           ok: false,
@@ -333,11 +383,23 @@ describe('ChangelogFetcher', () => {
         })
         .mockResolvedValueOnce({
           ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
           json: async () => ({}),
         })
         .mockResolvedValueOnce({
           ok: false,
           json: async () => ({}),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
         })
 
       await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
@@ -347,7 +409,7 @@ describe('ChangelogFetcher', () => {
 
       expect(firstNotes).toContain('Older notes')
       expect(secondNotes).toContain('Even older notes')
-      expect(fetchMock).toHaveBeenCalledTimes(6)
+      expect(fetchMock).toHaveBeenCalledTimes(10)
       expect(
         fetchMock.mock.calls.filter(
           ([url]) => url === 'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
@@ -422,6 +484,14 @@ describe('ChangelogFetcher', () => {
           json: async () => ({ downloads: 42 }),
         })
         .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          text: async () => '',
+        })
+        .mockResolvedValueOnce({
           ok: true,
           json: async () => ({
             body: '## Changes\n- Successful retry',
@@ -437,7 +507,7 @@ describe('ChangelogFetcher', () => {
       const retry = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(retry).toContain('Successful retry')
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(4)
     })
   })
 
