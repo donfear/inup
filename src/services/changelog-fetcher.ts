@@ -39,6 +39,16 @@ export class ChangelogFetcher {
     return `${packageName}@${version?.trim() || 'latest'}`
   }
 
+  private cachePackageMetadata(
+    packageName: string,
+    cacheKey: string,
+    metadata: PackageMetadata
+  ): void {
+    this.cache.set(cacheKey, metadata)
+    this.cache.set(this.getCacheKey(packageName), metadata)
+    this.cache.set(packageName, metadata)
+  }
+
   /**
    * Fetch package metadata from npm registry
    * Uses a cached approach to avoid repeated requests
@@ -127,7 +137,7 @@ export class ChangelogFetcher {
         // Ignore download stats errors - optional data
       }
 
-      this.cache.set(cacheKey, metadata)
+      this.cachePackageMetadata(packageName, cacheKey, metadata)
       return metadata
     } catch {
       // Cache the failure to avoid retrying
@@ -236,7 +246,7 @@ export class ChangelogFetcher {
     if (!metadata || !metadata.releaseNotes) {
       return null
     }
-    return `${metadata.releaseNotes}/releases/tag/v${version}`
+    return `${metadata.releaseNotes}/tag/v${version}`
   }
 
   /**
