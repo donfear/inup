@@ -4,7 +4,7 @@ import { fetchExactPackageManifest } from './jsdelivr-registry'
 
 const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
 const GITHUB_RELEASES_PAGE_LIMIT = 3
-const PREFER_GITHUB_RELEASE_PAGE = true
+const PREFER_GITHUB_RELEASE_PAGE = false
 
 export interface PackageMetadata {
   description: string
