@@ -271,6 +271,26 @@ describe('modal renderer', () => {
     expect(result.maxScrollOffset).toBeGreaterThan(0)
   })
 
+  it('can scroll all the way to the final release note row', () => {
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3'],
+      releaseNotesLoaded: new Map([
+        [
+          '16.2.3',
+          Array.from({ length: 18 }, (_, index) => `- Change number ${index + 1}`).join('\n'),
+        ],
+      ]),
+    }
+
+    const initial = renderPackageInfoModal(state, 90, 16)
+    const atBottom = renderPackageInfoModal(state, 90, 16, initial.maxScrollOffset)
+    const rendered = atBottom.lines.join('\n')
+
+    expect(rendered).toContain('Change number 18')
+    expect(rendered).toContain('End of release notes')
+  })
+
   it('shows a visible loading indicator while fetching a different version in scroll mode', () => {
     const result = renderPackageInfoModal(
       {

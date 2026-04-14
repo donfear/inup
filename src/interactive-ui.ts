@@ -401,10 +401,14 @@ export class InteractiveUI {
             }
             break
           case 'scroll_info_modal_up':
-            stateManager.scrollInfoModalUp()
+            if (!stateManager.scrollInfoModalUp()) {
+              return
+            }
             break
           case 'scroll_info_modal_down':
-            stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)
+            if (!stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)) {
+              return
+            }
             break
           case 'navigate_info_modal_version':
             {
@@ -427,7 +431,11 @@ export class InteractiveUI {
                       }
                     )
                   }
+                } else {
+                  return
                 }
+              } else {
+                return
               }
             }
             break
@@ -663,7 +671,11 @@ export class InteractiveUI {
                 ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
                 : ''
             renderModalViewport(
-              scrollHint + chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
+              scrollHint +
+                chalk.bold.white('←/→ ') +
+                chalk.gray('Version  ·  ') +
+                chalk.bold.white('I / Esc ') +
+                chalk.gray('Exit this view'),
               result.lines,
               terminalWidth,
               terminalHeight,
