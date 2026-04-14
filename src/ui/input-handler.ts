@@ -13,6 +13,8 @@ export type InputAction =
   | { type: 'bulk_select_latest' }
   | { type: 'bulk_unselect_all' }
   | { type: 'toggle_info_modal' }
+  | { type: 'scroll_info_modal_up' }
+  | { type: 'scroll_info_modal_down' }
   | { type: 'toggle_theme_modal' }
   | { type: 'theme_navigate_up' }
   | { type: 'theme_navigate_down' }
@@ -94,8 +96,32 @@ export class InputHandler {
       return
     }
 
+    // Handle info modal input (scroll and close)
+    if (uiState.showInfoModal) {
+      if (key) {
+        switch (key.name) {
+          case 'escape':
+            this.onAction({ type: 'toggle_info_modal' })
+            return
+          case 'i':
+          case 'I':
+            this.onAction({ type: 'toggle_info_modal' })
+            return
+          case 'up':
+            this.onAction({ type: 'scroll_info_modal_up' })
+            return
+          case 'down':
+            this.onAction({ type: 'scroll_info_modal_down' })
+            return
+          default:
+            return // Consume all other keys while modal is open
+        }
+      }
+      return
+    }
+
     // Check for '/' character to handle filter mode (only when not in modal)
-    if (str === '/' && !uiState.showInfoModal) {
+    if (str === '/') {
       if (uiState.filterMode) {
         // Apply search (exit filter mode but keep the filter)
         this.onAction({ type: 'exit_filter_mode' })
@@ -211,21 +237,21 @@ export class InputHandler {
 
       case 'd':
       case 'D':
-        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+        if (!uiState.showThemeModal && !uiState.filterMode) {
           this.onAction({ type: 'toggle_dep_type_filter', depType: 'devDependencies' })
         }
         break
 
       case 'p':
       case 'P':
-        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+        if (!uiState.showThemeModal && !uiState.filterMode) {
           this.onAction({ type: 'toggle_dep_type_filter', depType: 'peerDependencies' })
         }
         break
 
       case 'o':
       case 'O':
-        if (!uiState.showInfoModal && !uiState.showThemeModal && !uiState.filterMode) {
+        if (!uiState.showThemeModal && !uiState.filterMode) {
           this.onAction({ type: 'toggle_dep_type_filter', depType: 'optionalDependencies' })
         }
         break
@@ -237,7 +263,7 @@ export class InputHandler {
 
       case 's':
       case 'S':
-        if (!uiState.showInfoModal && !uiState.showThemeModal) {
+        if (!uiState.showThemeModal) {
           this.onAction({ type: 'trigger_audit_scan' })
         }
         break
@@ -248,10 +274,7 @@ export class InputHandler {
         break
 
       case 'escape':
-        // Close modal if open
-        if (uiState.showInfoModal) {
-          this.onAction({ type: 'toggle_info_modal' })
-        } else if (uiState.filterQuery) {
+        if (uiState.filterQuery) {
           // Clear filter if one is applied
           this.onAction({ type: 'exit_filter_mode', clearQuery: true })
         }

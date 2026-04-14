@@ -28,6 +28,7 @@ export interface UIState {
   showInfoModal: boolean
   infoModalRow: number
   isLoadingModalInfo: boolean
+  infoModalScrollOffset: number
   filterMode: boolean
   filterQuery: string
   showThemeModal: boolean
@@ -83,6 +84,7 @@ export class StateManager {
       showInfoModal: modalState.showInfoModal,
       infoModalRow: modalState.infoModalRow,
       isLoadingModalInfo: modalState.isLoadingModalInfo,
+      infoModalScrollOffset: modalState.infoModalScrollOffset,
       filterMode: filterState.filterMode,
       filterQuery: filterState.filterQuery,
       showThemeModal: themeState.showThemeModal,
@@ -200,6 +202,24 @@ export class StateManager {
   setModalLoading(isLoading: boolean): void {
     this.modalManager.setModalLoading(isLoading)
     this.renderState.forceFullRender = true
+  }
+
+  scrollInfoModalUp(): boolean {
+    return this.modalManager.scrollModalUp()
+    // Don't force full render — modal viewport handles its own overwrite
+  }
+
+  scrollInfoModalDown(maxOffset: number): boolean {
+    return this.modalManager.scrollModalDown(maxOffset)
+    // Don't force full render — modal viewport handles its own overwrite
+  }
+
+  getInfoModalScrollOffset(): number {
+    return this.modalManager.getScrollOffset()
+  }
+
+  clampInfoModalScrollOffset(maxOffset: number): boolean {
+    return this.modalManager.clampScrollOffset(maxOffset)
   }
 
   // Filter delegation

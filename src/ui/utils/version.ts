@@ -3,7 +3,8 @@ import chalk from 'chalk'
 /**
  * ANSI escape code pattern for stripping terminal colors
  */
-const ANSI_PATTERN = /\u001b\[[0-9;]*m/g
+const ANSI_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g
+const OSC8_PATTERN = /\u001b]8;;.*?(?:\u0007|\u001b\\)|\u001b]8;;(?:\u0007|\u001b\\)/g
 
 export class VersionUtils {
   static applyVersionPrefix(originalSpecifier: string, targetVersion: string): string {
@@ -19,7 +20,7 @@ export class VersionUtils {
    * Strip ANSI escape codes from a string
    */
   static stripAnsi(str: string): string {
-    return str.replace(ANSI_PATTERN, '')
+    return str.replace(OSC8_PATTERN, '').replace(ANSI_PATTERN, '')
   }
 
   /**

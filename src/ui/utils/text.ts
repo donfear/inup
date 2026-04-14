@@ -51,7 +51,7 @@ export function truncatePlainText(text: string, maxWidth: number): string {
     return ''
   }
 
-  if (text.length <= maxWidth) {
+  if (getVisualLength(text) <= maxWidth) {
     return text
   }
 
@@ -67,7 +67,7 @@ export function wrapPlainText(text: string, maxWidth: number): string[] {
     return []
   }
 
-  if (maxWidth <= 0 || text.length <= maxWidth) {
+  if (maxWidth <= 0 || getVisualLength(text) <= maxWidth) {
     return [text]
   }
 
@@ -76,7 +76,8 @@ export function wrapPlainText(text: string, maxWidth: number): string[] {
   const words = text.split(' ')
 
   for (const word of words) {
-    if ((current + ' ' + word).trim().length > maxWidth) {
+    const candidate = (current + ' ' + word).trim()
+    if (getVisualLength(candidate) > maxWidth) {
       if (current) {
         lines.push(current)
       }

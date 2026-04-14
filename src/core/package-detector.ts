@@ -319,6 +319,7 @@ export class PackageDetector {
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
+          allVersions,
         }
       } catch (error) {
         debugLog.error('PackageDetector', `error processing ${dep.name}`, error)

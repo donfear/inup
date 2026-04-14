@@ -197,8 +197,7 @@ describe('ChangelogFetcher', () => {
 
       const releaseUrl = fetcher.getRepositoryReleaseUrl('demo-pkg', '1.0.0')
 
-      expect(releaseUrl).toBeTruthy()
-      expect(releaseUrl).toContain('/releases/tag/v1.0.0')
+      expect(releaseUrl).toBe('https://github.com/demo/repo/releases/tag/v1.0.0')
     })
 
     it('should return null for uncached package', () => {
@@ -237,6 +236,35 @@ describe('ChangelogFetcher', () => {
       const releaseUrl = fetcher.getRepositoryReleaseUrl('test-package', '1.0.0')
 
       expect(releaseUrl).toBeNull()
+    })
+  })
+
+  describe('fetchReleaseNotesForVersion()', () => {
+    it('reuses package metadata fetched for the latest version when loading older release notes', async () => {
+      fetchExactPackageManifestMock.mockResolvedValue({
+        description: 'Demo package',
+        repository: { url: 'git+https://github.com/demo/repo.git' },
+      })
+
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            body: '## Changes\n- Fixed older release',
+          }),
+        })
+
+      await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
+      const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
+
+      expect(notes).toContain('Fixed older release')
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        'https://api.github.com/repos/demo/repo/releases/tags/v1.9.0'
+      )
     })
   })
 

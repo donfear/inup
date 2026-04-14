@@ -2,11 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   fetchPackageMetadata: vi.fn(),
+  getVersionsBetween: vi.fn().mockReturnValue([]),
+  fetchReleaseNotesForVersion: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../../../../src/services', () => ({
   changelogFetcher: {
     fetchPackageMetadata: mocks.fetchPackageMetadata,
+    getVersionsBetween: mocks.getVersionsBetween,
+    fetchReleaseNotesForVersion: mocks.fetchReleaseNotesForVersion,
   },
 }))
 
@@ -44,6 +48,10 @@ const baseState: PackageSelectionState = {
 describe('PackageInfoModalController', () => {
   beforeEach(() => {
     mocks.fetchPackageMetadata.mockReset()
+    mocks.getVersionsBetween.mockReset()
+    mocks.fetchReleaseNotesForVersion.mockReset()
+    mocks.getVersionsBetween.mockReturnValue([])
+    mocks.fetchReleaseNotesForVersion.mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -61,7 +69,13 @@ describe('PackageInfoModalController', () => {
     })
 
     const controller = new PackageInfoModalController()
-    const state = { ...baseState }
+    const state = {
+      ...baseState,
+      currentVersion: '16.2.1',
+      currentVersionSpecifier: '^16.2.1',
+      selectedOption: 'latest' as const,
+      allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
+    }
     await controller.hydrate(state)
 
     expect(state.description).toBe('Framework')
@@ -76,5 +90,51 @@ describe('PackageInfoModalController', () => {
     const result = await controller.hydrate({ ...baseState })
 
     expect(result).toBeNull()
+  })
+
+  it('initializes release note cursor state during hydration', async () => {
+    mocks.fetchPackageMetadata.mockResolvedValue({
+      description: 'Framework',
+      releaseNotes: 'https://github.com/vercel/next.js/releases',
+    })
+    mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce('first release')
+
+    const controller = new PackageInfoModalController()
+    const state = {
+      ...baseState,
+      currentVersion: '16.2.1',
+      currentVersionSpecifier: '^16.2.1',
+      selectedOption: 'latest' as const,
+      allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
+    }
+    await controller.hydrate(state)
+
+    expect(state.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1'])
+    expect(state.releaseNotesLoaded?.get('16.2.3')).toBe('first release')
+    expect(state.releaseNotesNextIndex).toBe(1)
+    expect(state.releaseNotesLoadMoreArmed).toBe(true)
+  })
+
+  it('loads exactly one release note version per request', async () => {
+    const controller = new PackageInfoModalController()
+    const state: PackageSelectionState = {
+      ...baseState,
+      releaseNotesVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
+      releaseNotesLoaded: new Map([['16.2.3', 'first release']]),
+      releaseNotesNextIndex: 1,
+    }
+    const onLoaded = vi.fn()
+
+    mocks.fetchReleaseNotesForVersion.mockResolvedValueOnce(null)
+
+    const loaded = await controller.loadNextVersion(state, onLoaded)
+
+    expect(loaded).toBe(true)
+    expect(mocks.fetchReleaseNotesForVersion.mock.calls).toEqual([['next', '16.2.2']])
+    expect(state.releaseNotesLoaded?.get('16.2.2')).toBeNull()
+    expect(state.releaseNotesLoaded?.has('16.2.1')).toBe(false)
+    expect(state.releaseNotesNextIndex).toBe(2)
+    expect(controller.hasMoreVersions(state)).toBe(true)
+    expect(onLoaded).toHaveBeenCalledTimes(2)
   })
 })
