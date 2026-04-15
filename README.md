@@ -1,49 +1,45 @@
-# 🚀 inup
+# inup — Interactive Dependency Upgrader
 
 [![npm version](https://img.shields.io/npm/v/inup?logo=npm&logoColor=%23CB3837&style=for-the-badge&color=crimson)](https://www.npmjs.com/package/inup)
 [![Downloads](https://img.shields.io/npm/dm/inup?style=for-the-badge&color=646CFF&logoColor=white)](https://www.npmjs.com/package/inup)
 [![Total downloads](https://img.shields.io/npm/dt/inup?style=for-the-badge&color=informational)](https://www.npmjs.com/package/inup)
+[![CI](https://img.shields.io/github/actions/workflow/status/donfear/inup/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://github.com/donfear/inup/blob/main/LICENSE)
 
-Upgrade your dependencies interactively. Works with npm, yarn, pnpm, and bun.
+Interactively upgrade outdated dependencies across npm, yarn, pnpm, and bun. Auto-detects your package manager, works in monorepos and workspaces, and requires zero configuration.
 
 ![Interactive Upgrade Demo](docs/demo/interactive-upgrade.gif)
 
-## 🚀 Usage
+## Quick Start
 
 ```bash
 npx inup
 ```
 
-Or install globally:
+Or install globally with your preferred package manager:
 
 ```bash
 npm install -g inup
+pnpm add -g inup
+yarn global add inup
+bun add -g inup
 ```
 
-That's it. The tool scans your project, finds outdated packages, and lets you pick what to upgrade.
+Run `inup` in any project — it scans for outdated packages and lets you pick what to upgrade.
 
-## 💡 Why inup?
+## Why inup?
 
-- **Inclusive by Default**: We load Dev, Peer, and Optional dependencies automatically. No more restarting the tool because you forgot a `--peer` flag.
-- **Live Toggles**: Toggle dependency types (`d`, `p`, `o`) on the fly without exiting.
-- **Zero Config**: Auto-detects your package manager.
-- **Monorepo Ready**: Seamlessly handles workspaces.
-- **Modern UX**: Search with `/`, view package details with `i`, and swap themes with `t`.
+- **All Dependencies at Once** — Dev, peer, and optional dependencies load automatically. No more re-running with `--peer` or `--dev` flags.
+- **Live Toggles** — Filter dependency types (`d`, `p`, `o`) on the fly without restarting.
+- **Zero Config** — Auto-detects npm, yarn, pnpm, or bun from your lockfile.
+- **Monorepo Ready** — Discovers and upgrades across workspaces seamlessly.
+- **Vulnerability Audit** — Flags known security vulnerabilities right in the package list so you know what's risky before upgrading.
+- **Changelog Viewer** — Read release notes and changelogs inline without leaving the terminal.
+- **Built-in Search** — Press `/` to filter packages instantly.
+- **Package Details** — Press `i` to view package info, download stats, and more.
+- **Themes** — Press `t` to switch between color themes.
 
-## ⌨️ Keyboard Shortcuts
-
-- `↑/↓` - Navigate packages
-- `←/→` - Select version (current, patch, minor, major)
-- `Space` - Toggle selection
-- `m` - Select all minor updates
-- `l` - Select all latest updates
-- `u` - Unselect all
-- `/` - Search packages
-- `t` - Change theme
-- `i` - View package info
-- `Enter` - Confirm and upgrade
-
-## ⚙️ Options
+## Options
 
 ```bash
 inup [options]
@@ -56,12 +52,25 @@ inup [options]
 --debug                       Write verbose debug logs
 ```
 
-## 🔒 Privacy
+## Keyboard Shortcuts
 
-We don't track anything. Ever.
+| Key | Action |
+|-----|--------|
+| `↑` `↓` | Navigate packages |
+| `←` `→` | Select version (current, patch, minor, major) |
+| `Space` | Toggle selection |
+| `m` | Select all minor updates |
+| `l` | Select all latest updates |
+| `u` | Unselect all |
+| `/` | Search packages |
+| `i` | View package info |
+| `t` | Change theme |
+| `Enter` | Confirm and upgrade |
 
-Version checks and package metadata are fetched from the npm registry. When needed for immutable exact-version manifests, inup may also fetch a pinned `package.json` from jsDelivr. Weekly download counts come from the npm downloads API.
+## Privacy
 
-## 📄 License
+No tracking, no telemetry, no data collection. Package metadata is fetched directly from the npm registry. Download counts come from the npm downloads API. When needed for exact-version manifests, inup may fetch a pinned `package.json` from jsDelivr.
 
-MIT
+## License
+
+[MIT](LICENSE)

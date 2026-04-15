@@ -1,7 +1,7 @@
 {
   "name": "inup",
   "version": "1.5.0",
-  "description": "Interactive CLI tool for upgrading dependencies with ease. Auto-detects and works with npm, yarn, pnpm, and bun. Inspired by yarn upgrade-interactive. Supports monorepos, workspaces, and batch upgrades.",
+  "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready. Upgrade-interactive for every package manager.",
   "main": "dist/index.js",
   "bin": {
     "inup": "./dist/cli.js"
@@ -25,19 +25,26 @@
   },
   "author": "Donfear",
   "keywords": [
+    "upgrade-interactive",
+    "interactive",
+    "dependency-management",
+    "outdated",
+    "upgrade",
+    "update",
     "npm",
     "yarn",
     "pnpm",
     "bun",
-    "upgrade",
-    "interactive",
-    "cli",
-    "package-manager",
-    "dependency-management",
-    "yarn-upgrade-interactive",
     "monorepo",
     "workspace",
-    "batch-upgrade"
+    "cli",
+    "vulnerability",
+    "audit",
+    "changelog",
+    "package-manager",
+    "dependencies",
+    "semver",
+    "ncu"
   ],
   "license": "MIT",
   "homepage": "https://github.com/donfear/inup#readme",
