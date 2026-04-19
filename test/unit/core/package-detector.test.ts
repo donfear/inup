@@ -68,7 +68,7 @@ describe('PackageDetector streaming', () => {
         options: { batchSize: number; concurrency: number }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options).toEqual({ batchSize: 25, concurrency: 5 })
+        expect(options).toEqual({ batchSize: 25, concurrency: 25 })
 
         onBatchReady([
           {
