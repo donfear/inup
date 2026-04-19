@@ -4,6 +4,8 @@ export interface ModalState {
   isLoadingModalInfo: boolean // Whether we're fetching package info for the modal
   infoModalScrollOffset: number // Scroll position within the info modal content
   infoModalSessionId: number // Monotonic id for async modal work isolation
+  showDebugModal: boolean // Whether to show the debug/performance modal
+  debugModalScrollOffset: number // Scroll position within the debug modal
 }
 
 export class ModalManager {
@@ -16,7 +18,46 @@ export class ModalManager {
       isLoadingModalInfo: false,
       infoModalScrollOffset: 0,
       infoModalSessionId: 0,
+      showDebugModal: false,
+      debugModalScrollOffset: 0,
     }
+  }
+
+  isDebugModalOpen(): boolean {
+    return this.state.showDebugModal
+  }
+
+  toggleDebugModal(): void {
+    this.state.showDebugModal = !this.state.showDebugModal
+    this.state.debugModalScrollOffset = 0
+  }
+
+  closeDebugModal(): void {
+    this.state.showDebugModal = false
+    this.state.debugModalScrollOffset = 0
+  }
+
+  scrollDebugModalUp(): boolean {
+    if (this.state.debugModalScrollOffset > 0) {
+      this.state.debugModalScrollOffset--
+      return true
+    }
+    return false
+  }
+
+  scrollDebugModalDown(maxOffset: number): boolean {
+    if (this.state.debugModalScrollOffset < maxOffset) {
+      this.state.debugModalScrollOffset++
+      return true
+    }
+    return false
+  }
+
+  clampDebugModalScrollOffset(maxOffset: number): boolean {
+    const nextOffset = Math.max(0, Math.min(this.state.debugModalScrollOffset, maxOffset))
+    if (nextOffset === this.state.debugModalScrollOffset) return false
+    this.state.debugModalScrollOffset = nextOffset
+    return true
   }
 
   getState(): ModalState {

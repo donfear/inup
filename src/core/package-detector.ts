@@ -19,6 +19,7 @@ import { getAllPackageDataBatched, PackageVersionData } from '../services'
 import { isPackageIgnored } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
+import { getPerformanceTracker } from '../features/debug'
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
@@ -90,6 +91,9 @@ export class PackageDetector {
     const packageLookup = new Map<string, PackageInfo[]>()
     let resolved = 0
     let failed = 0
+    const performanceTracker = getPerformanceTracker()
+    let batchIndex = 0
+    let lastBatchEndAt = Date.now()
 
     const tFetch = Date.now()
     debugLog.info('PackageDetector', 'fetching version data via npm registry in batches')
@@ -97,6 +101,8 @@ export class PackageDetector {
     await getAllPackageDataBatched(
       prepared.uniquePackages,
       (batch) => {
+        const batchStart = lastBatchEndAt
+        let batchFailedCount = 0
         const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {
           const packageInfo = this.resolvePackageGroup(
             batchItem.packageName,
@@ -109,6 +115,8 @@ export class PackageDetector {
           const isFailed = batchItem.data.latestVersion === 'unknown'
           if (isFailed) {
             failed++
+            batchFailedCount++
+            performanceTracker.recordFailedPackage(batchItem.packageName)
           }
 
           return {
@@ -117,6 +125,16 @@ export class PackageDetector {
             failed: isFailed,
           }
         })
+
+        const batchEnd = Date.now()
+        performanceTracker.recordBatch({
+          index: batchIndex++,
+          size: batch.length,
+          durationMs: batchEnd - batchStart,
+          failedCount: batchFailedCount,
+        })
+        lastBatchEndAt = batchEnd
+        performanceTracker.recordCounts({ resolved, failed })
 
         const progress = this.createProgressSnapshot(
           prepared.uniquePackages.length,
@@ -145,6 +163,7 @@ export class PackageDetector {
       `registry fetch (${resolved}/${prepared.uniquePackages.length} resolved)`,
       tFetch
     )
+    performanceTracker.recordPhaseDuration('registryFetch', Date.now() - tFetch)
 
     const finalPackages = prepared.uniquePackages.flatMap(
       (packageName) => packageLookup.get(packageName) ?? []
@@ -175,12 +194,16 @@ export class PackageDetector {
   }
 
   private async prepareDependencies(): Promise<PreparedDependencies> {
+    const performanceTracker = getPerformanceTracker()
+
     this.showProgress('🔍 Scanning repository for package.json files...')
     const tScan = Date.now()
     const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000)
     debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
       files: allPackageJsonFiles,
     })
+    performanceTracker.recordPhaseDuration('discovery', Date.now() - tScan)
+    performanceTracker.recordCounts({ packageJsonFiles: allPackageJsonFiles.length })
     this.showProgress(
       `🔍 Found ${allPackageJsonFiles.length} package.json file${allPackageJsonFiles.length === 1 ? '' : 's'}`
     )
@@ -192,8 +215,11 @@ export class PackageDetector {
       includeOptionalDeps: true,
     })
     debugLog.perf('PackageDetector', `dependency collection (${allDepsRaw.length} raw deps)`, tDeps)
+    performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
+    performanceTracker.recordCounts({ rawDependencies: allDepsRaw.length })
 
     this.showProgress('🔍 Identifying unique packages...')
+    const tFilter = Date.now()
     const uniquePackageNames = new Set<string>()
     const allDependencies: DependencyEntry[] = []
     let ignoredCount = 0
@@ -244,6 +270,12 @@ export class PackageDetector {
       'PackageDetector',
       `${uniquePackages.length} unique packages to check, ${ignoredCount} ignored`
     )
+    performanceTracker.recordPhaseDuration('filter', Date.now() - tFilter)
+    performanceTracker.recordCounts({
+      uniquePackages: uniquePackages.length,
+      ignoredPackages: ignoredCount,
+      workspaceRefsSkipped: seenWorkspaceRefs.size,
+    })
 
     const currentVersions = new Map<string, string>()
     for (const dep of allDependencies) {

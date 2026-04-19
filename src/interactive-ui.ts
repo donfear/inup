@@ -26,6 +26,7 @@ import { PackageInfoModalController, VulnerabilityAuditController } from './ui/c
 import { PackageListRenderOptions } from './ui/renderer/package-list'
 import { themeNames, themes } from './ui/themes'
 import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
+import { getPerformanceTracker, renderPerformanceModal } from './features/debug'
 
 type InteractiveUIOptions = VulnerabilityDisplayOptions
 
@@ -312,6 +313,8 @@ export class InteractiveUI {
 
       // Track the current max scroll offset for the info modal
       let infoModalMaxScrollOffset = 0
+      // Track the current max scroll offset for the debug modal
+      let debugModalMaxScrollOffset = 0
       let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
       let previousModalViewportLineCount: number | null = null
       const handleAction = (action: InputAction) => {
@@ -409,6 +412,19 @@ export class InteractiveUI {
             break
           case 'scroll_info_modal_down':
             if (!stateManager.scrollInfoModalDown(infoModalMaxScrollOffset)) {
+              return
+            }
+            break
+          case 'toggle_debug_modal':
+            stateManager.toggleDebugModal()
+            break
+          case 'scroll_debug_modal_up':
+            if (!stateManager.scrollDebugModalUp()) {
+              return
+            }
+            break
+          case 'scroll_debug_modal_down':
+            if (!stateManager.scrollDebugModalDown(debugModalMaxScrollOffset)) {
               return
             }
             break
@@ -643,6 +659,30 @@ export class InteractiveUI {
             'theme-modal',
             chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'),
             modalLines,
+            terminalWidth,
+            terminalHeight,
+            bgCode
+          )
+        } else if (uiState.showDebugModal) {
+          const terminalWidth = process.stdout.columns || 80
+          const terminalHeight = this.getTerminalHeight()
+          const snapshot = getPerformanceTracker().snapshot()
+          const result = renderPerformanceModal(
+            snapshot,
+            terminalWidth,
+            Math.max(8, terminalHeight - 4),
+            uiState.debugModalScrollOffset
+          )
+          debugModalMaxScrollOffset = result.maxScrollOffset
+          stateManager.clampDebugModalScrollOffset(debugModalMaxScrollOffset)
+          const scrollHint =
+            result.usesInternalScroll && result.maxScrollOffset > 0
+              ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
+              : ''
+          renderModalViewport(
+            'info-modal',
+            scrollHint + chalk.bold.white('! / Esc ') + chalk.gray('Close'),
+            result.lines,
             terminalWidth,
             terminalHeight,
             bgCode
