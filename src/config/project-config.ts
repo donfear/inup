@@ -15,6 +15,18 @@ export interface InupProjectConfig {
    * Exclude directory patterns (regex patterns)
    */
   exclude?: string[]
+
+  /**
+   * Show vulnerability badges for peerDependencies in the package list.
+   * Defaults to false so peer dependency risk stays hidden unless explicitly enabled.
+   */
+  showPeerDependencyVulnerabilities?: boolean
+
+  /**
+   * Show vulnerability badges for optionalDependencies in the package list.
+   * Defaults to false so optional dependency risk stays hidden unless explicitly enabled.
+   */
+  showOptionalDependencyVulnerabilities?: boolean
 }
 
 const CONFIG_FILES = ['.inuprc', '.inuprc.json', 'inup.config.json']
@@ -66,6 +78,14 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
     if (Array.isArray(config.exclude)) {
       normalized.exclude = config.exclude.filter((item) => typeof item === 'string')
     }
+  }
+
+  if (typeof config.showPeerDependencyVulnerabilities === 'boolean') {
+    normalized.showPeerDependencyVulnerabilities = config.showPeerDependencyVulnerabilities
+  }
+
+  if (typeof config.showOptionalDependencyVulnerabilities === 'boolean') {
+    normalized.showOptionalDependencyVulnerabilities = config.showOptionalDependencyVulnerabilities
   }
 
   return normalized

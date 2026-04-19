@@ -1,4 +1,4 @@
-import { PackageSelectionState, RenderableItem } from '../../types'
+import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
 import { NavigationManager, NavigationState } from './navigation-manager'
 import { ModalManager, ModalState } from './modal-manager'
 import { FilterManager, FilterState } from './filter-manager'
@@ -28,6 +28,7 @@ export interface UIState {
   showInfoModal: boolean
   infoModalRow: number
   isLoadingModalInfo: boolean
+  infoModalScrollOffset: number
   filterMode: boolean
   filterQuery: string
   showThemeModal: boolean
@@ -83,6 +84,7 @@ export class StateManager {
       showInfoModal: modalState.showInfoModal,
       infoModalRow: modalState.infoModalRow,
       isLoadingModalInfo: modalState.isLoadingModalInfo,
+      infoModalScrollOffset: modalState.infoModalScrollOffset,
       filterMode: filterState.filterMode,
       filterQuery: filterState.filterQuery,
       showThemeModal: themeState.showThemeModal,
@@ -114,7 +116,7 @@ export class StateManager {
 
     const currentRow = this.navigationManager.getCurrentRow()
     const currentState = states[currentRow]
-    if (!currentState) return
+    if (!currentState || currentState.loadState !== 'ready') return
 
     if (direction === 'left') {
       // Move selection left with wraparound: latest -> range -> none -> latest
@@ -159,7 +161,7 @@ export class StateManager {
   bulkSelectMinor(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.hasRangeUpdate) {
+      if (state.loadState === 'ready' && state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -168,9 +170,9 @@ export class StateManager {
   bulkSelectLatest(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.hasMajorUpdate) {
+      if (state.loadState === 'ready' && state.hasMajorUpdate) {
         state.selectedOption = 'latest'
-      } else if (state.hasRangeUpdate) {
+      } else if (state.loadState === 'ready' && state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -179,15 +181,18 @@ export class StateManager {
   bulkUnselectAll(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      state.selectedOption = 'none'
+      if (state.loadState === 'ready') {
+        state.selectedOption = 'none'
+      }
     })
   }
 
   // Modal delegation
-  toggleInfoModal(): void {
+  toggleInfoModal(): number {
     const currentRow = this.navigationManager.getCurrentRow()
-    this.modalManager.toggleInfoModal(currentRow)
+    const sessionId = this.modalManager.toggleInfoModal(currentRow)
     this.renderState.forceFullRender = true
+    return sessionId
   }
 
   closeInfoModal(): void {
@@ -195,9 +200,38 @@ export class StateManager {
     this.renderState.forceFullRender = true
   }
 
-  setModalLoading(isLoading: boolean): void {
-    this.modalManager.setModalLoading(isLoading)
-    this.renderState.forceFullRender = true
+  setModalLoading(isLoading: boolean, sessionId?: number): boolean {
+    const updated = this.modalManager.setModalLoading(isLoading, sessionId)
+    if (updated) {
+      this.renderState.forceFullRender = true
+    }
+    return updated
+  }
+
+  getInfoModalSessionId(): number {
+    return this.modalManager.getSessionId()
+  }
+
+  resetInfoModalScroll(): void {
+    this.modalManager.resetScroll()
+  }
+
+  scrollInfoModalUp(): boolean {
+    return this.modalManager.scrollModalUp()
+    // Don't force full render — modal viewport handles its own overwrite
+  }
+
+  scrollInfoModalDown(maxOffset: number): boolean {
+    return this.modalManager.scrollModalDown(maxOffset)
+    // Don't force full render — modal viewport handles its own overwrite
+  }
+
+  getInfoModalScrollOffset(): number {
+    return this.modalManager.getScrollOffset()
+  }
+
+  clampInfoModalScrollOffset(maxOffset: number): boolean {
+    return this.modalManager.clampScrollOffset(maxOffset)
   }
 
   // Filter delegation
@@ -233,16 +267,31 @@ export class StateManager {
     this.navigationManager.setScrollOffset(0)
   }
 
-  getFilteredStates(allStates: PackageSelectionState[]): PackageSelectionState[] {
-    return this.filterManager.getFilteredStates(allStates)
+  getFilteredStates(
+    allStates: PackageSelectionState[],
+    options?: VulnerabilityDisplayOptions
+  ): PackageSelectionState[] {
+    return this.filterManager.getFilteredStates(allStates, options)
   }
 
-  toggleDependencyTypeFilter(type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'): void {
+  toggleDependencyTypeFilter(
+    type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
+  ): void {
     this.filterManager.toggleDependencyType(type)
     // Reset navigation when filter changes
     this.navigationManager.setCurrentRow(0)
     this.navigationManager.setScrollOffset(0)
     // Use incremental render (no blink)
+  }
+
+  toggleVulnerableFilter(): void {
+    this.filterManager.toggleVulnerableFilter()
+    this.navigationManager.setCurrentRow(0)
+    this.navigationManager.setScrollOffset(0)
+  }
+
+  isVulnerableFilterActive(): boolean {
+    return this.filterManager.isVulnerableFilterActive()
   }
 
   getActiveFilterLabel(): string {
@@ -275,7 +324,10 @@ export class StateManager {
   }
 
   resetForResize(totalFilteredItems?: number): void {
-    const totalItems = totalFilteredItems || this.renderState.renderableItems.length || this.displayState.maxVisibleItems
+    const totalItems =
+      totalFilteredItems ||
+      this.renderState.renderableItems.length ||
+      this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
   }

@@ -4,6 +4,7 @@
 
 export * from './filesystem'
 export * from './exec'
+export * from './git'
 export * from './version'
 export * from './debug-logger'
 

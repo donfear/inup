@@ -4,7 +4,7 @@
 
 export * from './npm-registry'
 export * from './jsdelivr-registry'
-export * from './changelog-fetcher'
+export * from '../features/changelog'
 export * from './version-checker'
-export * from './persistent-cache'
-export * from './cache-manager'
+export * from './vulnerability-checker'
+export * from './background-audit'

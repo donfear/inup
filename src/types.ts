@@ -1,3 +1,15 @@
+export interface VulnerabilitySummary {
+  count: number
+  highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+  detailsUrl?: string
+  advisories: Array<{
+    id: number
+    title: string
+    severity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+    url: string
+  }>
+}
+
 export interface PackageInfo {
   name: string
   currentVersion: string // Raw version specifier from package.json (with ^/~ prefixes)
@@ -14,12 +26,29 @@ export interface PackageInfo {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
+  allVersions?: string[] // All available versions from registry
 }
+
+export type DependencyType =
+  | 'dependencies'
+  | 'devDependencies'
+  | 'optionalDependencies'
+  | 'peerDependencies'
+
+export interface DependencyEntry {
+  name: string
+  version: string
+  type: DependencyType
+  packageJsonPath: string
+}
+
+export type PackageLoadState = 'pending' | 'ready' | 'failed'
 
 export interface PackageUpgradeChoice {
   name: string
   packageJsonPath: string // Path to the package.json file to upgrade
-  dependencyType: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  dependencyType: DependencyType
   upgradeType: 'none' | 'range' | 'latest'
   targetVersion: string
   currentVersionSpecifier: string // Original version specifier with prefix
@@ -34,15 +63,22 @@ export interface PackageSelectionState {
   rangeVersion: string
   latestVersion: string
   selectedOption: 'none' | 'range' | 'latest'
+  loadState: PackageLoadState
   hasRangeUpdate: boolean
   hasMajorUpdate: boolean
-  type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  type: DependencyType
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
+  allVersions?: string[] // All available versions (for release notes version range)
+  releaseNotesVersions?: string[] // Versions between current and target (newest first)
+  releaseNotesLoaded?: Map<string, string | null> // version → content (null = unavailable)
+  releaseNotesLoadingVersion?: string // Currently loading this version's notes
+  releaseNotesViewIndex?: number // Index into releaseNotesVersions of the version being viewed
 }
 
 export interface GroupedPackages {
@@ -67,7 +103,12 @@ export interface PackageManagerInfo {
   color: any // chalk instance
 }
 
-export interface UpgradeOptions {
+export interface VulnerabilityDisplayOptions {
+  showPeerDependencyVulnerabilities?: boolean
+  showOptionalDependencyVulnerabilities?: boolean
+}
+
+export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   cwd?: string
   excludePatterns?: string[]
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
@@ -86,6 +127,60 @@ export interface PackageJson {
   [key: string]: any
 }
 
-export type OnBatchReadyCallback = (
-  batch: Array<{ name: string; data: { latestVersion: string; allVersions: string[] } }>
-) => void
+export interface PackageLoadProgress {
+  discovered: number
+  resolved: number
+  total: number
+  failed: number
+  isLoading: boolean
+}
+
+export interface AuditProgress {
+  completed: number
+  total: number
+  isRunning: boolean
+  hasData: boolean
+}
+
+export interface StreamOutdatedPackagesInitialPayload {
+  allDependencies: DependencyEntry[]
+  uniquePackages: string[]
+  currentVersions: Map<string, string>
+  progress: PackageLoadProgress
+}
+
+export interface StreamOutdatedPackagesBatchItem {
+  packageName: string
+  packageInfo: PackageInfo[]
+  failed: boolean
+}
+
+export type StreamOutdatedPackagesEvent =
+  | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
+  | {
+      type: 'batch'
+      payload: {
+        batch: StreamOutdatedPackagesBatchItem[]
+        progress: PackageLoadProgress
+      }
+    }
+  | { type: 'complete'; payload: { packages: PackageInfo[]; progress: PackageLoadProgress } }
+
+export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
+
+export interface RegistryBatchOptions {
+  batchSize?: number
+  batchSizes?: number[]
+  concurrency?: number
+}
+
+export interface RegistryBatchProgressItem {
+  packageName: string
+  data: { latestVersion: string; allVersions: string[] }
+  completed: number
+  total: number
+  batchIndex: number
+  itemIndex: number
+}
+
+export type OnBatchReadyCallback = (batch: RegistryBatchProgressItem[]) => void

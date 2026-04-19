@@ -1,15 +1,27 @@
-import { PackageSelectionState, RenderableItem, PackageManagerInfo } from '../../types'
+import {
+  AuditProgress,
+  PackageLoadProgress,
+  PackageSelectionState,
+  RenderableItem,
+  PackageManagerInfo,
+} from '../../types'
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
-import * as Modal from './modal'
-import * as ThemeSelector from './theme-selector'
+import * as Modal from '../modal'
+import { ModalRenderResult } from '../modal'
+import { PackageListRenderOptions } from './package-list'
 
 /**
  * Main UI renderer class that composes all rendering parts
  */
 export class UIRenderer {
-  renderPackageLine(state: PackageSelectionState, index: number, isCurrentRow: boolean): string {
-    return PackageList.renderPackageLine(state, index, isCurrentRow)
+  renderPackageLine(
+    state: PackageSelectionState,
+    index: number,
+    isCurrentRow: boolean,
+    options?: PackageListRenderOptions
+  ): string {
+    return PackageList.renderPackageLine(state, index, isCurrentRow, 80, options)
   }
 
   renderSectionHeader(title: string, sectionType: 'main' | 'peer' | 'optional'): string {
@@ -32,7 +44,10 @@ export class UIRenderer {
     filterMode?: boolean,
     filterQuery?: string,
     totalPackagesBeforeFilter?: number,
-    terminalWidth: number = 80
+    terminalWidth: number = 80,
+    loadingProgress?: PackageLoadProgress,
+    auditProgress?: AuditProgress,
+    options?: PackageListRenderOptions
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -46,7 +61,10 @@ export class UIRenderer {
       filterMode,
       filterQuery,
       totalPackagesBeforeFilter,
-      terminalWidth
+      terminalWidth,
+      loadingProgress,
+      auditProgress,
+      options
     )
   }
 
@@ -62,16 +80,17 @@ export class UIRenderer {
     state: PackageSelectionState,
     terminalWidth: number = 80,
     terminalHeight: number = 24
-  ): string[] {
+  ): ModalRenderResult {
     return Modal.renderPackageInfoLoading(state, terminalWidth, terminalHeight)
   }
 
   renderPackageInfoModal(
     state: PackageSelectionState,
     terminalWidth: number = 80,
-    terminalHeight: number = 24
-  ): string[] {
-    return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight)
+    terminalHeight: number = 24,
+    scrollOffset: number = 0
+  ): ModalRenderResult {
+    return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight, scrollOffset)
   }
 
   renderThemeSelectorModal(
@@ -80,12 +99,11 @@ export class UIRenderer {
     terminalWidth: number = 80,
     terminalHeight: number = 24
   ): string[] {
-    return ThemeSelector.renderThemeSelectorModal(currentTheme, previewTheme, terminalWidth, terminalHeight)
+    return Modal.renderThemeSelectorModal(currentTheme, previewTheme, terminalWidth, terminalHeight)
   }
 }
 
 // Re-export all functions for direct use if needed
 export * from './package-list'
 export * from './confirmation'
-export * from './modal'
-export * from './theme-selector'
+export * from '../modal'
