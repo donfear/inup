@@ -35,7 +35,7 @@ export class PackageDetector {
   private ignorePackages: string[]
   private maxDepth: number
   private readonly batchSize = 25
-  private readonly batchConcurrency = 5
+  private readonly batchConcurrency = 25
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
