@@ -1,53 +1,49 @@
 #!/bin/bash
 
-# Script to record demo with automatic package.json backup/restore
-# Uses a temporary directory with a clean path to avoid exposing file system
+# Records the demo with a clean prompt and a self-contained inup binary,
+# so the recording does not depend on global pnpm link / PATH propagation
+# into the VHS-spawned shell.
 
 set -e
 
-SOURCE_PACKAGE="docs/demo-project/package.json"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+SOURCE_PACKAGE="$REPO_ROOT/docs/demo-project/package.json"
+DEMO_PROJECT_DIR="$REPO_ROOT/docs/demo-project"
 TEMP_DIR="/tmp/my-app"
-TAPE_FILE="docs/demo/demo-real.tape"
+TAPE_FILE="$REPO_ROOT/docs/demo/demo-real.tape"
+CLI_ENTRY="$REPO_ROOT/dist/cli.js"
+WRAPPER_BIN_DIR="$TEMP_DIR/.bin"
 
-echo "🎬 Recording demo with clean paths..."
-echo ""
+echo "Recording demo with clean paths..."
 
-# Build and link the CLI
-echo "🔨 Building and linking CLI..."
-pnpm build
-pnpm link --global
-echo "✅ CLI linked globally"
-echo ""
+echo "Building CLI..."
+( cd "$REPO_ROOT" && pnpm build )
 
-# Create clean temp directory
-echo "📁 Setting up temporary demo directory..."
+echo "Installing demo-project dependencies..."
+( cd "$DEMO_PROJECT_DIR" && pnpm install --prefer-offline )
+
+echo "Setting up temporary demo directory..."
 rm -rf "$TEMP_DIR"
-mkdir -p "$TEMP_DIR"
+mkdir -p "$TEMP_DIR" "$WRAPPER_BIN_DIR"
 cp "$SOURCE_PACKAGE" "$TEMP_DIR/package.json"
-echo "✅ Demo directory created at $TEMP_DIR"
-echo ""
 
-# Function to cleanup
+# Wrapper script invokes the freshly built CLI directly — no pnpm link needed.
+cat > "$WRAPPER_BIN_DIR/inup" <<EOF
+#!/usr/bin/env bash
+exec node "$CLI_ENTRY" "\$@"
+EOF
+chmod +x "$WRAPPER_BIN_DIR/inup"
+
+# Prepend wrapper dir so VHS's shell sees inup on PATH.
+export PATH="$WRAPPER_BIN_DIR:$PATH"
+
 cleanup() {
-    echo ""
-    echo "🧹 Cleaning up..."
-    
-    echo "🔗 Unlinking global package..."
-    pnpm unlink --global inup 2>/dev/null || true
-    
-    echo "🗑️  Removing temporary directory..."
+    echo "Cleaning up..."
     rm -rf "$TEMP_DIR"
-    
-    echo "✅ Cleanup complete"
 }
-
-# Ensure cleanup happens even if recording fails
 trap cleanup EXIT
 
-# Record the demo
-echo "🎥 Recording demo..."
+echo "Recording with vhs..."
 vhs "$TAPE_FILE"
-echo ""
-echo "✅ Demo recorded successfully!"
-echo "   Output: docs/demo/interactive-upgrade.gif"
-echo ""
+
+echo "Demo recorded: docs/demo/interactive-upgrade.gif"

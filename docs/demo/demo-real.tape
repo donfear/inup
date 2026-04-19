@@ -1,6 +1,6 @@
 Output docs/demo/interactive-upgrade.gif
 
-Set Shell zsh
+Set Shell bash
 Set PlaybackSpeed 1.0
 Set Width 1200
 Set Height 600
@@ -11,6 +11,8 @@ Set Padding 0
 Hide
 Type "cd /tmp/my-app"
 Enter
+Type `export PS1='$ '`
+Enter
 Type "clear"
 Enter
 Show
@@ -19,8 +21,8 @@ Show
 Type "inup"
 Enter
 
-# Wait for the tool to scan and fetch package updates (reduced from 5s)
-Sleep 2s
+# Wait for the tool to scan and fetch package updates
+Sleep 5s
 
 # Use 'M' to select all minor updates
 Type "m"

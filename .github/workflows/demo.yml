@@ -3,6 +3,10 @@ name: Record Demo
 on:
   workflow_dispatch:
 
+concurrency:
+  group: record-demo-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   record-demo:
     name: Record Demo
@@ -22,7 +26,7 @@ jobs:
         run: corepack enable
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: 'pnpm'
@@ -31,8 +35,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg ttyd
-          curl -fsSL https://raw.githubusercontent.com/charmbracelet/vhs/main/install.sh | bash
-          sudo mv bin/vhs /usr/local/bin/vhs
+          VHS_VERSION="$(curl -fsSL https://api.github.com/repos/charmbracelet/vhs/releases/latest | jq -r '.tag_name')"
+          ARCH="$(dpkg --print-architecture)"
+
+          case "$ARCH" in
+            amd64) VHS_ARCH="x86_64" ;;
+            arm64) VHS_ARCH="arm64" ;;
+            armhf) VHS_ARCH="arm" ;;
+            *)
+              echo "Unsupported architecture: $ARCH"
+              exit 1
+              ;;
+          esac
+
+          curl -fsSL "https://github.com/charmbracelet/vhs/releases/download/${VHS_VERSION}/vhs_${VHS_VERSION#v}_Linux_${VHS_ARCH}.tar.gz" -o /tmp/vhs.tar.gz
+          mkdir -p /tmp/vhs-extract
+          tar -xzf /tmp/vhs.tar.gz -C /tmp/vhs-extract
+          VHS_BIN="$(find /tmp/vhs-extract -type f -name 'vhs' | head -1)"
+          sudo install -m 0755 "$VHS_BIN" /usr/local/bin/vhs
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
