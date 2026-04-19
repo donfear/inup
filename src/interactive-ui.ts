@@ -667,13 +667,22 @@ export class InteractiveUI {
           const terminalWidth = process.stdout.columns || 80
           const terminalHeight = this.getTerminalHeight()
           const snapshot = getPerformanceTracker().snapshot()
-          const lines = renderPerformanceModal(snapshot, terminalWidth, terminalHeight)
-          debugModalMaxScrollOffset = Math.max(0, lines.length - (terminalHeight - 4))
+          const result = renderPerformanceModal(
+            snapshot,
+            terminalWidth,
+            Math.max(8, terminalHeight - 4),
+            uiState.debugModalScrollOffset
+          )
+          debugModalMaxScrollOffset = result.maxScrollOffset
           stateManager.clampDebugModalScrollOffset(debugModalMaxScrollOffset)
+          const scrollHint =
+            result.usesInternalScroll && result.maxScrollOffset > 0
+              ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
+              : ''
           renderModalViewport(
             'info-modal',
-            chalk.bold.white('! / Esc ') + chalk.gray('Close'),
-            lines,
+            scrollHint + chalk.bold.white('! / Esc ') + chalk.gray('Close'),
+            result.lines,
             terminalWidth,
             terminalHeight,
             bgCode

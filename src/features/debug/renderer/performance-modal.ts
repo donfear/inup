@@ -1,5 +1,11 @@
 import chalk from 'chalk'
-import { ModalSection, renderModalFrame } from '../../../ui/modal'
+import {
+  ModalSection,
+  ModalRenderResult,
+  getModalWidth,
+  renderModalRow,
+  renderModalSeparator,
+} from '../../../ui/modal'
 import { PerformanceSnapshot } from '../types/debug.types'
 
 function formatMs(value: number | undefined | null): string {
@@ -17,86 +23,154 @@ function labelValue(label: string, value: string, labelWidth = 22): string {
   return `${chalk.white(padded)} ${value}`
 }
 
-export function renderPerformanceModal(
-  snapshot: PerformanceSnapshot,
-  terminalWidth: number = 80,
-  terminalHeight: number = 24
-): string[] {
+function buildSections(snapshot: PerformanceSnapshot): {
+  pinned: ModalSection[]
+  body: ModalSection[]
+} {
   const { phases, counts, batches, failedPackages, packageManager, totalMs } = snapshot
 
-  const headerRows = [
-    chalk.cyan('⚡ Performance'),
-    chalk.gray(
-      `Package manager: ${packageManager ? chalk.white(packageManager) : chalk.gray('unknown')}`
-    ),
+  const pinned: ModalSection[] = [
+    {
+      key: 'header',
+      rows: [
+        chalk.cyan('⚡ Performance'),
+        chalk.gray(
+          `Package manager: ${packageManager ? chalk.white(packageManager) : chalk.gray('unknown')}`
+        ),
+      ],
+      required: true,
+      behavior: 'pinned',
+    },
   ]
 
-  const timingRows = [
-    labelValue('Discovery', formatMs(phases.discovery)),
-    labelValue('Dep collection', formatMs(phases.depCollection)),
-    labelValue('Filter', formatMs(phases.filter)),
-    labelValue('Registry fetch', formatMs(phases.registryFetch)),
-    labelValue('First batch ready', formatMs(phases.firstBatch)),
-    labelValue('All packages loaded', formatMs(phases.allLoaded)),
-    labelValue('Elapsed total', formatMs(totalMs ?? undefined)),
-  ]
+  const bodyRows: string[] = []
 
-  const countRows = [
-    labelValue('package.json files', formatCount(counts.packageJsonFiles)),
-    labelValue('Raw dependencies', formatCount(counts.rawDependencies)),
-    labelValue('Unique packages', formatCount(counts.uniquePackages)),
-    labelValue('Ignored', formatCount(counts.ignoredPackages)),
-    labelValue('Workspace refs', formatCount(counts.workspaceRefsSkipped)),
-    labelValue('Resolved', formatCount(counts.resolved)),
-    labelValue('Failed', formatCount(counts.failed)),
-  ]
+  bodyRows.push(chalk.bold('Timings'))
+  bodyRows.push(labelValue('Discovery', formatMs(phases.discovery)))
+  bodyRows.push(labelValue('Dep collection', formatMs(phases.depCollection)))
+  bodyRows.push(labelValue('Filter', formatMs(phases.filter)))
+  bodyRows.push(labelValue('Registry fetch', formatMs(phases.registryFetch)))
+  bodyRows.push(labelValue('First batch ready', formatMs(phases.firstBatch)))
+  bodyRows.push(labelValue('All packages loaded', formatMs(phases.allLoaded)))
+  bodyRows.push(labelValue('Elapsed total', formatMs(totalMs ?? undefined)))
 
-  const batchRows: string[] = []
+  bodyRows.push('')
+  bodyRows.push(chalk.bold('Counts'))
+  bodyRows.push(labelValue('package.json files', formatCount(counts.packageJsonFiles)))
+  bodyRows.push(labelValue('Raw dependencies', formatCount(counts.rawDependencies)))
+  bodyRows.push(labelValue('Unique packages', formatCount(counts.uniquePackages)))
+  bodyRows.push(labelValue('Ignored', formatCount(counts.ignoredPackages)))
+  bodyRows.push(labelValue('Workspace refs', formatCount(counts.workspaceRefsSkipped)))
+  bodyRows.push(labelValue('Resolved', formatCount(counts.resolved)))
+  bodyRows.push(labelValue('Failed', formatCount(counts.failed)))
+
+  bodyRows.push('')
+  bodyRows.push(chalk.bold('Batches'))
   if (batches.length > 0) {
     const durations = batches.map((b) => b.durationMs)
     const total = durations.reduce((a, b) => a + b, 0)
     const avg = Math.round(total / batches.length)
     const slowest = Math.max(...durations)
     const slowestBatch = batches.find((b) => b.durationMs === slowest)
-    batchRows.push(
-      labelValue('Batch count', formatCount(batches.length)),
-      labelValue('Avg batch', formatMs(avg)),
+    bodyRows.push(labelValue('Batch count', formatCount(batches.length)))
+    bodyRows.push(labelValue('Avg batch', formatMs(avg)))
+    bodyRows.push(
       labelValue('Slowest batch', `${formatMs(slowest)} ${chalk.gray(`(#${slowestBatch?.index})`)}`)
     )
   } else {
-    batchRows.push(chalk.gray('  (no batches recorded)'))
+    bodyRows.push(chalk.gray('  (no batches recorded)'))
   }
 
-  const failureRows: string[] = []
+  bodyRows.push('')
+  bodyRows.push(chalk.bold('Failures'))
   if (failedPackages.length > 0) {
-    const shown = failedPackages.slice(0, 10)
-    for (const name of shown) {
-      failureRows.push(`  ${chalk.red('✗')} ${name}`)
-    }
-    if (failedPackages.length > shown.length) {
-      failureRows.push(chalk.gray(`  … and ${failedPackages.length - shown.length} more`))
+    for (const name of failedPackages) {
+      bodyRows.push(`  ${chalk.red('✗')} ${name}`)
     }
   } else {
-    failureRows.push(chalk.gray('  (none)'))
+    bodyRows.push(chalk.gray('  (none)'))
   }
 
-  const sections: ModalSection[] = [
-    { key: 'header', rows: headerRows, required: true },
-    { key: 'timings-title', rows: [chalk.bold('Timings')], required: true },
-    { key: 'timings', rows: timingRows, required: true },
-    { key: 'counts-title', rows: ['', chalk.bold('Counts')], required: true },
-    { key: 'counts', rows: countRows, required: true },
-    { key: 'batches-title', rows: ['', chalk.bold('Batches')], required: true },
-    { key: 'batches', rows: batchRows, required: true },
-    { key: 'failures-title', rows: ['', chalk.bold('Failures')], required: true },
-    { key: 'failures', rows: failureRows, required: true },
-    { key: 'instructions', rows: ['', chalk.gray('! or Esc to close')], required: true },
+  const body: ModalSection[] = [
+    {
+      key: 'body',
+      rows: bodyRows,
+      required: true,
+      behavior: 'body',
+    },
   ]
 
-  return renderModalFrame(sections, {
-    terminalWidth,
-    terminalHeight,
-    minWidth: 64,
-    maxWidth: 84,
-  })
+  return { pinned, body }
+}
+
+export function renderPerformanceModal(
+  snapshot: PerformanceSnapshot,
+  terminalWidth: number = 80,
+  terminalHeight: number = 24,
+  scrollOffset: number = 0
+): ModalRenderResult {
+  const modalWidth = getModalWidth(terminalWidth, 60, 84)
+  const padding = Math.floor((terminalWidth - modalWidth) / 2)
+  const fixedModalHeight = Math.max(10, terminalHeight - 2)
+
+  const { pinned, body } = buildSections(snapshot)
+  const pinnedRowCount = pinned.reduce((sum, s) => sum + s.rows.length, 0)
+  // frame: top border + pinned rows + separator + body rows + bottom border
+  const availableForBody = Math.max(3, fixedModalHeight - 2 - pinnedRowCount - 1)
+
+  const bodyRows = body[0].rows
+  const totalScrollableRows = bodyRows.length
+  const needsScroll = totalScrollableRows > availableForBody
+  const visibleBodyRows = needsScroll ? Math.max(1, availableForBody - 1) : availableForBody
+  const maxScroll = Math.max(0, totalScrollableRows - visibleBodyRows)
+  const clampedOffset = Math.min(Math.max(0, scrollOffset), maxScroll)
+  const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
+
+  const lines: string[] = []
+  const topPadding = Math.max(0, Math.floor((terminalHeight - fixedModalHeight) / 2))
+  for (let i = 0; i < topPadding; i++) {
+    lines.push('')
+  }
+
+  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
+
+  for (const section of pinned) {
+    for (const row of section.rows) {
+      lines.push(renderModalRow(padding, modalWidth, row))
+    }
+  }
+
+  lines.push(renderModalSeparator(padding, modalWidth))
+
+  let renderedBodyRows = 0
+  for (const row of visibleSlice) {
+    lines.push(renderModalRow(padding, modalWidth, row))
+    renderedBodyRows++
+  }
+
+  const footer = needsScroll
+    ? chalk.gray(
+        `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + visibleBodyRows, totalScrollableRows)} of ${totalScrollableRows}`
+      )
+    : null
+
+  const usedContentRows = pinnedRowCount + 1 + renderedBodyRows + (footer ? 1 : 0)
+  const totalContentSlots = fixedModalHeight - 2
+  const emptyRows = Math.max(0, totalContentSlots - usedContentRows)
+  for (let i = 0; i < emptyRows; i++) {
+    lines.push(renderModalRow(padding, modalWidth, ''))
+  }
+
+  if (footer) {
+    lines.push(renderModalRow(padding, modalWidth, footer))
+  }
+
+  lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
+
+  return {
+    lines,
+    maxScrollOffset: maxScroll,
+    totalContentRows: totalScrollableRows,
+    usesInternalScroll: needsScroll,
+  }
 }
