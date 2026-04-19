@@ -1,4 +1,11 @@
 import * as semver from 'semver'
+import { Pool } from 'undici'
+import { gunzip, inflate, brotliDecompress } from 'node:zlib'
+import { promisify } from 'node:util'
+
+const gunzipAsync = promisify(gunzip)
+const inflateAsync = promisify(inflate)
+const brotliDecompressAsync = promisify(brotliDecompress)
 import { NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import { ConsoleUtils } from '../ui/utils'
@@ -11,6 +18,19 @@ export interface PackageVersionData {
 
 const inFlightLookups = new Map<string, Promise<PackageVersionData>>()
 
+const registryOrigin = new URL(NPM_REGISTRY_URL).origin
+const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
+
+const registryPool = new Pool(registryOrigin, {
+  connections: 64,
+  pipelining: 10,
+  keepAliveTimeout: 30_000,
+  keepAliveMaxTimeout: 600_000,
+  headersTimeout: REQUEST_TIMEOUT,
+  bodyTimeout: REQUEST_TIMEOUT,
+  allowH2: false,
+})
+
 const isRetryableStatus = (statusCode: number): boolean =>
   statusCode === 408 || statusCode === 429 || statusCode >= 500
 
@@ -22,6 +42,14 @@ const isTransientNetworkError = (error: unknown): boolean => {
   const maybeCode = (error as Error & { code?: string }).code
   return (
     error.name === 'AbortError' ||
+    error.name === 'HeadersTimeoutError' ||
+    error.name === 'BodyTimeoutError' ||
+    error.name === 'ConnectTimeoutError' ||
+    error.name === 'SocketError' ||
+    maybeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
+    maybeCode === 'UND_ERR_BODY_TIMEOUT' ||
+    maybeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
+    maybeCode === 'UND_ERR_SOCKET' ||
     maybeCode === 'ENOTFOUND' ||
     maybeCode === 'EAI_AGAIN' ||
     maybeCode === 'ECONNRESET' ||
@@ -61,57 +89,64 @@ async function getFreshPackageData(
   return await lookupPromise
 }
 
-/**
- * Fetches package data from npm registry.
- * Falls back to jsDelivr when npm is temporarily unavailable.
- */
+function parseVersions(raw: string): PackageVersionData {
+  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
+  const allVersions = Object.keys(data.versions || {}).filter((v) =>
+    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)
+  )
+  const sortedVersions = allVersions.sort(semver.rcompare)
+  const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
+  return { latestVersion, allVersions }
+}
+
 async function fetchPackageFromRegistryWithFallback(
   packageName: string,
   currentVersion: string | undefined
 ): Promise<PackageVersionData> {
   try {
-    const url = `${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}`
+    const encodedName = packageName.startsWith('@')
+      ? `@${encodeURIComponent(packageName.slice(1).split('/')[0])}/${encodeURIComponent(
+          packageName.slice(packageName.indexOf('/') + 1)
+        )}`
+      : encodeURIComponent(packageName)
+    const path = `${registryPathPrefix}/${encodedName}`
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+    const { statusCode, headers, body } = await registryPool.request({
+      path,
+      method: 'GET',
+      headers: {
+        accept: 'application/vnd.npm.install-v1+json',
+        'accept-encoding': 'gzip, deflate, br',
+      },
+      headersTimeout: REQUEST_TIMEOUT,
+      bodyTimeout: REQUEST_TIMEOUT,
+      blocking: false,
+    })
 
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          accept: 'application/vnd.npm.install-v1+json',
-        },
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        if (isRetryableStatus(response.status)) {
-          return await fetchFromJsdelivrFallback(packageName, currentVersion)
-        }
-        throw new Error(`HTTP ${response.status}`)
+    if (statusCode < 200 || statusCode >= 300) {
+      await body.dump()
+      if (isRetryableStatus(statusCode)) {
+        return await fetchFromJsdelivrFallback(packageName, currentVersion)
       }
-
-      const text = await response.text()
-      const data = JSON.parse(text) as {
-        versions?: Record<string, unknown>
-      }
-
-      const allVersions = Object.keys(data.versions || {}).filter((version) =>
-        /^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)
-      )
-
-      const sortedVersions = allVersions.sort(semver.rcompare)
-      const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
-
-      return {
-        latestVersion,
-        allVersions,
-      }
-    } finally {
-      clearTimeout(timeoutId)
+      return { latestVersion: 'unknown', allVersions: [] }
     }
+
+    const raw = Buffer.from(await body.arrayBuffer())
+    const encodingHeader = headers['content-encoding']
+    const encoding = (Array.isArray(encodingHeader) ? encodingHeader[0] : encodingHeader)
+      ?.toString()
+      .toLowerCase()
+    let decoded: Buffer
+    if (encoding === 'gzip') {
+      decoded = await gunzipAsync(raw)
+    } else if (encoding === 'br') {
+      decoded = await brotliDecompressAsync(raw)
+    } else if (encoding === 'deflate') {
+      decoded = await inflateAsync(raw)
+    } else {
+      decoded = raw
+    }
+    return parseVersions(decoded.toString('utf8'))
   } catch (error) {
     if (isTransientNetworkError(error)) {
       return await fetchFromJsdelivrFallback(packageName, currentVersion)
@@ -122,7 +157,7 @@ async function fetchPackageFromRegistryWithFallback(
 
 /**
  * Fetches package version data from npm registry for multiple packages.
- * Uses native fetch with timeout support for reliable performance.
+ * Uses an undici Pool with HTTP/1.1 pipelining for high throughput.
  * Only returns valid semantic versions (X.Y.Z format, excluding pre-releases).
  */
 export async function getAllPackageData(
@@ -150,10 +185,8 @@ export async function getAllPackageData(
     }
   })
 
-  // Wait for all requests to complete
   await Promise.all(allPromises)
 
-  // Clear the progress line if no custom progress handler
   if (!onProgress) {
     ConsoleUtils.clearProgress()
   }
@@ -205,30 +238,52 @@ export async function getAllPackageDataBatched(
   let batchStart = 0
   let batchIndex = 0
 
+  const batchPromises: Promise<void>[] = []
+  const pendingEmissions = new Map<number, RegistryBatchProgressItem[]>()
+  let nextEmitIndex = 0
+
+  const flushPending = () => {
+    while (pendingEmissions.has(nextEmitIndex)) {
+      const ready = pendingEmissions.get(nextEmitIndex)!
+      pendingEmissions.delete(nextEmitIndex)
+      onBatchReady?.(ready)
+      nextEmitIndex++
+    }
+  }
+
   while (batchStart < packageNames.length) {
     const batchSize = batchSizes[Math.min(batchIndex, batchSizes.length - 1)]
     const batchNames = packageNames.slice(batchStart, batchStart + batchSize)
+    const capturedBatchIndex = batchIndex
     const batchResults: RegistryBatchProgressItem[] = new Array(batchNames.length)
 
-    await runWithConcurrencyLimit(batchNames, concurrency, async (packageName, itemIndex) => {
-      const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
-      packageData.set(packageName, data)
-      completedCount++
-      batchResults[itemIndex] = {
-        packageName,
-        data,
-        completed: completedCount,
-        total,
-        batchIndex,
-        itemIndex,
+    const batchPromise = runWithConcurrencyLimit(
+      batchNames,
+      concurrency,
+      async (packageName, itemIndex) => {
+        const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
+        packageData.set(packageName, data)
+        completedCount++
+        batchResults[itemIndex] = {
+          packageName,
+          data,
+          completed: completedCount,
+          total,
+          batchIndex: capturedBatchIndex,
+          itemIndex,
+        }
       }
+    ).then(() => {
+      pendingEmissions.set(capturedBatchIndex, batchResults.filter(Boolean))
+      flushPending()
     })
 
-    onBatchReady?.(batchResults.filter(Boolean))
-
+    batchPromises.push(batchPromise)
     batchStart += batchSize
     batchIndex++
   }
+
+  await Promise.all(batchPromises)
 
   return packageData
 }
@@ -238,4 +293,8 @@ export async function getAllPackageDataBatched(
  */
 export function clearPackageCache(): void {
   inFlightLookups.clear()
+}
+
+export async function closeRegistryPool(): Promise<void> {
+  await registryPool.close()
 }
