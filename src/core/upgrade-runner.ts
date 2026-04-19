@@ -50,6 +50,7 @@ export class UpgradeRunner {
 
       const performanceTracker = getPerformanceTracker()
       performanceTracker.start()
+      performanceTracker.setPackageManager(this.packageManager.name)
 
       const progress: PackageLoadProgress = {
         discovered: 0,
