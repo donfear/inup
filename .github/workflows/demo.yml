@@ -3,6 +3,10 @@ name: Record Demo
 on:
   workflow_dispatch:
 
+concurrency:
+  group: record-demo-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   record-demo:
     name: Record Demo
@@ -26,13 +30,6 @@ jobs:
         with:
           node-version: 24
           cache: 'pnpm'
-
-      - name: Configure pnpm global bin dir
-        run: |
-          mkdir -p "$HOME/.local/share/pnpm"
-          pnpm config set global-bin-dir "$HOME/.local/share/pnpm"
-          echo "PNPM_HOME=$HOME/.local/share/pnpm" >> $GITHUB_ENV
-          echo "$HOME/.local/share/pnpm" >> $GITHUB_PATH
 
       - name: Install VHS dependencies
         run: |
