@@ -16,6 +16,9 @@ export type InputAction =
   | { type: 'scroll_info_modal_up' }
   | { type: 'scroll_info_modal_down' }
   | { type: 'navigate_info_modal_version'; direction: 'newer' | 'older' }
+  | { type: 'toggle_debug_modal' }
+  | { type: 'scroll_debug_modal_up' }
+  | { type: 'scroll_debug_modal_down' }
   | { type: 'toggle_theme_modal' }
   | { type: 'theme_navigate_up' }
   | { type: 'theme_navigate_down' }
@@ -97,6 +100,30 @@ export class InputHandler {
       return
     }
 
+    // Handle debug modal input (scroll and close)
+    if (uiState.showDebugModal) {
+      if (str === '!') {
+        this.onAction({ type: 'toggle_debug_modal' })
+        return
+      }
+      if (key) {
+        switch (key.name) {
+          case 'escape':
+            this.onAction({ type: 'toggle_debug_modal' })
+            return
+          case 'up':
+            this.onAction({ type: 'scroll_debug_modal_up' })
+            return
+          case 'down':
+            this.onAction({ type: 'scroll_debug_modal_down' })
+            return
+          default:
+            return // consume other keys while modal is open
+        }
+      }
+      return
+    }
+
     // Handle info modal input (scroll and close)
     if (uiState.showInfoModal) {
       if (key) {
@@ -124,6 +151,12 @@ export class InputHandler {
             return // Consume all other keys while modal is open
         }
       }
+      return
+    }
+
+    // '!' toggles the debug/performance modal (outside of filter mode)
+    if (str === '!' && !uiState.filterMode) {
+      this.onAction({ type: 'toggle_debug_modal' })
       return
     }
 

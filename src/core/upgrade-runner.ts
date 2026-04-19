@@ -11,6 +11,7 @@ import {
 } from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
 import { ConsoleUtils } from '../ui/utils'
+import { getPerformanceTracker } from '../features/debug'
 
 /**
  * Main orchestrator for the inup upgrade process
@@ -46,6 +47,9 @@ export class UpgradeRunner {
     try {
       // Check prerequisites
       this.checkPrerequisites()
+
+      const performanceTracker = getPerformanceTracker()
+      performanceTracker.start()
 
       const progress: PackageLoadProgress = {
         discovered: 0,
@@ -87,6 +91,7 @@ export class UpgradeRunner {
             progress.total = event.payload.progress.total
             progress.failed = event.payload.progress.failed
             progress.isLoading = event.payload.progress.isLoading
+            performanceTracker.mark('firstBatch')
             this.ui.appendOutdatedBatchToSelectionStates(
               selectionStates,
               event.payload.batch,
@@ -102,6 +107,8 @@ export class UpgradeRunner {
             progress.total = event.payload.progress.total
             progress.failed = event.payload.progress.failed
             progress.isLoading = event.payload.progress.isLoading
+            performanceTracker.mark('firstBatch')
+            performanceTracker.mark('allLoaded')
             refreshUI?.()
           }
         })
