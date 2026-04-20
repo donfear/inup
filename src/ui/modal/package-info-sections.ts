@@ -309,11 +309,11 @@ function buildTabBarSuffix(activeTab: InfoModalTab, usedByCount: number): string
   const usedByLabel = `Used by${usedByCount > 0 ? ` (${usedByCount})` : ''}`
   return (
     '  ' +
-    chalk.gray('[') +
+    chalk.gray('[ ') +
     styleFor('info')('Info') +
-    chalk.gray('|') +
+    chalk.gray(' │ ') +
     styleFor('usedBy')(usedByLabel) +
-    chalk.gray(']')
+    chalk.gray(' ]')
   )
 }
 
