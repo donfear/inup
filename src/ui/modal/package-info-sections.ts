@@ -1,3 +1,4 @@
+import path from 'node:path'
 import chalk from 'chalk'
 import { PackageSelectionState } from '../../types'
 import { ModalSection } from './types'
@@ -298,11 +299,67 @@ function formatNumber(num: number | undefined): string {
   return num.toString()
 }
 
-export function buildPackageInfoSections(
+function buildTabBarSuffix(activeTab: 'info' | 'usedBy', usedByCount: number): string {
+  const infoLabel = 'Info'
+  const usedByLabel = `Used by${usedByCount > 0 ? ` (${usedByCount})` : ''}`
+  const infoStyle = activeTab === 'info' ? chalk.bold.underline : chalk.gray
+  const usedByStyle = activeTab === 'usedBy' ? chalk.bold.underline : chalk.gray
+  return `  ${chalk.gray('[')}${infoStyle(infoLabel)}${chalk.gray('|')}${usedByStyle(usedByLabel)}${chalk.gray(']')}`
+}
+
+export function buildUsedBySections(
   state: PackageSelectionState,
   modalWidth: number
 ): ModalSection[] {
-  const title = chalk.cyan.bold(`Package: ${state.name}`)
+  const sections: ModalSection[] = []
+  const paths = state.packageJsonPaths ?? [state.packageJsonPath]
+
+  if (!paths || paths.length === 0) {
+    sections.push({
+      key: 'used-by-empty',
+      rows: [chalk.gray.italic('No consuming package.json found.')],
+      behavior: 'status',
+    })
+    return sections
+  }
+
+  const cwd = process.cwd()
+  const contentWidth = Math.max(10, modalWidth - 4)
+  const formatted = paths.map((absolutePath) => {
+    const relative = path.relative(cwd, absolutePath) || absolutePath
+    const display = relative.length === 0 ? absolutePath : relative
+    return display.length > contentWidth
+      ? '…' + display.slice(display.length - (contentWidth - 1))
+      : display
+  })
+
+  const countLabel = chalk.bold(
+    `${paths.length} package.json file${paths.length === 1 ? '' : 's'} depend on ${state.name}`
+  )
+
+  sections.push({
+    key: 'used-by-summary',
+    rows: [countLabel, chalk.gray(`Type: ${state.type}`)],
+    required: true,
+    behavior: 'pinned',
+  })
+
+  sections.push({
+    key: 'used-by-list',
+    rows: formatted.map((line) => `${chalk.gray('•')} ${line}`),
+    behavior: 'body',
+  })
+
+  return sections
+}
+
+export function buildPackageInfoSections(
+  state: PackageSelectionState,
+  modalWidth: number,
+  activeTab: 'info' | 'usedBy' = 'info'
+): ModalSection[] {
+  const usedByCount = (state.packageJsonPaths ?? [state.packageJsonPath]).length
+  const title = chalk.cyan.bold(`Package: ${state.name}`) + buildTabBarSuffix(activeTab, usedByCount)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
   const targetVersion = chalk.green(
@@ -316,18 +373,24 @@ export function buildPackageInfoSections(
       required: true,
       behavior: 'pinned',
     },
-    {
-      key: 'meta',
-      rows: [
-        `Current: ${currentVersion}  Target: ${targetVersion}`,
-        ...(state.weeklyDownloads !== undefined
-          ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
-          : []),
-      ],
-      required: true,
-      behavior: 'pinned',
-    },
   ]
+
+  if (activeTab === 'usedBy') {
+    sections.push(...buildUsedBySections(state, modalWidth))
+    return sections
+  }
+
+  sections.push({
+    key: 'meta',
+    rows: [
+      `Current: ${currentVersion}  Target: ${targetVersion}`,
+      ...(state.weeklyDownloads !== undefined
+        ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
+        : []),
+    ],
+    required: true,
+    behavior: 'pinned',
+  })
 
   if (state.homepage) {
     sections.push({

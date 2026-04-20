@@ -16,6 +16,7 @@ export type InputAction =
   | { type: 'scroll_info_modal_up' }
   | { type: 'scroll_info_modal_down' }
   | { type: 'navigate_info_modal_version'; direction: 'newer' | 'older' }
+  | { type: 'switch_info_modal_tab' }
   | { type: 'toggle_debug_modal' }
   | { type: 'scroll_debug_modal_up' }
   | { type: 'scroll_debug_modal_down' }
@@ -135,6 +136,9 @@ export class InputHandler {
           case 'I':
             this.onAction({ type: 'toggle_info_modal' })
             return
+          case 'tab':
+            this.onAction({ type: 'switch_info_modal_tab' })
+            return
           case 'up':
             this.onAction({ type: 'scroll_info_modal_up' })
             return
@@ -142,10 +146,14 @@ export class InputHandler {
             this.onAction({ type: 'scroll_info_modal_down' })
             return
           case 'left':
-            this.onAction({ type: 'navigate_info_modal_version', direction: 'newer' })
+            if (uiState.infoModalTab === 'info') {
+              this.onAction({ type: 'navigate_info_modal_version', direction: 'newer' })
+            }
             return
           case 'right':
-            this.onAction({ type: 'navigate_info_modal_version', direction: 'older' })
+            if (uiState.infoModalTab === 'info') {
+              this.onAction({ type: 'navigate_info_modal_version', direction: 'older' })
+            }
             return
           default:
             return // Consume all other keys while modal is open

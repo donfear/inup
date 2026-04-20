@@ -88,9 +88,16 @@ export class UIRenderer {
     state: PackageSelectionState,
     terminalWidth: number = 80,
     terminalHeight: number = 24,
-    scrollOffset: number = 0
+    scrollOffset: number = 0,
+    activeTab: 'info' | 'usedBy' = 'info'
   ): ModalRenderResult {
-    return Modal.renderPackageInfoModal(state, terminalWidth, terminalHeight, scrollOffset)
+    return Modal.renderPackageInfoModal(
+      state,
+      terminalWidth,
+      terminalHeight,
+      scrollOffset,
+      activeTab
+    )
   }
 
   renderThemeSelectorModal(

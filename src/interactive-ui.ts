@@ -428,6 +428,11 @@ export class InteractiveUI {
               return
             }
             break
+          case 'switch_info_modal_tab': {
+            const nextTab = stateManager.getInfoModalTab() === 'info' ? 'usedBy' : 'info'
+            stateManager.setInfoModalTab(nextTab)
+            break
+          }
           case 'navigate_info_modal_version':
             {
               if (uiState.infoModalRow >= 0 && uiState.infoModalRow < filteredStates.length) {
@@ -714,11 +719,13 @@ export class InteractiveUI {
             )
           } else {
             // Show full info with scroll support
+            const activeTab = uiState.infoModalTab
             const result = this.renderer.renderPackageInfoModal(
               selectedState,
               terminalWidth,
               Math.max(8, terminalHeight - 4),
-              uiState.infoModalScrollOffset
+              uiState.infoModalScrollOffset,
+              activeTab
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
             stateManager.clampInfoModalScrollOffset(infoModalMaxScrollOffset)
@@ -726,11 +733,16 @@ export class InteractiveUI {
               result.usesInternalScroll && result.maxScrollOffset > 0
                 ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
                 : ''
+            const versionHint =
+              activeTab === 'info'
+                ? chalk.bold.white('←/→ ') + chalk.gray('Version  ·  ')
+                : ''
             renderModalViewport(
               'info-modal',
               scrollHint +
-                chalk.bold.white('←/→ ') +
-                chalk.gray('Version  ·  ') +
+                versionHint +
+                chalk.bold.white('Tab ') +
+                chalk.gray('Switch tab  ·  ') +
                 chalk.bold.white('I / Esc ') +
                 chalk.gray('Exit this view'),
               result.lines,

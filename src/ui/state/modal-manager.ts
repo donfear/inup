@@ -1,9 +1,12 @@
+export type InfoModalTab = 'info' | 'usedBy'
+
 export interface ModalState {
   showInfoModal: boolean // Whether to show package info modal
   infoModalRow: number // Which package's info to show
   isLoadingModalInfo: boolean // Whether we're fetching package info for the modal
   infoModalScrollOffset: number // Scroll position within the info modal content
   infoModalSessionId: number // Monotonic id for async modal work isolation
+  infoModalTab: InfoModalTab // Active tab within the info modal
   showDebugModal: boolean // Whether to show the debug/performance modal
   debugModalScrollOffset: number // Scroll position within the debug modal
 }
@@ -18,9 +21,21 @@ export class ModalManager {
       isLoadingModalInfo: false,
       infoModalScrollOffset: 0,
       infoModalSessionId: 0,
+      infoModalTab: 'info',
       showDebugModal: false,
       debugModalScrollOffset: 0,
     }
+  }
+
+  getInfoModalTab(): InfoModalTab {
+    return this.state.infoModalTab
+  }
+
+  setInfoModalTab(tab: InfoModalTab): boolean {
+    if (this.state.infoModalTab === tab) return false
+    this.state.infoModalTab = tab
+    this.state.infoModalScrollOffset = 0
+    return true
   }
 
   isDebugModalOpen(): boolean {
@@ -126,6 +141,7 @@ export class ModalManager {
     this.state.infoModalRow = currentRow
     this.state.infoModalScrollOffset = 0
     this.state.isLoadingModalInfo = false
+    this.state.infoModalTab = 'info'
     this.state.infoModalSessionId += 1
     return this.state.infoModalSessionId
   }
@@ -135,6 +151,7 @@ export class ModalManager {
     this.state.infoModalRow = -1
     this.state.isLoadingModalInfo = false
     this.state.infoModalScrollOffset = 0
+    this.state.infoModalTab = 'info'
     this.state.infoModalSessionId += 1
   }
 

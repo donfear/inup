@@ -50,10 +50,11 @@ export function renderPackageInfoModal(
   state: PackageSelectionState,
   terminalWidth: number = 80,
   terminalHeight: number = 24,
-  scrollOffset: number = 0
+  scrollOffset: number = 0,
+  activeTab: 'info' | 'usedBy' = 'info'
 ): ModalRenderResult {
   const modalWidth = getModalWidth(terminalWidth, 60, 120)
-  const allSections = buildPackageInfoSections(state, modalWidth)
+  const allSections = buildPackageInfoSections(state, modalWidth, activeTab)
   const maxHeight = Math.max(10, terminalHeight - 2)
   const trimOrder = ['homepage', 'changelog', 'description']
   const compactSections = fitModalSections(allSections, maxHeight, trimOrder)
