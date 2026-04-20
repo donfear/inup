@@ -88,20 +88,6 @@ Sleep 400ms
 Right
 Sleep 600ms
 
-# Navigate down 1 package (leave with minor selection from M)
-Down
-Sleep 400ms
-
-# Navigate down 1 more package
-Down
-Sleep 400ms
-
-# Navigate down 2 more packages to demonstrate info modal
-Down
-Sleep 400ms
-Down
-Sleep 400ms
-
 # Press 'i' to show info modal for current package
 Type "i"
 Sleep 2s
