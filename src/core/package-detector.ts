@@ -103,9 +103,6 @@ export class PackageDetector {
       currentVersions: prepared.currentVersions,
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
-      onPackageStart: (packageName) => {
-        onEvent({ type: 'package-start', payload: { packageName } })
-      },
       onBatchReady: (batch) => {
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0

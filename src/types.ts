@@ -133,7 +133,6 @@ export interface PackageLoadProgress {
   total: number
   failed: number
   isLoading: boolean
-  inFlight?: string[]
 }
 
 export interface AuditProgress {
@@ -158,7 +157,6 @@ export interface StreamOutdatedPackagesBatchItem {
 
 export type StreamOutdatedPackagesEvent =
   | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
-  | { type: 'package-start'; payload: { packageName: string } }
   | {
       type: 'batch'
       payload: {
@@ -189,5 +187,3 @@ export interface RegistryBatchProgressItem {
 }
 
 export type OnBatchReadyCallback = (batch: RegistryBatchProgressItem[]) => void
-
-export type OnPackageStartCallback = (packageName: string) => void

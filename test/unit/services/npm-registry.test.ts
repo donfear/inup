@@ -180,17 +180,6 @@ describe('npm-registry', () => {
     })
   })
 
-  it('fires onPackageStart once per package dispatch', async () => {
-    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
-    const starts: string[] = []
-
-    await fetchPackageVersions(['demo-pkg', 'demo-pkg'], {
-      onPackageStart: (pkg) => starts.push(pkg),
-    })
-
-    expect(starts).toEqual(['demo-pkg', 'demo-pkg'])
-  })
-
   it('emits batched results in request order', async () => {
     requestMock.mockImplementation(async ({ path }) => {
       if (path.includes('pkg-a')) {

@@ -77,16 +77,6 @@ describe('Services Integration Tests', () => {
       })
     }, 10000)
 
-    it('should emit a start event per package', async () => {
-      const starts: string[] = []
-
-      await fetchPackageVersions([PACKAGE_NAME, PACKAGE_NAME, PACKAGE_NAME], {
-        onPackageStart: (pkg) => starts.push(pkg),
-      })
-
-      expect(starts.length).toBe(3)
-      expect(starts.every((name) => name === PACKAGE_NAME)).toBe(true)
-    }, 10000)
   })
 
   describe(`jsdelivr exact manifest with ${PACKAGE_NAME}`, () => {

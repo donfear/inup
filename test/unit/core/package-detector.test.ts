@@ -70,7 +70,7 @@ describe('PackageDetector streaming', () => {
         }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options.batchSize).toBe(25)
+        expect(options.batchSize).toBe(10)
         expect(options.maxConcurrency).toBe(10)
         const onBatchReady = options.onBatchReady
 

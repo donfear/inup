@@ -11,7 +11,6 @@ import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
-  OnPackageStartCallback,
   RegistryBatchProgressItem,
 } from '../types'
 
@@ -223,8 +222,6 @@ async function fetchPackageFromRegistryWithFallback(
  *   dropped due to slowness.
  *
  * Callbacks:
- * - `onPackageStart` fires when a package is actually dispatched (passes
- *   the semaphore), so the UI shows what's really on the wire.
  * - `onBatchReady` fires once a whole emission batch has resolved, in
  *   original batch order.
  */
@@ -232,7 +229,6 @@ export async function fetchPackageVersions(
   packageNames: string[],
   options: {
     onBatchReady?: OnBatchReadyCallback
-    onPackageStart?: OnPackageStartCallback
     currentVersions?: Map<string, string>
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
@@ -293,7 +289,6 @@ export async function fetchPackageVersions(
       batchNames.map(async (packageName, itemIndex) => {
         await acquire()
         try {
-          options.onPackageStart?.(packageName)
           const data = await getFreshPackageData(
             packageName,
             options.currentVersions?.get(packageName)
