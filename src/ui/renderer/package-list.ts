@@ -514,10 +514,16 @@ export function renderInterface(
   if (loadingProgress?.isLoading) {
     const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
     const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
+    const inFlight = loadingProgress.inFlight ?? []
+    const inFlightLabel =
+      inFlight.length > 0
+        ? ` · fetching ${inFlight.slice(0, 3).join(', ')}${inFlight.length > 3 ? ` +${inFlight.length - 3}` : ''}`
+        : ''
     const loadingLine =
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
-      (failedLabel ? chalk.yellow(failedLabel) : '')
+      (failedLabel ? chalk.yellow(failedLabel) : '') +
+      (inFlightLabel ? getThemeColor('textSecondary')(inFlightLabel) : '')
     const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }

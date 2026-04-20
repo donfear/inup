@@ -58,6 +58,11 @@ export class UpgradeRunner {
         total: 0,
         failed: 0,
         isLoading: true,
+        inFlight: [],
+      }
+      const inFlightSet = new Set<string>()
+      const syncInFlight = () => {
+        progress.inFlight = Array.from(inFlightSet)
       }
       let selectionStates: PackageSelectionState[] = []
       let refreshUI: (() => void) | undefined
@@ -66,6 +71,13 @@ export class UpgradeRunner {
 
       const selectionPromise = new Promise<any[]>((resolve, reject) => {
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
+          if (event.type === 'package-start') {
+            inFlightSet.add(event.payload.packageName)
+            syncInFlight()
+            refreshUI?.()
+            return
+          }
+
           if (event.type === 'initial') {
             progress.discovered = event.payload.progress.discovered
             progress.resolved = event.payload.progress.resolved
@@ -84,6 +96,9 @@ export class UpgradeRunner {
           }
 
           if (event.type === 'batch') {
+            for (const item of event.payload.batch) {
+              inFlightSet.delete(item.packageName)
+            }
             latestPackages = latestPackages
               .filter((pkg) => !event.payload.batch.some((item) => item.packageName === pkg.name))
               .concat(event.payload.batch.flatMap((item) => item.packageInfo))
@@ -92,6 +107,7 @@ export class UpgradeRunner {
             progress.total = event.payload.progress.total
             progress.failed = event.payload.progress.failed
             progress.isLoading = event.payload.progress.isLoading
+            syncInFlight()
             performanceTracker.mark('firstBatch')
             this.ui.appendOutdatedBatchToSelectionStates(
               selectionStates,
@@ -102,12 +118,14 @@ export class UpgradeRunner {
           }
 
           if (event.type === 'complete') {
+            inFlightSet.clear()
             latestPackages = event.payload.packages
             progress.discovered = event.payload.progress.discovered
             progress.resolved = event.payload.progress.resolved
             progress.total = event.payload.progress.total
             progress.failed = event.payload.progress.failed
             progress.isLoading = event.payload.progress.isLoading
+            syncInFlight()
             performanceTracker.mark('firstBatch')
             performanceTracker.mark('allLoaded')
             refreshUI?.()

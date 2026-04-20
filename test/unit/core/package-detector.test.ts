@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   findAllPackageJsonFilesAsync: vi.fn(),
   collectAllDependenciesAsync: vi.fn(),
   findClosestMinorVersion: vi.fn(),
-  getAllPackageDataBatched: vi.fn(),
+  fetchPackageVersions: vi.fn(),
 }))
 
 vi.mock('../../../src/utils', () => ({
@@ -24,7 +24,7 @@ vi.mock('../../../src/utils', () => ({
 }))
 
 vi.mock('../../../src/services', () => ({
-  getAllPackageDataBatched: mocks.getAllPackageDataBatched,
+  fetchPackageVersions: mocks.fetchPackageVersions,
 }))
 
 vi.mock('../../../src/config', () => ({
@@ -60,15 +60,19 @@ describe('PackageDetector streaming', () => {
       },
     ])
     mocks.findClosestMinorVersion.mockImplementation((version: string, versions: string[]) => versions[0] ?? version)
-    mocks.getAllPackageDataBatched.mockImplementation(
+    mocks.fetchPackageVersions.mockImplementation(
       async (
         packageNames: string[],
-        onBatchReady: (batch: any[]) => void,
-        _currentVersions: Map<string, string>,
-        options: { batchSize: number; concurrency: number }
+        options: {
+          onBatchReady: (batch: any[]) => void
+          batchSize: number
+          maxConcurrency: number
+        }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options).toEqual({ batchSize: 25, concurrency: 25 })
+        expect(options.batchSize).toBe(25)
+        expect(options.maxConcurrency).toBe(10)
+        const onBatchReady = options.onBatchReady
 
         onBatchReady([
           {

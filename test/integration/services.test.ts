@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ChangelogFetcher } from '../../src/features/changelog'
-import { getAllPackageData } from '../../src/services/npm-registry'
+import { fetchPackageVersions } from '../../src/services/npm-registry'
 import { fetchExactPackageManifest } from '../../src/services/jsdelivr-registry'
 import { PACKAGE_NAME } from '../../src/config/constants'
 
@@ -14,7 +14,7 @@ describe('Services Integration Tests', () => {
     })
 
     it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
-      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
 
       expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
       const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME, packageVersion)
@@ -34,7 +34,7 @@ describe('Services Integration Tests', () => {
     }, 10000)
 
     it('should use cache on second fetch', async () => {
-      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
 
       const start1 = Date.now()
       await fetcher.fetchPackageMetadata('inup', packageVersion)
@@ -51,7 +51,7 @@ describe('Services Integration Tests', () => {
 
   describe(`npm-registry with ${PACKAGE_NAME}`, () => {
     it(`should fetch version data for ${PACKAGE_NAME}`, async () => {
-      const result = await getAllPackageData([PACKAGE_NAME])
+      const result = await fetchPackageVersions([PACKAGE_NAME])
 
       expect(result.size).toBe(1)
       const testData = result.get(PACKAGE_NAME)
@@ -62,7 +62,7 @@ describe('Services Integration Tests', () => {
     }, 10000)
 
     it('should filter out pre-release versions', async () => {
-      const result = await getAllPackageData([PACKAGE_NAME])
+      const result = await fetchPackageVersions([PACKAGE_NAME])
 
       const testData = result.get(PACKAGE_NAME)
       expect(testData).toBeDefined()
@@ -77,22 +77,21 @@ describe('Services Integration Tests', () => {
       })
     }, 10000)
 
-    it('should track progress with callback', async () => {
-      const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
+    it('should emit a start event per package', async () => {
+      const starts: string[] = []
 
-      await getAllPackageData([PACKAGE_NAME, PACKAGE_NAME, PACKAGE_NAME], (pkg, completed, total) => {
-        progressUpdates.push({ package: pkg, completed, total })
+      await fetchPackageVersions([PACKAGE_NAME, PACKAGE_NAME, PACKAGE_NAME], {
+        onPackageStart: (pkg) => starts.push(pkg),
       })
 
-      expect(progressUpdates.length).toBe(3)
-      expect(progressUpdates[0].total).toBe(3)
-      expect(progressUpdates[2].completed).toBe(3)
+      expect(starts.length).toBe(3)
+      expect(starts.every((name) => name === PACKAGE_NAME)).toBe(true)
     }, 10000)
   })
 
   describe(`jsdelivr exact manifest with ${PACKAGE_NAME}`, () => {
     it(`should fetch exact package manifest for ${PACKAGE_NAME}`, async () => {
-      const packageVersion = (await getAllPackageData([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
 
       expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
       const manifest = await fetchExactPackageManifest(PACKAGE_NAME, packageVersion)

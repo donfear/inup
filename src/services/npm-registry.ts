@@ -8,11 +8,10 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 import { NPM_REGISTRY_URL } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
-import { ConsoleUtils } from '../ui/utils'
 import {
+  FetchPackageVersionsOptions,
   OnBatchReadyCallback,
   OnPackageStartCallback,
-  RegistryBatchOptions,
   RegistryBatchProgressItem,
 } from '../types'
 
@@ -212,72 +211,30 @@ async function fetchPackageFromRegistryWithFallback(
 }
 
 /**
- * Fetches package version data from npm registry for multiple packages.
- * Uses an undici Pool with HTTP/1.1 pipelining for high throughput.
- * Only returns valid semantic versions (X.Y.Z format, excluding pre-releases).
+ * Fetches version data for a list of packages from the npm registry.
+ *
+ * Concurrency model:
+ * - `maxConcurrency` is a global cap on in-flight fetches at any moment.
+ *   It doesn't interact with batch size — batches exist only to group
+ *   emissions for the UI.
+ * - No per-request timeouts: slow responses are allowed to finish. Real
+ *   network errors are retried with exponential backoff; after that, we
+ *   fall back to jsdelivr as a last resort. A result is never silently
+ *   dropped due to slowness.
+ *
+ * Callbacks:
+ * - `onPackageStart` fires when a package is actually dispatched (passes
+ *   the semaphore), so the UI shows what's really on the wire.
+ * - `onBatchReady` fires once a whole emission batch has resolved, in
+ *   original batch order.
  */
-export async function getAllPackageData(
+export async function fetchPackageVersions(
   packageNames: string[],
-  onProgress?: (currentPackage: string, completed: number, total: number) => void,
-  currentVersions?: Map<string, string>,
-  onPackageStart?: OnPackageStartCallback
-): Promise<Map<string, PackageVersionData>> {
-  const packageData = new Map<string, PackageVersionData>()
-
-  if (packageNames.length === 0) {
-    return packageData
-  }
-
-  const total = packageNames.length
-  let completedCount = 0
-
-  await runWithConcurrencyLimit(packageNames, 10, async (packageName) => {
-    onPackageStart?.(packageName)
-    const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
-    packageData.set(packageName, data)
-
-    completedCount++
-
-    if (onProgress) {
-      onProgress(packageName, completedCount, total)
-    }
-  })
-
-  if (!onProgress) {
-    ConsoleUtils.clearProgress()
-  }
-
-  return packageData
-}
-
-async function runWithConcurrencyLimit<T>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T, index: number) => Promise<void>
-): Promise<void> {
-  if (items.length === 0) {
-    return
-  }
-
-  const limit = Math.max(1, Math.min(concurrency, items.length))
-  let nextIndex = 0
-
-  const runWorker = async (): Promise<void> => {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex++
-      await worker(items[currentIndex], currentIndex)
-    }
-  }
-
-  await Promise.all(Array.from({ length: limit }, () => runWorker()))
-}
-
-export async function getAllPackageDataBatched(
-  packageNames: string[],
-  onBatchReady?: OnBatchReadyCallback,
-  currentVersions?: Map<string, string>,
-  options: RegistryBatchOptions = {},
-  onPackageStart?: OnPackageStartCallback
+  options: {
+    onBatchReady?: OnBatchReadyCallback
+    onPackageStart?: OnPackageStartCallback
+    currentVersions?: Map<string, string>
+  } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
@@ -287,26 +244,44 @@ export async function getAllPackageDataBatched(
 
   const batchSizes =
     options.batchSizes && options.batchSizes.length > 0
-      ? options.batchSizes.map((size) => Math.max(1, size))
-      : [Math.max(1, options.batchSize ?? 20)]
-  const concurrency = Math.max(1, options.concurrency ?? 5)
+      ? options.batchSizes.map((size: number) => Math.max(1, size))
+      : [Math.max(1, options.batchSize ?? 25)]
+  const maxConcurrency = Math.max(1, options.maxConcurrency ?? 10)
   const total = packageNames.length
   let completedCount = 0
-  let batchStart = 0
-  let batchIndex = 0
 
-  const batchPromises: Promise<void>[] = []
   const pendingEmissions = new Map<number, RegistryBatchProgressItem[]>()
   let nextEmitIndex = 0
-
   const flushPending = () => {
     while (pendingEmissions.has(nextEmitIndex)) {
       const ready = pendingEmissions.get(nextEmitIndex)!
       pendingEmissions.delete(nextEmitIndex)
-      onBatchReady?.(ready)
+      options.onBatchReady?.(ready)
       nextEmitIndex++
     }
   }
+
+  // Global semaphore: `maxConcurrency` is the total in-flight cap across
+  // all batches. Batches don't gate concurrency — only emission order.
+  let inFlight = 0
+  const waiters: Array<() => void> = []
+  const acquire = async (): Promise<void> => {
+    if (inFlight < maxConcurrency) {
+      inFlight++
+      return
+    }
+    await new Promise<void>((resolve) => waiters.push(resolve))
+    inFlight++
+  }
+  const release = () => {
+    inFlight--
+    const next = waiters.shift()
+    if (next) next()
+  }
+
+  const batchPromises: Promise<void>[] = []
+  let batchStart = 0
+  let batchIndex = 0
 
   while (batchStart < packageNames.length) {
     const batchSize = batchSizes[Math.min(batchIndex, batchSizes.length - 1)]
@@ -314,23 +289,29 @@ export async function getAllPackageDataBatched(
     const capturedBatchIndex = batchIndex
     const batchResults: RegistryBatchProgressItem[] = new Array(batchNames.length)
 
-    const batchPromise = runWithConcurrencyLimit(
-      batchNames,
-      concurrency,
-      async (packageName, itemIndex) => {
-        onPackageStart?.(packageName)
-        const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
-        packageData.set(packageName, data)
-        completedCount++
-        batchResults[itemIndex] = {
-          packageName,
-          data,
-          completed: completedCount,
-          total,
-          batchIndex: capturedBatchIndex,
-          itemIndex,
+    const batchPromise = Promise.all(
+      batchNames.map(async (packageName, itemIndex) => {
+        await acquire()
+        try {
+          options.onPackageStart?.(packageName)
+          const data = await getFreshPackageData(
+            packageName,
+            options.currentVersions?.get(packageName)
+          )
+          packageData.set(packageName, data)
+          completedCount++
+          batchResults[itemIndex] = {
+            packageName,
+            data,
+            completed: completedCount,
+            total,
+            batchIndex: capturedBatchIndex,
+            itemIndex,
+          }
+        } finally {
+          release()
         }
-      }
+      })
     ).then(() => {
       pendingEmissions.set(capturedBatchIndex, batchResults.filter(Boolean))
       flushPending()
