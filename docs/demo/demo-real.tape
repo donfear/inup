@@ -88,13 +88,20 @@ Sleep 400ms
 Right
 Sleep 600ms
 
+Up
+Sleep 400ms
+
 # Press 'i' to show info modal for current package
 Type "i"
-Sleep 2s
+Sleep 3s
 
 # Press 'i' again to toggle info modal
 Type "i"
 Sleep 400ms
+
+# Select major version for this package (right arrow)
+Right
+Sleep 600ms
 
 # Navigate back up
 Up
