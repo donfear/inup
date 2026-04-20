@@ -1,6 +1,6 @@
 import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
 import { NavigationManager, NavigationState } from './navigation-manager'
-import { ModalManager, ModalState } from './modal-manager'
+import { ModalManager, ModalState, InfoModalTab } from './modal-manager'
 import { FilterManager, FilterState } from './filter-manager'
 import { ThemeManager, ThemeState } from './theme-manager'
 
@@ -29,6 +29,7 @@ export interface UIState {
   infoModalRow: number
   isLoadingModalInfo: boolean
   infoModalScrollOffset: number
+  infoModalTab: InfoModalTab
   showDebugModal: boolean
   debugModalScrollOffset: number
   filterMode: boolean
@@ -87,6 +88,7 @@ export class StateManager {
       infoModalRow: modalState.infoModalRow,
       isLoadingModalInfo: modalState.isLoadingModalInfo,
       infoModalScrollOffset: modalState.infoModalScrollOffset,
+      infoModalTab: modalState.infoModalTab,
       showDebugModal: modalState.showDebugModal,
       debugModalScrollOffset: modalState.debugModalScrollOffset,
       filterMode: filterState.filterMode,
@@ -236,6 +238,18 @@ export class StateManager {
 
   clampInfoModalScrollOffset(maxOffset: number): boolean {
     return this.modalManager.clampScrollOffset(maxOffset)
+  }
+
+  setInfoModalTab(tab: InfoModalTab): boolean {
+    const changed = this.modalManager.setInfoModalTab(tab)
+    if (changed) {
+      this.renderState.forceFullRender = true
+    }
+    return changed
+  }
+
+  getInfoModalTab(): InfoModalTab {
+    return this.modalManager.getInfoModalTab()
   }
 
   toggleDebugModal(): void {

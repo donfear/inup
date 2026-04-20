@@ -1,6 +1,7 @@
+import path from 'node:path'
 import chalk from 'chalk'
 import { PackageSelectionState } from '../../types'
-import { ModalSection } from './types'
+import { InfoModalTab, ModalSection } from './types'
 import { getThemeColor } from '../themes-colors'
 import {
   getVulnerabilityLinkLabel,
@@ -298,11 +299,64 @@ function formatNumber(num: number | undefined): string {
   return num.toString()
 }
 
-export function buildPackageInfoSections(
+function getUsedByPaths(state: PackageSelectionState): string[] {
+  return state.packageJsonPaths ?? [state.packageJsonPath]
+}
+
+function buildTabBarSuffix(activeTab: InfoModalTab, usedByCount: number): string {
+  const styleFor = (tab: InfoModalTab) =>
+    tab === activeTab ? chalk.bold.underline : chalk.gray
+  const usedByLabel = `Used by${usedByCount > 0 ? ` (${usedByCount})` : ''}`
+  return (
+    '  ' +
+    chalk.gray('[ ') +
+    styleFor('info')('Info') +
+    chalk.gray(' │ ') +
+    styleFor('usedBy')(usedByLabel) +
+    chalk.gray(' ]')
+  )
+}
+
+export function buildUsedBySections(
   state: PackageSelectionState,
   modalWidth: number
 ): ModalSection[] {
-  const title = chalk.cyan.bold(`Package: ${state.name}`)
+  const paths = getUsedByPaths(state)
+  const cwd = process.cwd()
+  const contentWidth = Math.max(10, modalWidth - 4)
+  const formatRelative = (absolutePath: string): string => {
+    const display = path.relative(cwd, absolutePath) || absolutePath
+    return truncatePlainText(display, contentWidth)
+  }
+
+  return [
+    {
+      key: 'used-by-summary',
+      rows: [
+        chalk.bold(
+          `${paths.length} package.json file${paths.length === 1 ? '' : 's'} depend on ${state.name}`
+        ),
+        chalk.gray(`Type: ${state.type}`),
+      ],
+      required: true,
+      behavior: 'pinned',
+    },
+    {
+      key: 'used-by-list',
+      rows: paths.map((p) => `${chalk.gray('•')} ${formatRelative(p)}`),
+      behavior: 'body',
+    },
+  ]
+}
+
+export function buildPackageInfoSections(
+  state: PackageSelectionState,
+  modalWidth: number,
+  activeTab: InfoModalTab
+): ModalSection[] {
+  const title =
+    chalk.cyan.bold(`Package: ${state.name}`) +
+    buildTabBarSuffix(activeTab, getUsedByPaths(state).length)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
   const targetVersion = chalk.green(
@@ -316,18 +370,24 @@ export function buildPackageInfoSections(
       required: true,
       behavior: 'pinned',
     },
-    {
-      key: 'meta',
-      rows: [
-        `Current: ${currentVersion}  Target: ${targetVersion}`,
-        ...(state.weeklyDownloads !== undefined
-          ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
-          : []),
-      ],
-      required: true,
-      behavior: 'pinned',
-    },
   ]
+
+  if (activeTab === 'usedBy') {
+    sections.push(...buildUsedBySections(state, modalWidth))
+    return sections
+  }
+
+  sections.push({
+    key: 'meta',
+    rows: [
+      `Current: ${currentVersion}  Target: ${targetVersion}`,
+      ...(state.weeklyDownloads !== undefined
+        ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
+        : []),
+    ],
+    required: true,
+    behavior: 'pinned',
+  })
 
   if (state.homepage) {
     sections.push({

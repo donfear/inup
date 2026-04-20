@@ -6,3 +6,5 @@ export interface ModalSection {
   required?: boolean
   behavior?: ModalSectionBehavior
 }
+
+export type InfoModalTab = 'info' | 'usedBy'
