@@ -6,10 +6,15 @@ import { promisify } from 'node:util'
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
-import { NPM_REGISTRY_URL, REQUEST_TIMEOUT } from '../config'
+import { NPM_REGISTRY_URL } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import { ConsoleUtils } from '../ui/utils'
-import { OnBatchReadyCallback, RegistryBatchOptions, RegistryBatchProgressItem } from '../types'
+import {
+  OnBatchReadyCallback,
+  OnPackageStartCallback,
+  RegistryBatchOptions,
+  RegistryBatchProgressItem,
+} from '../types'
 
 export interface PackageVersionData {
   latestVersion: string
@@ -22,25 +27,21 @@ const registryOrigin = new URL(NPM_REGISTRY_URL).origin
 const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
 
 // Few connections + many requests per connection = maximum keep-alive reuse.
-// On slow links, each TLS handshake costs 1-3s, so minimizing handshakes dominates.
+// No per-request timeouts: correctness matters more than speed for a CLI that
+// runs on demand. Slow responses are tolerated; only true errors cause retry.
 const registryPool = new Pool(registryOrigin, {
   connections: 6,
   pipelining: 1,
   keepAliveTimeout: 30_000,
   keepAliveMaxTimeout: 600_000,
-  headersTimeout: REQUEST_TIMEOUT,
-  bodyTimeout: REQUEST_TIMEOUT,
-  connectTimeout: 10_000,
+  headersTimeout: 0,
+  bodyTimeout: 0,
+  connectTimeout: 15_000,
   allowH2: false,
 })
 
-// Per-attempt timeouts: fail fast on the first try, give the retry more budget,
-// then hedge to jsdelivr. Total worst-case ≈ 8s + 20s before we start the fallback race.
-const REGISTRY_ATTEMPT_TIMEOUTS_MS = [8_000, 20_000]
-// If the registry hasn't responded within this window, race jsdelivr in parallel
-// and take whichever wins. This is the main wall-clock win on slow links.
-const HEDGE_DELAY_MS = 4_000
-const RETRY_BACKOFF_MS = 250
+const MAX_REGISTRY_ATTEMPTS = 3
+const RETRY_BACKOFF_MS = [500, 1500, 3000]
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 const isRetryableStatus = (statusCode: number): boolean =>
@@ -126,11 +127,7 @@ type RegistryAttemptOutcome =
   | { kind: 'retryable' }
   | { kind: 'transient' }
 
-async function attemptRegistryFetch(
-  path: string,
-  timeoutMs: number,
-  signal: AbortSignal
-): Promise<RegistryAttemptOutcome> {
+async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcome> {
   try {
     const { statusCode, headers, body } = await registryPool.request({
       path,
@@ -139,9 +136,8 @@ async function attemptRegistryFetch(
         accept: 'application/vnd.npm.install-v1+json',
         'accept-encoding': 'gzip, deflate, br',
       },
-      headersTimeout: timeoutMs,
-      bodyTimeout: timeoutMs,
-      signal,
+      headersTimeout: 0,
+      bodyTimeout: 0,
       blocking: false,
     })
 
@@ -179,23 +175,17 @@ async function attemptRegistryFetch(
   }
 }
 
-async function fetchFromRegistryWithRetries(
-  path: string,
-  signal: AbortSignal
-): Promise<RegistryAttemptOutcome> {
+async function fetchFromRegistryWithRetries(path: string): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
-  for (let attempt = 0; attempt < REGISTRY_ATTEMPT_TIMEOUTS_MS.length; attempt++) {
-    if (signal.aborted) {
-      return { kind: 'transient' }
-    }
-    const timeoutMs = REGISTRY_ATTEMPT_TIMEOUTS_MS[attempt]
-    const outcome = await attemptRegistryFetch(path, timeoutMs, signal)
+  for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
+    const outcome = await attemptRegistryFetch(path)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
     }
     lastOutcome = outcome
-    if (attempt < REGISTRY_ATTEMPT_TIMEOUTS_MS.length - 1 && !signal.aborted) {
-      await sleep(RETRY_BACKOFF_MS)
+    if (attempt < MAX_REGISTRY_ATTEMPTS - 1) {
+      const backoff = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
+      await sleep(backoff)
     }
   }
   return lastOutcome
@@ -206,80 +196,19 @@ async function fetchPackageFromRegistryWithFallback(
   currentVersion: string | undefined
 ): Promise<PackageVersionData> {
   const path = encodeRegistryPath(packageName)
-  const registryController = new AbortController()
-  const fallbackController = new AbortController()
+  const outcome = await fetchFromRegistryWithRetries(path)
 
-  const registryPromise = fetchFromRegistryWithRetries(path, registryController.signal).then(
-    (outcome) => ({ source: 'registry' as const, outcome })
-  )
-
-  // Hedge: start jsdelivr if registry hasn't produced a usable result in HEDGE_DELAY_MS.
-  let hedgeTimer: NodeJS.Timeout | null = null
-  const fallbackPromise = new Promise<{
-    source: 'fallback'
-    data: PackageVersionData | null
-  }>((resolve) => {
-    hedgeTimer = setTimeout(() => {
-      fetchFromJsdelivrFallback(packageName, currentVersion)
-        .then((data) => resolve({ source: 'fallback', data }))
-        .catch(() => resolve({ source: 'fallback', data: null }))
-    }, HEDGE_DELAY_MS)
-    fallbackController.signal.addEventListener('abort', () => {
-      if (hedgeTimer) {
-        clearTimeout(hedgeTimer)
-        hedgeTimer = null
-      }
-      resolve({ source: 'fallback', data: null })
-    })
-  })
-
-  const clearHedge = () => {
-    if (hedgeTimer) {
-      clearTimeout(hedgeTimer)
-      hedgeTimer = null
-    }
+  if (outcome.kind === 'success') {
+    return outcome.data
   }
-
-  try {
-    while (true) {
-      const winner = await Promise.race([registryPromise, fallbackPromise])
-
-      if (winner.source === 'registry') {
-        const { outcome } = winner
-        if (outcome.kind === 'success') {
-          fallbackController.abort()
-          clearHedge()
-          return outcome.data
-        }
-        if (outcome.kind === 'not-found') {
-          fallbackController.abort()
-          clearHedge()
-          return { latestVersion: 'unknown', allVersions: [] }
-        }
-        // Registry failed: wait for hedged fallback (already in flight or imminent).
-        clearHedge()
-        const fallbackResult = await fetchFromJsdelivrFallback(packageName, currentVersion).catch(
-          () => null
-        )
-        return fallbackResult ?? { latestVersion: 'unknown', allVersions: [] }
-      }
-
-      // Fallback resolved first.
-      if (winner.data) {
-        registryController.abort()
-        return winner.data
-      }
-      // Fallback failed — keep waiting on registry.
-      const registryResult = await registryPromise
-      if (registryResult.outcome.kind === 'success') {
-        return registryResult.outcome.data
-      }
-      return { latestVersion: 'unknown', allVersions: [] }
-    }
-  } catch {
-    clearHedge()
+  if (outcome.kind === 'not-found') {
     return { latestVersion: 'unknown', allVersions: [] }
   }
+
+  // Only reach here after exhausted retries against real errors — try jsdelivr
+  // as last-resort safety net so we don't silently return 'unknown'.
+  const fallback = await fetchFromJsdelivrFallback(packageName, currentVersion).catch(() => null)
+  return fallback ?? { latestVersion: 'unknown', allVersions: [] }
 }
 
 /**
@@ -290,7 +219,8 @@ async function fetchPackageFromRegistryWithFallback(
 export async function getAllPackageData(
   packageNames: string[],
   onProgress?: (currentPackage: string, completed: number, total: number) => void,
-  currentVersions?: Map<string, string>
+  currentVersions?: Map<string, string>,
+  onPackageStart?: OnPackageStartCallback
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
@@ -301,9 +231,8 @@ export async function getAllPackageData(
   const total = packageNames.length
   let completedCount = 0
 
-  // Cap in-flight requests so slow links aren't saturated with hundreds of
-  // concurrent sockets. Matches the pool's useful parallelism.
   await runWithConcurrencyLimit(packageNames, 10, async (packageName) => {
+    onPackageStart?.(packageName)
     const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
     packageData.set(packageName, data)
 
@@ -347,7 +276,8 @@ export async function getAllPackageDataBatched(
   packageNames: string[],
   onBatchReady?: OnBatchReadyCallback,
   currentVersions?: Map<string, string>,
-  options: RegistryBatchOptions = {}
+  options: RegistryBatchOptions = {},
+  onPackageStart?: OnPackageStartCallback
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
@@ -388,6 +318,7 @@ export async function getAllPackageDataBatched(
       batchNames,
       concurrency,
       async (packageName, itemIndex) => {
+        onPackageStart?.(packageName)
         const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
         packageData.set(packageName, data)
         completedCount++

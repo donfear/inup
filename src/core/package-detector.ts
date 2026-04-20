@@ -155,6 +155,9 @@ export class PackageDetector {
       {
         batchSize: this.batchSize,
         concurrency: this.batchConcurrency,
+      },
+      (packageName) => {
+        onEvent({ type: 'package-start', payload: { packageName } })
       }
     )
 
