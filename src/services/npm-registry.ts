@@ -21,15 +21,27 @@ const inFlightLookups = new Map<string, Promise<PackageVersionData>>()
 const registryOrigin = new URL(NPM_REGISTRY_URL).origin
 const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
 
+// Few connections + many requests per connection = maximum keep-alive reuse.
+// On slow links, each TLS handshake costs 1-3s, so minimizing handshakes dominates.
 const registryPool = new Pool(registryOrigin, {
-  connections: 64,
-  pipelining: 10,
+  connections: 6,
+  pipelining: 1,
   keepAliveTimeout: 30_000,
   keepAliveMaxTimeout: 600_000,
   headersTimeout: REQUEST_TIMEOUT,
   bodyTimeout: REQUEST_TIMEOUT,
+  connectTimeout: 10_000,
   allowH2: false,
 })
+
+// Per-attempt timeouts: fail fast on the first try, give the retry more budget,
+// then hedge to jsdelivr. Total worst-case ≈ 8s + 20s before we start the fallback race.
+const REGISTRY_ATTEMPT_TIMEOUTS_MS = [8_000, 20_000]
+// If the registry hasn't responded within this window, race jsdelivr in parallel
+// and take whichever wins. This is the main wall-clock win on slow links.
+const HEDGE_DELAY_MS = 4_000
+const RETRY_BACKOFF_MS = 250
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 const isRetryableStatus = (statusCode: number): boolean =>
   statusCode === 408 || statusCode === 429 || statusCode >= 500
@@ -99,18 +111,27 @@ function parseVersions(raw: string): PackageVersionData {
   return { latestVersion, allVersions }
 }
 
-async function fetchPackageFromRegistryWithFallback(
-  packageName: string,
-  currentVersion: string | undefined
-): Promise<PackageVersionData> {
-  try {
-    const encodedName = packageName.startsWith('@')
-      ? `@${encodeURIComponent(packageName.slice(1).split('/')[0])}/${encodeURIComponent(
-          packageName.slice(packageName.indexOf('/') + 1)
-        )}`
-      : encodeURIComponent(packageName)
-    const path = `${registryPathPrefix}/${encodedName}`
+const encodeRegistryPath = (packageName: string): string => {
+  const encodedName = packageName.startsWith('@')
+    ? `@${encodeURIComponent(packageName.slice(1).split('/')[0])}/${encodeURIComponent(
+        packageName.slice(packageName.indexOf('/') + 1)
+      )}`
+    : encodeURIComponent(packageName)
+  return `${registryPathPrefix}/${encodedName}`
+}
 
+type RegistryAttemptOutcome =
+  | { kind: 'success'; data: PackageVersionData }
+  | { kind: 'not-found' }
+  | { kind: 'retryable' }
+  | { kind: 'transient' }
+
+async function attemptRegistryFetch(
+  path: string,
+  timeoutMs: number,
+  signal: AbortSignal
+): Promise<RegistryAttemptOutcome> {
+  try {
     const { statusCode, headers, body } = await registryPool.request({
       path,
       method: 'GET',
@@ -118,17 +139,18 @@ async function fetchPackageFromRegistryWithFallback(
         accept: 'application/vnd.npm.install-v1+json',
         'accept-encoding': 'gzip, deflate, br',
       },
-      headersTimeout: REQUEST_TIMEOUT,
-      bodyTimeout: REQUEST_TIMEOUT,
+      headersTimeout: timeoutMs,
+      bodyTimeout: timeoutMs,
+      signal,
       blocking: false,
     })
 
     if (statusCode < 200 || statusCode >= 300) {
-      await body.dump()
+      await body.dump().catch(() => undefined)
       if (isRetryableStatus(statusCode)) {
-        return await fetchFromJsdelivrFallback(packageName, currentVersion)
+        return { kind: 'retryable' }
       }
-      return { latestVersion: 'unknown', allVersions: [] }
+      return { kind: 'not-found' }
     }
 
     const raw = Buffer.from(await body.arrayBuffer())
@@ -146,11 +168,116 @@ async function fetchPackageFromRegistryWithFallback(
     } else {
       decoded = raw
     }
-    return parseVersions(decoded.toString('utf8'))
+    return { kind: 'success', data: parseVersions(decoded.toString('utf8')) }
   } catch (error) {
     if (isTransientNetworkError(error)) {
-      return await fetchFromJsdelivrFallback(packageName, currentVersion)
+      return { kind: 'transient' }
     }
+    // Unknown error: treat as transient so we try the fallback rather than
+    // silently returning 'unknown'.
+    return { kind: 'transient' }
+  }
+}
+
+async function fetchFromRegistryWithRetries(
+  path: string,
+  signal: AbortSignal
+): Promise<RegistryAttemptOutcome> {
+  let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
+  for (let attempt = 0; attempt < REGISTRY_ATTEMPT_TIMEOUTS_MS.length; attempt++) {
+    if (signal.aborted) {
+      return { kind: 'transient' }
+    }
+    const timeoutMs = REGISTRY_ATTEMPT_TIMEOUTS_MS[attempt]
+    const outcome = await attemptRegistryFetch(path, timeoutMs, signal)
+    if (outcome.kind === 'success' || outcome.kind === 'not-found') {
+      return outcome
+    }
+    lastOutcome = outcome
+    if (attempt < REGISTRY_ATTEMPT_TIMEOUTS_MS.length - 1 && !signal.aborted) {
+      await sleep(RETRY_BACKOFF_MS)
+    }
+  }
+  return lastOutcome
+}
+
+async function fetchPackageFromRegistryWithFallback(
+  packageName: string,
+  currentVersion: string | undefined
+): Promise<PackageVersionData> {
+  const path = encodeRegistryPath(packageName)
+  const registryController = new AbortController()
+  const fallbackController = new AbortController()
+
+  const registryPromise = fetchFromRegistryWithRetries(path, registryController.signal).then(
+    (outcome) => ({ source: 'registry' as const, outcome })
+  )
+
+  // Hedge: start jsdelivr if registry hasn't produced a usable result in HEDGE_DELAY_MS.
+  let hedgeTimer: NodeJS.Timeout | null = null
+  const fallbackPromise = new Promise<{
+    source: 'fallback'
+    data: PackageVersionData | null
+  }>((resolve) => {
+    hedgeTimer = setTimeout(() => {
+      fetchFromJsdelivrFallback(packageName, currentVersion)
+        .then((data) => resolve({ source: 'fallback', data }))
+        .catch(() => resolve({ source: 'fallback', data: null }))
+    }, HEDGE_DELAY_MS)
+    fallbackController.signal.addEventListener('abort', () => {
+      if (hedgeTimer) {
+        clearTimeout(hedgeTimer)
+        hedgeTimer = null
+      }
+      resolve({ source: 'fallback', data: null })
+    })
+  })
+
+  const clearHedge = () => {
+    if (hedgeTimer) {
+      clearTimeout(hedgeTimer)
+      hedgeTimer = null
+    }
+  }
+
+  try {
+    while (true) {
+      const winner = await Promise.race([registryPromise, fallbackPromise])
+
+      if (winner.source === 'registry') {
+        const { outcome } = winner
+        if (outcome.kind === 'success') {
+          fallbackController.abort()
+          clearHedge()
+          return outcome.data
+        }
+        if (outcome.kind === 'not-found') {
+          fallbackController.abort()
+          clearHedge()
+          return { latestVersion: 'unknown', allVersions: [] }
+        }
+        // Registry failed: wait for hedged fallback (already in flight or imminent).
+        clearHedge()
+        const fallbackResult = await fetchFromJsdelivrFallback(packageName, currentVersion).catch(
+          () => null
+        )
+        return fallbackResult ?? { latestVersion: 'unknown', allVersions: [] }
+      }
+
+      // Fallback resolved first.
+      if (winner.data) {
+        registryController.abort()
+        return winner.data
+      }
+      // Fallback failed — keep waiting on registry.
+      const registryResult = await registryPromise
+      if (registryResult.outcome.kind === 'success') {
+        return registryResult.outcome.data
+      }
+      return { latestVersion: 'unknown', allVersions: [] }
+    }
+  } catch {
+    clearHedge()
     return { latestVersion: 'unknown', allVersions: [] }
   }
 }
@@ -174,7 +301,9 @@ export async function getAllPackageData(
   const total = packageNames.length
   let completedCount = 0
 
-  const allPromises = packageNames.map(async (packageName) => {
+  // Cap in-flight requests so slow links aren't saturated with hundreds of
+  // concurrent sockets. Matches the pool's useful parallelism.
+  await runWithConcurrencyLimit(packageNames, 10, async (packageName) => {
     const data = await getFreshPackageData(packageName, currentVersions?.get(packageName))
     packageData.set(packageName, data)
 
@@ -184,8 +313,6 @@ export async function getAllPackageData(
       onProgress(packageName, completedCount, total)
     }
   })
-
-  await Promise.all(allPromises)
 
   if (!onProgress) {
     ConsoleUtils.clearProgress()
