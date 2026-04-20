@@ -10,7 +10,7 @@ import {
   renderModalSeparator,
 } from './layout'
 import { buildPackageInfoSections } from './package-info-sections'
-import { ModalSection } from './types'
+import { InfoModalTab, ModalSection } from './types'
 
 export interface ModalRenderResult {
   lines: string[]
@@ -51,7 +51,7 @@ export function renderPackageInfoModal(
   terminalWidth: number = 80,
   terminalHeight: number = 24,
   scrollOffset: number = 0,
-  activeTab: 'info' | 'usedBy' = 'info'
+  activeTab: InfoModalTab = 'info'
 ): ModalRenderResult {
   const modalWidth = getModalWidth(terminalWidth, 60, 120)
   const allSections = buildPackageInfoSections(state, modalWidth, activeTab)

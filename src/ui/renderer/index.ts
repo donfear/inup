@@ -8,7 +8,7 @@ import {
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from '../modal'
-import { ModalRenderResult } from '../modal'
+import { InfoModalTab, ModalRenderResult } from '../modal'
 import { PackageListRenderOptions } from './package-list'
 
 /**
@@ -89,7 +89,7 @@ export class UIRenderer {
     terminalWidth: number = 80,
     terminalHeight: number = 24,
     scrollOffset: number = 0,
-    activeTab: 'info' | 'usedBy' = 'info'
+    activeTab: InfoModalTab = 'info'
   ): ModalRenderResult {
     return Modal.renderPackageInfoModal(
       state,

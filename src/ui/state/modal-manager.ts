@@ -1,4 +1,5 @@
-export type InfoModalTab = 'info' | 'usedBy'
+import { InfoModalTab } from '../modal/types'
+export type { InfoModalTab }
 
 export interface ModalState {
   showInfoModal: boolean // Whether to show package info modal

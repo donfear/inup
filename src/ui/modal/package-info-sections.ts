@@ -1,7 +1,7 @@
 import path from 'node:path'
 import chalk from 'chalk'
 import { PackageSelectionState } from '../../types'
-import { ModalSection } from './types'
+import { InfoModalTab, ModalSection } from './types'
 import { getThemeColor } from '../themes-colors'
 import {
   getVulnerabilityLinkLabel,
@@ -299,67 +299,64 @@ function formatNumber(num: number | undefined): string {
   return num.toString()
 }
 
-function buildTabBarSuffix(activeTab: 'info' | 'usedBy', usedByCount: number): string {
-  const infoLabel = 'Info'
+function getUsedByPaths(state: PackageSelectionState): string[] {
+  return state.packageJsonPaths ?? [state.packageJsonPath]
+}
+
+function buildTabBarSuffix(activeTab: InfoModalTab, usedByCount: number): string {
+  const styleFor = (tab: InfoModalTab) =>
+    tab === activeTab ? chalk.bold.underline : chalk.gray
   const usedByLabel = `Used by${usedByCount > 0 ? ` (${usedByCount})` : ''}`
-  const infoStyle = activeTab === 'info' ? chalk.bold.underline : chalk.gray
-  const usedByStyle = activeTab === 'usedBy' ? chalk.bold.underline : chalk.gray
-  return `  ${chalk.gray('[')}${infoStyle(infoLabel)}${chalk.gray('|')}${usedByStyle(usedByLabel)}${chalk.gray(']')}`
+  return (
+    '  ' +
+    chalk.gray('[') +
+    styleFor('info')('Info') +
+    chalk.gray('|') +
+    styleFor('usedBy')(usedByLabel) +
+    chalk.gray(']')
+  )
 }
 
 export function buildUsedBySections(
   state: PackageSelectionState,
   modalWidth: number
 ): ModalSection[] {
-  const sections: ModalSection[] = []
-  const paths = state.packageJsonPaths ?? [state.packageJsonPath]
-
-  if (!paths || paths.length === 0) {
-    sections.push({
-      key: 'used-by-empty',
-      rows: [chalk.gray.italic('No consuming package.json found.')],
-      behavior: 'status',
-    })
-    return sections
-  }
-
+  const paths = getUsedByPaths(state)
   const cwd = process.cwd()
   const contentWidth = Math.max(10, modalWidth - 4)
-  const formatted = paths.map((absolutePath) => {
-    const relative = path.relative(cwd, absolutePath) || absolutePath
-    const display = relative.length === 0 ? absolutePath : relative
-    return display.length > contentWidth
-      ? '…' + display.slice(display.length - (contentWidth - 1))
-      : display
-  })
+  const formatRelative = (absolutePath: string): string => {
+    const display = path.relative(cwd, absolutePath) || absolutePath
+    return truncatePlainText(display, contentWidth)
+  }
 
-  const countLabel = chalk.bold(
-    `${paths.length} package.json file${paths.length === 1 ? '' : 's'} depend on ${state.name}`
-  )
-
-  sections.push({
-    key: 'used-by-summary',
-    rows: [countLabel, chalk.gray(`Type: ${state.type}`)],
-    required: true,
-    behavior: 'pinned',
-  })
-
-  sections.push({
-    key: 'used-by-list',
-    rows: formatted.map((line) => `${chalk.gray('•')} ${line}`),
-    behavior: 'body',
-  })
-
-  return sections
+  return [
+    {
+      key: 'used-by-summary',
+      rows: [
+        chalk.bold(
+          `${paths.length} package.json file${paths.length === 1 ? '' : 's'} depend on ${state.name}`
+        ),
+        chalk.gray(`Type: ${state.type}`),
+      ],
+      required: true,
+      behavior: 'pinned',
+    },
+    {
+      key: 'used-by-list',
+      rows: paths.map((p) => `${chalk.gray('•')} ${formatRelative(p)}`),
+      behavior: 'body',
+    },
+  ]
 }
 
 export function buildPackageInfoSections(
   state: PackageSelectionState,
   modalWidth: number,
-  activeTab: 'info' | 'usedBy' = 'info'
+  activeTab: InfoModalTab
 ): ModalSection[] {
-  const usedByCount = (state.packageJsonPaths ?? [state.packageJsonPath]).length
-  const title = chalk.cyan.bold(`Package: ${state.name}`) + buildTabBarSuffix(activeTab, usedByCount)
+  const title =
+    chalk.cyan.bold(`Package: ${state.name}`) +
+    buildTabBarSuffix(activeTab, getUsedByPaths(state).length)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
   const targetVersion = chalk.green(
