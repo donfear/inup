@@ -168,10 +168,13 @@ export type StreamOutdatedPackagesEvent =
 
 export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
 
-export interface RegistryBatchOptions {
+export interface FetchPackageVersionsOptions {
+  /** Total in-flight registry fetches at any moment. Default: 10. */
+  maxConcurrency?: number
+  /** Size of each emission batch (UI grouping only, not concurrency). Default: 25. */
   batchSize?: number
+  /** Sequence of batch sizes; overrides batchSize when provided. */
   batchSizes?: number[]
-  concurrency?: number
 }
 
 export interface RegistryBatchProgressItem {

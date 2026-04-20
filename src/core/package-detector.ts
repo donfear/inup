@@ -15,7 +15,7 @@ import {
   collectAllDependenciesAsync,
   findClosestMinorVersion,
 } from '../utils'
-import { getAllPackageDataBatched, PackageVersionData } from '../services'
+import { fetchPackageVersions, PackageVersionData } from '../services'
 import { isPackageIgnored } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
@@ -34,8 +34,9 @@ export class PackageDetector {
   private excludePatterns: string[]
   private ignorePackages: string[]
   private maxDepth: number
-  private readonly batchSize = 25
-  private readonly batchConcurrency = 25
+
+  private readonly batchSize = 10
+  private readonly maxConcurrency = 10
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -98,9 +99,11 @@ export class PackageDetector {
     const tFetch = Date.now()
     debugLog.info('PackageDetector', 'fetching version data via npm registry in batches')
 
-    await getAllPackageDataBatched(
-      prepared.uniquePackages,
-      (batch) => {
+    await fetchPackageVersions(prepared.uniquePackages, {
+      currentVersions: prepared.currentVersions,
+      batchSize: this.batchSize,
+      maxConcurrency: this.maxConcurrency,
+      onBatchReady: (batch) => {
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0
         const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {
@@ -151,12 +154,7 @@ export class PackageDetector {
           },
         })
       },
-      prepared.currentVersions,
-      {
-        batchSize: this.batchSize,
-        concurrency: this.batchConcurrency,
-      }
-    )
+    })
 
     debugLog.perf(
       'PackageDetector',

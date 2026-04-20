@@ -11,8 +11,7 @@ vi.mock('../../../src/services/jsdelivr-registry', () => ({
 
 import {
   clearPackageCache,
-  getAllPackageData,
-  getAllPackageDataBatched,
+  fetchPackageVersions,
 } from '../../../src/services/npm-registry'
 
 type MockResponse = {
@@ -75,7 +74,7 @@ describe('npm-registry', () => {
       })
     )
 
-    const result = await getAllPackageData(['demo-pkg'])
+    const result = await fetchPackageVersions(['demo-pkg'])
 
     expect(requestMock).toHaveBeenCalledTimes(1)
     expect(result.get('demo-pkg')).toEqual({
@@ -85,7 +84,7 @@ describe('npm-registry', () => {
   })
 
   it('returns empty map for empty input', async () => {
-    const result = await getAllPackageData([])
+    const result = await fetchPackageVersions([])
 
     expect(result.size).toBe(0)
     expect(requestMock).not.toHaveBeenCalled()
@@ -100,7 +99,7 @@ describe('npm-registry', () => {
         })
     )
 
-    const pending = getAllPackageData(['demo-pkg', 'demo-pkg'])
+    const pending = fetchPackageVersions(['demo-pkg', 'demo-pkg'])
     await Promise.resolve()
     expect(requestMock).toHaveBeenCalledTimes(1)
 
@@ -126,8 +125,8 @@ describe('npm-registry', () => {
       .mockResolvedValueOnce(makeOkBody({ versions: { '1.0.0': {} } }))
       .mockResolvedValueOnce(makeOkBody({ versions: { '1.1.0': {}, '1.0.0': {} } }))
 
-    const first = await getAllPackageData(['demo-pkg'])
-    const second = await getAllPackageData(['demo-pkg'])
+    const first = await fetchPackageVersions(['demo-pkg'])
+    const second = await fetchPackageVersions(['demo-pkg'])
 
     expect(requestMock).toHaveBeenCalledTimes(2)
     expect(first.get('demo-pkg')?.latestVersion).toBe('1.0.0')
@@ -142,7 +141,7 @@ describe('npm-registry', () => {
       return makeErrBody(404)
     })
 
-    const result = await getAllPackageData(['good-pkg', 'bad-pkg'])
+    const result = await fetchPackageVersions(['good-pkg', 'bad-pkg'])
 
     expect(result.get('good-pkg')).toEqual({
       latestVersion: '1.1.0',
@@ -169,7 +168,7 @@ describe('npm-registry', () => {
     )
 
     const currentVersions = new Map([['demo-pkg', '1.0.0']])
-    const result = await getAllPackageData(['demo-pkg'], undefined, currentVersions)
+    const result = await fetchPackageVersions(['demo-pkg'], { currentVersions })
 
     expect(getAllPackageDataFromJsdelivrMock).toHaveBeenCalledWith(
       ['demo-pkg'],
@@ -179,20 +178,6 @@ describe('npm-registry', () => {
       latestVersion: '1.1.0',
       allVersions: ['1.1.0', '1.0.0'],
     })
-  })
-
-  it('calls progress callback once per requested package', async () => {
-    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
-    const progressUpdates: Array<{ package: string; completed: number; total: number }> = []
-
-    await getAllPackageData(['demo-pkg', 'demo-pkg'], (pkg, completed, total) => {
-      progressUpdates.push({ package: pkg, completed, total })
-    })
-
-    expect(progressUpdates).toEqual([
-      { package: 'demo-pkg', completed: 1, total: 2 },
-      { package: 'demo-pkg', completed: 2, total: 2 },
-    ])
   })
 
   it('emits batched results in request order', async () => {
@@ -207,14 +192,13 @@ describe('npm-registry', () => {
     })
 
     const batches: string[][] = []
-    const result = await getAllPackageDataBatched(
-      ['pkg-a', 'pkg-b', 'pkg-c'],
-      (batch) => {
+    const result = await fetchPackageVersions(['pkg-a', 'pkg-b', 'pkg-c'], {
+      batchSize: 2,
+      maxConcurrency: 1,
+      onBatchReady: (batch) => {
         batches.push(batch.map((item) => item.packageName))
       },
-      undefined,
-      { batchSize: 2, concurrency: 1 }
-    )
+    })
 
     expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
     expect(new Set(result.keys())).toEqual(new Set(['pkg-a', 'pkg-b', 'pkg-c']))
@@ -226,14 +210,13 @@ describe('npm-registry', () => {
     const packageNames = Array.from({ length: 50 }, (_, index) => `pkg-${index + 1}`)
     const batches: number[] = []
 
-    await getAllPackageDataBatched(
-      packageNames,
-      (batch) => {
+    await fetchPackageVersions(packageNames, {
+      batchSizes: [10, 15, 20, 25],
+      maxConcurrency: 5,
+      onBatchReady: (batch) => {
         batches.push(batch.length)
       },
-      undefined,
-      { batchSizes: [10, 15, 20, 25], concurrency: 5 }
-    )
+    })
 
     expect(batches).toEqual([10, 15, 20, 5])
   })
