@@ -17,20 +17,20 @@ Type "clear"
 Enter
 Show
 
-# Run inup
+# Run inup and hide shell/loading so the demo opens directly on the CLI
+Hide
 Type "inup"
 Enter
-
-# Wait for the tool to scan and fetch package updates
 Sleep 5s
+Show
 
 # Use 'M' to select all minor updates
 Type "m"
-Sleep 1s
+Sleep 600ms
 
 # Press 'T' to open theme menu
 Type "t"
-Sleep 800ms
+Sleep 600ms
 
 # Navigate down 3 positions to select a theme
 Down
@@ -44,7 +44,7 @@ Sleep 300ms
 
 # Press Enter to apply the selected theme
 Enter
-Sleep 800ms
+Sleep 600ms
 
 # Demonstrate search functionality - press '/' to enter search mode
 Type "/"
@@ -52,7 +52,7 @@ Sleep 600ms
 
 # Type 'express' to search for the express package
 Type "express"
-Sleep 800ms
+Sleep 600ms
 
 # Press Enter to apply the search filter
 Enter
@@ -88,27 +88,20 @@ Sleep 400ms
 Right
 Sleep 600ms
 
-# Navigate down 1 package (leave with minor selection from M)
-Down
-Sleep 400ms
-
-# Navigate down 1 more package
-Down
-Sleep 400ms
-
-# Navigate down 2 more packages to demonstrate info modal
-Down
-Sleep 400ms
-Down
+Up
 Sleep 400ms
 
 # Press 'i' to show info modal for current package
 Type "i"
-Sleep 2s
+Sleep 3s
 
 # Press 'i' again to toggle info modal
 Type "i"
 Sleep 400ms
+
+# Select major version for this package (right arrow)
+Right
+Sleep 600ms
 
 # Navigate back up
 Up
