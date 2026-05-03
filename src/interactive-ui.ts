@@ -845,6 +845,7 @@ export class InteractiveUI {
         renderInterface()
         this.enqueueSecurityAudit(states)
       } catch (error) {
+        process.off('exit', emergencyCleanup)
         releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
