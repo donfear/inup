@@ -638,10 +638,10 @@ export class InteractiveUI {
 
       const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
         isResolved = true
-        process.off('exit', emergencyCleanup)
         this.packageInfoModalController.cancel()
         releaseInteractiveScreen()
         cleanupInteractiveSession()
+        process.off('exit', emergencyCleanup)
         resolve(selectedStates)
       }
 
@@ -878,8 +878,8 @@ export class InteractiveUI {
       }
 
       const handleConfirmWithCleanup = (confirmed: boolean | null) => {
-        process.off('exit', confirmEmergencyCleanup)
         handleConfirm(confirmed)
+        process.off('exit', confirmEmergencyCleanup)
       }
 
       const inputHandler = new ConfirmationInputHandler(handleConfirmWithCleanup)
