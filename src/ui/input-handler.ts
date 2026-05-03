@@ -61,7 +61,7 @@ export class InputHandler {
     }
 
     if (key && key.ctrl && key.name === 'c') {
-      CursorUtils.show()
+      this.onCancel()
       process.exit(0)
     }
 
@@ -354,7 +354,8 @@ export class ConfirmationInputHandler {
     }
 
     if (key && key.ctrl && key.name === 'c') {
-      CursorUtils.show()
+      this.cleanup()
+      this.onConfirm(false)
       process.exit(0)
     }
 

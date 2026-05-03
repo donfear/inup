@@ -623,8 +623,22 @@ export class InteractiveUI {
         this.refreshView = undefined
       }
 
+      // Safety net: restore terminal if the process exits without going through finalizeSelection.
+      // Only synchronous writes work in an 'exit' handler, but that's all we need here.
+      const emergencyCleanup = () => {
+        if (ownsAlternateScreen) {
+          process.stdout.write('\x1b[?1049l')
+        }
+        process.stdout.write('\x1b[?25h')
+        if (process.stdin.setRawMode) {
+          process.stdin.setRawMode(false)
+        }
+      }
+      process.on('exit', emergencyCleanup)
+
       const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
         isResolved = true
+        process.off('exit', emergencyCleanup)
         this.packageInfoModalController.cancel()
         releaseInteractiveScreen()
         cleanupInteractiveSession()
