@@ -870,7 +870,19 @@ export class InteractiveUI {
         resolve(confirmed)
       }
 
-      const inputHandler = new ConfirmationInputHandler(handleConfirm)
+      const confirmEmergencyCleanup = () => {
+        process.stdout.write('\x1b[?25h')
+        if (process.stdin.setRawMode) {
+          process.stdin.setRawMode(false)
+        }
+      }
+
+      const handleConfirmWithCleanup = (confirmed: boolean | null) => {
+        process.off('exit', confirmEmergencyCleanup)
+        handleConfirm(confirmed)
+      }
+
+      const inputHandler = new ConfirmationInputHandler(handleConfirmWithCleanup)
       const keypressHandler = (str: string, key: Key) => inputHandler.handleKeypress(str, key)
 
       // Setup keypress handling
@@ -880,6 +892,7 @@ export class InteractiveUI {
           keypressSession.close()
           CursorUtils.show()
         }
+        process.on('exit', confirmEmergencyCleanup)
         CursorUtils.hide()
       } catch (error) {
         TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
