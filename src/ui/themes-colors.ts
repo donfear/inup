@@ -208,7 +208,6 @@ export function coloredInupLogo(): string {
   return BRAND_COLORS.map((color, i) => color.bold('inup'[i])).join('')
 }
 
-
 export const themeColors = {
   primary: () => getThemeColor('primary'),
   secondary: () => getThemeColor('secondary'),
