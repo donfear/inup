@@ -566,6 +566,18 @@ export class InteractiveUI {
         process.stdout.write(lines.map((line) => applyBackgroundToLine(line, bgCode)).join('\n'))
       }
 
+      const key = (text: string) => chalk.bold.white(text)
+      const hint = (text: string) => chalk.gray(text)
+      const sep = hint('  ·  ')
+
+      const SHORTCUTS = {
+        scroll: key('↑/↓ ') + hint('Scroll'),
+        version: key('←/→ ') + hint('Version'),
+        switchTab: key('Tab ') + hint('Switch tab'),
+        closeInfo: key('I / Esc ') + hint('Close'),
+        closeTheme: key('T / Esc ') + hint('Close'),
+      }
+
       const buildModalHeaderLines = (shortcutLabel: string): string[] => [
         '  ' + chalk.bold('🚀 ') + coloredInupLogo(),
         '',
@@ -676,7 +688,7 @@ export class InteractiveUI {
 
           renderModalViewport(
             'theme-modal',
-            chalk.bold.white('T ') + chalk.gray('/ Esc Exit theme selector'),
+            SHORTCUTS.closeTheme,
             modalLines,
             terminalWidth,
             terminalHeight,
@@ -694,13 +706,13 @@ export class InteractiveUI {
           )
           debugModalMaxScrollOffset = result.maxScrollOffset
           stateManager.clampDebugModalScrollOffset(debugModalMaxScrollOffset)
-          const scrollHint =
-            result.usesInternalScroll && result.maxScrollOffset > 0
-              ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
-              : ''
+          const debugHints = [
+            result.usesInternalScroll && result.maxScrollOffset > 0 ? SHORTCUTS.scroll : '',
+            SHORTCUTS.closeInfo,
+          ].filter(Boolean).join(sep)
           renderModalViewport(
             'info-modal',
-            scrollHint + chalk.bold.white('! / Esc ') + chalk.gray('Close'),
+            debugHints,
             result.lines,
             terminalWidth,
             terminalHeight,
@@ -725,7 +737,7 @@ export class InteractiveUI {
             infoModalMaxScrollOffset = result.maxScrollOffset
             renderModalViewport(
               'info-modal',
-              chalk.bold.white('I / Esc ') + chalk.gray('Exit this view'),
+              SHORTCUTS.closeInfo,
               result.lines,
               terminalWidth,
               terminalHeight,
@@ -743,22 +755,15 @@ export class InteractiveUI {
             )
             infoModalMaxScrollOffset = result.maxScrollOffset
             stateManager.clampInfoModalScrollOffset(infoModalMaxScrollOffset)
-            const scrollHint =
-              result.usesInternalScroll && result.maxScrollOffset > 0
-                ? chalk.bold.white('↑/↓ ') + chalk.gray('Scroll  ·  ')
-                : ''
-            const versionHint =
-              activeTab === 'info'
-                ? chalk.bold.white('←/→ ') + chalk.gray('Version  ·  ')
-                : ''
+            const hints = [
+              result.usesInternalScroll && result.maxScrollOffset > 0 ? SHORTCUTS.scroll : '',
+              activeTab === 'info' ? SHORTCUTS.version : '',
+              SHORTCUTS.switchTab,
+              SHORTCUTS.closeInfo,
+            ].filter(Boolean).join(sep)
             renderModalViewport(
               'info-modal',
-              scrollHint +
-                versionHint +
-                chalk.bold.white('Tab ') +
-                chalk.gray('Switch tab  ·  ') +
-                chalk.bold.white('I / Esc ') +
-                chalk.gray('Exit this view'),
+              hints,
               result.lines,
               terminalWidth,
               terminalHeight,
