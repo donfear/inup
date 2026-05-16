@@ -25,7 +25,7 @@ import {
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { PackageListRenderOptions } from './ui/renderer/package-list'
 import { themeNames, themes } from './ui/themes'
-import { getTerminalBgColorCode, getTerminalResetCode } from './ui/themes-colors'
+import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from './ui/themes-colors'
 import { getPerformanceTracker, renderPerformanceModal } from './features/debug'
 
 type InteractiveUIOptions = VulnerabilityDisplayOptions
@@ -567,7 +567,7 @@ export class InteractiveUI {
       }
 
       const buildModalHeaderLines = (shortcutLabel: string): string[] => [
-        '  ' + chalk.bold.magenta('🚀 inup'),
+        '  ' + chalk.bold('🚀 ') + coloredInupLogo(),
         '',
         '  ' + shortcutLabel,
         '',

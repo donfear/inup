@@ -2,7 +2,7 @@ import path from 'node:path'
 import chalk from 'chalk'
 import { PackageSelectionState } from '../../types'
 import { InfoModalTab, ModalSection } from './types'
-import { getThemeColor } from '../themes-colors'
+import { getThemeColor, coloredBrandText } from '../themes-colors'
 import {
   getVulnerabilityLinkLabel,
   getVulnerabilitySeverityColor,
@@ -355,7 +355,8 @@ export function buildPackageInfoSections(
   activeTab: InfoModalTab
 ): ModalSection[] {
   const title =
-    chalk.cyan.bold(`Package: ${state.name}`) +
+    chalk.bold('Package: ') +
+    coloredBrandText(state.name) +
     buildTabBarSuffix(activeTab, getUsedByPaths(state).length)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
