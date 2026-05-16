@@ -17,6 +17,75 @@ const baseState: PackageSelectionState = {
   type: 'dependencies',
 }
 
+describe('FilterManager text and type filtering', () => {
+  it('text filter is case-insensitive', () => {
+    const fm = new FilterManager()
+    fm.updateFilterQuery('REACT')
+
+    const filtered = fm.getFilteredStates([
+      { ...baseState, name: 'React', type: 'dependencies' },
+      { ...baseState, name: 'vue', type: 'dependencies' },
+    ])
+    expect(filtered.map((s) => s.name)).toEqual(['React'])
+  })
+
+  it('toggling a dep type off removes it from results', () => {
+    const fm = new FilterManager()
+    fm.toggleDependencyType('devDependencies')
+
+    const filtered = fm.getFilteredStates([
+      { ...baseState, name: 'react', type: 'dependencies' },
+      { ...baseState, name: 'typescript', type: 'devDependencies' },
+    ])
+    expect(filtered.map((s) => s.name)).toEqual(['react'])
+  })
+
+  it('toggling all types off returns empty list', () => {
+    const fm = new FilterManager()
+    ;(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const).forEach(
+      (t) => fm.toggleDependencyType(t)
+    )
+    expect(fm.getFilteredStates([
+      { ...baseState, name: 'a', type: 'dependencies' },
+      { ...baseState, name: 'b', type: 'devDependencies' },
+    ])).toHaveLength(0)
+  })
+
+  it('deleteFromFilterQuery removes last character and does nothing on empty', () => {
+    const fm = new FilterManager()
+    fm.enterFilterMode()
+    fm.appendToFilterQuery('r')
+    fm.appendToFilterQuery('e')
+    fm.deleteFromFilterQuery()
+    expect(fm.getFilterQuery()).toBe('r')
+    fm.deleteFromFilterQuery()
+    fm.deleteFromFilterQuery() // already empty — should not throw
+    expect(fm.getFilterQuery()).toBe('')
+  })
+
+  it('getActiveFilterLabel returns None when all types are hidden', () => {
+    const fm = new FilterManager()
+    ;(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const).forEach(
+      (t) => fm.toggleDependencyType(t)
+    )
+    expect(fm.getActiveFilterLabel()).toBe('None')
+  })
+
+  it('getActiveFilterLabel appends "(vulnerable only)" when vuln filter is active', () => {
+    const fm = new FilterManager()
+    fm.toggleVulnerableFilter()
+    expect(fm.getActiveFilterLabel()).toContain('(vulnerable only)')
+  })
+
+  it('getState returns a snapshot independent of subsequent mutations', () => {
+    const fm = new FilterManager()
+    const before = fm.getState()
+    fm.toggleVulnerableFilter()
+    expect(before.showOnlyVulnerable).toBe(false)
+    expect(fm.getState().showOnlyVulnerable).toBe(true)
+  })
+})
+
 describe('FilterManager vulnerability filtering', () => {
   it('excludes hidden peer and optional vulnerabilities from vulnerable-only results', () => {
     const filterManager = new FilterManager()

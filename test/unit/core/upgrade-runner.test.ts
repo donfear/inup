@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   upgradePackages: vi.fn(),
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
+  appendOutdatedBatchToSelectionStates: vi.fn(),
 }))
 
 vi.mock('../../../src/core/package-detector', () => ({
@@ -25,6 +26,7 @@ vi.mock('../../../src/interactive-ui', () => ({
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
+    appendOutdatedBatchToSelectionStates = mocks.appendOutdatedBatchToSelectionStates
   },
 }))
 
@@ -63,6 +65,7 @@ describe('UpgradeRunner terminal handoff', () => {
       color: null,
     })
     mocks.getOutdatedPackagesOnly.mockImplementation((packages: any[]) => packages)
+    mocks.appendOutdatedBatchToSelectionStates.mockImplementation(() => {})
 
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
@@ -107,6 +110,73 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
     })
+  })
+
+  it('exits early with up-to-date message when no outdated packages', async () => {
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({ type: 'initial', payload: { allDependencies: [], uniquePackages: [], currentVersions: new Map(), progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: true } } })
+      onEvent({ type: 'complete', payload: { packages: [], progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: false } } })
+    })
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('All packages are up to date'))
+    expect(mocks.upgradePackages).not.toHaveBeenCalled()
+    logSpy.mockRestore()
+  })
+
+  it('exits with "No packages selected" when selection returns empty', async () => {
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No packages selected'))
+    expect(mocks.upgradePackages).not.toHaveBeenCalled()
+    logSpy.mockRestore()
+  })
+
+  it('exits with "Upgrade cancelled" when user declines confirmation', async () => {
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([{
+      name: 'next', packageJsonPath: '/repo/package.json', dependencyType: 'dependencies',
+      upgradeType: 'range', targetVersion: '^1.1.0', currentVersionSpecifier: '^1.0.0',
+    }])
+    mocks.confirmUpgrade.mockResolvedValue(false)
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Upgrade cancelled'))
+    expect(mocks.upgradePackages).not.toHaveBeenCalled()
+    logSpy.mockRestore()
+  })
+
+  it('calls upgradePackages when user confirms', async () => {
+    const choice = {
+      name: 'next', packageJsonPath: '/repo/package.json', dependencyType: 'dependencies',
+      upgradeType: 'range', targetVersion: '^1.1.0', currentVersionSpecifier: '^1.0.0',
+    }
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([choice])
+    mocks.confirmUpgrade.mockResolvedValue(true)
+    mocks.upgradePackages.mockResolvedValue(undefined)
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    expect(mocks.upgradePackages).toHaveBeenCalledTimes(1)
+    logSpy.mockRestore()
+  })
+
+  it('calls process.exit(1) when no package.json is found', async () => {
+    mocks.hasPackageJson.mockReturnValue(false)
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new UpgradeRunner({ cwd: '/no-pkg' }).run()
+
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No package.json'))
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
   it('does not print a standalone banner when returning from confirmation to selection', async () => {

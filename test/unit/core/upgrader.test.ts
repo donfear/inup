@@ -1,17 +1,92 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { PackageUpgrader } from '../../../src/core/upgrader'
 import { PackageInfo, PackageManagerInfo, PackageUpgradeChoice } from '../../../src/types'
 
+const makePackageManager = (overrides: Partial<PackageManagerInfo> = {}): PackageManagerInfo => ({
+  name: 'npm',
+  displayName: 'npm',
+  lockFile: 'package-lock.json',
+  workspaceFile: null,
+  installCommand: 'npm --version',
+  color: null,
+  ...overrides,
+})
+
 describe('PackageUpgrader', () => {
   let testDir: string
+
+  beforeEach(() => {
+    testDir = mkdtempSync(join(tmpdir(), 'inup-upgrader-test-'))
+  })
 
   afterEach(() => {
     if (testDir && existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true })
     }
+  })
+
+  it('prints "No packages to upgrade" and returns when choices is empty', async () => {
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await upgrader.upgradePackages([], [])
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No packages to upgrade'))
+    logSpy.mockRestore()
+  })
+
+  it('skips and warns when the target package.json does not exist', async () => {
+    const missingPath = join(testDir, 'ghost', 'package.json')
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await upgrader.upgradePackages([{
+      name: 'lodash', packageJsonPath: missingPath, dependencyType: 'dependencies',
+      upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.17.20',
+    }], [])
+
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('file not found'))
+    warnSpy.mockRestore()
+    logSpy.mockRestore()
+  })
+
+  it('creates a missing dep section rather than crashing', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(pkgPath, JSON.stringify({ name: 'fixture' }, null, 2) + '\n')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await upgrader.upgradePackages([{
+      name: 'react', packageJsonPath: pkgPath, dependencyType: 'peerDependencies',
+      upgradeType: 'latest', targetVersion: '^19.0.0', currentVersionSpecifier: '^18.0.0',
+    }], [])
+
+    expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).peerDependencies?.react).toBe('^19.0.0')
+    logSpy.mockRestore()
+  })
+
+  it('counts unique package names (not choices) in the success message', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(pkgPath, JSON.stringify({
+      name: 'fixture',
+      dependencies: { lodash: '^4.0.0' },
+      devDependencies: { lodash: '^4.0.0' },
+    }, null, 2) + '\n')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const messages: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((m: string) => messages.push(m))
+
+    await upgrader.upgradePackages([
+      { name: 'lodash', packageJsonPath: pkgPath, dependencyType: 'dependencies', upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.0.0' },
+      { name: 'lodash', packageJsonPath: pkgPath, dependencyType: 'devDependencies', upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.0.0' },
+    ], [])
+
+    expect(messages.find((m) => m.includes('Successfully upgraded'))).toMatch('1 package(s)')
+    logSpy.mockRestore()
   })
 
   it('updates peer and optional dependency selections in their original sections', async () => {
