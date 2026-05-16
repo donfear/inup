@@ -148,6 +148,9 @@ jobs:
           mkdir test-pnpm-project
           cd test-pnpm-project
           pnpm init
+          # pnpm 10+ writes a caret-ranged devEngines.packageManager that Corepack
+          # rejects as non-exact semver. Strip it; the field is unused for this test.
+          node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); delete p.devEngines; fs.writeFileSync('package.json', JSON.stringify(p, null, 2))"
           pnpm add ../inup/inup-*.tgz
         shell: bash
 

@@ -40,6 +40,8 @@ export class InputHandler {
   private stateManager: StateManager
   private onAction: (action: InputAction) => void
   private onConfirm: (states: PackageSelectionState[]) => void
+  // Must synchronously release terminal state (alt screen, raw mode, cursor) —
+  // it runs immediately before process.exit(0) on Ctrl+C, with no chance to await.
   private onCancel: () => void
 
   constructor(
@@ -61,7 +63,7 @@ export class InputHandler {
     }
 
     if (key && key.ctrl && key.name === 'c') {
-      CursorUtils.show()
+      this.onCancel()
       process.exit(0)
     }
 
@@ -354,7 +356,9 @@ export class ConfirmationInputHandler {
     }
 
     if (key && key.ctrl && key.name === 'c') {
-      CursorUtils.show()
+      // onConfirm runs the normal cleanup path (cursor show, raw-mode off, listener
+      // removal). The 'exit' listener registered by confirmUpgrade is a final backstop.
+      this.onConfirm(false)
       process.exit(0)
     }
 

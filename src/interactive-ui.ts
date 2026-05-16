@@ -623,11 +623,25 @@ export class InteractiveUI {
         this.refreshView = undefined
       }
 
+      // Safety net: restore terminal if the process exits without going through finalizeSelection.
+      // Only synchronous writes work in an 'exit' handler, but that's all we need here.
+      const emergencyCleanup = () => {
+        if (ownsAlternateScreen) {
+          process.stdout.write('\x1b[?1049l')
+        }
+        process.stdout.write('\x1b[?25h')
+        if (process.stdin.setRawMode) {
+          process.stdin.setRawMode(false)
+        }
+      }
+      process.on('exit', emergencyCleanup)
+
       const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
         isResolved = true
         this.packageInfoModalController.cancel()
         releaseInteractiveScreen()
         cleanupInteractiveSession()
+        process.off('exit', emergencyCleanup)
         resolve(selectedStates)
       }
 
@@ -831,6 +845,7 @@ export class InteractiveUI {
         renderInterface()
         this.enqueueSecurityAudit(states)
       } catch (error) {
+        process.off('exit', emergencyCleanup)
         releaseInteractiveScreen()
         // Reset terminal colors
         process.stdout.write(getTerminalResetCode())
@@ -855,7 +870,24 @@ export class InteractiveUI {
         resolve(confirmed)
       }
 
-      const inputHandler = new ConfirmationInputHandler(handleConfirm)
+      // Safety net for the same reason as selectPackages — synchronous restore on exit.
+      // The confirmation screen does not enter the alternate screen, so alt-screen
+      // restoration is intentionally omitted here. If that ever changes, mirror the
+      // ownsAlternateScreen-gated pattern from selectPackages.
+      const confirmEmergencyCleanup = () => {
+        process.stdout.write('\x1b[?25h')
+        if (process.stdin.setRawMode) {
+          process.stdin.setRawMode(false)
+        }
+      }
+      process.on('exit', confirmEmergencyCleanup)
+
+      const handleConfirmWithCleanup = (confirmed: boolean | null) => {
+        handleConfirm(confirmed)
+        process.off('exit', confirmEmergencyCleanup)
+      }
+
+      const inputHandler = new ConfirmationInputHandler(handleConfirmWithCleanup)
       const keypressHandler = (str: string, key: Key) => inputHandler.handleKeypress(str, key)
 
       // Setup keypress handling
@@ -867,6 +899,7 @@ export class InteractiveUI {
         }
         CursorUtils.hide()
       } catch (error) {
+        process.off('exit', confirmEmergencyCleanup)
         TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
           .then(resolve)
           .catch(() => resolve(false))
