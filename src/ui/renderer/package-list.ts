@@ -8,7 +8,7 @@ import {
   VulnerabilityDisplayOptions,
 } from '../../types'
 import { VersionUtils } from '../utils'
-import { getThemeColor } from '../themes-colors'
+import { getThemeColor, coloredInupLogo } from '../themes-colors'
 import {
   getVulnerabilityBadge,
   shouldDisplayVulnerabilityForDependency,
@@ -276,13 +276,11 @@ export function renderInterface(
     }
     const pmColor = colorMap[packageManager.name] || packageManager.color
     // Each character in "inup" gets a different color
-    const inupColors = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
-    const coloredInup = inupColors.map((color, i) => color.bold('inup'[i])).join('')
     const headerLine =
       '  ' +
       chalk.bold(pmColor('🚀')) +
       ' ' +
-      coloredInup +
+      coloredInupLogo() +
       getThemeColor('textSecondary')(` (${packageManager.displayName})`)
 
     // Show filter state (always show, including "All")
@@ -295,13 +293,7 @@ export function renderInterface(
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
     output.push(fullHeaderLine + ' '.repeat(headerPadding))
   } else {
-    const headerLine =
-      '  ' +
-      chalk.bold.blue('🚀 ') +
-      chalk.bold.red('i') +
-      chalk.bold.yellow('n') +
-      chalk.bold.blue('u') +
-      chalk.bold.magenta('p')
+    const headerLine = '  ' + chalk.bold.blue('🚀 ') + coloredInupLogo()
 
     // Show filter state (always show, including "All")
     const fullHeaderLine = activeFilterLabel

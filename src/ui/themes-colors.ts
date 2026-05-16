@@ -202,6 +202,12 @@ export function getTerminalResetCode(): string {
   return '\x1b[0m'
 }
 
+const BRAND_COLORS = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
+
+export function coloredInupLogo(): string {
+  return BRAND_COLORS.map((color, i) => color.bold('inup'[i])).join('')
+}
+
 export const themeColors = {
   primary: () => getThemeColor('primary'),
   secondary: () => getThemeColor('secondary'),

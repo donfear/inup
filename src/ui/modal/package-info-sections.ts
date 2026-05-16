@@ -355,7 +355,8 @@ export function buildPackageInfoSections(
   activeTab: InfoModalTab
 ): ModalSection[] {
   const title =
-    chalk.cyan.bold(`Package: ${state.name}`) +
+    chalk.bold('Package: ') +
+    getThemeColor('packageName')(state.name) +
     buildTabBarSuffix(activeTab, getUsedByPaths(state).length)
   const authorLicense = chalk.gray(`${state.author || 'Unknown'} • ${state.license || 'MIT'}`)
   const currentVersion = chalk.yellow(state.currentVersionSpecifier)
