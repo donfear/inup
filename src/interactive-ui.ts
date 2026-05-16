@@ -870,12 +870,17 @@ export class InteractiveUI {
         resolve(confirmed)
       }
 
+      // Safety net for the same reason as selectPackages — synchronous restore on exit.
+      // The confirmation screen does not enter the alternate screen, so alt-screen
+      // restoration is intentionally omitted here. If that ever changes, mirror the
+      // ownsAlternateScreen-gated pattern from selectPackages.
       const confirmEmergencyCleanup = () => {
         process.stdout.write('\x1b[?25h')
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
         }
       }
+      process.on('exit', confirmEmergencyCleanup)
 
       const handleConfirmWithCleanup = (confirmed: boolean | null) => {
         handleConfirm(confirmed)
@@ -892,9 +897,9 @@ export class InteractiveUI {
           keypressSession.close()
           CursorUtils.show()
         }
-        process.on('exit', confirmEmergencyCleanup)
         CursorUtils.hide()
       } catch (error) {
+        process.off('exit', confirmEmergencyCleanup)
         TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
           .then(resolve)
           .catch(() => resolve(false))
