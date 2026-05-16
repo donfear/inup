@@ -132,5 +132,23 @@ describe('version utils', () => {
       // Returns highest minor version (1.2.0)
       expect(result).toBe('1.2.0')
     })
+
+    it('should return null for empty allVersions array', () => {
+      expect(findClosestMinorVersion('1.0.0', [])).toBeNull()
+    })
+
+    it('should pick the highest patch among multiple patch candidates', () => {
+      // No minor bump available, 1.0.1, 1.0.2, 1.0.3 all qualify — should return 1.0.3
+      expect(findClosestMinorVersion('1.0.0', ['1.0.1', '1.0.2', '1.0.3', '2.0.0'])).toBe('1.0.3')
+    })
+
+    it('should prefer a minor bump over an available patch update', () => {
+      // Both 1.0.5 (patch) and 1.1.0 (minor) are available — minor wins
+      expect(findClosestMinorVersion('1.0.0', ['1.0.5', '1.1.0', '2.0.0'])).toBe('1.1.0')
+    })
+
+    it('should not return a lower version when already on latest within major', () => {
+      expect(findClosestMinorVersion('1.2.5', ['1.0.0', '1.2.3', '2.0.0'])).toBeNull()
+    })
   })
 })
