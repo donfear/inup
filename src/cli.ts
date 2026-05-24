@@ -2,17 +2,14 @@
 
 import { Command } from 'commander'
 import chalk from 'chalk'
-import { readFileSync } from 'fs'
-import { join, resolve } from 'path'
+import { resolve } from 'path'
 import { UpgradeRunner } from './index'
 import { checkForUpdateAsync } from './services'
-import { loadProjectConfig } from './config'
+import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
 import { PackageManager } from './types'
 import { enableDebugLogging } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
-import { TerminalInput } from './ui/utils/terminal-input'
-
-const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
+import { TerminalInput } from './ui'
 
 const program = new Command()
 
@@ -73,7 +70,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   }
 
   // Check for updates in the background (non-blocking)
-  const updateCheckPromise = checkForUpdateAsync('inup', packageJson.version)
+  const updateCheckPromise = checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
 
   // Validate package manager if provided
   let packageManager: PackageManager | undefined
@@ -132,11 +129,11 @@ export async function runCli(options: CliOptions): Promise<void> {
 }
 
 program
-  .name('inup')
+  .name(PACKAGE_NAME)
   .description(
     'Interactive upgrade tool for package managers. Auto-detects and works with npm, yarn, pnpm, and bun.'
   )
-  .version(packageJson.version)
+  .version(PACKAGE_VERSION)
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option(

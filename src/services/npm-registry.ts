@@ -1,4 +1,3 @@
-import * as semver from 'semver'
 import { Pool } from 'undici'
 import { gunzip, inflate, brotliDecompress } from 'node:zlib'
 import { promisify } from 'node:util'
@@ -8,6 +7,9 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 import { NPM_REGISTRY_URL } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
+import { parseVersions } from '../utils/version'
+import { sleep, isRetryableStatus, isTransientNetworkError } from './http/retry'
+import { InflightMap } from './http/inflight'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -19,7 +21,7 @@ export interface PackageVersionData {
   allVersions: string[]
 }
 
-const inFlightLookups = new Map<string, Promise<PackageVersionData>>()
+const inFlightLookups = new InflightMap<PackageVersionData>()
 
 const registryOrigin = new URL(NPM_REGISTRY_URL).origin
 const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
@@ -40,35 +42,6 @@ const registryPool = new Pool(registryOrigin, {
 
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-
-const isRetryableStatus = (statusCode: number): boolean =>
-  statusCode === 408 || statusCode === 429 || statusCode >= 500
-
-const isTransientNetworkError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  const maybeCode = (error as Error & { code?: string }).code
-  return (
-    error.name === 'AbortError' ||
-    error.name === 'HeadersTimeoutError' ||
-    error.name === 'BodyTimeoutError' ||
-    error.name === 'ConnectTimeoutError' ||
-    error.name === 'SocketError' ||
-    maybeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
-    maybeCode === 'UND_ERR_BODY_TIMEOUT' ||
-    maybeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
-    maybeCode === 'UND_ERR_SOCKET' ||
-    maybeCode === 'ENOTFOUND' ||
-    maybeCode === 'EAI_AGAIN' ||
-    maybeCode === 'ECONNRESET' ||
-    maybeCode === 'ECONNREFUSED' ||
-    maybeCode === 'ETIMEDOUT' ||
-    maybeCode === 'EPIPE'
-  )
-}
 
 const fetchFromJsdelivrFallback = async (
   packageName: string,
@@ -86,28 +59,9 @@ async function getFreshPackageData(
   currentVersion: string | undefined
 ): Promise<PackageVersionData> {
   const cacheKey = `${packageName}@${currentVersion ?? ''}`
-  const inFlight = inFlightLookups.get(cacheKey)
-  if (inFlight) {
-    return await inFlight
-  }
-
-  const lookupPromise = fetchPackageFromRegistryWithFallback(packageName, currentVersion).finally(
-    () => {
-      inFlightLookups.delete(cacheKey)
-    }
+  return inFlightLookups.dedupe(cacheKey, () =>
+    fetchPackageFromRegistryWithFallback(packageName, currentVersion)
   )
-  inFlightLookups.set(cacheKey, lookupPromise)
-  return await lookupPromise
-}
-
-function parseVersions(raw: string): PackageVersionData {
-  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
-  const allVersions = Object.keys(data.versions || {}).filter((v) =>
-    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)
-  )
-  const sortedVersions = allVersions.sort(semver.rcompare)
-  const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
-  return { latestVersion, allVersions }
 }
 
 const encodeRegistryPath = (packageName: string): string => {

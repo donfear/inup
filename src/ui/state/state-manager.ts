@@ -1,8 +1,8 @@
 import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
-import { NavigationManager, NavigationState } from './navigation-manager'
-import { ModalManager, ModalState, InfoModalTab } from './modal-manager'
-import { FilterManager, FilterState } from './filter-manager'
-import { ThemeManager, ThemeState } from './theme-manager'
+import { NavigationManager } from './navigation-manager'
+import { ModalManager, InfoModalTab } from './modal-manager'
+import { FilterManager } from './filter-manager'
+import { ThemeManager } from './theme-manager'
 
 export interface DisplayState {
   maxVisibleItems: number

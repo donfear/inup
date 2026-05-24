@@ -17,10 +17,7 @@ interface CacheEntry<T> {
   timestamp: number
 }
 
-/**
- * Unified cache manager that handles both in-memory and persistent disk caching.
- * Consolidates caching logic used across registry services.
- */
+// Single TTL policy for both memory and disk.
 export class CacheManager<T = PackageVersionData> {
   private memoryCache = new Map<string, CacheEntry<T>>()
   private ttl: number
@@ -42,11 +39,11 @@ export class CacheManager<T = PackageVersionData> {
 
     // Check persistent disk cache (survives restarts)
     const diskCached = persistentCache.get(key)
-    if (diskCached) {
+    if (diskCached && Date.now() - diskCached.timestamp < this.ttl) {
       // Populate in-memory cache for subsequent accesses
       this.memoryCache.set(key, {
         data: diskCached as T,
-        timestamp: Date.now(),
+        timestamp: diskCached.timestamp,
       })
       return diskCached as T
     }

@@ -2,7 +2,7 @@
  * Public API for inup
  */
 
-export { UpgradeRunner, PnpmUpgradeInteractive } from './core'
+export { UpgradeRunner } from './core'
 export type {
   PackageInfo,
   UpgradeOptions,

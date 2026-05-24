@@ -16,34 +16,22 @@ vi.mock('../../../../src/services', () => ({
 
 import { PackageInfoModalController } from '../../../../src/ui/controllers'
 import { PackageSelectionState } from '../../../../src/types'
+import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
-const baseState: PackageSelectionState = {
+const baseState = makeSelectionState({
   name: 'next',
-  packageJsonPath: '/repo/package.json',
-  packageJsonPaths: ['/repo/package.json'],
   currentVersionSpecifier: '^16.1.6',
   currentVersion: '16.1.6',
   rangeVersion: '16.2.0',
   latestVersion: '16.2.3',
   selectedOption: 'range',
-  loadState: 'ready',
-  hasRangeUpdate: true,
-  hasMajorUpdate: true,
-  type: 'dependencies',
   vulnerability: {
     count: 1,
     highestSeverity: 'high',
     detailsUrl: 'https://github.com/advisories/GHSA-1',
-    advisories: [
-      {
-        id: 1,
-        title: 'Security issue',
-        severity: 'high',
-        url: 'https://github.com/advisories/GHSA-1',
-      },
-    ],
+    advisories: [{ id: 1, title: 'Security issue', severity: 'high', url: 'https://github.com/advisories/GHSA-1' }],
   },
-}
+})
 
 describe('PackageInfoModalController', () => {
   beforeEach(() => {
@@ -59,7 +47,7 @@ describe('PackageInfoModalController', () => {
     vi.clearAllMocks()
   })
 
-  it('hydrates package info without mutating vulnerability links', async () => {
+  it('returns a StateUpdate with hydrated fields and does not mutate vulnerability', async () => {
     mocks.fetchPackageMetadata.mockResolvedValue({
       description: 'Framework',
       homepage: 'https://nextjs.org',
@@ -77,10 +65,15 @@ describe('PackageInfoModalController', () => {
       selectedOption: 'latest' as const,
       allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
     }
-    await controller.hydrate(state)
+    const update = await controller.hydrate(state)
 
-    expect(state.description).toBe('Framework')
-    expect(state.repository).toBe('https://github.com/vercel/next.js/releases')
+    expect(update).not.toBeNull()
+    expect(update!.name).toBe('next')
+    expect(update!.patch.description).toBe('Framework')
+    expect(update!.patch.repository).toBe('https://github.com/vercel/next.js/releases')
+    // state itself is not mutated
+    expect(state.description).toBeUndefined()
+    // vulnerability is not touched by hydrate
     expect(state.vulnerability?.detailsUrl).toBe('https://github.com/advisories/GHSA-1')
   })
 
@@ -93,7 +86,7 @@ describe('PackageInfoModalController', () => {
     expect(result).toBeNull()
   })
 
-  it('initializes release note cursor state during hydration', async () => {
+  it('initializes release note cursor state in the returned patch', async () => {
     mocks.fetchPackageMetadata.mockResolvedValue({
       description: 'Framework',
       releaseNotes: 'https://github.com/vercel/next.js/releases',
@@ -107,12 +100,13 @@ describe('PackageInfoModalController', () => {
       selectedOption: 'latest' as const,
       allVersions: ['16.2.3', '16.2.2', '16.2.1', '16.2.0'],
     }
-    await controller.hydrate(state)
+    const update = await controller.hydrate(state)
 
-    expect(state.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1'])
-    expect(state.releaseNotesLoaded?.size).toBe(0)
-    expect(state.releaseNotesViewIndex).toBe(0)
-    expect(state.releaseNotesLoadingVersion).toBeUndefined()
+    expect(update).not.toBeNull()
+    expect(update!.patch.releaseNotesVersions).toEqual(['16.2.3', '16.2.2', '16.2.1'])
+    expect(update!.patch.releaseNotesLoaded?.size).toBe(0)
+    expect(update!.patch.releaseNotesViewIndex).toBe(0)
+    expect(update!.patch.releaseNotesLoadingVersion).toBeUndefined()
     expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
   })
 
@@ -222,7 +216,8 @@ describe('PackageInfoModalController', () => {
       selectedOption: 'latest' as const,
       allVersions: ['16.2.3', '16.2.2', '16.2.1'],
     }
-    await controller.hydrate(state)
+    const update = await controller.hydrate(state)
+    if (update) Object.assign(state, update.patch)
 
     const onLoaded = vi.fn()
     const pendingLoad = controller.loadVersionAtIndex(state, 0, onLoaded)

@@ -1,6 +1,5 @@
-/**
- * Cursor and terminal utility functions
- */
+export const RAW_EXIT_ALT_SCREEN = '\x1b[?1049l'
+export const RAW_SHOW_CURSOR = '\x1b[?25h'
 
 export const CursorUtils = {
   /**

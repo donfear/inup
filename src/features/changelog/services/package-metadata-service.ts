@@ -2,10 +2,11 @@ import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
 import { fetchExactPackageManifest } from '../../../services/jsdelivr-registry'
+import { InflightMap } from '../../../services/http/inflight'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata | null>()
-  private inFlight = new Map<string, Promise<PackageMetadata | null>>()
+  private inFlight = new InflightMap<PackageMetadata | null>()
 
   constructor(
     private readonly npmRegistryClient = new NpmRegistryClient(),
@@ -38,19 +39,9 @@ export class PackageMetadataService {
       return this.cache.get(cacheKey) ?? null
     }
 
-    const inFlight = this.inFlight.get(cacheKey)
-    if (inFlight) {
-      return await inFlight
-    }
-
-    const lookupPromise = this.fetchAndCachePackageMetadata(packageName, version, signal).finally(
-      () => {
-        this.inFlight.delete(cacheKey)
-      }
+    return this.inFlight.dedupe(cacheKey, () =>
+      this.fetchAndCachePackageMetadata(packageName, version, signal)
     )
-
-    this.inFlight.set(cacheKey, lookupPromise)
-    return await lookupPromise
   }
 
   cacheMetadata(packageName: string, rawData: PackageManifestInput): void {

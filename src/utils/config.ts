@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import envPaths from 'env-paths'
+import { PACKAGE_NAME } from '../config'
 
 interface ConfigFile {
   theme?: string
@@ -13,7 +14,7 @@ class ConfigManager {
   constructor() {
     // Use env-paths for cross-platform config directory support
     // Mac/Linux: ~/.config/inup, Windows: %APPDATA%/inup
-    const paths = envPaths('inup')
+    const paths = envPaths(PACKAGE_NAME)
     this.configDir = paths.config
     this.configPath = join(this.configDir, 'config.json')
   }
