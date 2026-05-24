@@ -1,6 +1,5 @@
 import { appendFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { tmpdir } from 'os'
 
 let _enabled = false
 let _logFile: string | null = null

@@ -46,7 +46,7 @@ function getTypeBadge(type: PackageInfo['type']): string {
  */
 export function renderPackageLine(
   state: PackageSelectionState,
-  index: number,
+  _index: number,
   isCurrentRow: boolean,
   terminalWidth: number = 80,
   options: PackageListRenderOptions = {}
@@ -251,7 +251,7 @@ export function renderInterface(
   currentRow: number,
   scrollOffset: number,
   maxVisibleItems: number,
-  forceFullRender: boolean,
+  _forceFullRender: boolean,
   renderableItems?: RenderableItem[],
   activeFilterLabel?: string,
   packageManager?: any,

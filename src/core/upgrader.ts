@@ -3,7 +3,7 @@ import { createSpinner } from 'nanospinner'
 import { existsSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { spawnSync } from 'child_process'
-import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo } from '../types'
+import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo, DependencyType } from '../types'
 import { executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
 export class PackageUpgrader {
@@ -15,7 +15,7 @@ export class PackageUpgrader {
 
   public async upgradePackages(
     choices: PackageUpgradeChoice[],
-    packageInfos: PackageInfo[]
+    _packageInfos: PackageInfo[]
   ): Promise<void> {
     if (choices.length === 0) {
       console.log(chalk.yellow('No packages to upgrade.'))
@@ -30,7 +30,7 @@ export class PackageUpgrader {
 
       const [packageJsonPath, type] = fileAndType.split('|')
       console.log(`Processing ${type} in ${packageJsonPath}`)
-      await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as any)
+      await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as DependencyType)
     }
 
     // Count unique packages upgraded
@@ -38,13 +38,10 @@ export class PackageUpgrader {
     console.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
 
     // Execute package manager install after all upgrades are complete
-    await this.runInstall(choices, packageInfos)
+    await this.runInstall(choices)
   }
 
-  private async runInstall(
-    choices: PackageUpgradeChoice[],
-    packageInfos: PackageInfo[]
-  ): Promise<void> {
+  private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
     if (choices.length === 0) {
       return
     }
@@ -112,7 +109,7 @@ export class PackageUpgrader {
   private async upgradeChoiceGroup(
     choices: PackageUpgradeChoice[],
     packageJsonPath: string,
-    type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+    type: DependencyType
   ): Promise<void> {
     // Validate that package.json exists
     if (!existsSync(packageJsonPath)) {
@@ -128,10 +125,6 @@ export class PackageUpgrader {
     try {
       // Read the current package.json
       const packageJson = readPackageJson(packageJsonPath)
-
-      // Find workspace root
-      const workspaceRoot = findWorkspaceRoot(packageDir, this.packageManager.name)
-      const isWorkspaceRoot = packageDir === workspaceRoot
 
       // Group by upgrade type (range vs latest)
       const rangeChoices = choices.filter((c) => c.upgradeType === 'range')

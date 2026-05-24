@@ -20,7 +20,7 @@ export function isVersionOutdated(current: string, latest: string): boolean {
  * Get the optimized range version for a package
  */
 export function getOptimizedRangeVersion(
-  packageName: string,
+  _packageName: string,
   currentRange: string,
   allVersions: string[],
   latestVersion: string

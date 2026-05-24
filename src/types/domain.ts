@@ -1,3 +1,5 @@
+import type { ChalkInstance } from 'chalk'
+
 export interface VulnerabilitySummary {
   count: number
   highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
@@ -62,7 +64,7 @@ export interface PackageManagerInfo {
   lockFile: string
   workspaceFile: string | null
   installCommand: string
-  color: any // chalk instance
+  color: ChalkInstance
 }
 
 export interface VulnerabilityDisplayOptions {

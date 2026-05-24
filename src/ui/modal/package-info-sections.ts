@@ -32,7 +32,7 @@ function sanitizeMarkdownText(text: string): string {
 }
 
 function linkifyContributorMentions(text: string): string {
-  return text.replace(/(^|[\s(])@([a-zA-Z0-9-]+)/g, (match, prefix: string, username: string) => {
+  return text.replace(/(^|[\s(])@([a-zA-Z0-9-]+)/g, (_match, prefix: string, username: string) => {
     return `${prefix}${formatTerminalLink(`@${username}`, `https://github.com/${username}`)}`
   })
 }
@@ -44,10 +44,10 @@ function linkifyRepositoryReferences(text: string, repositoryUrl?: string): stri
   }
 
   return text
-    .replace(/(^|[\s(])#(\d+)\b/g, (match, prefix: string, number: string) => {
+    .replace(/(^|[\s(])#(\d+)\b/g, (_match, prefix: string, number: string) => {
       return `${prefix}${formatTerminalLink(`#${number}`, `${repoBaseUrl}/pull/${number}`)}`
     })
-    .replace(/(^|[\s(])([0-9a-f]{7,40})\b/gi, (match, prefix: string, hash: string) => {
+    .replace(/(^|[\s(])([0-9a-f]{7,40})\b/gi, (_match, prefix: string, hash: string) => {
       return `${prefix}${formatTerminalLink(hash, `${repoBaseUrl}/commit/${hash}`)}`
     })
 }

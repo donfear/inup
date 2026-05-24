@@ -86,7 +86,7 @@ function shouldSkipDirectory(name: string): boolean {
  */
 export function collectAllDependencies(
   packageJsonFiles: string[],
-  options: CollectDependenciesOptions = {}
+  _options: CollectDependenciesOptions = {}
 ): Array<{ name: string; version: string; type: string; packageJsonPath: string }> {
   const allDeps: Array<{ name: string; version: string; type: string; packageJsonPath: string }> =
     []
@@ -127,7 +127,7 @@ export function collectAllDependencies(
  */
 export async function collectAllDependenciesAsync(
   packageJsonFiles: string[],
-  options: CollectDependenciesOptions = {}
+  _options: CollectDependenciesOptions = {}
 ): Promise<Array<{ name: string; version: string; type: string; packageJsonPath: string }>> {
   // Read all package.json files in parallel
   const packageJsonPromises = packageJsonFiles.map(async (packageJsonPath) => {

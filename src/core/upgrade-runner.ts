@@ -6,6 +6,7 @@ import {
   PackageInfo,
   PackageLoadProgress,
   PackageSelectionState,
+  PackageUpgradeChoice,
   UpgradeOptions,
   PackageManagerInfo,
 } from '../types'
@@ -20,12 +21,9 @@ export class UpgradeRunner {
   private detector: PackageDetector
   private ui: InteractiveUI
   private upgrader: PackageUpgrader
-  private options?: UpgradeOptions
   private packageManager: PackageManagerInfo
 
   constructor(options?: UpgradeOptions) {
-    this.options = options
-
     // Detect package manager
     const cwd = options?.cwd || process.cwd()
     if (options?.packageManager) {
@@ -64,7 +62,7 @@ export class UpgradeRunner {
       let latestPackages: PackageInfo[] = []
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
-      const selectionPromise = new Promise<any[]>((resolve, reject) => {
+      const selectionPromise = new Promise<PackageUpgradeChoice[]>((resolve, reject) => {
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
           if (event.type === 'initial') {
             progress.discovered = event.payload.progress.discovered
@@ -117,7 +115,7 @@ export class UpgradeRunner {
         streamPromise.catch(reject)
       })
 
-      let selectedChoices: any[] = await selectionPromise
+      let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
       if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
         console.log(chalk.green('✅ All packages are up to date!'))
@@ -192,7 +190,10 @@ export class UpgradeRunner {
     }
   }
 
-  private validateSelectedChoices(selectedChoices: any[], allPackages: any[]): void {
+  private validateSelectedChoices(
+    selectedChoices: PackageUpgradeChoice[],
+    allPackages: PackageInfo[]
+  ): void {
     // Validate that all selected packages have valid target versions
     const invalidChoices = selectedChoices.filter((choice) => {
       const packageInfo = allPackages.find(

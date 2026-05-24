@@ -11,7 +11,6 @@ export class NavigationManager {
   private state: NavigationState
   private renderableItems: RenderableItem[] = []
   private maxVisibleItems: number
-  private readonly headerLines = 5 // title (with label) + empty + 1 instruction line + status + empty
 
   constructor(initialRow: number = 0, maxVisibleItems: number = 19) {
     this.state = {
@@ -88,9 +87,6 @@ export class NavigationManager {
         return currentPackageIndex >= totalPackages - 1 ? 0 : currentPackageIndex + 1
       }
     }
-
-    // Find current visual index
-    const currentVisualIndex = this.packageIndexToVisualIndex(currentPackageIndex)
 
     // Get all package items with their visual indices
     const packageItems: { visualIndex: number; packageIndex: number }[] = []
