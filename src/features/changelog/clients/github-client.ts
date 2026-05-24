@@ -1,5 +1,6 @@
 import { GitHubRelease } from '../types/changelog.types'
 import { parseGitHubRepo } from '../parsers/repository-ref'
+import { PACKAGE_NAME } from '../../../config'
 
 const GITHUB_RELEASES_PAGE_LIMIT = 3
 
@@ -27,7 +28,7 @@ export class GitHubClient {
           method: 'GET',
           headers: {
             accept: 'application/vnd.github.v3+json',
-            'user-agent': 'inup-cli',
+            'user-agent': `${PACKAGE_NAME}-cli`,
           },
           signal,
         }
@@ -94,7 +95,7 @@ export class GitHubClient {
             method: 'GET',
             headers: {
               accept: 'application/vnd.github.v3+json',
-              'user-agent': 'inup-cli',
+              'user-agent': `${PACKAGE_NAME}-cli`,
             },
             signal,
           }

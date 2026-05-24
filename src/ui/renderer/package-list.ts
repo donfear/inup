@@ -9,6 +9,7 @@ import {
 } from '../../types'
 import { VersionUtils } from '../utils'
 import { getThemeColor, coloredInupLogo } from '../themes-colors'
+import { PACKAGE_NAME } from '../../config'
 import {
   getVulnerabilityBadge,
   shouldDisplayVulnerabilityForDependency,
@@ -532,5 +533,5 @@ export function renderPackagesTable(packages: any[]): string {
   }
 
   // Just show a simple message, the interactive interface will handle the display
-  return chalk.bold.blue('🚀 inup\n')
+  return chalk.bold.blue(`🚀 ${PACKAGE_NAME}\n`)
 }

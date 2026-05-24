@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import { getCurrentThemeName } from './state/theme-manager'
+import { PACKAGE_NAME } from '../config'
 
 // Centralized theme color definitions - single source of truth
 const themeColorDefinitions = {
@@ -205,7 +206,9 @@ export function getTerminalResetCode(): string {
 const BRAND_COLORS = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
 
 export function coloredInupLogo(): string {
-  return BRAND_COLORS.map((color, i) => color.bold('inup'[i])).join('')
+  return Array.from(PACKAGE_NAME)
+    .map((ch, i) => BRAND_COLORS[i % BRAND_COLORS.length].bold(ch))
+    .join('')
 }
 
 export const themeColors = {

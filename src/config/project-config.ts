@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { PACKAGE_NAME } from './package-meta'
 
 /**
  * Project-level configuration loaded from .inuprc or .inuprc.json
@@ -29,7 +30,11 @@ export interface InupProjectConfig {
   showOptionalDependencyVulnerabilities?: boolean
 }
 
-const CONFIG_FILES = ['.inuprc', '.inuprc.json', 'inup.config.json']
+const CONFIG_FILES = [
+  `.${PACKAGE_NAME}rc`,
+  `.${PACKAGE_NAME}rc.json`,
+  `${PACKAGE_NAME}.config.json`,
+]
 
 /**
  * Load project configuration from .inuprc, .inuprc.json, or inup.config.json

@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import envPaths from 'env-paths'
+import { PACKAGE_NAME } from '../config'
 
 /**
  * Cache entry structure for package version data
@@ -39,7 +40,7 @@ class PersistentCacheManager {
   private dirty = false
 
   constructor() {
-    const paths = envPaths('inup')
+    const paths = envPaths(PACKAGE_NAME)
     this.cacheDir = join(paths.cache, 'registry')
     this.indexPath = join(this.cacheDir, 'index.json')
   }

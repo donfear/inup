@@ -14,9 +14,13 @@ vi.mock('../../src/index', () => ({
   },
 }))
 
-vi.mock('../../src/config', () => ({
-  loadProjectConfig: mocks.loadProjectConfig,
-}))
+vi.mock('../../src/config', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...(actual as object),
+    loadProjectConfig: mocks.loadProjectConfig,
+  }
+})
 
 vi.mock('../../src/services', () => ({
   checkForUpdateAsync: mocks.checkForUpdateAsync,

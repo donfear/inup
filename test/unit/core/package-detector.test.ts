@@ -27,9 +27,13 @@ vi.mock('../../../src/services', () => ({
   fetchPackageVersions: mocks.fetchPackageVersions,
 }))
 
-vi.mock('../../../src/config', () => ({
-  isPackageIgnored: vi.fn(() => false),
-}))
+vi.mock('../../../src/config', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...(actual as object),
+    isPackageIgnored: vi.fn(() => false),
+  }
+})
 
 vi.mock('../../../src/ui/utils', () => ({
   ConsoleUtils: {
