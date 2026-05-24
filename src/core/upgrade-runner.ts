@@ -233,8 +233,3 @@ export class UpgradeRunner {
     console.log(chalk.gray('─'.repeat(50)))
   }
 }
-
-/**
- * @deprecated Use UpgradeRunner instead
- */
-export class PnpmUpgradeInteractive extends UpgradeRunner {}

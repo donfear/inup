@@ -23,7 +23,7 @@ export class PackageUpgrader {
     }
 
     // Group choices by package.json path and dependency type
-    const choicesByFileAndType = this.groupChoicesByFileAndType(choices, packageInfos)
+    const choicesByFileAndType = this.groupChoicesByFileAndType(choices)
 
     for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
       if (choiceList.length === 0) continue
@@ -94,8 +94,7 @@ export class PackageUpgrader {
   }
 
   private groupChoicesByFileAndType(
-    choices: PackageUpgradeChoice[],
-    _packageInfos: PackageInfo[]
+    choices: PackageUpgradeChoice[]
   ): Record<string, PackageUpgradeChoice[]> {
     const groups: Record<string, PackageUpgradeChoice[]> = {}
 

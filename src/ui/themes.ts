@@ -1,36 +1,25 @@
-import chalk, { colors } from 'chalk'
+import chalk from 'chalk'
 
 export type ThemeColors = typeof chalk
 
+// Theme switching is currently label-only; all themes share the same chalk instance.
 export interface Theme {
   name: string
   colors: ThemeColors
 }
 
-const themesMetadata = {
-  default: 'Default',
-  catppuccin: 'Catppuccin',
-  dracula: 'Dracula',
-  vsc: 'VS Code',
-  monokai: 'Monokai',
-  tokyonight: 'Tokyo Night',
-  onedark: 'One Dark',
-  gruvbox: 'Gruvbox',
-  solarized: 'Solarized',
-  github: 'GitHub',
+export const themes: Record<string, Theme> = {
+  default: { name: 'Default', colors: chalk },
+  catppuccin: { name: 'Catppuccin', colors: chalk },
+  dracula: { name: 'Dracula', colors: chalk },
+  vsc: { name: 'VS Code', colors: chalk },
+  monokai: { name: 'Monokai', colors: chalk },
+  tokyonight: { name: 'Tokyo Night', colors: chalk },
+  onedark: { name: 'One Dark', colors: chalk },
+  gruvbox: { name: 'Gruvbox', colors: chalk },
+  solarized: { name: 'Solarized', colors: chalk },
+  github: { name: 'GitHub', colors: chalk },
 }
-
-// Theme definitions
-export const themes: Record<string, Theme> = Object.entries(themesMetadata).reduce(
-  (acc, [key, name]) => {
-    acc[key] = {
-      name,
-      colors: chalk,
-    }
-    return acc
-  },
-  {} as Record<string, Theme>
-)
 
 export const defaultTheme = 'default'
 export const themeNames = Object.keys(themes)
