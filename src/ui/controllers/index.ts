@@ -1,5 +1,2 @@
 export { VulnerabilityAuditController } from './vulnerability-audit-controller'
-export {
-  PackageInfoModalController,
-  type PackageInfoModalHydrationResult,
-} from './package-info-modal-controller'
+export { PackageInfoModalController } from './package-info-modal-controller'

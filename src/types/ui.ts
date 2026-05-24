@@ -27,6 +27,8 @@ export interface PackageSelectionState {
   releaseNotesViewIndex?: number // Index into releaseNotesVersions of the version being viewed
 }
 
+export type StateUpdate = { name: string; patch: Partial<PackageSelectionState> }
+
 export interface GroupedPackages {
   main: PackageSelectionState[] // dependencies + devDependencies
   peer: PackageSelectionState[] // peerDependencies

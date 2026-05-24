@@ -372,9 +372,11 @@ export class InteractiveUI {
               if (currentState && canFetchMetadata) {
                 this.packageInfoModalController
                   .hydrate(currentState)
-                  .then(() => {
+                  .then((update) => {
                     if (isResolved || stateManager.getInfoModalSessionId() !== modalSessionId)
                       return
+
+                    if (update) Object.assign(currentState, update.patch)
 
                     stateManager.setModalLoading(false, modalSessionId)
                     renderInterface()

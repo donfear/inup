@@ -1,15 +1,7 @@
 import * as semver from 'semver'
 import { changelogFetcher } from '../../services'
-import { PackageSelectionState } from '../../types'
+import { PackageSelectionState, StateUpdate } from '../../types'
 
-export interface PackageInfoModalHydrationResult {
-  description?: string
-  homepage?: string
-  repository?: string
-  weeklyDownloads?: number
-  author?: string
-  license?: string
-}
 
 const RELEASE_NOTES_LOAD_DEBOUNCE_MS = 120
 
@@ -35,7 +27,7 @@ export class PackageInfoModalController {
     this.resolveDebouncedLoad = null
   }
 
-  async hydrate(state: PackageSelectionState): Promise<PackageInfoModalHydrationResult | null> {
+  async hydrate(state: PackageSelectionState): Promise<StateUpdate | null> {
     // Abort any previous session
     this.cancel()
     const controller = new AbortController()
@@ -50,39 +42,14 @@ export class PackageInfoModalController {
       return null
     }
 
-    const result: PackageInfoModalHydrationResult = {
-      description: metadata.description,
-      homepage: metadata.homepage,
-      repository: metadata.releaseNotes,
-      weeklyDownloads: metadata.weeklyDownloads,
-      author: metadata.author as string | undefined,
-      license: metadata.license,
-    }
-
-    state.description = result.description
-    state.homepage = result.homepage
-    state.repository = result.repository
-    state.weeklyDownloads = result.weeklyDownloads
-    state.author = result.author
-    state.license = result.license
-
     // Compute the version range for release notes
     const targetVersion =
       state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion
-    if (state.allVersions && state.allVersions.length > 0) {
-      state.releaseNotesVersions = this.buildReleaseNotesVersionQueue(
-        state.allVersions,
-        state.currentVersion,
-        targetVersion
-      )
-    } else {
-      // No allVersions available — just show the target version
-      state.releaseNotesVersions = [targetVersion]
-    }
+    const releaseNotesVersions =
+      state.allVersions && state.allVersions.length > 0
+        ? this.buildReleaseNotesVersionQueue(state.allVersions, state.currentVersion, targetVersion)
+        : [targetVersion]
 
-    state.releaseNotesLoaded = new Map()
-    state.releaseNotesViewIndex = 0
-    state.releaseNotesLoadingVersion = undefined
     this.pendingReleaseNotesVersion = null
     if (this.releaseNotesDebounceTimer) {
       clearTimeout(this.releaseNotesDebounceTimer)
@@ -91,7 +58,21 @@ export class PackageInfoModalController {
     this.resolveDebouncedLoad?.(false)
     this.resolveDebouncedLoad = null
 
-    return result
+    return {
+      name: state.name,
+      patch: {
+        description: metadata.description,
+        homepage: metadata.homepage,
+        repository: metadata.releaseNotes,
+        weeklyDownloads: metadata.weeklyDownloads,
+        author: metadata.author as string | undefined,
+        license: metadata.license,
+        releaseNotesVersions,
+        releaseNotesLoaded: new Map(),
+        releaseNotesViewIndex: 0,
+        releaseNotesLoadingVersion: undefined,
+      },
+    }
   }
 
   /**
