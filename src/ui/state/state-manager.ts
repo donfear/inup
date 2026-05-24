@@ -3,6 +3,7 @@ import { NavigationManager } from './navigation-manager'
 import { ModalManager, InfoModalTab } from './modal-manager'
 import { FilterManager } from './filter-manager'
 import { ThemeManager } from './theme-manager'
+import { buildScopeGroupedItems } from './scope-grouping'
 
 export interface DisplayState {
   maxVisibleItems: number
@@ -101,6 +102,71 @@ export class StateManager {
   setRenderableItems(items: RenderableItem[]): void {
     this.renderState.renderableItems = items
     this.navigationManager.setRenderableItems(items)
+  }
+
+  buildAndSetRenderableItems(filteredStates: PackageSelectionState[]): RenderableItem[] {
+    const items = buildScopeGroupedItems(filteredStates)
+    this.setRenderableItems(items)
+    return items
+  }
+
+  getFocusedGroupVisualIndex(): number | null {
+    return this.navigationManager.getFocusedGroupVisualIndex()
+  }
+
+  getFocusedGroupHeader(): { scope: string; memberIndices: number[] } | null {
+    const idx = this.navigationManager.getFocusedGroupVisualIndex()
+    if (idx === null) return null
+    const item = this.renderState.renderableItems[idx]
+    if (!item || item.type !== 'group-header') return null
+    return { scope: item.scope, memberIndices: item.memberIndices }
+  }
+
+  applyGroupSelection(filteredStates: PackageSelectionState[], option: 'none' | 'range' | 'latest'): void {
+    const group = this.getFocusedGroupHeader()
+    if (!group) return
+    group.memberIndices.forEach((idx) => {
+      const state = filteredStates[idx]
+      if (!state || state.loadState !== 'ready') return
+      if (option === 'range' && !state.hasRangeUpdate) return
+      if (option === 'latest' && !state.hasMajorUpdate) return
+      state.selectedOption = option
+    })
+  }
+
+  cycleGroupSelection(filteredStates: PackageSelectionState[], direction: 'left' | 'right'): void {
+    const group = this.getFocusedGroupHeader()
+    if (!group) return
+
+    const members = group.memberIndices
+      .map((i) => filteredStates[i])
+      .filter((s): s is PackageSelectionState => !!s && s.loadState === 'ready')
+    if (members.length === 0) return
+
+    const hasRange = members.some((m) => m.hasRangeUpdate)
+    const hasMajor = members.some((m) => m.hasMajorUpdate)
+
+    const counts = { none: 0, range: 0, latest: 0 }
+    members.forEach((m) => counts[m.selectedOption]++)
+    const dominant =
+      counts.latest > counts.range && counts.latest > counts.none
+        ? 'latest'
+        : counts.range > counts.none
+          ? 'range'
+          : 'none'
+
+    let next: 'none' | 'range' | 'latest' = dominant
+    if (direction === 'right') {
+      if (dominant === 'none') next = hasRange ? 'range' : hasMajor ? 'latest' : 'none'
+      else if (dominant === 'range') next = hasMajor ? 'latest' : 'none'
+      else next = 'none'
+    } else {
+      if (dominant === 'latest') next = hasRange ? 'range' : 'none'
+      else if (dominant === 'range') next = 'none'
+      else next = hasMajor ? 'latest' : hasRange ? 'range' : 'none'
+    }
+
+    this.applyGroupSelection(filteredStates, next)
   }
 
   // Navigation delegation

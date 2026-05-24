@@ -5,6 +5,7 @@ export interface NavigationState {
   previousRow: number
   scrollOffset: number // Scroll offset in visual rows (includes headers/spacers)
   previousScrollOffset: number
+  focusedGroupVisualIndex: number | null // When non-null, a group header is focused
 }
 
 export class NavigationManager {
@@ -18,6 +19,7 @@ export class NavigationManager {
       previousRow: -1,
       scrollOffset: 0,
       previousScrollOffset: 0,
+      focusedGroupVisualIndex: null,
     }
     this.maxVisibleItems = maxVisibleItems
   }
@@ -37,6 +39,7 @@ export class NavigationManager {
   setCurrentRow(row: number): void {
     this.state.previousRow = this.state.currentRow
     this.state.currentRow = row
+    this.state.focusedGroupVisualIndex = null
   }
 
   setScrollOffset(offset: number): void {
@@ -46,6 +49,17 @@ export class NavigationManager {
 
   setRenderableItems(items: RenderableItem[]): void {
     this.renderableItems = items
+    // Clear group focus if it no longer points at a valid group header
+    if (this.state.focusedGroupVisualIndex !== null) {
+      const idx = this.state.focusedGroupVisualIndex
+      if (idx >= items.length || items[idx]?.type !== 'group-header') {
+        this.state.focusedGroupVisualIndex = null
+      }
+    }
+  }
+
+  clearGroupFocus(): void {
+    this.state.focusedGroupVisualIndex = null
   }
 
   setMaxVisibleItems(maxVisible: number): void {
@@ -73,58 +87,105 @@ export class NavigationManager {
     return 0
   }
 
-  // Find the next navigable package index in the given direction
-  private findNextPackageIndex(
-    currentPackageIndex: number,
-    direction: 'up' | 'down',
-    totalPackages: number
-  ): number {
-    if (this.renderableItems.length === 0) {
-      // Fallback to simple navigation if no renderable items
-      if (direction === 'up') {
-        return currentPackageIndex <= 0 ? totalPackages - 1 : currentPackageIndex - 1
-      } else {
-        return currentPackageIndex >= totalPackages - 1 ? 0 : currentPackageIndex + 1
-      }
-    }
+  getFocusedGroupVisualIndex(): number | null {
+    return this.state.focusedGroupVisualIndex
+  }
 
-    // Get all package items with their visual indices
-    const packageItems: { visualIndex: number; packageIndex: number }[] = []
+  // Build ordered list of navigable focus points (packages and group headers)
+  private getNavigableFocusPoints(): {
+    visualIndex: number
+    kind: 'package' | 'group'
+    packageIndex?: number
+  }[] {
+    const points: { visualIndex: number; kind: 'package' | 'group'; packageIndex?: number }[] = []
     for (let i = 0; i < this.renderableItems.length; i++) {
       const item = this.renderableItems[i]
       if (item.type === 'package') {
-        packageItems.push({ visualIndex: i, packageIndex: item.originalIndex })
+        points.push({ visualIndex: i, kind: 'package', packageIndex: item.originalIndex })
+      } else if (item.type === 'group-header') {
+        points.push({ visualIndex: i, kind: 'group' })
       }
     }
+    return points
+  }
 
-    if (packageItems.length === 0) return currentPackageIndex
+  // Find the next navigable focus in the given direction
+  private moveFocus(direction: 'up' | 'down', totalPackages: number): void {
+    if (this.renderableItems.length === 0) {
+      if (direction === 'up') {
+        this.state.currentRow =
+          this.state.currentRow <= 0 ? totalPackages - 1 : this.state.currentRow - 1
+      } else {
+        this.state.currentRow =
+          this.state.currentRow >= totalPackages - 1 ? 0 : this.state.currentRow + 1
+      }
+      return
+    }
 
-    // Find current position in packageItems
-    const currentPos = packageItems.findIndex((p) => p.packageIndex === currentPackageIndex)
-    if (currentPos === -1) return packageItems[0].packageIndex
+    const focusPoints = this.getNavigableFocusPoints()
+    if (focusPoints.length === 0) return
 
-    // Navigate with wrap-around at boundaries
-    if (direction === 'up') {
-      const newPos = currentPos <= 0 ? packageItems.length - 1 : currentPos - 1
-      return packageItems[newPos].packageIndex
+    let currentPos = -1
+    if (this.state.focusedGroupVisualIndex !== null) {
+      currentPos = focusPoints.findIndex(
+        (p) => p.kind === 'group' && p.visualIndex === this.state.focusedGroupVisualIndex
+      )
     } else {
-      const newPos = currentPos >= packageItems.length - 1 ? 0 : currentPos + 1
-      return packageItems[newPos].packageIndex
+      currentPos = focusPoints.findIndex(
+        (p) => p.kind === 'package' && p.packageIndex === this.state.currentRow
+      )
+    }
+    if (currentPos === -1) currentPos = 0
+
+    const newPos =
+      direction === 'up'
+        ? currentPos <= 0
+          ? focusPoints.length - 1
+          : currentPos - 1
+        : currentPos >= focusPoints.length - 1
+          ? 0
+          : currentPos + 1
+
+    const target = focusPoints[newPos]
+    if (target.kind === 'group') {
+      this.state.focusedGroupVisualIndex = target.visualIndex
+    } else {
+      this.state.focusedGroupVisualIndex = null
+      this.state.currentRow = target.packageIndex!
     }
   }
 
   navigateUp(totalItems: number): void {
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'up', totalItems)
-    this.ensureVisible(this.state.currentRow, totalItems)
+    this.moveFocus('up', totalItems)
+    this.ensureFocusVisible(totalItems)
   }
 
   navigateDown(totalItems: number): void {
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'down', totalItems)
-    this.ensureVisible(this.state.currentRow, totalItems)
+    this.moveFocus('down', totalItems)
+    this.ensureFocusVisible(totalItems)
+  }
+
+  private ensureFocusVisible(totalPackages: number): void {
+    if (this.state.focusedGroupVisualIndex !== null) {
+      this.ensureVisualIndexVisible(this.state.focusedGroupVisualIndex, totalPackages)
+    } else {
+      this.ensureVisible(this.state.currentRow, totalPackages)
+    }
+  }
+
+  private ensureVisualIndexVisible(visualIndex: number, totalPackages: number): void {
+    const totalVisualItems = this.renderableItems.length || totalPackages
+    if (visualIndex < this.state.scrollOffset) {
+      this.state.scrollOffset = visualIndex
+    } else if (visualIndex >= this.state.scrollOffset + this.maxVisibleItems) {
+      this.state.scrollOffset = visualIndex - this.maxVisibleItems + 1
+    }
+    const maxScroll = Math.max(0, totalVisualItems - this.maxVisibleItems)
+    this.state.scrollOffset = Math.max(0, Math.min(this.state.scrollOffset, maxScroll))
   }
 
   private ensureVisible(packageIndex: number, totalPackages: number): void {
