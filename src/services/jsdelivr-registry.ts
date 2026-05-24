@@ -12,6 +12,8 @@ import {
 } from '../config'
 import { debugLog } from '../utils'
 import { extractMajorVersion, toComparableVersion, versionIdentity } from '../utils/version'
+import { sleep, isRetryableStatus, isTransientNetworkError } from './http/retry'
+import { InflightMap } from './http/inflight'
 
 const DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS = 2000
 const DEFAULT_JSDELIVR_POOL_TIMEOUT_MS = 60000
@@ -142,46 +144,6 @@ const jsdelivrPool = new Pool('https://cdn.jsdelivr.net', {
   connectTimeout: JSDELIVR_CONNECT_TIMEOUT_MS,
 })
 
-const isTimeoutError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  const maybeCode = (error as Error & { code?: string }).code
-  const message = error.message.toLowerCase()
-  return (
-    maybeCode === 'UND_ERR_HEADERS_TIMEOUT' ||
-    maybeCode === 'UND_ERR_BODY_TIMEOUT' ||
-    maybeCode === 'UND_ERR_CONNECT_TIMEOUT' ||
-    error.name === 'HeadersTimeoutError' ||
-    error.name === 'BodyTimeoutError' ||
-    error.name === 'ConnectTimeoutError' ||
-    message.includes('timeout')
-  )
-}
-
-const isTransientNetworkError = (error: unknown): boolean => {
-  if (!(error instanceof Error)) {
-    return false
-  }
-
-  const maybeCode = (error as Error & { code?: string }).code
-  return (
-    maybeCode === 'UND_ERR_SOCKET' ||
-    maybeCode === 'ENOTFOUND' ||
-    maybeCode === 'EAI_AGAIN' ||
-    maybeCode === 'ECONNRESET' ||
-    maybeCode === 'ECONNREFUSED' ||
-    maybeCode === 'ETIMEDOUT' ||
-    maybeCode === 'EPIPE'
-  )
-}
-
-const isRetryableStatus = (statusCode: number): boolean =>
-  statusCode === 408 || statusCode === 429 || statusCode >= 500
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-
 const consumeBodySafely = async (body: { text: () => Promise<string> }): Promise<void> => {
   try {
     await body.text()
@@ -222,8 +184,7 @@ const sortVersionsDescending = (versions: string[]): string[] => {
   })
 }
 
-const isExpectedTransientError = (error: unknown): boolean =>
-  isTimeoutError(error) || isTransientNetworkError(error)
+const isExpectedTransientError = (error: unknown): boolean => isTransientNetworkError(error)
 
 /**
  * Fetches a package.json manifest from jsDelivr for a version tag.
@@ -278,10 +239,7 @@ async function fetchPackageManifestFromJsdelivr(
       debugLog.perf('jsdelivr', `fetch manifest ${packageName}@${versionTag}`, tReq)
       return data as Record<string, unknown>
     } catch (error) {
-      if (
-        (isTimeoutError(error) || isTransientNetworkError(error)) &&
-        attempt < RETRY_TIMEOUTS.length - 1
-      ) {
+      if (isTransientNetworkError(error) && attempt < RETRY_TIMEOUTS.length - 1) {
         const delay = getRetryDelay(attempt)
         debugLog.warn(
           'jsdelivr',
@@ -351,7 +309,7 @@ async function fetchPackageManifestFromNpmRegistry(
   }
 }
 
-const inFlightManifests = new Map<string, Promise<Record<string, unknown> | null>>()
+const inFlightManifests = new InflightMap<Record<string, unknown> | null>()
 
 export async function fetchExactPackageManifest(
   packageName: string,
@@ -364,23 +322,13 @@ export async function fetchExactPackageManifest(
   }
 
   const cacheKey = `${packageName}@${normalizedVersion}`
-  const inFlight = inFlightManifests.get(cacheKey)
-  if (inFlight) {
-    return await inFlight
-  }
-
-  const lookupPromise = (async () => {
+  return inFlightManifests.dedupe(cacheKey, async () => {
     const jsdelivrManifest = await fetchPackageManifestFromJsdelivr(packageName, normalizedVersion)
     if (jsdelivrManifest) {
       return jsdelivrManifest
     }
-
     return await fetchPackageManifestFromNpmRegistry(packageName, normalizedVersion)
-  })().finally(() => {
-    inFlightManifests.delete(cacheKey)
   })
-  inFlightManifests.set(cacheKey, lookupPromise)
-  return await lookupPromise
 }
 
 export async function getAllPackageDataFromJsdelivr(
@@ -396,7 +344,7 @@ export async function getAllPackageDataFromJsdelivr(
 
   const total = packageNames.length
   let completedCount = 0
-  const inFlightLookups = new Map<string, Promise<PackageVersionData | null>>()
+  const inFlightLookups = new InflightMap<PackageVersionData | null>()
 
   const fetchPackageData = async (
     packageName: string,
@@ -428,27 +376,14 @@ export async function getAllPackageDataFromJsdelivr(
         ? sortedVersions
         : [latestVersion, ...sortedVersions.filter((version) => version !== latestVersion)]
 
-    return {
-      latestVersion,
-      allVersions,
-    }
+    return { latestVersion, allVersions }
   }
 
-  const getPackageData = async (
+  const getPackageData = (
     packageName: string,
     currentVersion: string | undefined
-  ): Promise<PackageVersionData | null> => {
-    const inFlight = inFlightLookups.get(packageName)
-    if (inFlight) {
-      return await inFlight
-    }
-
-    const lookupPromise = fetchPackageData(packageName, currentVersion).finally(() => {
-      inFlightLookups.delete(packageName)
-    })
-    inFlightLookups.set(packageName, lookupPromise)
-    return await lookupPromise
-  }
+  ): Promise<PackageVersionData | null> =>
+    inFlightLookups.dedupe(packageName, () => fetchPackageData(packageName, currentVersion))
 
   await Promise.all(
     packageNames.map(async (packageName) => {
