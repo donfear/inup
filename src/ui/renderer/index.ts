@@ -47,7 +47,8 @@ export class UIRenderer {
     terminalWidth: number = 80,
     loadingProgress?: PackageLoadProgress,
     auditProgress?: AuditProgress,
-    options?: PackageListRenderOptions
+    options?: PackageListRenderOptions,
+    focusedGroupVisualIndex: number | null = null
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -64,7 +65,8 @@ export class UIRenderer {
       terminalWidth,
       loadingProgress,
       auditProgress,
-      options
+      options,
+      focusedGroupVisualIndex
     )
   }
 

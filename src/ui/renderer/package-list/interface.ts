@@ -12,6 +12,7 @@ import {
   padLineToWidth,
   renderPackageLine,
   renderSectionHeader,
+  renderGroupHeader,
   renderSpacer,
   PackageListRenderOptions,
 } from './rows'
@@ -31,7 +32,8 @@ export function renderInterface(
   terminalWidth: number = 80,
   loadingProgress?: PackageLoadProgress,
   auditProgress?: AuditProgress,
-  options: PackageListRenderOptions = {}
+  options: PackageListRenderOptions = {},
+  focusedGroupVisualIndex: number | null = null
 ): string[] {
   const output: string[] = []
 
@@ -235,13 +237,19 @@ export function renderInterface(
         output.push(renderSectionHeader(item.title, item.sectionType))
       } else if (item.type === 'spacer') {
         output.push(renderSpacer())
+      } else if (item.type === 'group-header') {
+        const isCurrent = focusedGroupVisualIndex === i
+        output.push(renderGroupHeader(item.scope, item.memberIndices.length, isCurrent))
       } else if (item.type === 'package') {
+        const isCurrent =
+          focusedGroupVisualIndex === null && item.originalIndex === currentRow
         const line = renderPackageLine(
           item.state,
           item.originalIndex,
-          item.originalIndex === currentRow,
+          isCurrent,
           terminalWidth,
-          options
+          options,
+          item.groupPosition
         )
         output.push(line)
       }

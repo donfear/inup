@@ -38,4 +38,5 @@ export interface GroupedPackages {
 export type RenderableItem =
   | { type: 'header'; title: string; sectionType: 'main' | 'peer' | 'optional' }
   | { type: 'spacer' }
-  | { type: 'package'; state: PackageSelectionState; originalIndex: number }
+  | { type: 'package'; state: PackageSelectionState; originalIndex: number; groupPosition?: 'middle' | 'last' }
+  | { type: 'group-header'; scope: string; memberIndices: number[] }

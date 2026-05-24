@@ -33,12 +33,21 @@ export function renderPackageLine(
   _index: number,
   isCurrentRow: boolean,
   terminalWidth: number = 80,
-  options: PackageListRenderOptions = {}
+  options: PackageListRenderOptions = {},
+  groupPosition?: 'middle' | 'last'
 ): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
+  const isGrouped = groupPosition !== undefined
+  const treeChar = groupPosition === 'last' ? '└ ' : groupPosition === 'middle' ? '├ ' : ''
+  const treeDecor = isGrouped ? getThemeColor('border')(treeChar) : ''
+
+  const displayedFullName = isGrouped
+    ? state.name.slice(state.name.indexOf('/') + 1)
+    : state.name
+
   let packageName
-  if (state.name.startsWith('@')) {
+  if (!isGrouped && state.name.startsWith('@')) {
     const parts = state.name.split('/')
     if (parts.length >= 2) {
       const author = parts[0]
@@ -57,7 +66,9 @@ export function renderPackageLine(
         : chalk.white(state.name)
     }
   } else {
-    packageName = isCurrentRow ? getThemeColor('packageName')(state.name) : chalk.white(state.name)
+    packageName = isCurrentRow
+      ? getThemeColor('packageName')(displayedFullName)
+      : chalk.white(displayedFullName)
   }
 
   const isCurrentSelected = state.selectedOption === 'none'
@@ -125,29 +136,36 @@ export function renderPackageLine(
     Math.max(minPackageNameWidth, availableForPackageName)
   )
 
+  const treeWidth = isGrouped ? 2 : 0
   const badgeWidth = state.type === 'dependencies' ? 0 : 3
-  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1 - badgeWidth)
+  const truncatedName = VersionUtils.truncateMiddle(
+    displayedFullName,
+    packageNameWidth - 1 - badgeWidth - treeWidth
+  )
 
   const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
 
   const dashColor = isCurrentRow ? chalk.white : chalk.gray
 
-  const displayName = truncatedName !== state.name ? truncatedName : packageName
+  const displayName = truncatedName !== displayedFullName ? truncatedName : packageName
 
   const typeBadge = getTypeBadge(state.type)
   const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
   const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0
   const nameLength = VersionUtils.getVisualLength(truncatedName)
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth)
+  const namePadding = Math.max(
+    0,
+    packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth - treeWidth
+  )
   const nameDashes = shouldShowDashes(namePadding)
     ? dashColor('-').repeat(namePadding)
     : ' '.repeat(namePadding)
 
   const vulnSuffix = vulnBadge ? ` ${vulnBadge}` : ''
   const packageNameSection = typeBadge
-    ? `${displayName} ${nameDashes}${vulnSuffix}${typeBadge}`
-    : `${displayName} ${nameDashes}${vulnSuffix}`
+    ? `${treeDecor}${displayName} ${nameDashes}${vulnSuffix}${typeBadge}`
+    : `${treeDecor}${displayName} ${nameDashes}${vulnSuffix}`
 
   const currentSection = `${currentDot} ${currentVersion}`
   const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1
@@ -193,6 +211,19 @@ export function renderSectionHeader(
   const colorFn =
     sectionType === 'main' ? chalk.cyan : sectionType === 'peer' ? chalk.magenta : chalk.yellow
   return '  ' + colorFn.bold(title)
+}
+
+export function renderGroupHeader(
+  scope: string,
+  memberCount: number,
+  isCurrentRow: boolean
+): string {
+  const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
+  const scopeText = isCurrentRow
+    ? chalk.bold(getThemeColor('packageAuthor')(scope))
+    : chalk.bold(getThemeColor('textSecondary')(scope))
+  const count = getThemeColor('textSecondary')(`(${memberCount})`)
+  return `${prefix}${scopeText} ${count}`
 }
 
 export function renderSpacer(): string {
