@@ -1,5 +1,34 @@
 import * as semver from 'semver'
 
+export function extractMajorVersion(version: string | undefined): string | null {
+  if (!version) return null
+  const coerced = semver.coerce(version)
+  if (!coerced) return null
+  return semver.major(coerced).toString()
+}
+
+export function toComparableVersion(version: string): string | null {
+  const validVersion = semver.valid(version)
+  if (validVersion) return validVersion
+  const coerced = semver.coerce(version)
+  return coerced ? coerced.version : null
+}
+
+export function versionIdentity(version: string): string {
+  const comparable = toComparableVersion(version)
+  return comparable ?? `raw:${version}`
+}
+
+export function parseVersions(raw: string): { latestVersion: string; allVersions: string[] } {
+  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
+  const allVersions = Object.keys(data.versions || {}).filter((v) =>
+    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)
+  )
+  const sortedVersions = allVersions.sort(semver.rcompare)
+  const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
+  return { latestVersion, allVersions }
+}
+
 /**
  * Checks if a version is outdated compared to the latest version.
  * Handles version prefixes (^, ~, >=, etc.) by coercing them to valid semver.

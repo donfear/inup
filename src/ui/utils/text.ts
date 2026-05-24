@@ -1,7 +1,8 @@
-import { VersionUtils } from './version'
+const ANSI_PATTERN = /\[[0-9;?]*[ -/]*[@-~]/g
+const OSC8_PATTERN = /]8;;.*?(?:|\\)|]8;;(?:|\\)/g
 
 export function stripAnsi(text: string): string {
-  return VersionUtils.stripAnsi(text)
+  return text.replace(OSC8_PATTERN, '').replace(ANSI_PATTERN, '')
 }
 
 export function getVisualLength(text: string): number {

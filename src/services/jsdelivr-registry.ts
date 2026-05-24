@@ -11,6 +11,7 @@ import {
   REQUEST_TIMEOUT,
 } from '../config'
 import { debugLog } from '../utils'
+import { extractMajorVersion, toComparableVersion, versionIdentity } from '../utils/version'
 
 const DEFAULT_JSDELIVR_RETRY_TIMEOUT_MS = 2000
 const DEFAULT_JSDELIVR_POOL_TIMEOUT_MS = 60000
@@ -187,34 +188,6 @@ const consumeBodySafely = async (body: { text: () => Promise<string> }): Promise
   } catch {
     // Ignore body read errors on non-200 responses because request will be retried/fallback.
   }
-}
-
-const extractMajorVersion = (version: string | undefined): string | null => {
-  if (!version) {
-    return null
-  }
-
-  const coerced = semver.coerce(version)
-  if (!coerced) {
-    return null
-  }
-
-  return semver.major(coerced).toString()
-}
-
-const toComparableVersion = (version: string): string | null => {
-  const validVersion = semver.valid(version)
-  if (validVersion) {
-    return validVersion
-  }
-
-  const coerced = semver.coerce(version)
-  return coerced ? coerced.version : null
-}
-
-const versionIdentity = (version: string): string => {
-  const comparable = toComparableVersion(version)
-  return comparable ?? `raw:${version}`
 }
 
 const sortVersionsDescending = (versions: string[]): string[] => {

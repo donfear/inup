@@ -1,4 +1,3 @@
-import * as semver from 'semver'
 import { Pool } from 'undici'
 import { gunzip, inflate, brotliDecompress } from 'node:zlib'
 import { promisify } from 'node:util'
@@ -8,6 +7,7 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 import { NPM_REGISTRY_URL } from '../config'
 import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
+import { parseVersions } from '../utils/version'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -98,16 +98,6 @@ async function getFreshPackageData(
   )
   inFlightLookups.set(cacheKey, lookupPromise)
   return await lookupPromise
-}
-
-function parseVersions(raw: string): PackageVersionData {
-  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
-  const allVersions = Object.keys(data.versions || {}).filter((v) =>
-    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)
-  )
-  const sortedVersions = allVersions.sort(semver.rcompare)
-  const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
-  return { latestVersion, allVersions }
 }
 
 const encodeRegistryPath = (packageName: string): string => {
