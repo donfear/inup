@@ -44,7 +44,7 @@ export async function runInteractiveSession(
     let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
     let previousModalViewportLineCount: number | null = null
 
-    stateManager.setRenderableItems([])
+    // Renderable items get rebuilt on each render to stay in sync with filter/state changes
 
     const claimInteractiveScreen = () => {
       if (ownsAlternateScreen) return
@@ -261,13 +261,15 @@ export async function runInteractiveSession(
         const terminalWidth = process.stdout.columns || 80
         const terminalHeight = getTerminalHeight()
         const activeFilterLabel = stateManager.getActiveFilterLabel()
+        const renderableItems = stateManager.buildAndSetRenderableItems(filteredStates)
+        const focusedGroupVisualIndex = stateManager.getFocusedGroupVisualIndex()
         const lines = renderer.renderInterface(
           filteredStates,
           uiState.currentRow,
           uiState.scrollOffset,
           uiState.maxVisibleItems,
           uiState.forceFullRender,
-          [],
+          renderableItems,
           activeFilterLabel,
           packageManager,
           uiState.filterMode,
@@ -276,7 +278,8 @@ export async function runInteractiveSession(
           terminalWidth,
           loadingProgress,
           auditProgress,
-          packageListRenderOptions
+          packageListRenderOptions,
+          focusedGroupVisualIndex
         )
 
         renderViewport(lines, terminalWidth, terminalHeight, bgCode)

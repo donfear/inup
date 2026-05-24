@@ -55,10 +55,18 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       stateManager.navigateDown(filteredStates.length)
       break
     case 'select_left':
-      stateManager.updateSelection(filteredStates, 'left')
+      if (stateManager.getFocusedGroupVisualIndex() !== null) {
+        stateManager.cycleGroupSelection(filteredStates, 'left')
+      } else {
+        stateManager.updateSelection(filteredStates, 'left')
+      }
       break
     case 'select_right':
-      stateManager.updateSelection(filteredStates, 'right')
+      if (stateManager.getFocusedGroupVisualIndex() !== null) {
+        stateManager.cycleGroupSelection(filteredStates, 'right')
+      } else {
+        stateManager.updateSelection(filteredStates, 'right')
+      }
       break
     case 'bulk_select_minor':
       stateManager.bulkSelectMinor(filteredStates)
