@@ -20,14 +20,11 @@ interface CacheIndex {
   entries: Record<string, { file: string; timestamp: number }>
 }
 
-// Cache TTL: 24 hours for disk cache (much longer than in-memory 5 minutes)
-const DISK_CACHE_TTL = 24 * 60 * 60 * 1000
-
 // Maximum cache size (number of packages)
 const MAX_CACHE_ENTRIES = 5000
 
 // Cache file format version (increment when structure changes)
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 
 /**
  * Persistent cache manager for package registry data.
@@ -114,19 +111,13 @@ class PersistentCacheManager {
   /**
    * Get cached data for a package
    */
-  get(packageName: string): { latestVersion: string; allVersions: string[] } | null {
+  get(
+    packageName: string
+  ): { latestVersion: string; allVersions: string[]; timestamp: number } | null {
     const index = this.loadIndex()
     const entry = index.entries[packageName]
 
     if (!entry) {
-      return null
-    }
-
-    // Check TTL
-    if (Date.now() - entry.timestamp > DISK_CACHE_TTL) {
-      // Expired, remove from index
-      delete index.entries[packageName]
-      this.dirty = true
       return null
     }
 
@@ -145,6 +136,7 @@ class PersistentCacheManager {
       return {
         latestVersion: cached.latestVersion,
         allVersions: cached.allVersions,
+        timestamp: entry.timestamp,
       }
     } catch {
       // Corrupted cache file, remove from index
@@ -190,8 +182,13 @@ class PersistentCacheManager {
   /**
    * Batch get multiple packages (returns map of found entries)
    */
-  getMany(packageNames: string[]): Map<string, { latestVersion: string; allVersions: string[] }> {
-    const results = new Map<string, { latestVersion: string; allVersions: string[] }>()
+  getMany(
+    packageNames: string[]
+  ): Map<string, { latestVersion: string; allVersions: string[]; timestamp: number }> {
+    const results = new Map<
+      string,
+      { latestVersion: string; allVersions: string[]; timestamp: number }
+    >()
 
     for (const name of packageNames) {
       const cached = this.get(name)

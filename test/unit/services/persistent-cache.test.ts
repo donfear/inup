@@ -48,7 +48,8 @@ describe('persistent-cache', () => {
       persistentCache.flush()
 
       const result = persistentCache.get('test-package')
-      expect(result).toEqual(data)
+      expect(result).toMatchObject(data)
+      expect(typeof result?.timestamp).toBe('number')
     })
 
     it('should handle scoped packages', () => {
@@ -61,7 +62,8 @@ describe('persistent-cache', () => {
       persistentCache.flush()
 
       const result = persistentCache.get('@babel/core')
-      expect(result).toEqual(data)
+      expect(result).toMatchObject(data)
+      expect(typeof result?.timestamp).toBe('number')
     })
 
     it('should persist data to disk', () => {
