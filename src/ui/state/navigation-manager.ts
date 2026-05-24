@@ -5,7 +5,7 @@ export interface NavigationState {
   previousRow: number
   scrollOffset: number // Scroll offset in visual rows (includes headers/spacers)
   previousScrollOffset: number
-  focusedGroupVisualIndex: number | null // When non-null, a group header is focused
+  focusedGroupScope: string | null // When non-null, a group header is focused (by scope identity)
 }
 
 export class NavigationManager {
@@ -19,7 +19,7 @@ export class NavigationManager {
       previousRow: -1,
       scrollOffset: 0,
       previousScrollOffset: 0,
-      focusedGroupVisualIndex: null,
+      focusedGroupScope: null,
     }
     this.maxVisibleItems = maxVisibleItems
   }
@@ -39,7 +39,7 @@ export class NavigationManager {
   setCurrentRow(row: number): void {
     this.state.previousRow = this.state.currentRow
     this.state.currentRow = row
-    this.state.focusedGroupVisualIndex = null
+    this.state.focusedGroupScope = null
   }
 
   setScrollOffset(offset: number): void {
@@ -49,17 +49,19 @@ export class NavigationManager {
 
   setRenderableItems(items: RenderableItem[]): void {
     this.renderableItems = items
-    // Clear group focus if it no longer points at a valid group header
-    if (this.state.focusedGroupVisualIndex !== null) {
-      const idx = this.state.focusedGroupVisualIndex
-      if (idx >= items.length || items[idx]?.type !== 'group-header') {
-        this.state.focusedGroupVisualIndex = null
+    // Clear group focus if the focused scope no longer exists as a group header
+    if (this.state.focusedGroupScope !== null) {
+      const stillExists = items.some(
+        (item) => item.type === 'group-header' && item.scope === this.state.focusedGroupScope
+      )
+      if (!stillExists) {
+        this.state.focusedGroupScope = null
       }
     }
   }
 
   clearGroupFocus(): void {
-    this.state.focusedGroupVisualIndex = null
+    this.state.focusedGroupScope = null
   }
 
   setMaxVisibleItems(maxVisible: number): void {
@@ -72,12 +74,9 @@ export class NavigationManager {
 
   // Convert package index to visual row index in renderable items
   packageIndexToVisualIndex(packageIndex: number): number {
-    // If no renderable items (flat mode), visual index equals package index
     if (this.renderableItems.length === 0) {
       return packageIndex
     }
-
-    // Otherwise search in renderable items (grouped mode)
     for (let i = 0; i < this.renderableItems.length; i++) {
       const item = this.renderableItems[i]
       if (item.type === 'package' && item.originalIndex === packageIndex) {
@@ -87,8 +86,23 @@ export class NavigationManager {
     return 0
   }
 
+  getFocusedGroupScope(): string | null {
+    return this.state.focusedGroupScope
+  }
+
   getFocusedGroupVisualIndex(): number | null {
-    return this.state.focusedGroupVisualIndex
+    if (this.state.focusedGroupScope === null) return null
+    for (let i = 0; i < this.renderableItems.length; i++) {
+      const item = this.renderableItems[i]
+      if (item.type === 'group-header' && item.scope === this.state.focusedGroupScope) {
+        return i
+      }
+    }
+    return null
+  }
+
+  setFocusedGroupScope(scope: string | null): void {
+    this.state.focusedGroupScope = scope
   }
 
   // Build ordered list of navigable focus points (packages and group headers)
@@ -96,14 +110,20 @@ export class NavigationManager {
     visualIndex: number
     kind: 'package' | 'group'
     packageIndex?: number
+    scope?: string
   }[] {
-    const points: { visualIndex: number; kind: 'package' | 'group'; packageIndex?: number }[] = []
+    const points: {
+      visualIndex: number
+      kind: 'package' | 'group'
+      packageIndex?: number
+      scope?: string
+    }[] = []
     for (let i = 0; i < this.renderableItems.length; i++) {
       const item = this.renderableItems[i]
       if (item.type === 'package') {
         points.push({ visualIndex: i, kind: 'package', packageIndex: item.originalIndex })
       } else if (item.type === 'group-header') {
-        points.push({ visualIndex: i, kind: 'group' })
+        points.push({ visualIndex: i, kind: 'group', scope: item.scope })
       }
     }
     return points
@@ -126,9 +146,9 @@ export class NavigationManager {
     if (focusPoints.length === 0) return
 
     let currentPos = -1
-    if (this.state.focusedGroupVisualIndex !== null) {
+    if (this.state.focusedGroupScope !== null) {
       currentPos = focusPoints.findIndex(
-        (p) => p.kind === 'group' && p.visualIndex === this.state.focusedGroupVisualIndex
+        (p) => p.kind === 'group' && p.scope === this.state.focusedGroupScope
       )
     } else {
       currentPos = focusPoints.findIndex(
@@ -148,9 +168,9 @@ export class NavigationManager {
 
     const target = focusPoints[newPos]
     if (target.kind === 'group') {
-      this.state.focusedGroupVisualIndex = target.visualIndex
+      this.state.focusedGroupScope = target.scope!
     } else {
-      this.state.focusedGroupVisualIndex = null
+      this.state.focusedGroupScope = null
       this.state.currentRow = target.packageIndex!
     }
   }
@@ -170,8 +190,9 @@ export class NavigationManager {
   }
 
   private ensureFocusVisible(totalPackages: number): void {
-    if (this.state.focusedGroupVisualIndex !== null) {
-      this.ensureVisualIndexVisible(this.state.focusedGroupVisualIndex, totalPackages)
+    const groupVisualIndex = this.getFocusedGroupVisualIndex()
+    if (groupVisualIndex !== null) {
+      this.ensureVisualIndexVisible(groupVisualIndex, totalPackages)
     } else {
       this.ensureVisible(this.state.currentRow, totalPackages)
     }
@@ -189,40 +210,31 @@ export class NavigationManager {
   }
 
   private ensureVisible(packageIndex: number, totalPackages: number): void {
-    // Convert package index to visual index for scrolling
     const visualIndex = this.packageIndexToVisualIndex(packageIndex)
     const totalVisualItems = this.renderableItems.length || totalPackages
 
-    // Try to show section header if the current item is just below a header
     let targetVisualIndex = visualIndex
     if (visualIndex > 0) {
       const prevItem = this.renderableItems[visualIndex - 1]
       if (prevItem?.type === 'header') {
         targetVisualIndex = visualIndex - 1
       } else if (visualIndex > 1) {
-        // Also check for spacer + header combo (for first package in non-first section)
         const prevPrevItem = this.renderableItems[visualIndex - 2]
         if (prevItem?.type === 'spacer' && prevPrevItem?.type === 'header') {
-          // Show spacer and header if possible
           targetVisualIndex = Math.max(0, visualIndex - 2)
         }
       }
     }
 
-    // Scrolling up: scroll up by 1 item
     if (targetVisualIndex < this.state.scrollOffset) {
       this.state.scrollOffset = targetVisualIndex
-    }
-    // Scrolling down: adjust scroll to keep item visible
-    else if (visualIndex >= this.state.scrollOffset + this.maxVisibleItems) {
+    } else if (visualIndex >= this.state.scrollOffset + this.maxVisibleItems) {
       this.state.scrollOffset = visualIndex - this.maxVisibleItems + 1
     }
 
-    // Ensure scrollOffset doesn't go negative or beyond bounds
     const maxScroll = Math.max(0, totalVisualItems - this.maxVisibleItems)
     this.state.scrollOffset = Math.max(0, Math.min(this.state.scrollOffset, maxScroll))
 
-    // Handle wrap-around: if we're at the last item and it's out of view, show it at bottom
     if (
       visualIndex === totalVisualItems - 1 &&
       visualIndex >= this.state.scrollOffset + this.maxVisibleItems

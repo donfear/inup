@@ -263,6 +263,8 @@ export async function runInteractiveSession(
         const activeFilterLabel = stateManager.getActiveFilterLabel()
         const renderableItems = stateManager.buildAndSetRenderableItems(filteredStates)
         const focusedGroupVisualIndex = stateManager.getFocusedGroupVisualIndex()
+        const groupAggregateLookup = (_scope: string, memberIndices: number[]) =>
+          stateManager.getGroupAggregate(filteredStates, memberIndices)
         const lines = renderer.renderInterface(
           filteredStates,
           uiState.currentRow,
@@ -279,7 +281,8 @@ export async function runInteractiveSession(
           loadingProgress,
           auditProgress,
           packageListRenderOptions,
-          focusedGroupVisualIndex
+          focusedGroupVisualIndex,
+          groupAggregateLookup
         )
 
         renderViewport(lines, terminalWidth, terminalHeight, bgCode)

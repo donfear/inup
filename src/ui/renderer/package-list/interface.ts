@@ -15,7 +15,13 @@ import {
   renderGroupHeader,
   renderSpacer,
   PackageListRenderOptions,
+  GroupHeaderAggregate,
 } from './rows'
+
+export type GroupAggregateLookup = (
+  scope: string,
+  memberIndices: number[]
+) => GroupHeaderAggregate
 
 export function renderInterface(
   states: PackageSelectionState[],
@@ -33,7 +39,8 @@ export function renderInterface(
   loadingProgress?: PackageLoadProgress,
   auditProgress?: AuditProgress,
   options: PackageListRenderOptions = {},
-  focusedGroupVisualIndex: number | null = null
+  focusedGroupVisualIndex: number | null = null,
+  groupAggregateLookup?: GroupAggregateLookup
 ): string[] {
   const output: string[] = []
 
@@ -197,6 +204,10 @@ export function renderInterface(
         chalk.gray('Clear')
     }
   } else {
+    const groupHint =
+      focusedGroupVisualIndex !== null
+        ? '  ' + chalk.bold.white('Space ') + chalk.gray('Collapse')
+        : ''
     if (totalVisualItems > maxVisibleItems) {
       statusLine =
         chalk.gray(
@@ -204,13 +215,15 @@ export function renderInterface(
         ) +
         '  ' +
         chalk.bold.white('Enter ') +
-        chalk.gray('Confirm')
+        chalk.gray('Confirm') +
+        groupHint
     } else {
       statusLine =
         chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
         '  ' +
         chalk.bold.white('Enter ') +
-        chalk.gray('Confirm')
+        chalk.gray('Confirm') +
+        groupHint
     }
   }
 
@@ -239,7 +252,16 @@ export function renderInterface(
         output.push(renderSpacer())
       } else if (item.type === 'group-header') {
         const isCurrent = focusedGroupVisualIndex === i
-        output.push(renderGroupHeader(item.scope, item.memberIndices.length, isCurrent))
+        const aggregate = groupAggregateLookup?.(item.scope, item.memberIndices)
+        output.push(
+          renderGroupHeader(
+            item.scope,
+            item.memberIndices.length,
+            isCurrent,
+            item.collapsed,
+            aggregate
+          )
+        )
       } else if (item.type === 'package') {
         const isCurrent =
           focusedGroupVisualIndex === null && item.originalIndex === currentRow

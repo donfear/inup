@@ -40,7 +40,9 @@ export function renderPackageLine(
 
   const isGrouped = groupPosition !== undefined
   const treeChar = groupPosition === 'last' ? '└ ' : groupPosition === 'middle' ? '├ ' : ''
-  const treeDecor = isGrouped ? getThemeColor('border')(treeChar) : ''
+  const treeDecor = isGrouped
+    ? (isCurrentRow ? getThemeColor('success') : getThemeColor('packageAuthor'))(treeChar)
+    : ''
 
   const displayedFullName = isGrouped
     ? state.name.slice(state.name.indexOf('/') + 1)
@@ -213,17 +215,68 @@ export function renderSectionHeader(
   return '  ' + colorFn.bold(title)
 }
 
+export interface GroupHeaderAggregate {
+  total: number
+  ready: number
+  pending: number
+  selectedNone: number
+  selectedRange: number
+  selectedLatest: number
+  hasRangeAvailable: number
+  hasMajorAvailable: number
+  vulnerable: number
+}
+
 export function renderGroupHeader(
   scope: string,
   memberCount: number,
-  isCurrentRow: boolean
+  isCurrentRow: boolean,
+  collapsed: boolean,
+  aggregate?: GroupHeaderAggregate
 ): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
+  const arrow = collapsed ? '▸' : '▾'
+  const arrowColored = isCurrentRow
+    ? getThemeColor('success')(arrow)
+    : getThemeColor('packageAuthor')(arrow)
   const scopeText = isCurrentRow
     ? chalk.bold(getThemeColor('packageAuthor')(scope))
-    : chalk.bold(getThemeColor('textSecondary')(scope))
+    : chalk.bold(getThemeColor('packageAuthor')(scope))
   const count = getThemeColor('textSecondary')(`(${memberCount})`)
-  return `${prefix}${scopeText} ${count}`
+
+  let summary = ''
+  if (aggregate) {
+    const parts: string[] = []
+    const selected =
+      aggregate.selectedRange + aggregate.selectedLatest
+    if (selected > 0) {
+      parts.push(getThemeColor('success')(`✓ ${selected}/${aggregate.total} selected`))
+    }
+    if (aggregate.pending > 0) {
+      parts.push(getThemeColor('textSecondary')(`${aggregate.pending} loading`))
+    }
+    const updatesAvailable = aggregate.hasRangeAvailable + aggregate.hasMajorAvailable
+    if (updatesAvailable > 0 && selected === 0) {
+      const rangeBit =
+        aggregate.hasRangeAvailable > 0
+          ? getThemeColor('versionRange')(`${aggregate.hasRangeAvailable} minor`)
+          : ''
+      const latestBit =
+        aggregate.hasMajorAvailable > 0
+          ? getThemeColor('versionLatest')(`${aggregate.hasMajorAvailable} major`)
+          : ''
+      const bits = [rangeBit, latestBit].filter(Boolean).join(getThemeColor('textSecondary')(' · '))
+      if (bits) parts.push(bits)
+    }
+    if (aggregate.vulnerable > 0) {
+      parts.push(getThemeColor('error')(`⚠ ${aggregate.vulnerable}`))
+    }
+    if (parts.length > 0) {
+      summary = '  ' + parts.join(getThemeColor('textSecondary')('  ·  '))
+    }
+  }
+
+  return `${prefix}${arrowColored} ${scopeText} ${count}${summary}`
 }
 
 export function renderSpacer(): string {

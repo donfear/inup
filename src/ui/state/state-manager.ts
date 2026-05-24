@@ -46,6 +46,7 @@ export class StateManager {
   private themeManager: ThemeManager
   private displayState: DisplayState
   private renderState: RenderState
+  private collapsedScopes: Set<string> = new Set()
   private readonly headerLines = 5 // title (with label) + empty + 1 instruction line + status + empty
 
   constructor(initialRow: number = 0, terminalHeight: number = 24) {
@@ -105,7 +106,9 @@ export class StateManager {
   }
 
   buildAndSetRenderableItems(filteredStates: PackageSelectionState[]): RenderableItem[] {
-    const items = buildScopeGroupedItems(filteredStates)
+    const items = buildScopeGroupedItems(filteredStates, {
+      collapsedScopes: this.collapsedScopes,
+    })
     this.setRenderableItems(items)
     return items
   }
@@ -114,15 +117,41 @@ export class StateManager {
     return this.navigationManager.getFocusedGroupVisualIndex()
   }
 
-  getFocusedGroupHeader(): { scope: string; memberIndices: number[] } | null {
-    const idx = this.navigationManager.getFocusedGroupVisualIndex()
-    if (idx === null) return null
-    const item = this.renderState.renderableItems[idx]
-    if (!item || item.type !== 'group-header') return null
-    return { scope: item.scope, memberIndices: item.memberIndices }
+  getFocusedGroupScope(): string | null {
+    return this.navigationManager.getFocusedGroupScope()
   }
 
-  applyGroupSelection(filteredStates: PackageSelectionState[], option: 'none' | 'range' | 'latest'): void {
+  getFocusedGroupHeader(): { scope: string; memberIndices: number[]; collapsed: boolean } | null {
+    const scope = this.navigationManager.getFocusedGroupScope()
+    if (scope === null) return null
+    for (const item of this.renderState.renderableItems) {
+      if (item.type === 'group-header' && item.scope === scope) {
+        return { scope: item.scope, memberIndices: item.memberIndices, collapsed: item.collapsed }
+      }
+    }
+    return null
+  }
+
+  isScopeCollapsed(scope: string): boolean {
+    return this.collapsedScopes.has(scope)
+  }
+
+  toggleFocusedGroupCollapse(): boolean {
+    const scope = this.navigationManager.getFocusedGroupScope()
+    if (scope === null) return false
+    if (this.collapsedScopes.has(scope)) {
+      this.collapsedScopes.delete(scope)
+    } else {
+      this.collapsedScopes.add(scope)
+    }
+    this.renderState.forceFullRender = true
+    return true
+  }
+
+  applyGroupSelection(
+    filteredStates: PackageSelectionState[],
+    option: 'none' | 'range' | 'latest'
+  ): void {
     const group = this.getFocusedGroupHeader()
     if (!group) return
     group.memberIndices.forEach((idx) => {
@@ -146,12 +175,15 @@ export class StateManager {
     const hasRange = members.some((m) => m.hasRangeUpdate)
     const hasMajor = members.some((m) => m.hasMajorUpdate)
 
+    // Dominant = most common current selection among loaded members.
+    // Tie-break order: latest > range > none (so a half-and-half group between
+    // 'latest' and 'none' moves out of 'latest' on Left and into 'none' on Right).
     const counts = { none: 0, range: 0, latest: 0 }
     members.forEach((m) => counts[m.selectedOption]++)
-    const dominant =
-      counts.latest > counts.range && counts.latest > counts.none
+    const dominant: 'none' | 'range' | 'latest' =
+      counts.latest >= counts.range && counts.latest >= counts.none && counts.latest > 0
         ? 'latest'
-        : counts.range > counts.none
+        : counts.range >= counts.none && counts.range > 0
           ? 'range'
           : 'none'
 
@@ -167,6 +199,47 @@ export class StateManager {
     }
 
     this.applyGroupSelection(filteredStates, next)
+  }
+
+  // Aggregate selection summary for a group header — used by the renderer.
+  getGroupAggregate(
+    filteredStates: PackageSelectionState[],
+    memberIndices: number[]
+  ): {
+    total: number
+    ready: number
+    pending: number
+    selectedNone: number
+    selectedRange: number
+    selectedLatest: number
+    hasRangeAvailable: number
+    hasMajorAvailable: number
+    vulnerable: number
+  } {
+    const agg = {
+      total: memberIndices.length,
+      ready: 0,
+      pending: 0,
+      selectedNone: 0,
+      selectedRange: 0,
+      selectedLatest: 0,
+      hasRangeAvailable: 0,
+      hasMajorAvailable: 0,
+      vulnerable: 0,
+    }
+    memberIndices.forEach((i) => {
+      const s = filteredStates[i]
+      if (!s) return
+      if (s.loadState === 'ready') agg.ready++
+      if (s.loadState === 'pending') agg.pending++
+      if (s.hasRangeUpdate) agg.hasRangeAvailable++
+      if (s.hasMajorUpdate) agg.hasMajorAvailable++
+      if (s.vulnerability && s.vulnerability.count > 0) agg.vulnerable++
+      if (s.selectedOption === 'none') agg.selectedNone++
+      else if (s.selectedOption === 'range') agg.selectedRange++
+      else if (s.selectedOption === 'latest') agg.selectedLatest++
+    })
+    return agg
   }
 
   // Navigation delegation

@@ -35,6 +35,7 @@ export type InputAction =
       depType: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
     }
   | { type: 'trigger_audit_scan' }
+  | { type: 'toggle_group_collapse' }
 
 export class InputHandler {
   private stateManager: StateManager
@@ -255,6 +256,10 @@ export class InputHandler {
 
       case 'right':
         this.onAction({ type: 'select_right' })
+        break
+
+      case 'space':
+        this.onAction({ type: 'toggle_group_collapse' })
         break
 
       case 'return':

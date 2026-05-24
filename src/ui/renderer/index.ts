@@ -9,7 +9,7 @@ import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from '../modal'
 import { InfoModalTab, ModalRenderResult } from '../modal'
-import { PackageListRenderOptions } from './package-list'
+import { PackageListRenderOptions, GroupAggregateLookup } from './package-list'
 
 /**
  * Main UI renderer class that composes all rendering parts
@@ -48,7 +48,8 @@ export class UIRenderer {
     loadingProgress?: PackageLoadProgress,
     auditProgress?: AuditProgress,
     options?: PackageListRenderOptions,
-    focusedGroupVisualIndex: number | null = null
+    focusedGroupVisualIndex: number | null = null,
+    groupAggregateLookup?: GroupAggregateLookup
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -66,7 +67,8 @@ export class UIRenderer {
       loadingProgress,
       auditProgress,
       options,
-      focusedGroupVisualIndex
+      focusedGroupVisualIndex,
+      groupAggregateLookup
     )
   }
 

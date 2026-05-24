@@ -39,4 +39,4 @@ export type RenderableItem =
   | { type: 'header'; title: string; sectionType: 'main' | 'peer' | 'optional' }
   | { type: 'spacer' }
   | { type: 'package'; state: PackageSelectionState; originalIndex: number; groupPosition?: 'middle' | 'last' }
-  | { type: 'group-header'; scope: string; memberIndices: number[] }
+  | { type: 'group-header'; scope: string; memberIndices: number[]; collapsed: boolean }

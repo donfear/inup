@@ -13,6 +13,7 @@ const INTERACTIVE_ACTIONS = new Set([
   'bulk_select_latest',
   'bulk_unselect_all',
   'toggle_dep_type_filter',
+  'toggle_group_collapse',
 ])
 
 export type DispatchContext = {
@@ -67,6 +68,9 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       } else {
         stateManager.updateSelection(filteredStates, 'right')
       }
+      break
+    case 'toggle_group_collapse':
+      if (!stateManager.toggleFocusedGroupCollapse()) return
       break
     case 'bulk_select_minor':
       stateManager.bulkSelectMinor(filteredStates)

@@ -8,8 +8,16 @@ function getScope(name: string): string | null {
   return slash === -1 ? null : name.slice(0, slash)
 }
 
-export function buildScopeGroupedItems(states: PackageSelectionState[]): RenderableItem[] {
+export interface ScopeGroupingOptions {
+  collapsedScopes?: ReadonlySet<string>
+}
+
+export function buildScopeGroupedItems(
+  states: PackageSelectionState[],
+  options: ScopeGroupingOptions = {}
+): RenderableItem[] {
   if (states.length === 0) return []
+  const collapsed = options.collapsedScopes ?? new Set<string>()
 
   const scopeOrder: string[] = []
   const scopeBuckets = new Map<string, number[]>()
@@ -54,42 +62,23 @@ export function buildScopeGroupedItems(states: PackageSelectionState[]): Rendera
       continue
     }
 
-    const versionCounts = new Map<string, number>()
-    indices.forEach((i) => {
-      const v = states[i].currentVersionSpecifier
-      versionCounts.set(v, (versionCounts.get(v) || 0) + 1)
+    const isCollapsed = collapsed.has(scope)
+    items.push({
+      type: 'group-header',
+      scope,
+      memberIndices: [...indices],
+      collapsed: isCollapsed,
     })
 
-    let majorityVersion = ''
-    let majorityCount = 0
-    for (const [v, c] of versionCounts) {
-      if (c > majorityCount) {
-        majorityVersion = v
-        majorityCount = c
-      }
-    }
+    if (isCollapsed) continue
 
-    if (majorityCount < GROUP_THRESHOLD) {
-      indices.forEach((i) => {
-        items.push({ type: 'package', state: states[i], originalIndex: i })
-      })
-      continue
-    }
-
-    const members = indices.filter((i) => states[i].currentVersionSpecifier === majorityVersion)
-    const outliers = indices.filter((i) => states[i].currentVersionSpecifier !== majorityVersion)
-
-    items.push({ type: 'group-header', scope, memberIndices: members })
-    members.forEach((i, idx) => {
+    indices.forEach((i, idx) => {
       items.push({
         type: 'package',
         state: states[i],
         originalIndex: i,
-        groupPosition: idx === members.length - 1 ? 'last' : 'middle',
+        groupPosition: idx === indices.length - 1 ? 'last' : 'middle',
       })
-    })
-    outliers.forEach((i) => {
-      items.push({ type: 'package', state: states[i], originalIndex: i })
     })
   }
 
