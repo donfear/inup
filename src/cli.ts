@@ -10,7 +10,7 @@ import { loadProjectConfig } from './config'
 import { PackageManager } from './types'
 import { enableDebugLogging } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
-import { TerminalInput } from './ui/utils/terminal-input'
+import { TerminalInput } from './ui'
 
 const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'))
 

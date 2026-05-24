@@ -23,8 +23,7 @@ import {
 } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import { PackageListRenderOptions } from './ui/renderer/package-list'
-import { themeNames, themes } from './ui/themes'
-import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from './ui/themes-colors'
+import { themeNames, themes, getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from './ui'
 import { getPerformanceTracker, renderPerformanceModal } from './features/debug'
 
 type InteractiveUIOptions = VulnerabilityDisplayOptions
