@@ -16,34 +16,22 @@ vi.mock('../../../../src/services', () => ({
 
 import { PackageInfoModalController } from '../../../../src/ui/controllers'
 import { PackageSelectionState } from '../../../../src/types'
+import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
-const baseState: PackageSelectionState = {
+const baseState = makeSelectionState({
   name: 'next',
-  packageJsonPath: '/repo/package.json',
-  packageJsonPaths: ['/repo/package.json'],
   currentVersionSpecifier: '^16.1.6',
   currentVersion: '16.1.6',
   rangeVersion: '16.2.0',
   latestVersion: '16.2.3',
   selectedOption: 'range',
-  loadState: 'ready',
-  hasRangeUpdate: true,
-  hasMajorUpdate: true,
-  type: 'dependencies',
   vulnerability: {
     count: 1,
     highestSeverity: 'high',
     detailsUrl: 'https://github.com/advisories/GHSA-1',
-    advisories: [
-      {
-        id: 1,
-        title: 'Security issue',
-        severity: 'high',
-        url: 'https://github.com/advisories/GHSA-1',
-      },
-    ],
+    advisories: [{ id: 1, title: 'Security issue', severity: 'high', url: 'https://github.com/advisories/GHSA-1' }],
   },
-}
+})
 
 describe('PackageInfoModalController', () => {
   beforeEach(() => {

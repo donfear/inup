@@ -1,22 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { renderInterface, renderPackageLine } from '../../../src/ui/renderer/package-list'
-import { PackageSelectionState } from '../../../src/types'
 import { VersionUtils } from '../../../src/ui/utils'
+import { makeSelectionState } from '../../fixtures/selection-state-factory'
 
-const baseState: PackageSelectionState = {
-  name: 'demo-pkg',
-  packageJsonPath: '/repo/package.json',
-  packageJsonPaths: ['/repo/package.json'],
-  currentVersionSpecifier: '^1.0.0',
-  currentVersion: '1.0.0',
-  rangeVersion: '1.1.0',
-  latestVersion: '2.0.0',
-  selectedOption: 'none',
-  loadState: 'ready',
-  hasRangeUpdate: true,
-  hasMajorUpdate: true,
-  type: 'dependencies',
-}
+const baseState = makeSelectionState({ name: 'demo-pkg' })
 
 describe('package-list renderer', () => {
   it('renders pending rows with loading placeholders', () => {
