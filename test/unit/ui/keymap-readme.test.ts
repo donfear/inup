@@ -13,7 +13,7 @@ function readKeysRegion(readme: string): string {
   if (start === -1 || end === -1) {
     throw new Error('KEYS markers not found in README.md')
   }
-  return readme.slice(start + START.length, end).trim()
+  return readme.slice(start + START.length, end).replace(/\r\n/g, '\n').trim()
 }
 
 describe('readme keymap', () => {
