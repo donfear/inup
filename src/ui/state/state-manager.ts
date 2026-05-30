@@ -33,6 +33,7 @@ export interface UIState {
   showDebugModal: boolean
   debugModalScrollOffset: number
   showHelpModal: boolean
+  helpModalScrollOffset: number
   filterMode: boolean
   filterQuery: string
   showThemeModal: boolean
@@ -99,6 +100,7 @@ export class StateManager {
       showDebugModal: modalState.showDebugModal,
       debugModalScrollOffset: modalState.debugModalScrollOffset,
       showHelpModal: modalState.showHelpModal,
+      helpModalScrollOffset: modalState.helpModalScrollOffset,
       filterMode: filterState.filterMode,
       filterQuery: filterState.filterQuery,
       showThemeModal: themeState.showThemeModal,
@@ -315,6 +317,18 @@ export class StateManager {
   closeHelpModal(): void {
     this.modalManager.closeHelpModal()
     this.renderState.forceFullRender = true
+  }
+
+  scrollHelpModalUp(): boolean {
+    return this.modalManager.scrollHelpModalUp()
+  }
+
+  scrollHelpModalDown(maxOffset: number): boolean {
+    return this.modalManager.scrollHelpModalDown(maxOffset)
+  }
+
+  clampHelpModalScrollOffset(maxOffset: number): boolean {
+    return this.modalManager.clampHelpModalScrollOffset(maxOffset)
   }
 
   scrollDebugModalUp(): boolean {

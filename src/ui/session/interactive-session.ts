@@ -43,6 +43,7 @@ export async function runInteractiveSession(
 
     let infoModalMaxScrollOffset = 0
     let debugModalMaxScrollOffset = 0
+    let helpModalMaxScrollOffset = 0
     let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
     let previousModalViewportLineCount: number | null = null
 
@@ -185,11 +186,19 @@ export async function runInteractiveSession(
       } else if (uiState.showHelpModal) {
         const terminalWidth = process.stdout.columns || 80
         const terminalHeight = getTerminalHeight()
-        const modalLines = renderHelpModal(terminalWidth, terminalHeight)
+        const result = renderHelpModal(terminalWidth, Math.max(8, terminalHeight - 4), uiState.helpModalScrollOffset)
+        helpModalMaxScrollOffset = result.maxScrollOffset
+        stateManager.clampHelpModalScrollOffset(helpModalMaxScrollOffset)
+        const helpHints = [
+          result.usesInternalScroll && result.maxScrollOffset > 0 ? SHORTCUTS.scroll : '',
+          SHORTCUTS.closeHelp,
+        ]
+          .filter(Boolean)
+          .join(sep)
         renderModalViewport(
           'info-modal',
-          SHORTCUTS.closeHelp,
-          modalLines,
+          helpHints,
+          result.lines,
           terminalWidth,
           terminalHeight,
           bgCode
@@ -359,6 +368,7 @@ export async function runInteractiveSession(
           handleCancel,
           getInfoModalMaxScrollOffset: () => infoModalMaxScrollOffset,
           getDebugModalMaxScrollOffset: () => debugModalMaxScrollOffset,
+          getHelpModalMaxScrollOffset: () => helpModalMaxScrollOffset,
         }),
       handleConfirm,
       handleCancel

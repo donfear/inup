@@ -30,6 +30,7 @@ export type DispatchContext = {
   handleCancel: () => void
   getInfoModalMaxScrollOffset: () => number
   getDebugModalMaxScrollOffset: () => number
+  getHelpModalMaxScrollOffset: () => number
 }
 
 export function dispatchAction(action: InputAction, ctx: DispatchContext): void {
@@ -44,6 +45,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     handleCancel,
     getInfoModalMaxScrollOffset,
     getDebugModalMaxScrollOffset,
+    getHelpModalMaxScrollOffset,
   } = ctx
 
   const uiState = stateManager.getUIState()
@@ -157,6 +159,12 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       break
     case 'toggle_help_modal':
       stateManager.toggleHelpModal()
+      break
+    case 'scroll_help_modal_up':
+      if (!stateManager.scrollHelpModalUp()) return
+      break
+    case 'scroll_help_modal_down':
+      if (!stateManager.scrollHelpModalDown(getHelpModalMaxScrollOffset())) return
       break
     case 'scroll_debug_modal_up':
       if (!stateManager.scrollDebugModalUp()) return

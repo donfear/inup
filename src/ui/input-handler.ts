@@ -13,6 +13,8 @@ export type InputAction =
   | { type: 'select_right' }
   | { type: 'toggle_selection' }
   | { type: 'toggle_help_modal' }
+  | { type: 'scroll_help_modal_up' }
+  | { type: 'scroll_help_modal_down' }
   | { type: 'toggle_vulnerable_filter' }
   | { type: 'notify_empty_selection' }
   | { type: 'confirm' }
@@ -134,10 +136,21 @@ export class InputHandler {
       return
     }
 
-    // Handle help overlay input (close only)
+    // Handle help overlay input (close or scroll)
     if (uiState.showHelpModal) {
       if (str === '?' || (key && key.name === 'escape')) {
         this.onAction({ type: 'toggle_help_modal' })
+        return
+      }
+      if (key) {
+        if (key.name === 'up') {
+          this.onAction({ type: 'scroll_help_modal_up' })
+          return
+        }
+        if (key.name === 'down') {
+          this.onAction({ type: 'scroll_help_modal_down' })
+          return
+        }
       }
       return // consume all other keys while help is open
     }

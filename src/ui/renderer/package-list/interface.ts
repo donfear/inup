@@ -135,45 +135,15 @@ export function renderInterface(
         chalk.gray('Clear')
     }
   } else if (totalPackages < totalBeforeFilter) {
-    if (totalVisualItems > maxVisibleItems) {
-      statusLine =
-        getThemeColor('textSecondary')(
-          `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
-        ) +
-        '  ' +
-        chalk.bold.white('D/P/O ') +
-        chalk.gray('Filter') +
-        '  ' +
-        chalk.bold.white('M ') +
-        chalk.gray('Minor') +
-        '  ' +
-        chalk.bold.white('L ') +
-        chalk.gray('All') +
-        '  ' +
-        chalk.bold.white('U ') +
-        chalk.gray('None') +
-        '  ' +
-        chalk.bold.white('Esc ') +
-        chalk.gray('Clear')
-    } else {
-      statusLine =
-        getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
-        '  ' +
-        chalk.bold.white('D/P/O ') +
-        chalk.gray('Filter') +
-        '  ' +
-        chalk.bold.white('M ') +
-        chalk.gray('Minor') +
-        '  ' +
-        chalk.bold.white('L ') +
-        chalk.gray('All') +
-        '  ' +
-        chalk.bold.white('U ') +
-        chalk.gray('None') +
-        '  ' +
-        chalk.bold.white('Esc ') +
-        chalk.gray('Clear')
-    }
+    // Footer already lists D/P/O, M, L, U — status line just shows count + Esc.
+    const matchCount =
+      totalVisualItems > maxVisibleItems
+        ? getThemeColor('textSecondary')(
+            `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
+          )
+        : getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`)
+    statusLine =
+      matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
   } else {
     if (totalVisualItems > maxVisibleItems) {
       statusLine =
