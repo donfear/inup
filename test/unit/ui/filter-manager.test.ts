@@ -168,3 +168,30 @@ describe('FilterManager vulnerability filtering', () => {
     expect(filtered.map((state) => state.name)).toEqual(['peer', 'optional'])
   })
 })
+
+describe('FilterManager persistence', () => {
+  it('seeds from persisted filters, defaulting unspecified toggles to visible', () => {
+    const fm = new FilterManager({ showDevDependencies: false, showOnlyVulnerable: true })
+    const state = fm.getState()
+    expect(state.showDevDependencies).toBe(false)
+    expect(state.showOnlyVulnerable).toBe(true)
+    expect(state.showDependencies).toBe(true)
+  })
+
+  it('getPersistableState excludes transient search state', () => {
+    const fm = new FilterManager()
+    fm.enterFilterMode()
+    fm.appendToFilterQuery('react')
+    fm.toggleVulnerableFilter()
+
+    const persisted = fm.getPersistableState()
+    expect(persisted).toEqual({
+      showDependencies: true,
+      showDevDependencies: true,
+      showPeerDependencies: true,
+      showOptionalDependencies: true,
+      showOnlyVulnerable: true,
+    })
+    expect('filterQuery' in persisted).toBe(false)
+  })
+})
