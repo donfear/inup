@@ -15,15 +15,6 @@ import { PackageListRenderOptions } from './package-list'
  * Main UI renderer class that composes all rendering parts
  */
 export class UIRenderer {
-  renderPackageLine(
-    state: PackageSelectionState,
-    index: number,
-    isCurrentRow: boolean,
-    options?: PackageListRenderOptions
-  ): string {
-    return PackageList.renderPackageLine(state, index, isCurrentRow, 80, options)
-  }
-
   renderSectionHeader(title: string, sectionType: 'main' | 'peer' | 'optional'): string {
     return PackageList.renderSectionHeader(title, sectionType)
   }
@@ -47,7 +38,8 @@ export class UIRenderer {
     terminalWidth: number = 80,
     loadingProgress?: PackageLoadProgress,
     auditProgress?: AuditProgress,
-    options?: PackageListRenderOptions
+    options?: PackageListRenderOptions,
+    notice?: string | null
   ): string[] {
     return PackageList.renderInterface(
       states,
@@ -64,7 +56,8 @@ export class UIRenderer {
       terminalWidth,
       loadingProgress,
       auditProgress,
-      options
+      options,
+      notice
     )
   }
 

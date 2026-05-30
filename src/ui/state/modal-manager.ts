@@ -10,6 +10,8 @@ export interface ModalState {
   infoModalTab: InfoModalTab // Active tab within the info modal
   showDebugModal: boolean // Whether to show the debug/performance modal
   debugModalScrollOffset: number // Scroll position within the debug modal
+  showHelpModal: boolean // Whether to show the keyboard-shortcut help overlay
+  helpModalScrollOffset: number
 }
 
 export class ModalManager {
@@ -25,6 +27,8 @@ export class ModalManager {
       infoModalTab: 'info',
       showDebugModal: false,
       debugModalScrollOffset: 0,
+      showHelpModal: false,
+      helpModalScrollOffset: 0,
     }
   }
 
@@ -46,6 +50,43 @@ export class ModalManager {
   toggleDebugModal(): void {
     this.state.showDebugModal = !this.state.showDebugModal
     this.state.debugModalScrollOffset = 0
+  }
+
+  isHelpModalOpen(): boolean {
+    return this.state.showHelpModal
+  }
+
+  toggleHelpModal(): void {
+    this.state.showHelpModal = !this.state.showHelpModal
+    this.state.helpModalScrollOffset = 0
+  }
+
+  closeHelpModal(): void {
+    this.state.showHelpModal = false
+    this.state.helpModalScrollOffset = 0
+  }
+
+  scrollHelpModalUp(): boolean {
+    if (this.state.helpModalScrollOffset > 0) {
+      this.state.helpModalScrollOffset--
+      return true
+    }
+    return false
+  }
+
+  scrollHelpModalDown(maxOffset: number): boolean {
+    if (this.state.helpModalScrollOffset < maxOffset) {
+      this.state.helpModalScrollOffset++
+      return true
+    }
+    return false
+  }
+
+  clampHelpModalScrollOffset(maxOffset: number): boolean {
+    const next = Math.max(0, Math.min(this.state.helpModalScrollOffset, maxOffset))
+    if (next === this.state.helpModalScrollOffset) return false
+    this.state.helpModalScrollOffset = next
+    return true
   }
 
   closeDebugModal(): void {

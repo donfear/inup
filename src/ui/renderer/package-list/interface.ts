@@ -15,6 +15,7 @@ import {
   renderSpacer,
   PackageListRenderOptions,
 } from './rows'
+import { getFooterHints } from '../../keymap'
 
 export function renderInterface(
   states: PackageSelectionState[],
@@ -31,7 +32,8 @@ export function renderInterface(
   terminalWidth: number = 80,
   loadingProgress?: PackageLoadProgress,
   auditProgress?: AuditProgress,
-  options: PackageListRenderOptions = {}
+  options: PackageListRenderOptions = {},
+  notice?: string | null
 ): string[] {
   const output: string[] = []
 
@@ -87,35 +89,13 @@ export function renderInterface(
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
   } else {
-    output.push(
-      '  ' +
-        chalk.bold.white('/ ') +
-        getThemeColor('textSecondary')('Search') +
-        '  ' +
-        chalk.bold.white('↑/↓ ') +
-        getThemeColor('textSecondary')('Move') +
-        '  ' +
-        chalk.bold.white('←/→ ') +
-        getThemeColor('textSecondary')('Select') +
-        '  ' +
-        chalk.bold.white('D/P/O ') +
-        getThemeColor('textSecondary')('Filter') +
-        '  ' +
-        chalk.bold.white('I ') +
-        getThemeColor('textSecondary')('Info') +
-        '  ' +
-        chalk.bold.white('S ') +
-        getThemeColor('textSecondary')('Vulnerable') +
-        '  ' +
-        chalk.bold.white('M ') +
-        getThemeColor('textSecondary')('Minor') +
-        '  ' +
-        chalk.bold.white('L ') +
-        getThemeColor('textSecondary')('All') +
-        '  ' +
-        chalk.bold.white('U ') +
-        getThemeColor('textSecondary')('None')
-    )
+    const hintLine = getFooterHints()
+      .map(
+        ({ keyLabel, label }) =>
+          chalk.bold.white(keyLabel + ' ') + getThemeColor('textSecondary')(label)
+      )
+      .join('  ')
+    output.push('  ' + hintLine)
   }
 
   const totalPackages = states.length
@@ -155,45 +135,15 @@ export function renderInterface(
         chalk.gray('Clear')
     }
   } else if (totalPackages < totalBeforeFilter) {
-    if (totalVisualItems > maxVisibleItems) {
-      statusLine =
-        getThemeColor('textSecondary')(
-          `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
-        ) +
-        '  ' +
-        chalk.bold.white('D/P/O ') +
-        chalk.gray('Filter') +
-        '  ' +
-        chalk.bold.white('M ') +
-        chalk.gray('Minor') +
-        '  ' +
-        chalk.bold.white('L ') +
-        chalk.gray('All') +
-        '  ' +
-        chalk.bold.white('U ') +
-        chalk.gray('None') +
-        '  ' +
-        chalk.bold.white('Esc ') +
-        chalk.gray('Clear')
-    } else {
-      statusLine =
-        getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`) +
-        '  ' +
-        chalk.bold.white('D/P/O ') +
-        chalk.gray('Filter') +
-        '  ' +
-        chalk.bold.white('M ') +
-        chalk.gray('Minor') +
-        '  ' +
-        chalk.bold.white('L ') +
-        chalk.gray('All') +
-        '  ' +
-        chalk.bold.white('U ') +
-        chalk.gray('None') +
-        '  ' +
-        chalk.bold.white('Esc ') +
-        chalk.gray('Clear')
-    }
+    // Footer already lists D/P/O, M, L, U — status line just shows count + Esc.
+    const matchCount =
+      totalVisualItems > maxVisibleItems
+        ? getThemeColor('textSecondary')(
+            `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
+          )
+        : getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`)
+    statusLine =
+      matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
   } else {
     if (totalVisualItems > maxVisibleItems) {
       statusLine =
@@ -219,7 +169,10 @@ export function renderInterface(
     statusLine += '  ' + getThemeColor('textSecondary')(auditLabel)
   }
 
-  const statusLineFull = '  ' + statusLine
+  // A one-shot notice (e.g. "nothing selected") replaces the status line for a
+  // single render so the layout height stays constant.
+  const statusContent = notice ? getThemeColor('warning')(notice) : statusLine
+  const statusLineFull = '  ' + statusContent
   const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
   output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')

@@ -7,12 +7,16 @@ import { themeNames, themes } from '../themes'
 const INTERACTIVE_ACTIONS = new Set([
   'navigate_up',
   'navigate_down',
+  'navigate_top',
+  'navigate_bottom',
   'select_left',
   'select_right',
+  'toggle_selection',
   'bulk_select_minor',
   'bulk_select_latest',
   'bulk_unselect_all',
   'toggle_dep_type_filter',
+  'toggle_vulnerable_filter',
 ])
 
 export type DispatchContext = {
@@ -26,6 +30,7 @@ export type DispatchContext = {
   handleCancel: () => void
   getInfoModalMaxScrollOffset: () => number
   getDebugModalMaxScrollOffset: () => number
+  getHelpModalMaxScrollOffset: () => number
 }
 
 export function dispatchAction(action: InputAction, ctx: DispatchContext): void {
@@ -40,12 +45,31 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     handleCancel,
     getInfoModalMaxScrollOffset,
     getDebugModalMaxScrollOffset,
+    getHelpModalMaxScrollOffset,
   } = ctx
 
   const uiState = stateManager.getUIState()
   const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
 
+  // Any deliberate action clears a one-shot status notice (except the action that sets it).
+  if (action.type !== 'notify_empty_selection') {
+    stateManager.clearNotice()
+  }
+
   if (uiState.showThemeModal && INTERACTIVE_ACTIONS.has(action.type)) return
+
+  // Shared by `s` (audit) and `v` (vulnerable filter): run the scan if we have no
+  // data yet, otherwise toggle the vulnerable-only filter.
+  const auditOrToggleVulnerable = () => {
+    const auditProgress = vulnerabilityAuditController.getProgress()
+    if (auditProgress.hasData) {
+      stateManager.toggleVulnerableFilter()
+    } else if (!auditProgress.isRunning) {
+      vulnerabilityAuditController.enqueueStates(states, () => {
+        if (!isResolved()) renderInterface()
+      })
+    }
+  }
 
   switch (action.type) {
     case 'navigate_up':
@@ -54,11 +78,23 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     case 'navigate_down':
       stateManager.navigateDown(filteredStates.length)
       break
+    case 'navigate_top':
+      stateManager.navigateTop(filteredStates.length)
+      break
+    case 'navigate_bottom':
+      stateManager.navigateBottom(filteredStates.length)
+      break
     case 'select_left':
       stateManager.updateSelection(filteredStates, 'left')
       break
     case 'select_right':
       stateManager.updateSelection(filteredStates, 'right')
+      break
+    case 'toggle_selection':
+      stateManager.toggleSelection(filteredStates)
+      break
+    case 'notify_empty_selection':
+      stateManager.setNotice('Nothing selected — use ←/→ or Space to choose updates, then Enter')
       break
     case 'bulk_select_minor':
       stateManager.bulkSelectMinor(filteredStates)
@@ -120,6 +156,15 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       break
     case 'toggle_debug_modal':
       stateManager.toggleDebugModal()
+      break
+    case 'toggle_help_modal':
+      stateManager.toggleHelpModal()
+      break
+    case 'scroll_help_modal_up':
+      if (!stateManager.scrollHelpModalUp()) return
+      break
+    case 'scroll_help_modal_down':
+      if (!stateManager.scrollHelpModalDown(getHelpModalMaxScrollOffset())) return
       break
     case 'scroll_debug_modal_up':
       if (!stateManager.scrollDebugModalUp()) return
@@ -194,17 +239,12 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     case 'theme_confirm':
       stateManager.confirmTheme()
       break
-    case 'trigger_audit_scan': {
-      const auditProgress = vulnerabilityAuditController.getProgress()
-      if (auditProgress.hasData) {
-        stateManager.toggleVulnerableFilter()
-      } else if (!auditProgress.isRunning) {
-        vulnerabilityAuditController.enqueueStates(states, () => {
-          if (!isResolved()) renderInterface()
-        })
-      }
+    case 'trigger_audit_scan':
+      auditOrToggleVulnerable()
       break
-    }
+    case 'toggle_vulnerable_filter':
+      auditOrToggleVulnerable()
+      break
     case 'cancel':
       packageInfoModalController.cancel()
       handleCancel()

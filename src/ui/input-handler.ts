@@ -2,12 +2,21 @@ import { Key } from 'node:readline'
 import { PackageSelectionState } from '../types'
 import { StateManager } from './state'
 import { CursorUtils } from './utils'
+import { findBinding } from './keymap'
 
 export type InputAction =
   | { type: 'navigate_up' }
   | { type: 'navigate_down' }
+  | { type: 'navigate_top' }
+  | { type: 'navigate_bottom' }
   | { type: 'select_left' }
   | { type: 'select_right' }
+  | { type: 'toggle_selection' }
+  | { type: 'toggle_help_modal' }
+  | { type: 'scroll_help_modal_up' }
+  | { type: 'scroll_help_modal_down' }
+  | { type: 'toggle_vulnerable_filter' }
+  | { type: 'notify_empty_selection' }
   | { type: 'confirm' }
   | { type: 'bulk_select_minor' }
   | { type: 'bulk_select_latest' }
@@ -127,6 +136,25 @@ export class InputHandler {
       return
     }
 
+    // Handle help overlay input (close or scroll)
+    if (uiState.showHelpModal) {
+      if (str === '?' || (key && key.name === 'escape')) {
+        this.onAction({ type: 'toggle_help_modal' })
+        return
+      }
+      if (key) {
+        if (key.name === 'up') {
+          this.onAction({ type: 'scroll_help_modal_up' })
+          return
+        }
+        if (key.name === 'down') {
+          this.onAction({ type: 'scroll_help_modal_down' })
+          return
+        }
+      }
+      return // consume all other keys while help is open
+    }
+
     // Handle info modal input (scroll and close)
     if (uiState.showInfoModal) {
       if (key) {
@@ -167,6 +195,12 @@ export class InputHandler {
     // '!' toggles the debug/performance modal (outside of filter mode)
     if (str === '!' && !uiState.filterMode) {
       this.onAction({ type: 'toggle_debug_modal' })
+      return
+    }
+
+    // '?' opens the help overlay (outside of filter mode)
+    if (str === '?' && !uiState.filterMode) {
+      this.onAction({ type: 'toggle_help_modal' })
       return
     }
 
@@ -235,101 +269,41 @@ export class InputHandler {
       return
     }
 
-    // Normal mode (not in filter mode)
-    if (!key) {
+    // Normal mode (not in filter mode). Keys resolve through the keymap so that
+    // dispatch, the help overlay, the footer, and the README share one source.
+    if (!key || !key.name) {
       return
     }
 
-    switch (key.name) {
-      case 'up':
-        this.onAction({ type: 'navigate_up' })
-        break
-
-      case 'down':
-        this.onAction({ type: 'navigate_down' })
-        break
-
-      case 'left':
-        this.onAction({ type: 'select_left' })
-        break
-
-      case 'right':
-        this.onAction({ type: 'select_right' })
-        break
-
-      case 'return':
-        // Check if any packages are selected
-        const selectedCount = states.filter(
-          (s) => s.loadState === 'ready' && s.selectedOption !== 'none'
-        ).length
-        if (selectedCount === 0) {
-          // Do nothing if no packages selected
-          return
-        }
-        this.cleanup()
-        this.onConfirm(states)
+    // Enter confirms the selection (guarding against an empty selection). It runs
+    // the cleanup/confirm path directly rather than going through onAction.
+    if (key.name === 'return') {
+      const selectedCount = states.filter(
+        (s) => s.loadState === 'ready' && s.selectedOption !== 'none'
+      ).length
+      if (selectedCount === 0) {
+        this.onAction({ type: 'notify_empty_selection' })
         return
+      }
+      this.cleanup()
+      this.onConfirm(states)
+      return
+    }
 
-      case 'm':
-      case 'M':
-        this.onAction({ type: 'bulk_select_minor' })
-        break
+    // Escape clears an active search filter; otherwise it is a no-op (it no
+    // longer exits the CLI).
+    if (key.name === 'escape') {
+      if (uiState.filterQuery) {
+        this.onAction({ type: 'exit_filter_mode', clearQuery: true })
+      }
+      return
+    }
 
-      case 'l':
-      case 'L':
-        this.onAction({ type: 'bulk_select_latest' })
-        break
-
-      case 'u':
-      case 'U':
-        this.onAction({ type: 'bulk_unselect_all' })
-        break
-
-      case 'd':
-      case 'D':
-        if (!uiState.showThemeModal && !uiState.filterMode) {
-          this.onAction({ type: 'toggle_dep_type_filter', depType: 'devDependencies' })
-        }
-        break
-
-      case 'p':
-      case 'P':
-        if (!uiState.showThemeModal && !uiState.filterMode) {
-          this.onAction({ type: 'toggle_dep_type_filter', depType: 'peerDependencies' })
-        }
-        break
-
-      case 'o':
-      case 'O':
-        if (!uiState.showThemeModal && !uiState.filterMode) {
-          this.onAction({ type: 'toggle_dep_type_filter', depType: 'optionalDependencies' })
-        }
-        break
-
-      case 'i':
-      case 'I':
-        this.onAction({ type: 'toggle_info_modal' })
-        break
-
-      case 's':
-      case 'S':
-        if (!uiState.showThemeModal) {
-          this.onAction({ type: 'trigger_audit_scan' })
-        }
-        break
-
-      case 't':
-      case 'T':
-        this.onAction({ type: 'toggle_theme_modal' })
-        break
-
-      case 'escape':
-        if (uiState.filterQuery) {
-          // Clear filter if one is applied
-          this.onAction({ type: 'exit_filter_mode', clearQuery: true })
-        }
-        // Otherwise do nothing - Escape no longer exits the CLI
-        break
+    // Shifted letters become uppercase tokens so the vim pair g/G stays distinct.
+    const token = key.shift && /^[a-z]$/.test(key.name) ? key.name.toUpperCase() : key.name
+    const binding = findBinding(token)
+    if (binding?.action) {
+      this.onAction(binding.action)
     }
   }
 

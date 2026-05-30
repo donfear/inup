@@ -64,7 +64,7 @@ export function renderPackageInfoModal(
     return {
       lines: renderModalFrame(compactSections, {
         terminalWidth,
-        terminalHeight,
+        terminalHeight: Math.max(8, terminalHeight - 4),
         minWidth: 60,
         maxWidth: 120,
       }),

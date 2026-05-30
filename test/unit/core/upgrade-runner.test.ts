@@ -122,7 +122,7 @@ describe('UpgradeRunner terminal handoff', () => {
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('All packages are up to date'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('up to date'))
     expect(mocks.upgradePackages).not.toHaveBeenCalled()
     logSpy.mockRestore()
   })
@@ -132,7 +132,7 @@ describe('UpgradeRunner terminal handoff', () => {
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No packages selected'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Nothing selected'))
     expect(mocks.upgradePackages).not.toHaveBeenCalled()
     logSpy.mockRestore()
   })

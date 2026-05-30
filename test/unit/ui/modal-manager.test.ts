@@ -31,4 +31,16 @@ describe('ModalManager', () => {
     expect(manager.setModalLoading(true, secondSessionId)).toBe(true)
     expect(manager.isLoading()).toBe(true)
   })
+
+  it('toggles the help overlay independently', () => {
+    const manager = new ModalManager()
+
+    expect(manager.isHelpModalOpen()).toBe(false)
+    manager.toggleHelpModal()
+    expect(manager.isHelpModalOpen()).toBe(true)
+    expect(manager.getState().showHelpModal).toBe(true)
+
+    manager.closeHelpModal()
+    expect(manager.isHelpModalOpen()).toBe(false)
+  })
 })
