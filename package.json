@@ -21,7 +21,8 @@
     "demo:setup": "cd docs/demo-project && pnpm install",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "docs:keys": "UPDATE_README=1 vitest run keymap-readme"
   },
   "author": "Donfear",
   "keywords": [
