@@ -10,6 +10,7 @@ export interface ModalState {
   infoModalTab: InfoModalTab // Active tab within the info modal
   showDebugModal: boolean // Whether to show the debug/performance modal
   debugModalScrollOffset: number // Scroll position within the debug modal
+  showHelpModal: boolean // Whether to show the keyboard-shortcut help overlay
 }
 
 export class ModalManager {
@@ -25,6 +26,7 @@ export class ModalManager {
       infoModalTab: 'info',
       showDebugModal: false,
       debugModalScrollOffset: 0,
+      showHelpModal: false,
     }
   }
 
@@ -46,6 +48,18 @@ export class ModalManager {
   toggleDebugModal(): void {
     this.state.showDebugModal = !this.state.showDebugModal
     this.state.debugModalScrollOffset = 0
+  }
+
+  isHelpModalOpen(): boolean {
+    return this.state.showHelpModal
+  }
+
+  toggleHelpModal(): void {
+    this.state.showHelpModal = !this.state.showHelpModal
+  }
+
+  closeHelpModal(): void {
+    this.state.showHelpModal = false
   }
 
   closeDebugModal(): void {

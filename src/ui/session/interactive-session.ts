@@ -12,6 +12,8 @@ import { PackageListRenderOptions } from '../renderer/package-list'
 import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from '../themes-colors'
 import { getPerformanceTracker, renderPerformanceModal } from '../../features/debug'
 import { PackageInfoModalController, VulnerabilityAuditController } from '../controllers'
+import { renderHelpModal } from '../renderer/help-modal'
+import { configManager } from '../../utils/config'
 import { dispatchAction } from './action-dispatcher'
 
 function getTerminalHeight(): number {
@@ -34,7 +36,7 @@ export async function runInteractiveSession(
 ): Promise<PackageSelectionState[]> {
   return new Promise((resolve) => {
     const states = selectionStates
-    const stateManager = new StateManager(0, getTerminalHeight())
+    const stateManager = new StateManager(0, getTerminalHeight(), configManager.getFilters() ?? undefined)
     let isResolved = false
     let ownsAlternateScreen = false
     const vulnerabilityDisplayOptions: VulnerabilityDisplayOptions = options
@@ -76,6 +78,7 @@ export async function runInteractiveSession(
       switchTab: key('Tab ') + hint('Switch tab'),
       closeInfo: key('I / Esc ') + hint('Close'),
       closeTheme: key('T / Esc ') + hint('Close'),
+      closeHelp: key('? / Esc ') + hint('Close'),
     }
 
     const buildModalHeaderLines = (shortcutLabel: string): string[] => [
@@ -179,6 +182,18 @@ export async function runInteractiveSession(
           terminalHeight,
           bgCode
         )
+      } else if (uiState.showHelpModal) {
+        const terminalWidth = process.stdout.columns || 80
+        const terminalHeight = getTerminalHeight()
+        const modalLines = renderHelpModal(terminalWidth, terminalHeight)
+        renderModalViewport(
+          'info-modal',
+          SHORTCUTS.closeHelp,
+          modalLines,
+          terminalWidth,
+          terminalHeight,
+          bgCode
+        )
       } else if (uiState.showDebugModal) {
         const terminalWidth = process.stdout.columns || 80
         const terminalHeight = getTerminalHeight()
@@ -276,7 +291,8 @@ export async function runInteractiveSession(
           terminalWidth,
           loadingProgress,
           auditProgress,
-          packageListRenderOptions
+          packageListRenderOptions,
+          uiState.notice
         )
 
         renderViewport(lines, terminalWidth, terminalHeight, bgCode)
@@ -313,6 +329,8 @@ export async function runInteractiveSession(
       isResolved = true
       onRefreshViewReady?.(undefined)
       packageInfoModalController.cancel()
+      // Remember the view filters for next launch (best-effort, never throws).
+      configManager.setFilters(stateManager.getFilterSnapshot())
       releaseInteractiveScreen()
       cleanupInteractiveSession()
       process.off('exit', emergencyCleanup)

@@ -1,7 +1,7 @@
 import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
 import { NavigationManager } from './navigation-manager'
 import { ModalManager, InfoModalTab } from './modal-manager'
-import { FilterManager } from './filter-manager'
+import { FilterManager, type PersistedFilters } from './filter-manager'
 import { ThemeManager } from './theme-manager'
 
 export interface DisplayState {
@@ -32,10 +32,12 @@ export interface UIState {
   infoModalTab: InfoModalTab
   showDebugModal: boolean
   debugModalScrollOffset: number
+  showHelpModal: boolean
   filterMode: boolean
   filterQuery: string
   showThemeModal: boolean
   currentTheme: string
+  notice: string | null
 }
 
 export class StateManager {
@@ -45,14 +47,19 @@ export class StateManager {
   private themeManager: ThemeManager
   private displayState: DisplayState
   private renderState: RenderState
+  private notice: string | null = null
   private readonly headerLines = 5 // title (with label) + empty + 1 instruction line + status + empty
 
-  constructor(initialRow: number = 0, terminalHeight: number = 24) {
+  constructor(
+    initialRow: number = 0,
+    terminalHeight: number = 24,
+    persistedFilters?: Partial<PersistedFilters>
+  ) {
     const maxVisibleItems = Math.max(5, terminalHeight - this.headerLines - 2)
 
     this.navigationManager = new NavigationManager(initialRow, maxVisibleItems)
     this.modalManager = new ModalManager()
-    this.filterManager = new FilterManager()
+    this.filterManager = new FilterManager(persistedFilters)
     this.themeManager = new ThemeManager()
 
     this.displayState = {
@@ -91,11 +98,27 @@ export class StateManager {
       infoModalTab: modalState.infoModalTab,
       showDebugModal: modalState.showDebugModal,
       debugModalScrollOffset: modalState.debugModalScrollOffset,
+      showHelpModal: modalState.showHelpModal,
       filterMode: filterState.filterMode,
       filterQuery: filterState.filterQuery,
       showThemeModal: themeState.showThemeModal,
       currentTheme: themeState.currentTheme,
+      notice: this.notice,
     }
+  }
+
+  // Transient status hint shown once (e.g. "nothing selected"); cleared by the
+  // dispatcher on the next action so it never lingers.
+  setNotice(message: string): void {
+    this.notice = message
+  }
+
+  clearNotice(): void {
+    this.notice = null
+  }
+
+  getNotice(): string | null {
+    return this.notice
   }
 
   setRenderableItems(items: RenderableItem[]): void {
@@ -110,6 +133,14 @@ export class StateManager {
 
   navigateDown(totalItems: number): void {
     this.navigationManager.navigateDown(totalItems)
+  }
+
+  navigateTop(totalItems: number): void {
+    this.navigationManager.navigateTop(totalItems)
+  }
+
+  navigateBottom(totalItems: number): void {
+    this.navigationManager.navigateBottom(totalItems)
   }
 
   packageIndexToVisualIndex(packageIndex: number): number {
@@ -193,6 +224,22 @@ export class StateManager {
     })
   }
 
+  // Toggle the current row: clear it if selected, otherwise pick the best
+  // available update (latest preferred, then range).
+  toggleSelection(states: PackageSelectionState[]): void {
+    if (states.length === 0) return
+    const currentState = states[this.navigationManager.getCurrentRow()]
+    if (!currentState || currentState.loadState !== 'ready') return
+
+    if (currentState.selectedOption !== 'none') {
+      currentState.selectedOption = 'none'
+    } else if (currentState.hasMajorUpdate) {
+      currentState.selectedOption = 'latest'
+    } else if (currentState.hasRangeUpdate) {
+      currentState.selectedOption = 'range'
+    }
+  }
+
   // Modal delegation
   toggleInfoModal(): number {
     const currentRow = this.navigationManager.getCurrentRow()
@@ -258,6 +305,16 @@ export class StateManager {
 
   closeDebugModal(): void {
     this.modalManager.closeDebugModal()
+  }
+
+  toggleHelpModal(): void {
+    this.modalManager.toggleHelpModal()
+    this.renderState.forceFullRender = true
+  }
+
+  closeHelpModal(): void {
+    this.modalManager.closeHelpModal()
+    this.renderState.forceFullRender = true
   }
 
   scrollDebugModalUp(): boolean {
@@ -334,6 +391,10 @@ export class StateManager {
 
   getActiveFilterLabel(): string {
     return this.filterManager.getActiveFilterLabel()
+  }
+
+  getFilterSnapshot(): PersistedFilters {
+    return this.filterManager.getPersistableState()
   }
 
   // Display and render state management

@@ -2,9 +2,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME } from '../config'
+import type { PersistedFilters } from '../ui/state/filter-manager'
 
 interface ConfigFile {
   theme?: string
+  filters?: PersistedFilters
 }
 
 class ConfigManager {
@@ -55,6 +57,17 @@ class ConfigManager {
   setTheme(theme: string): void {
     const config = this.readConfig()
     config.theme = theme
+    this.writeConfig(config)
+  }
+
+  getFilters(): PersistedFilters | null {
+    const config = this.readConfig()
+    return config.filters ?? null
+  }
+
+  setFilters(filters: PersistedFilters): void {
+    const config = this.readConfig()
+    config.filters = filters
     this.writeConfig(config)
   }
 }

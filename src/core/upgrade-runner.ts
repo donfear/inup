@@ -118,7 +118,7 @@ export class UpgradeRunner {
       let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
       if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
-        console.log(chalk.green('✅ All packages are up to date!'))
+        console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
         return
       }
 
@@ -127,7 +127,7 @@ export class UpgradeRunner {
 
       while (true) {
         if (selectedChoices.length === 0) {
-          console.log(chalk.yellow('No packages selected. Exiting...'))
+          console.log(chalk.yellow('Nothing selected — no changes made.'))
           return
         }
 

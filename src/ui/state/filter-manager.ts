@@ -12,18 +12,32 @@ export interface FilterState {
   showOnlyVulnerable: boolean // When true, only show packages with vulnerabilities
 }
 
+/** The subset of filter state persisted across runs (transient search excluded). */
+export type PersistedFilters = Omit<FilterState, 'filterMode' | 'filterQuery'>
+
 export class FilterManager {
   private state: FilterState
 
-  constructor() {
+  constructor(initial?: Partial<PersistedFilters>) {
     this.state = {
       filterMode: false,
       filterQuery: '',
-      showDependencies: true,
-      showDevDependencies: true,
-      showPeerDependencies: true,
-      showOptionalDependencies: true,
-      showOnlyVulnerable: false,
+      showDependencies: initial?.showDependencies ?? true,
+      showDevDependencies: initial?.showDevDependencies ?? true,
+      showPeerDependencies: initial?.showPeerDependencies ?? true,
+      showOptionalDependencies: initial?.showOptionalDependencies ?? true,
+      showOnlyVulnerable: initial?.showOnlyVulnerable ?? false,
+    }
+  }
+
+  /** Snapshot of the persistable filter toggles (no transient search state). */
+  getPersistableState(): PersistedFilters {
+    return {
+      showDependencies: this.state.showDependencies,
+      showDevDependencies: this.state.showDevDependencies,
+      showPeerDependencies: this.state.showPeerDependencies,
+      showOptionalDependencies: this.state.showOptionalDependencies,
+      showOnlyVulnerable: this.state.showOnlyVulnerable,
     }
   }
 

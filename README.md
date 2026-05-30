@@ -54,18 +54,32 @@ inup [options]
 
 ## Keyboard Shortcuts
 
+<!-- KEYS:START -->
 | Key | Action |
 |-----|--------|
-| `↑` `↓` | Navigate packages |
-| `←` `→` | Select version (current, patch, minor, major) |
-| `Space` | Toggle selection |
-| `m` | Select all minor updates |
-| `l` | Select all latest updates |
-| `u` | Unselect all |
-| `/` | Search packages |
-| `i` | View package info |
-| `t` | Change theme |
-| `Enter` | Confirm and upgrade |
+| `↑ / k` | Move up |
+| `↓ / j` | Move down |
+| `g` | Jump to the first package |
+| `G` | Jump to the last package |
+| `←` | Cycle selection left (none → range → latest) |
+| `→` | Cycle selection right (none → range → latest) |
+| `Space` | Toggle the current package on/off |
+| `m` | Select all minor/patch updates |
+| `l` | Select all latest updates (including major) |
+| `u` | Unselect all packages |
+| `Enter` | Confirm selection and upgrade |
+| `/` | Search packages by name |
+| `d` | Toggle devDependencies |
+| `p` | Toggle peerDependencies |
+| `o` | Toggle optionalDependencies |
+| `s` | Run the vulnerability audit |
+| `v` | Show only vulnerable packages |
+| `Esc` | Clear the active search filter |
+| `i` | View package details and changelog |
+| `t` | Change the color theme |
+| `?` | Show this help |
+| `!` | Show the performance/debug panel |
+<!-- KEYS:END -->
 
 ## Privacy
 

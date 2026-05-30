@@ -127,6 +127,35 @@ export class NavigationManager {
     this.ensureVisible(this.state.currentRow, totalItems)
   }
 
+  navigateTop(totalItems: number): void {
+    if (totalItems === 0) return
+    this.state.previousRow = this.state.currentRow
+    this.state.currentRow = this.firstPackageIndex()
+    this.ensureVisible(this.state.currentRow, totalItems)
+  }
+
+  navigateBottom(totalItems: number): void {
+    if (totalItems === 0) return
+    this.state.previousRow = this.state.currentRow
+    this.state.currentRow = this.lastPackageIndex(totalItems)
+    this.ensureVisible(this.state.currentRow, totalItems)
+  }
+
+  private firstPackageIndex(): number {
+    if (this.renderableItems.length === 0) return 0
+    const first = this.renderableItems.find((item) => item.type === 'package')
+    return first && first.type === 'package' ? first.originalIndex : 0
+  }
+
+  private lastPackageIndex(totalPackages: number): number {
+    if (this.renderableItems.length === 0) return totalPackages - 1
+    for (let i = this.renderableItems.length - 1; i >= 0; i--) {
+      const item = this.renderableItems[i]
+      if (item.type === 'package') return item.originalIndex
+    }
+    return totalPackages - 1
+  }
+
   private ensureVisible(packageIndex: number, totalPackages: number): void {
     // Convert package index to visual index for scrolling
     const visualIndex = this.packageIndexToVisualIndex(packageIndex)

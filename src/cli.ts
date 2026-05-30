@@ -101,29 +101,27 @@ export async function runCli(options: CliOptions): Promise<void> {
   // After the main flow completes, check if there's an update available
   const updateCheck = await updateCheckPromise
   if (updateCheck?.isOutdated) {
+    const columns = process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80
+    const innerWidth = Math.max(40, Math.min(columns, 100) - 2) // chars between the │ borders
+    const border = chalk.yellow
+    const padTo = (visibleLength: number) => ' '.repeat(Math.max(0, innerWidth - visibleLength))
+
+    const line1Plain = ` Update available! ${updateCheck.currentVersion} → ${updateCheck.latestVersion}`
+    const line1 =
+      ' ' +
+      chalk.bold.yellow('Update available! ') +
+      chalk.gray(updateCheck.currentVersion) +
+      ' → ' +
+      chalk.green(updateCheck.latestVersion)
+
+    const line2Plain = ` Run: ${updateCheck.updateCommand}`
+    const line2 = ' ' + chalk.gray('Run: ') + chalk.cyan(updateCheck.updateCommand)
+
     console.log('')
-    console.log(chalk.yellow('┌' + '─'.repeat(78) + '┐'))
-    console.log(
-      chalk.yellow('│') +
-        ' ' +
-        chalk.bold.yellow('Update available! ') +
-        chalk.gray(`${updateCheck.currentVersion}`) +
-        ' → ' +
-        chalk.green(`${updateCheck.latestVersion}`) +
-        ' '.repeat(
-          78 - 19 - updateCheck.currentVersion.length - 3 - updateCheck.latestVersion.length - 1
-        ) +
-        chalk.yellow('│')
-    )
-    console.log(
-      chalk.yellow('│') +
-        ' ' +
-        chalk.gray('Run: ') +
-        chalk.cyan(updateCheck.updateCommand) +
-        ' '.repeat(78 - 6 - updateCheck.updateCommand.length - 1) +
-        chalk.yellow('│')
-    )
-    console.log(chalk.yellow('└' + '─'.repeat(78) + '┘'))
+    console.log(border('┌' + '─'.repeat(innerWidth) + '┐'))
+    console.log(border('│') + line1 + padTo(line1Plain.length) + border('│'))
+    console.log(border('│') + line2 + padTo(line2Plain.length) + border('│'))
+    console.log(border('└' + '─'.repeat(innerWidth) + '┘'))
     console.log('')
   }
 }
