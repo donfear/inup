@@ -172,7 +172,7 @@ export async function runInteractiveSession(
           themeManager.getCurrentTheme(),
           themeManager.getPreviewTheme(),
           terminalWidth,
-          terminalHeight
+          Math.max(8, terminalHeight - 8)
         )
 
         renderModalViewport(
@@ -242,7 +242,7 @@ export async function runInteractiveSession(
           const result = renderer.renderPackageInfoLoading(
             selectedState,
             terminalWidth,
-            Math.max(8, terminalHeight - 4)
+            Math.max(8, terminalHeight - 8)
           )
           infoModalMaxScrollOffset = result.maxScrollOffset
           renderModalViewport(
