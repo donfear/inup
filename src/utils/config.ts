@@ -14,7 +14,7 @@ class ConfigManager {
   private configPath: string
 
   constructor() {
-    // Use env-paths` for cross-platform config directory support
+    // Use env-paths for cross-platform config directory support
     // Mac/Linux: ~/.config/inup, Windows: %APPDATA%/inup
     const paths = envPaths(PACKAGE_NAME)
     this.configDir = paths.config

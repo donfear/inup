@@ -214,17 +214,22 @@ export function findBinding(token: string): KeyBinding | undefined {
   return undefined
 }
 
+// Computed once at module load — KEY_BINDINGS is static so these never change.
+const _footerHints: Array<{ keyLabel: string; label: string }> = KEY_BINDINGS.flatMap(
+  (binding) => (binding.footer ? [binding.footer] : [])
+)
+const _helpGroups: Array<{ group: KeyGroup; bindings: KeyBinding[] }> = KEY_GROUPS.map(
+  (group) => ({ group, bindings: KEY_BINDINGS.filter((b) => b.group === group) })
+).filter((entry) => entry.bindings.length > 0)
+
 /** Curated short hints for the compact footer line, in display order. */
 export function getFooterHints(): Array<{ keyLabel: string; label: string }> {
-  return KEY_BINDINGS.flatMap((binding) => (binding.footer ? [binding.footer] : []))
+  return _footerHints
 }
 
 /** Bindings grouped for the `?` help overlay, preserving {@link KEY_GROUPS} order. */
 export function getHelpGroups(): Array<{ group: KeyGroup; bindings: KeyBinding[] }> {
-  return KEY_GROUPS.map((group) => ({
-    group,
-    bindings: KEY_BINDINGS.filter((binding) => binding.group === group),
-  })).filter((entry) => entry.bindings.length > 0)
+  return _helpGroups
 }
 
 /**

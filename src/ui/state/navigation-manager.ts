@@ -144,7 +144,7 @@ export class NavigationManager {
   private firstPackageIndex(): number {
     if (this.renderableItems.length === 0) return 0
     const first = this.renderableItems.find((item) => item.type === 'package')
-    return first && first.type === 'package' ? first.originalIndex : 0
+    return first ? first.originalIndex : 0
   }
 
   private lastPackageIndex(totalPackages: number): number {

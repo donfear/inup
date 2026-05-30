@@ -60,19 +60,17 @@ export function renderHelpModal(
 
   lines.push(renderModalSeparator(padding, modalWidth))
 
-  let renderedBodyRows = 0
   for (const row of visibleSlice) {
     lines.push(renderModalRow(padding, modalWidth, row))
-    renderedBodyRows++
   }
 
   const footer = needsScroll
     ? chalk.gray(
-        `Lines ${clampedOffset + 1}–${Math.min(clampedOffset + visibleBodyRows, totalScrollableRows)} of ${totalScrollableRows}`
+        `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + visibleBodyRows, totalScrollableRows)} of ${totalScrollableRows}`
       )
     : null
 
-  const usedContentRows = pinnedRowCount + 1 + renderedBodyRows + (footer ? 1 : 0)
+  const usedContentRows = pinnedRowCount + 1 + visibleSlice.length + (footer ? 1 : 0)
   const totalContentSlots = fixedModalHeight - 2
   const emptyRows = Math.max(0, totalContentSlots - usedContentRows)
   for (let i = 0; i < emptyRows; i++) lines.push(renderModalRow(padding, modalWidth, ''))
