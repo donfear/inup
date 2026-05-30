@@ -215,12 +215,13 @@ export function findBinding(token: string): KeyBinding | undefined {
 }
 
 // Computed once at module load — KEY_BINDINGS is static so these never change.
-const _footerHints: Array<{ keyLabel: string; label: string }> = KEY_BINDINGS.flatMap(
-  (binding) => (binding.footer ? [binding.footer] : [])
+const _footerHints: Array<{ keyLabel: string; label: string }> = KEY_BINDINGS.flatMap((binding) =>
+  binding.footer ? [binding.footer] : []
 )
-const _helpGroups: Array<{ group: KeyGroup; bindings: KeyBinding[] }> = KEY_GROUPS.map(
-  (group) => ({ group, bindings: KEY_BINDINGS.filter((b) => b.group === group) })
-).filter((entry) => entry.bindings.length > 0)
+const _helpGroups: Array<{ group: KeyGroup; bindings: KeyBinding[] }> = KEY_GROUPS.map((group) => ({
+  group,
+  bindings: KEY_BINDINGS.filter((b) => b.group === group),
+})).filter((entry) => entry.bindings.length > 0)
 
 /** Curated short hints for the compact footer line, in display order. */
 export function getFooterHints(): Array<{ keyLabel: string; label: string }> {
