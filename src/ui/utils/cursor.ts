@@ -74,16 +74,20 @@ export const ConsoleUtils = {
   LINE_WIDTH: 80,
 
   /**
-   * Show a progress message on the current line (overwrites previous content)
+   * Show a progress message on the current line (overwrites previous content).
+   * Written to stderr so stdout stays clean for --json / piped output, and only
+   * when stderr is a TTY — the \r animation is just noise in a redirected log.
    */
   showProgress(message: string): void {
-    process.stdout.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${message}`)
+    if (!process.stderr.isTTY) return
+    process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${message}`)
   },
 
   /**
    * Clear the current progress line
    */
   clearProgress(): void {
-    process.stdout.write('\r' + ' '.repeat(ConsoleUtils.LINE_WIDTH) + '\r')
+    if (!process.stderr.isTTY) return
+    process.stderr.write('\r' + ' '.repeat(ConsoleUtils.LINE_WIDTH) + '\r')
   },
 }

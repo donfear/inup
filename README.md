@@ -49,8 +49,29 @@ inup [options]
 -i, --ignore <packages>       Ignore packages (comma-separated, glob supported)
 --max-depth <number>          Maximum scan depth for package discovery (default: 10)
 --package-manager <name>      Force package manager (npm, yarn, pnpm, bun)
+--json                        Print a machine-readable JSON report and exit (read-only)
+-c, --check                   Exit non-zero if updates exist, without writing (for CI)
 --debug                       Write verbose debug logs
 ```
+
+## CI & Scripting
+
+`inup` runs headless automatically when stdout isn't a TTY or `$CI` is set, so it never hangs in a
+pipeline waiting on the interactive UI. Both `--json` and `--check` are **read-only** — they report,
+they never edit `package.json` or install.
+
+```bash
+inup --check            # exit 1 if anything is outdated → fails the build
+inup --json | jq        # structured drift report for dashboards/bots
+inup | cat              # plain line-based report when piped to a log
+```
+
+Each reported package carries its health signals: `deprecated` (npm deprecation message), `enginesNode`
+(declared `engines.node`), and `vulnerability` (known advisories on the currently-installed version,
+from one bulk `npm audit`-style request). The summary includes a `vulnerable` count.
+
+Output hygiene: with `--json`, stdout carries **only** the JSON document; all progress and warnings go
+to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
 
 ## Keyboard Shortcuts
 

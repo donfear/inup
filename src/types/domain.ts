@@ -85,6 +85,34 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
 }
 
+export interface HeadlessOptions {
+  json?: boolean // Emit a machine-readable JSON report on stdout
+  check?: boolean // Exit non-zero when updates exist (CI gate)
+}
+
+export interface HeadlessReportEntry {
+  name: string
+  current: string // Raw specifier from package.json (with ^/~ prefix)
+  range: string // Latest version satisfying the current range
+  latest: string // Absolute latest version
+  type: DependencyType
+  packageJsonPath: string
+  hasMajorUpdate: boolean
+  deprecated?: string // npm deprecation message for the latest version, if any
+  enginesNode?: string // declared engines.node range for the latest version, if any
+  vulnerability?: VulnerabilitySummary
+}
+
+export interface HeadlessReport {
+  summary: {
+    total: number // Packages scanned
+    outdated: number // Packages with an available update
+    major: number // Of the outdated, how many are a major bump
+    vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
+  }
+  outdated: HeadlessReportEntry[]
+}
+
 export interface PackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
