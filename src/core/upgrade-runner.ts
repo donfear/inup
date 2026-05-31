@@ -37,6 +37,7 @@ export class UpgradeRunner {
       showPeerDependencyVulnerabilities: options?.showPeerDependencyVulnerabilities ?? false,
       showOptionalDependencyVulnerabilities:
         options?.showOptionalDependencyVulnerabilities ?? false,
+      saveExact: options?.saveExact ?? false,
     })
     this.upgrader = new PackageUpgrader(this.packageManager)
   }

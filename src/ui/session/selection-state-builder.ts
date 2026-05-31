@@ -116,7 +116,8 @@ export function createPendingSelectionStates(
 }
 
 export function createUpgradeChoices(
-  selectedStates: PackageSelectionState[]
+  selectedStates: PackageSelectionState[],
+  saveExact: boolean = false
 ): PackageUpgradeChoice[] {
   const choices: PackageUpgradeChoice[] = []
   selectedStates
@@ -124,10 +125,10 @@ export function createUpgradeChoices(
     .forEach((state) => {
       const targetVersion =
         state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion
-      const targetVersionWithPrefix = applyVersionPrefix(
-        state.currentVersionSpecifier,
-        targetVersion
-      )
+      // Preserve the original range prefix (^/~) by default; --save-exact writes the bare version.
+      const targetVersionWithPrefix = saveExact
+        ? targetVersion
+        : applyVersionPrefix(state.currentVersionSpecifier, targetVersion)
 
       const pathsToUpdate = state.packageJsonPaths || [state.packageJsonPath]
       pathsToUpdate.forEach((packageJsonPath) => {

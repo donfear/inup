@@ -92,6 +92,14 @@ describe('PackageManagerDetector', () => {
       expect(result.name).toBe('bun')
     })
 
+    it('should detect bun from text bun.lock (Bun >= 1.2)', () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({}))
+      writeFileSync(join(testDir, 'bun.lock'), '')
+
+      const result = PackageManagerDetector.detect(testDir)
+      expect(result.name).toBe('bun')
+    })
+
     it('should prefer packageManager field over lock files', () => {
       writeFileSync(
         join(testDir, 'package.json'),

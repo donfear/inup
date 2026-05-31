@@ -109,6 +109,8 @@ export class PackageManagerDetector {
     const lockFileChecks = [
       { pm: PACKAGE_MANAGERS.pnpm, path: join(cwd, 'pnpm-lock.yaml') },
       { pm: PACKAGE_MANAGERS.bun, path: join(cwd, 'bun.lockb') },
+      // Bun >= 1.2 writes a text `bun.lock` instead of the binary `bun.lockb`.
+      { pm: PACKAGE_MANAGERS.bun, path: join(cwd, 'bun.lock') },
       { pm: PACKAGE_MANAGERS.yarn, path: join(cwd, 'yarn.lock') },
       { pm: PACKAGE_MANAGERS.npm, path: join(cwd, 'package-lock.json') },
     ]

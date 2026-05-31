@@ -7,7 +7,7 @@ import { UpgradeRunner } from './index'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
 import { PackageManager } from './types'
-import { enableDebugLogging } from './utils'
+import { enableDebugLogging, applyColorSetting } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
 import { TerminalInput } from './ui'
 
@@ -20,9 +20,14 @@ export interface CliOptions {
   maxDepth: string
   packageManager?: string
   debug?: boolean
+  color?: boolean
+  saveExact?: boolean
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
+  // Resolve colored-output intent before anything renders.
+  applyColorSetting(options.color)
+
   const cwd = resolve(options.dir)
 
   if (options.debug || process.env.INUP_DEBUG === '1') {
@@ -95,6 +100,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
+    saveExact: options.saveExact ?? false,
   })
   await upgrader.run()
 
@@ -141,6 +147,8 @@ program
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
+  .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
+  .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
   .action(runCli)
 
 // Handle uncaught errors gracefully
