@@ -22,7 +22,9 @@ import {
   runInteractiveSession,
 } from './ui/session'
 
-type InteractiveUIOptions = VulnerabilityDisplayOptions
+interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
+  saveExact?: boolean
+}
 
 const DEFAULT_VULNERABILITY_DISPLAY_OPTIONS: Required<VulnerabilityDisplayOptions> = {
   showPeerDependencyVulnerabilities: false,
@@ -45,7 +47,8 @@ function normalizeVulnerabilityDisplayOptions(
 export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
-  private readonly options: Required<InteractiveUIOptions>
+  private readonly options: Required<VulnerabilityDisplayOptions>
+  private readonly saveExact: boolean
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
@@ -54,6 +57,7 @@ export class InteractiveUI {
     this.renderer = new UIRenderer()
     this.packageManager = packageManager
     this.options = normalizeVulnerabilityDisplayOptions(options)
+    this.saveExact = options?.saveExact ?? false
   }
 
   public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
@@ -78,7 +82,7 @@ export class InteractiveUI {
       this.options,
       (refresh) => { this.refreshView = refresh }
     )
-    return createUpgradeChoices(selectedStates)
+    return createUpgradeChoices(selectedStates, this.saveExact)
   }
 
   public createSelectionStates(
@@ -154,7 +158,7 @@ export class InteractiveUI {
       progress,
       attachRefresh
     )
-    return createUpgradeChoices(selectedStates)
+    return createUpgradeChoices(selectedStates, this.saveExact)
   }
 
   public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {

@@ -188,19 +188,28 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
 }
 
 /**
- * Get ANSI escape code to set terminal background color
+ * Get ANSI escape code to set terminal background color.
+ *
+ * Returns an empty string when color output is disabled (`--no-color`/`NO_COLOR`
+ * set `chalk.level` to 0), so the TUI inherits the user's own terminal
+ * background instead of painting over it. This escape is raw (not produced by
+ * chalk), so it must be gated explicitly.
  */
 export function getTerminalBgColorCode(): string {
+  if (chalk.level === 0) {
+    return ''
+  }
   const hex = getThemeBgColor()
   const rgb = hexToRgb(hex)
   return `\x1b[48;2;${rgb.r};${rgb.g};${rgb.b}m`
 }
 
 /**
- * Get ANSI escape code to reset terminal colors
+ * Get ANSI escape code to reset terminal colors. Empty when color is disabled,
+ * so a `--no-color` run emits no escape sequences at all.
  */
 export function getTerminalResetCode(): string {
-  return '\x1b[0m'
+  return chalk.level === 0 ? '' : '\x1b[0m'
 }
 
 const BRAND_COLORS = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
