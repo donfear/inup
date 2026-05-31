@@ -77,6 +77,7 @@ export interface VulnerabilityDisplayOptions {
 export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   cwd?: string
   excludePatterns?: string[]
+  scanDirs?: string[] // Directory names to scan even if in the default skip list (from .inuprc)
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)

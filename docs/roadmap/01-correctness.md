@@ -1,35 +1,38 @@
 # P0 — Correctness: protect the writes that already work
 
-> **Read this first, because it overturns the old plan.** The previous roadmap opened by claiming
-> inup *"silently strips the `^`/`~` range prefix and pins your dependency on every upgrade."*
-> **That is false against the current code** (verified 2026-05-30). The write at
-> [upgrader.ts:142](../../src/core/upgrader.ts#L142)/[154](../../src/core/upgrader.ts#L154) does
-> write `choice.targetVersion` verbatim — but that value is **already prefixed** upstream:
-> [selection-state-builder.ts:127-139](../../src/ui/session/selection-state-builder.ts#L127-L139)
+> **Status: shipped (2026-05-31).** All four items below are now implemented and tested. The phase
+> opened smaller than the original roadmap feared — re-verifying against source showed the headline
+> "prefix-stripping" bug never existed and two items were already done — so what shipped is: the
+> formatting-preservation write fix (#2), the golden test that locks it (#1), and the `SKIP_DIRS`
+> override + warning (#4). #3 was already present before this work.
+>
+> **On the (non-)bug.** The previous roadmap claimed inup *"silently strips the `^`/`~` range prefix
+> and pins your dependency on every upgrade."* **That was false against the code.** The write at
+> [upgrader.ts:142](../../src/core/upgrader.ts#L142)/[154](../../src/core/upgrader.ts#L154) writes
+> `choice.targetVersion` verbatim — but that value is **already prefixed** upstream:
+> [selection-state-builder.ts:120-133](../../src/ui/session/selection-state-builder.ts#L120-L133)
 > builds it through `applyVersionPrefix()`
 > ([ui/utils/version.ts:6-10](../../src/ui/utils/version.ts#L6-L10)), which lifts the original
-> operator and re-applies it. So `"^1.2.3"` → `"^1.5.0"`. The headline bug doesn't exist.
->
-> That changes this phase's job. It is no longer *"stop producing wrong results"* — it's **"protect
-> the correct behavior with a test, then fix three genuinely-silent mis-detections."** P0 went from a
-> phase to an afternoon. The trust floor is mostly already poured; we're sealing it.
+> operator and re-applies it. So `"^1.2.3"` → `"^1.5.0"`. Default prefix preservation was — and is —
+> already covered by a test
+> ([selection-state-builder.test.ts:23-31](../../test/unit/ui/selection-state-builder.test.ts#L23-L31)).
 
 See the [legend](README.md#legend) for rating definitions.
 
-| # | Task | Value | Cx | Effort | Notes / reuse |
-|---|---|:--:|:--:|---|---|
-| 1 | **Lock the write path with a characterization test** | 🔴 | S | 0.5d | **New, and the most important item here.** Prefix-preservation works but has **no test guarding it** — one careless refactor of `applyVersionPrefix` or `createUpgradeChoices` silently reintroduces the exact bug the old roadmap feared. Golden-test the write end-to-end: feed a `package.json` with a `^` dep, a `~` dep, an exact pin, tabs *and* 4-space siblings; assert the output preserves each operator, the indentation, the trailing newline, and is a **no-op when nothing changed**. This is the cheapest insurance in the project and the guardrail for #2. Extend [test/unit/core](../../test/unit/core). |
-| 2 | **Preserve `package.json` formatting on write** | 🔴 | S | 0.5–1d | [upgrader.ts:161](../../src/core/upgrader.ts#L161) does `JSON.stringify(pkg, null, 2) + '\n'`, normalizing tabs/4-space/odd-ordered files to 2-space and forcing a trailing newline. Real, but **S not M**: detect the existing indent (read the raw text before parse) and the original final-newline, round-trip both, and **skip the write entirely if the serialized result is unchanged**. Re-rated down — the old roadmap called this M by lumping it with the (non-existent) prefix bug. |
-| 3 | **Detect Bun's text lockfile `bun.lock`** | 🔴 | S | 0.5d | Bun ≥ 1.2 writes a text `bun.lock`; the detector only lists `bun.lockb` ([package-manager-detector.ts:44](../../src/services/package-manager-detector.ts#L44),[:111](../../src/services/package-manager-detector.ts#L111)). A lockfile-only Bun repo falls through to the npm default. One array entry. *Narrow blast radius:* repos with `"packageManager": "bun@…"` are already caught by the field regex at [:92](../../src/services/package-manager-detector.ts#L92). |
-| 4 | **Fix the `lib/` silent skip — make `SKIP_DIRS` overridable** | 🟡 | S | 0.5d | `SKIP_DIRS` hardcodes `lib`/`es`/`esm`/`cjs` ([scan.ts:9-19](../../src/utils/filesystem/scan.ts#L9-L19)), so a monorepo package living under `lib/` is **silently skipped, no warning**. The `.inuprc` reader already exists ([project-config.ts:8](../../src/config/project-config.ts#L8)) — add an `includeDirs`/`scanDirs` override there, and at minimum log when a `package.json`-bearing dir is pruned by the default list. *(Broader discovery work — `.gitignore` awareness, scanner de-dup — lives in [06-ecosystem.md](06-ecosystem.md).)* |
+| # | Task | Value | Cx | Status |
+|---|---|:--:|:--:|---|
+| 1 | **Lock the write path with a characterization test** | 🔴 | S | ✅ **Done.** Default `^`/`~` preservation was already tested; this added the missing **end-to-end write** golden tests in [upgrader.test.ts](../../test/unit/core/upgrader.test.ts) — tab- and 4-space-indented fixtures, a `~`/exact operator, a no-trailing-newline file, and a **no-op when nothing changed** case (byte-identical output). Plus a focused unit test for the new format detector ([io.test.ts](../../test/unit/utils/io.test.ts)). |
+| 2 | **Preserve `package.json` formatting on write** | 🔴 | S | ✅ **Done.** New `detectJsonFormat()` in [io.ts](../../src/utils/filesystem/io.ts) reads the raw text before parse to recover the original indent (tabs / N-space) and trailing-newline. [upgrader.ts](../../src/core/upgrader.ts) round-trips both and **skips the write entirely when the serialized result is unchanged**. |
+| 3 | **Detect Bun's text lockfile `bun.lock`** | 🔴 | S | ✅ **Already done (pre-existing).** [package-manager-detector.ts:111-113](../../src/services/package-manager-detector.ts#L111-L113) lists `bun.lock` alongside `bun.lockb`, tested at [package-manager-detector.test.ts:95-101](../../test/unit/services/package-manager-detector.test.ts#L95-L101). No change needed. |
+| 4 | **Fix the `lib/` silent skip — make `SKIP_DIRS` overridable** | 🟡 | S | ✅ **Done.** `.inuprc` now accepts a `scanDirs` override ([project-config.ts](../../src/config/project-config.ts)) that threads through `cli.ts` → `PackageDetector` → [scan.ts](../../src/utils/filesystem/scan.ts), mirroring `excludePatterns`. When a `package.json`-bearing `lib`/`es`/`esm`/`cjs` dir is pruned by the default list, the detector prints a one-time warning pointing at `scanDirs`. `node_modules`/`dist`/`build`/`coverage`/`out` are excluded from the warning to avoid noise. *(Broader discovery work — `.gitignore` awareness, scanner de-dup — lives in [06-ecosystem.md](06-ecosystem.md).)* |
 
-## Why this ordering
+## How it was sequenced
 
-- **#1 before #2.** Write the lock test first, then make the formatting change against it — the test
-  is what lets you touch [upgrader.ts:160-162](../../src/core/upgrader.ts#L160-L162) without fear,
-  and it permanently documents the prefix-preservation contract so it can't quietly rot.
-- **#3 and #4 are independent afternoon fixes.** Each kills one class of *silent* wrongness
-  (mis-detected PM, skipped package). They don't depend on #1/#2 and can land in any order.
+- **#1 alongside #2.** The golden write tests were written against the formatting change so
+  [upgrader.ts](../../src/core/upgrader.ts) can be refactored without fear, and they permanently
+  document the prefix- and format-preservation contract so it can't quietly rot.
+- **#4 is independent.** It kills one class of *silent* wrongness (a real package skipped under
+  `lib/`) and shares no code with #1/#2.
 
 ## What was removed from the old P0 (and why)
 
@@ -38,17 +41,20 @@ See the [legend](README.md#legend) for rating definitions.
 - **"Cross-platform `package.json` path handling."** Demoted to a footnote. The string
   `packageJsonPath.replace('/package.json', '')` at
   [upgrader.ts:122](../../src/core/upgrader.ts#L122) is POSIX-only, but it only feeds a **spinner
-  label** (`packageDir`); the actual file write at [:161](../../src/core/upgrader.ts#L161) uses the
-  real path, and install dir resolution at [:52](../../src/core/upgrader.ts#L52) already uses
-  `dirname()`. It's a cosmetic log glitch on Windows, not a correctness bug. *Fix it opportunistically
-  by copying the `dirname()` call from line 52 — don't schedule it.*
+  label** (`packageDir`); the actual file write uses the real path, and install dir resolution at
+  [:54](../../src/core/upgrader.ts#L54) already uses `dirname()`. It's a cosmetic log glitch on
+  Windows, not a correctness bug. *Fix it opportunistically by copying the `dirname()` call — don't
+  schedule it.*
 
 ## Relationship to later phases
 
-- The **`--save-exact`** opt-out (for users who *want* exact pins) lives in
-  [06-ecosystem.md](06-ecosystem.md). Because preservation is already the default, that flag is now
-  the *primary* prefix control rather than a follow-on — see its reframing there.
+- The **`--save-exact`** opt-out (for users who *want* exact pins) is **already implemented
+  end-to-end** — flag at [cli.ts:151](../../src/cli.ts#L151), applied in
+  [selection-state-builder.ts:120-133](../../src/ui/session/selection-state-builder.ts#L120-L133),
+  tested at [selection-state-builder.test.ts:33-44](../../test/unit/ui/selection-state-builder.test.ts#L33-L44).
+  Because preservation is the default, it is the primary prefix-control flag.
 - **Routing detector warnings to stderr** (so they don't corrupt `--json`) is an output-hygiene
-  concern handled in [02-headless.md](02-headless.md), not here.
-- The **broader write-path coverage** (beyond the #1 golden test) is tracked in
+  concern handled in [02-headless.md](02-headless.md), not here. The new `scanDirs` skip warning
+  uses `console.warn` and should be reviewed under that work.
+- The **broader write-path coverage** (beyond the #1 golden tests) is tracked in
   [05-infra.md](05-infra.md).

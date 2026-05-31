@@ -352,6 +352,73 @@ describe('filesystem utils', () => {
     })
   })
 
+  describe('scanDirs override and skip warnings', () => {
+    function seedLibPackage(): string {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      const libPkgDir = join(testDir, 'lib', 'inner')
+      mkdirSync(libPkgDir, { recursive: true })
+      writeFileSync(join(libPkgDir, 'package.json'), '{}')
+      return join(libPkgDir, 'package.json')
+    }
+
+    it('skips a package under lib/ by default', () => {
+      seedLibPackage()
+      const result = findAllPackageJsonFiles(testDir)
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('finds a package under lib/ when scanDirs includes "lib" (sync)', () => {
+      const libPkg = seedLibPackage()
+      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, { scanDirs: ['lib'] })
+      expect(result).toContain(libPkg)
+    })
+
+    it('finds a package under lib/ when scanDirs includes "lib" (async)', async () => {
+      const libPkg = seedLibPackage()
+      const result = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
+        scanDirs: ['lib'],
+      })
+      expect(result).toContain(libPkg)
+    })
+
+    it('fires onSkippedPackageDir for a pruned dir that holds a package.json', () => {
+      seedLibPackage()
+      const skipped: string[] = []
+      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(skipped).toContain('lib')
+    })
+
+    it('does not fire onSkippedPackageDir when the dir is re-included via scanDirs', () => {
+      seedLibPackage()
+      const skipped: string[] = []
+      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        scanDirs: ['lib'],
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(skipped).toHaveLength(0)
+    })
+
+    it('does not warn for node_modules or build-output dirs even when they hold a package.json', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      // node_modules always holds package.json files — warning here would be pure noise
+      const nm = join(testDir, 'node_modules', 'pkg')
+      mkdirSync(nm, { recursive: true })
+      writeFileSync(join(nm, 'package.json'), '{}')
+      // dist is build output — a package.json there is expected, not a "silently skipped package"
+      const dist = join(testDir, 'dist')
+      mkdirSync(dist, { recursive: true })
+      writeFileSync(join(dist, 'package.json'), '{}')
+
+      const skipped: string[] = []
+      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(skipped).toHaveLength(0)
+    })
+  })
+
   describe('findAllPackageJsonFilesAsync()', () => {
     it('should find package.json files recursively', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')

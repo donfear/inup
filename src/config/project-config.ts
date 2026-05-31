@@ -18,6 +18,13 @@ export interface InupProjectConfig {
   exclude?: string[]
 
   /**
+   * Directory names to scan even though they are in the default skip list
+   * (node_modules, dist, build, coverage, out, lib, es, esm, cjs).
+   * Use this when a real package lives under e.g. "lib/".
+   */
+  scanDirs?: string[]
+
+  /**
    * Show vulnerability badges for peerDependencies in the package list.
    * Defaults to false so peer dependency risk stays hidden unless explicitly enabled.
    */
@@ -82,6 +89,12 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   if (config.exclude) {
     if (Array.isArray(config.exclude)) {
       normalized.exclude = config.exclude.filter((item) => typeof item === 'string')
+    }
+  }
+
+  if (config.scanDirs) {
+    if (Array.isArray(config.scanDirs)) {
+      normalized.scanDirs = config.scanDirs.filter((item) => typeof item === 'string')
     }
   }
 

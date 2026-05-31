@@ -1,10 +1,10 @@
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
-import { existsSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { spawnSync } from 'child_process'
 import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo, DependencyType } from '../types'
-import { executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
+import { detectJsonFormat, executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
 export class PackageUpgrader {
   private packageManager: PackageManagerInfo
@@ -123,7 +123,8 @@ export class PackageUpgrader {
     const spinner = createSpinner(`Upgrading ${type} in ${packageDir}...`).start()
 
     try {
-      // Read the current package.json
+      // Read the current package.json — keep the raw text so we can round-trip its formatting
+      const rawContent = readFileSync(packageJsonPath, 'utf-8')
       const packageJson = readPackageJson(packageJsonPath)
 
       // Group by upgrade type (range vs latest)
@@ -156,9 +157,15 @@ export class PackageUpgrader {
         })
       }
 
-      // Write back the modified package.json
+      // Write back the modified package.json, preserving the original indentation and
+      // trailing-newline style. Skip the write entirely when nothing actually changed.
       if (modified) {
-        writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n')
+        const format = detectJsonFormat(rawContent)
+        const nextContent =
+          JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
+        if (nextContent !== rawContent) {
+          writeFileSync(packageJsonPath, nextContent)
+        }
       }
 
       spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })
