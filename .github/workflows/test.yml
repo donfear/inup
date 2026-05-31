@@ -37,7 +37,7 @@ jobs:
 
       - name: Upload coverage (Ubuntu only)
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -66,7 +66,7 @@ jobs:
         run: pnpm test:coverage
 
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-full
           path: coverage/
