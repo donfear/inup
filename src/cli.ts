@@ -92,6 +92,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   const upgrader = new UpgradeRunner({
     cwd,
     excludePatterns,
+    scanDirs: projectConfig.scanDirs,
     maxDepth,
     ignorePackages,
     packageManager,

@@ -16,6 +16,29 @@ export function readPackageJson(path: string): PackageJson {
   }
 }
 
+export interface JsonFormat {
+  /** Indent passed to JSON.stringify — the original whitespace string (tabs or N spaces), or 2 as fallback. */
+  indent: string | number
+  /** Whether the original file ended with a trailing newline. */
+  trailingNewline: boolean
+}
+
+/**
+ * Detect the indentation and trailing-newline style of a raw JSON document so a
+ * re-serialized version can preserve the original formatting instead of normalizing it.
+ *
+ * The first indented line's leading whitespace is exactly one indent unit; using it verbatim
+ * as the JSON.stringify indent round-trips tabs, 2-space, and 4-space without branching on type.
+ * Minified/single-line files (no indented line) fall back to 2 spaces, matching prior behavior.
+ */
+export function detectJsonFormat(raw: string): JsonFormat {
+  const match = raw.match(/\n([ \t]+)\S/)
+  return {
+    indent: match ? match[1] : 2,
+    trailingNewline: raw.endsWith('\n'),
+  }
+}
+
 export async function readPackageJsonAsync(path: string): Promise<PackageJson> {
   try {
     const content = await fsPromises.readFile(path, 'utf-8')

@@ -1,3 +1,4 @@
+import chalk from 'chalk'
 import * as semver from 'semver'
 import {
   DependencyEntry,
@@ -32,6 +33,7 @@ export class PackageDetector {
   private packageJson: Record<string, unknown> | null = null
   private cwd: string
   private excludePatterns: string[]
+  private scanDirs: string[]
   private ignorePackages: string[]
   private maxDepth: number
 
@@ -41,6 +43,7 @@ export class PackageDetector {
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
     this.excludePatterns = options?.excludePatterns || []
+    this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.packageJsonPath = findPackageJson(this.cwd)
@@ -390,11 +393,12 @@ export class PackageDetector {
   }
 
   private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {
+    const skippedPackageDirs = new Set<string>()
     try {
       let timeoutId: NodeJS.Timeout | undefined
 
       try {
-        return await Promise.race([
+        const files = await Promise.race([
           findAllPackageJsonFilesAsync(
             this.cwd,
             this.excludePatterns,
@@ -403,6 +407,10 @@ export class PackageDetector {
               const truncatedDir =
                 currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
               this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
+            },
+            {
+              scanDirs: this.scanDirs,
+              onSkippedPackageDir: (relativePath) => skippedPackageDirs.add(relativePath),
             }
           ),
           new Promise<string[]>((_, reject) => {
@@ -412,6 +420,8 @@ export class PackageDetector {
             timeoutId.unref?.()
           }),
         ])
+        this.warnSkippedPackageDirs(skippedPackageDirs)
+        return files
       } finally {
         if (timeoutId) {
           clearTimeout(timeoutId)
@@ -422,6 +432,27 @@ export class PackageDetector {
         `Failed to scan for package.json files: ${err}. Try using --exclude patterns to skip problematic directories.`
       )
     }
+  }
+
+  /**
+   * Warn (once per directory, after the scan) about package.json-bearing directories that the
+   * default skip list pruned, so the user can re-include them via `.inuprc`'s `scanDirs`.
+   * Emitted after scanning so it does not corrupt the progress spinner output.
+   */
+  private warnSkippedPackageDirs(skippedPackageDirs: Set<string>): void {
+    if (skippedPackageDirs.size === 0) {
+      return
+    }
+    const list = Array.from(skippedPackageDirs).sort()
+    console.warn(
+      chalk.yellow(
+        `⚠️  Skipped ${list.length} package.json-bearing director${
+          list.length === 1 ? 'y' : 'ies'
+        } matching the default ignore list:\n` +
+          list.map((dir) => `   - ${dir}`).join('\n') +
+          `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`
+      )
+    )
   }
 
   private isWorkspaceReference(version: string): boolean {

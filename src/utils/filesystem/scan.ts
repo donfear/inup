@@ -1,9 +1,17 @@
-import { readdirSync, statSync, realpathSync } from 'fs'
+import { existsSync, readdirSync, statSync, realpathSync } from 'fs'
 import { promises as fsPromises } from 'fs'
 import { join, relative } from 'path'
 
 export interface PackageJsonScanOptions {
   concurrency?: number
+  /** Directory names that should be scanned even though they appear in the default skip list. */
+  scanDirs?: string[]
+  /**
+   * Called with the repo-relative path of a directory that holds a package.json but was pruned
+   * by the default skip list (not by the dot-prefix rule or user exclude patterns). Lets callers
+   * warn that a package was silently skipped and can be re-included via `scanDirs`.
+   */
+  onSkippedPackageDir?: (relativePath: string) => void
 }
 
 const SKIP_DIRS = new Set([
@@ -18,21 +26,101 @@ const SKIP_DIRS = new Set([
   'cjs',
 ])
 
-function shouldSkipDirectory(name: string): boolean {
-  return name.startsWith('.') || SKIP_DIRS.has(name)
+/**
+ * Skip dirs that are ambiguous source-vs-build directories where a real package may legitimately
+ * live. Only these trigger the "silently skipped a package" warning — node_modules and build-output
+ * dirs (dist/build/coverage/out) routinely contain package.json files and would be pure noise.
+ */
+const WARN_SKIP_DIRS = new Set(['lib', 'es', 'esm', 'cjs'])
+
+/** Effective skip set: the defaults minus any directory the caller opted back into via `scanDirs`. */
+function buildSkipSet(scanDirs?: string[]): Set<string> {
+  if (!scanDirs || scanDirs.length === 0) {
+    return SKIP_DIRS
+  }
+  const skip = new Set(SKIP_DIRS)
+  for (const dir of scanDirs) {
+    skip.delete(dir)
+  }
+  return skip
+}
+
+type SkipReason = null | 'hidden' | 'skip-dir'
+
+function classifyDirectory(name: string, skipSet: Set<string>): SkipReason {
+  if (name.startsWith('.')) return 'hidden'
+  if (skipSet.has(name)) return 'skip-dir'
+  return null
+}
+
+/**
+ * Cheaply decide whether a pruned directory looks like it holds a real package — a package.json
+ * directly inside it, or inside any immediate child (the common `lib/<pkg>/package.json` monorepo
+ * layout). Stays shallow (depth 1) so detecting a skip doesn't re-walk the subtree we just pruned.
+ */
+function prunedDirHoldsPackage(dir: string): boolean {
+  if (existsSync(join(dir, 'package.json'))) {
+    return true
+  }
+  let entries: string[]
+  try {
+    entries = readdirSync(dir)
+  } catch {
+    return false
+  }
+  for (const entry of entries) {
+    if (entry.startsWith('.')) continue
+    const child = join(dir, entry)
+    try {
+      if (statSync(child).isDirectory() && existsSync(join(child, 'package.json'))) {
+        return true
+      }
+    } catch {
+      // Skip children we can't stat
+    }
+  }
+  return false
+}
+
+/**
+ * Decide whether to descend into a directory, and notify when one is pruned by the default skip
+ * list despite containing a package.json (so the caller can surface a "silently skipped" warning).
+ */
+function shouldTraverse(
+  name: string,
+  fullPath: string,
+  relativePath: string,
+  skipSet: Set<string>,
+  onSkippedPackageDir?: (relativePath: string) => void
+): boolean {
+  const reason = classifyDirectory(name, skipSet)
+  if (reason === null) {
+    return true
+  }
+  if (
+    reason === 'skip-dir' &&
+    WARN_SKIP_DIRS.has(name) &&
+    onSkippedPackageDir &&
+    prunedDirHoldsPackage(fullPath)
+  ) {
+    onSkippedPackageDir(relativePath)
+  }
+  return false
 }
 
 export function findAllPackageJsonFiles(
   rootDir: string = process.cwd(),
   excludePatterns: string[] = [],
   maxDepth: number = 10,
-  onProgress?: (current: string, found: number) => void
+  onProgress?: (current: string, found: number) => void,
+  options: PackageJsonScanOptions = {}
 ): string[] {
   const packageJsonFiles: string[] = []
   const visitedPaths = new Set<string>()
   let directoriesScanned = 0
   let lastProgressAt = 0
   const progressIntervalMs = 250
+  const skipSet = buildSkipSet(options.scanDirs)
 
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
@@ -92,8 +180,10 @@ export function findAllPackageJsonFiles(
           continue
         }
 
-        if (stat.isDirectory() && !shouldSkipDirectory(file)) {
-          traverseDirectory(fullPath, depth + 1)
+        if (stat.isDirectory()) {
+          if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
+            traverseDirectory(fullPath, depth + 1)
+          }
         } else if (file === 'package.json' && stat.isFile()) {
           packageJsonFiles.push(fullPath)
         }
@@ -120,6 +210,7 @@ export async function findAllPackageJsonFilesAsync(
   let lastProgressAt = 0
   const progressIntervalMs = 250
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 16, 64))
+  const skipSet = buildSkipSet(options.scanDirs)
 
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
@@ -208,8 +299,10 @@ export async function findAllPackageJsonFilesAsync(
         continue
       }
 
-      if (stat.isDirectory() && !shouldSkipDirectory(file)) {
-        schedule(fullPath, depth + 1)
+      if (stat.isDirectory()) {
+        if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
+          schedule(fullPath, depth + 1)
+        }
       } else if (file === 'package.json' && stat.isFile()) {
         packageJsonFiles.push(fullPath)
       }

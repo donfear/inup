@@ -186,4 +186,109 @@ describe('PackageUpgrader', () => {
     expect(updatedPackageJson.peerDependencies.react).toBe('^19.0.0')
     expect(updatedPackageJson.optionalDependencies.fsevents).toBe('^2.3.3')
   })
+
+  describe('format preservation', () => {
+    it('preserves tab indentation and the absence of a trailing newline', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw = '{\n\t"name": "fixture",\n\t"dependencies": {\n\t\t"lodash": "^4.0.0"\n\t}\n}'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.0.0',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(
+        '{\n\t"name": "fixture",\n\t"dependencies": {\n\t\t"lodash": "^4.17.21"\n\t}\n}'
+      )
+      logSpy.mockRestore()
+    })
+
+    it('preserves 4-space indentation, the trailing newline, and the ~/exact operators written', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw =
+        '{\n' +
+        '    "name": "fixture",\n' +
+        '    "dependencies": {\n' +
+        '        "lodash": "~4.0.0",\n' +
+        '        "chalk": "5.0.0"\n' +
+        '    }\n' +
+        '}\n'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '~4.17.21',
+            currentVersionSpecifier: '~4.0.0',
+          },
+          {
+            name: 'chalk',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'latest',
+            targetVersion: '5.3.0',
+            currentVersionSpecifier: '5.0.0',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(
+        '{\n' +
+          '    "name": "fixture",\n' +
+          '    "dependencies": {\n' +
+          '        "lodash": "~4.17.21",\n' +
+          '        "chalk": "5.3.0"\n' +
+          '    }\n' +
+          '}\n'
+      )
+      logSpy.mockRestore()
+    })
+
+    it('leaves the file byte-identical when the chosen version already matches on disk', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw = '{\n  "name": "fixture",\n  "dependencies": {\n    "lodash": "^4.17.21"\n  }\n}\n'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.17.21',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(raw)
+      logSpy.mockRestore()
+    })
+  })
 })
