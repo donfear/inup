@@ -65,8 +65,8 @@ export class PackageManagerDetector {
       return fromLockFile
     }
 
-    // 3. Fallback to npm
-    console.log(
+    // 3. Fallback to npm. Warn on stderr so it never corrupts --json output on stdout.
+    console.error(
       chalk.yellow(
         '⚠️  No package manager detected. Defaulting to npm. Consider adding a "packageManager" field to your package.json.'
       )
@@ -129,7 +129,8 @@ export class PackageManagerDetector {
 
     // If multiple lock files, use most recently modified
     if (existingLocks.length > 1) {
-      console.log(
+      // stderr so it never corrupts --json output on stdout.
+      console.error(
         chalk.yellow(
           '⚠️  Multiple lock files detected. Using most recently modified. Consider cleaning up unused lock files.'
         )

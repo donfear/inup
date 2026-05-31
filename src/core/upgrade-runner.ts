@@ -3,6 +3,9 @@ import { PackageDetector } from './package-detector'
 import { InteractiveUI } from '../interactive-ui'
 import { PackageUpgrader } from './upgrader'
 import {
+  HeadlessOptions,
+  HeadlessReport,
+  HeadlessReportEntry,
   PackageInfo,
   PackageLoadProgress,
   PackageSelectionState,
@@ -182,6 +185,78 @@ export class UpgradeRunner {
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)
     }
+  }
+
+  /**
+   * Non-interactive entry point: resolve the outdated list without rendering the
+   * TUI, then either emit a JSON report (--json) or a plain line-based report.
+   * With --check, sets a non-zero exit code when updates exist so CI can gate on it.
+   * Read-only: never writes package.json or installs.
+   */
+  public async runHeadless(options: HeadlessOptions): Promise<void> {
+    try {
+      this.checkPrerequisites()
+
+      const packages = await this.detector.getOutdatedPackages()
+      const outdated = this.detector.getOutdatedPackagesOnly(packages)
+
+      if (options.json) {
+        // stdout is reserved for the JSON document only.
+        console.log(JSON.stringify(this.buildHeadlessReport(packages, outdated), null, 2))
+      } else {
+        this.printPlainReport(outdated)
+      }
+
+      // Exit 1 only means "updates exist" (like `prettier --check`); 2 is reserved for errors.
+      if (options.check && outdated.length > 0) {
+        process.exitCode = 1
+      }
+    } catch (error) {
+      console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`))
+      process.exit(2)
+    }
+  }
+
+  private buildHeadlessReport(all: PackageInfo[], outdated: PackageInfo[]): HeadlessReport {
+    return {
+      summary: {
+        total: all.length,
+        outdated: outdated.length,
+        major: outdated.filter((pkg) => pkg.hasMajorUpdate).length,
+      },
+      outdated: outdated.map((pkg) => {
+        const entry: HeadlessReportEntry = {
+          name: pkg.name,
+          current: pkg.currentVersion,
+          range: pkg.rangeVersion,
+          latest: pkg.latestVersion,
+          type: pkg.type,
+          packageJsonPath: pkg.packageJsonPath,
+          hasMajorUpdate: pkg.hasMajorUpdate,
+        }
+        if (pkg.deprecated) entry.deprecated = pkg.deprecated
+        if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
+        if (pkg.vulnerability) entry.vulnerability = pkg.vulnerability
+        return entry
+      }),
+    }
+  }
+
+  private printPlainReport(outdated: PackageInfo[]): void {
+    if (outdated.length === 0) {
+      console.log('All dependencies are up to date — no upgrades needed.')
+      return
+    }
+
+    for (const pkg of outdated) {
+      const major = pkg.hasMajorUpdate ? ' (major)' : ''
+      console.log(
+        `${pkg.name}  ${pkg.currentVersion} → ${pkg.latestVersion}  [${pkg.type}]${major}`
+      )
+    }
+
+    const fileCount = new Set(outdated.map((pkg) => pkg.packageJsonPath)).size
+    console.log(`\n${outdated.length} package(s) outdated across ${fileCount} file(s).`)
   }
 
   private checkPrerequisites(): void {

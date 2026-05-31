@@ -22,6 +22,8 @@ export interface CliOptions {
   debug?: boolean
   color?: boolean
   saveExact?: boolean
+  json?: boolean
+  check?: boolean
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
@@ -34,15 +36,22 @@ export async function runCli(options: CliOptions): Promise<void> {
     enableDebugLogging()
   }
 
-  const gitState = getGitWorkingTreeState(cwd)
-  if (gitState.isRepo && gitState.isDirty) {
-    const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
-      `${chalk.yellow('Warning:')} dirty working tree. Proceed anyway? ${chalk.dim('[y/N]')} `,
-      false
-    )
-    if (!shouldProceed) {
-      console.log(chalk.yellow('Upgrade cancelled.'))
-      return
+  // Headless when piped, in CI, or when a non-interactive flag is set. The TUI only renders in
+  // interactive mode; everything else routes through the read-only headless report path.
+  const interactive = !!process.stdout.isTTY && !process.env.CI && !options.json && !options.check
+
+  // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
+  if (interactive) {
+    const gitState = getGitWorkingTreeState(cwd)
+    if (gitState.isRepo && gitState.isDirty) {
+      const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
+        `${chalk.yellow('Warning:')} dirty working tree. Proceed anyway? ${chalk.dim('[y/N]')} `,
+        false
+      )
+      if (!shouldProceed) {
+        console.log(chalk.yellow('Upgrade cancelled.'))
+        return
+      }
     }
   }
 
@@ -74,8 +83,11 @@ export async function runCli(options: CliOptions): Promise<void> {
     process.exit(1)
   }
 
-  // Check for updates in the background (non-blocking)
-  const updateCheckPromise = checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
+  // Check for updates in the background (non-blocking). Interactive only — keeps headless stdout
+  // clean and avoids a lingering fetch handle in CI.
+  const updateCheckPromise = interactive
+    ? checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
+    : undefined
 
   // Validate package manager if provided
   let packageManager: PackageManager | undefined
@@ -103,6 +115,11 @@ export async function runCli(options: CliOptions): Promise<void> {
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
   })
+  if (!interactive) {
+    await upgrader.runHeadless({ json: options.json, check: options.check })
+    return
+  }
+
   await upgrader.run()
 
   // After the main flow completes, check if there's an update available
@@ -150,6 +167,8 @@ program
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
+  .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
+  .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .action(runCli)
 
 // Handle uncaught errors gracefully
