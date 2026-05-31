@@ -6,6 +6,7 @@ import {
   getVulnerabilityBadge,
   shouldDisplayVulnerabilityForDependency,
 } from '../../presenters/vulnerability'
+import { getHealthBadge } from '../../presenters/health'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions
 
@@ -138,16 +139,23 @@ export function renderPackageLine(
   const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
   const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0
+  // Deprecation / engines-incompatibility marker (independent of dep type).
+  const healthBadge = getHealthBadge(state)
+  const healthBadgeWidth = healthBadge ? VersionUtils.getVisualLength(healthBadge) + 1 : 0
   const nameLength = VersionUtils.getVisualLength(truncatedName)
-  const namePadding = Math.max(0, packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth)
+  const namePadding = Math.max(
+    0,
+    packageNameWidth - nameLength - 1 - badgeWidth - vulnBadgeWidth - healthBadgeWidth
+  )
   const nameDashes = shouldShowDashes(namePadding)
     ? dashColor('-').repeat(namePadding)
     : ' '.repeat(namePadding)
 
   const vulnSuffix = vulnBadge ? ` ${vulnBadge}` : ''
+  const healthSuffix = healthBadge ? ` ${healthBadge}` : ''
   const packageNameSection = typeBadge
-    ? `${displayName} ${nameDashes}${vulnSuffix}${typeBadge}`
-    : `${displayName} ${nameDashes}${vulnSuffix}`
+    ? `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}${typeBadge}`
+    : `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}`
 
   const currentSection = `${currentDot} ${currentVersion}`
   const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1

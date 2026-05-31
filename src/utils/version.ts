@@ -1,4 +1,5 @@
 import * as semver from 'semver'
+import { normalizeDeprecatedMessage, extractEnginesNode } from './manifest'
 
 export function extractMajorVersion(version: string | undefined): string | null {
   if (!version) return null
@@ -19,14 +20,29 @@ export function versionIdentity(version: string): string {
   return comparable ?? `raw:${version}`
 }
 
-export function parseVersions(raw: string): { latestVersion: string; allVersions: string[] } {
+export interface ParsedVersions {
+  latestVersion: string
+  allVersions: string[]
+  deprecated?: string // npm deprecation message for the latest version, if any
+  enginesNode?: string // declared engines.node range for the latest version, if any
+}
+
+export function parseVersions(raw: string): ParsedVersions {
   const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
-  const allVersions = Object.keys(data.versions || {}).filter((v) =>
-    /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)
-  )
+  const versions = data.versions || {}
+  const allVersions = Object.keys(versions).filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
   const sortedVersions = allVersions.sort(semver.rcompare)
   const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
-  return { latestVersion, allVersions }
+
+  // Surface health signals for the latest version straight from the abbreviated
+  // packument we already fetched — no extra request. Both fields are optional.
+  const latestManifest = versions[latestVersion] as
+    | { deprecated?: unknown; engines?: unknown }
+    | undefined
+  const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
+  const enginesNode = extractEnginesNode(latestManifest?.engines)
+
+  return { latestVersion, allVersions, deprecated, enginesNode }
 }
 
 /**

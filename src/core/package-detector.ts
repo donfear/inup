@@ -350,6 +350,8 @@ export class PackageDetector {
           hasRangeUpdate,
           hasMajorUpdate,
           allVersions,
+          deprecated: packageData.deprecated,
+          enginesNode: packageData.enginesNode,
         }
       } catch (error) {
         debugLog.error('PackageDetector', `error processing ${dep.name}`, error)

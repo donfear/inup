@@ -3,7 +3,6 @@
  */
 
 export * from './npm-registry'
-export * from './jsdelivr-registry'
 export * from '../features/changelog'
 export * from './version-checker'
 export * from './vulnerability-checker'

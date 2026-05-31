@@ -22,15 +22,5 @@ export function mockRegistry(options: MockRegistryOptions = {}) {
     }
   )
 
-  const getAllPackageDataFromJsdelivr = vi.fn().mockImplementation(
-    async (packageNames: string[]) => {
-      const result = new Map<string, PackageVersionData>()
-      for (const name of packageNames) {
-        result.set(name, options.packageData?.get(name) ?? defaultData)
-      }
-      return result
-    }
-  )
-
-  return { fetchPackageVersions, getAllPackageDataFromJsdelivr }
+  return { fetchPackageVersions }
 }

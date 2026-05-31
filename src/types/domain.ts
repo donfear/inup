@@ -28,6 +28,8 @@ export interface PackageInfo {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  deprecated?: string // npm deprecation message for the latest version, if any
+  enginesNode?: string // declared engines.node range for the latest version, if any
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions from registry
 }
