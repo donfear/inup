@@ -66,6 +66,10 @@ inup --json | jq        # structured drift report for dashboards/bots
 inup | cat              # plain line-based report when piped to a log
 ```
 
+Each reported package carries its health signals: `deprecated` (npm deprecation message), `enginesNode`
+(declared `engines.node`), and `vulnerability` (known advisories on the currently-installed version,
+from one bulk `npm audit`-style request). The summary includes a `vulnerable` count.
+
 Output hygiene: with `--json`, stdout carries **only** the JSON document; all progress and warnings go
 to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
 

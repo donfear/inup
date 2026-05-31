@@ -108,6 +108,7 @@ export interface HeadlessReport {
     total: number // Packages scanned
     outdated: number // Packages with an available update
     major: number // Of the outdated, how many are a major bump
+    vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
   }
   outdated: HeadlessReportEntry[]
 }

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
   detectPackageManager: vi.fn(),
+  fetchVulnerabilities: vi.fn(),
 }))
 
 vi.mock('../../../src/core/package-detector', () => ({
@@ -13,6 +14,10 @@ vi.mock('../../../src/core/package-detector', () => ({
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
   },
+}))
+
+vi.mock('../../../src/services', () => ({
+  fetchVulnerabilities: mocks.fetchVulnerabilities,
 }))
 
 vi.mock('../../../src/interactive-ui', () => ({
@@ -77,6 +82,8 @@ describe('UpgradeRunner.runHeadless', () => {
       pkgs.filter((p) => p.isOutdated)
     )
     mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, UP_TO_DATE])
+    // No advisories by default; one test overrides this.
+    mocks.fetchVulnerabilities.mockResolvedValue(new Map())
   })
 
   afterEach(() => {
@@ -92,7 +99,7 @@ describe('UpgradeRunner.runHeadless', () => {
     expect(logSpy).toHaveBeenCalledTimes(1)
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
 
-    expect(report.summary).toEqual({ total: 2, outdated: 1, major: 1 })
+    expect(report.summary).toEqual({ total: 2, outdated: 1, major: 1, vulnerable: 0 })
     expect(report.outdated).toHaveLength(1)
     expect(report.outdated[0]).toMatchObject({
       name: 'axios',
@@ -107,6 +114,46 @@ describe('UpgradeRunner.runHeadless', () => {
     })
     // Optional fields are omitted when absent, not emitted as null/undefined.
     expect('vulnerability' in report.outdated[0]).toBe(false)
+
+    logSpy.mockRestore()
+  })
+
+  it('--json includes security advisories from the audit and counts them in the summary', async () => {
+    mocks.fetchVulnerabilities.mockResolvedValue(
+      new Map([
+        [
+          'axios',
+          {
+            packageName: 'axios',
+            highestSeverity: 'high',
+            vulnerabilities: [
+              {
+                id: 1234,
+                title: 'Server-Side Request Forgery',
+                severity: 'high',
+                url: 'https://github.com/advisories/GHSA-test',
+                vulnerable_versions: '<1.0.0',
+              },
+            ],
+          },
+        ],
+      ])
+    )
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new UpgradeRunner({ cwd: '/repo' }).runHeadless({ json: true })
+
+    // The audit checks the currently-installed specifier.
+    expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(new Map([['axios', '^0.27.0']]))
+
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report.summary.vulnerable).toBe(1)
+    expect(report.outdated[0].vulnerability).toMatchObject({
+      count: 1,
+      highestSeverity: 'high',
+      detailsUrl: 'https://github.com/advisories/GHSA-test',
+      advisories: [{ id: 1234, severity: 'high' }],
+    })
 
     logSpy.mockRestore()
   })
