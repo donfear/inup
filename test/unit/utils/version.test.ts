@@ -1,7 +1,37 @@
 import { describe, it, expect } from 'vitest'
-import { isVersionOutdated, getOptimizedRangeVersion, findClosestMinorVersion } from '../../../src/utils/version'
+import {
+  isVersionOutdated,
+  getOptimizedRangeVersion,
+  findClosestMinorVersion,
+  parseVersions,
+} from '../../../src/utils/version'
 
 describe('version utils', () => {
+  describe('parseVersions()', () => {
+    it('surfaces the latest version deprecation and engines from the packument', () => {
+      const raw = JSON.stringify({
+        versions: {
+          '1.0.0': { engines: { node: '>=14' } },
+          '2.0.0': { deprecated: 'use the scoped package', engines: { node: '>=18' } },
+        },
+      })
+
+      const result = parseVersions(raw)
+      expect(result.latestVersion).toBe('2.0.0')
+      expect(result.deprecated).toBe('use the scoped package')
+      expect(result.enginesNode).toBe('>=18')
+    })
+
+    it('leaves signals undefined when the latest version has none', () => {
+      const raw = JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } })
+
+      const result = parseVersions(raw)
+      expect(result.latestVersion).toBe('1.1.0')
+      expect(result.deprecated).toBeUndefined()
+      expect(result.enginesNode).toBeUndefined()
+    })
+  })
+
   describe('isVersionOutdated()', () => {
     it('should return true when latest is greater than current', () => {
       expect(isVersionOutdated('1.0.0', '2.0.0')).toBe(true)

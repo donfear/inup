@@ -1,17 +1,13 @@
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
-import { fetchExactPackageManifest } from '../../../services/jsdelivr-registry'
 import { InflightMap } from '../../../services/http/inflight'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata | null>()
   private inFlight = new InflightMap<PackageMetadata | null>()
 
-  constructor(
-    private readonly npmRegistryClient = new NpmRegistryClient(),
-    private readonly exactManifestFetcher = fetchExactPackageManifest
-  ) {}
+  constructor(private readonly npmRegistryClient = new NpmRegistryClient()) {}
 
   clearCache(): void {
     this.cache.clear()
@@ -119,19 +115,9 @@ export class PackageMetadataService {
   ): Promise<Record<string, unknown> | null> {
     signal?.throwIfAborted()
 
-    const normalizedVersion = version?.trim()
-    if (normalizedVersion) {
-      const jsdelivrManifest = await this.exactManifestFetcher(packageName, normalizedVersion)
-      if (jsdelivrManifest) {
-        return jsdelivrManifest
-      }
-    }
-
-    signal?.throwIfAborted()
-
     return await this.npmRegistryClient.fetchPackageManifest(
       packageName,
-      normalizedVersion || 'latest',
+      version?.trim() || 'latest',
       signal
     )
   }

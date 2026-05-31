@@ -1,13 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-const { fetchExactPackageManifestMock } = vi.hoisted(() => ({
-  fetchExactPackageManifestMock: vi.fn(),
-}))
-
-vi.mock('../../../src/services/jsdelivr-registry', () => ({
-  fetchExactPackageManifest: fetchExactPackageManifestMock,
-}))
 
 import { ChangelogFetcher } from '../../../src/features/changelog'
+
+// Package manifests now come straight from the npm registry via global `fetch`
+// (jsDelivr was removed), so a pinned-version metadata fetch makes two `fetch`
+// calls: the manifest, then the download stats.
+const npmManifestResponse = (manifest: Record<string, unknown>) => ({
+  ok: true,
+  json: async () => manifest,
+})
+
+const githubRepoManifest = npmManifestResponse({
+  description: 'Demo package',
+  repository: { url: 'git+https://github.com/demo/repo.git' },
+})
 
 describe('ChangelogFetcher', () => {
   let fetcher: ChangelogFetcher
@@ -17,7 +23,6 @@ describe('ChangelogFetcher', () => {
     fetcher = new ChangelogFetcher()
     fetcher.clearCache()
     fetchMock.mockReset()
-    fetchExactPackageManifestMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
   })
 
@@ -26,25 +31,29 @@ describe('ChangelogFetcher', () => {
   })
 
   describe('fetchPackageMetadata()', () => {
-    it('prefers an exact jsdelivr manifest when a pinned version is provided', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        homepage: 'https://example.com',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-        bugs: { url: 'https://github.com/demo/repo/issues' },
-        keywords: ['demo'],
-        author: { name: 'Demo Author' },
-        license: 'MIT',
-      })
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ downloads: 1234 }),
-      })
+    it('fetches the pinned-version manifest from the npm registry', async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          npmManifestResponse({
+            description: 'Demo package',
+            homepage: 'https://example.com',
+            repository: { url: 'git+https://github.com/demo/repo.git' },
+            bugs: { url: 'https://github.com/demo/repo/issues' },
+            keywords: ['demo'],
+            author: { name: 'Demo Author' },
+            license: 'MIT',
+          })
+        )
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 1234 }),
+        })
 
       const metadata = await fetcher.fetchPackageMetadata('demo-pkg', '1.2.3')
 
-      expect(fetchExactPackageManifestMock).toHaveBeenCalledWith('demo-pkg', '1.2.3')
-      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // First call is the pinned-version manifest from the npm registry.
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('https://registry.npmjs.org/demo-pkg/1.2.3')
       expect(metadata?.repositoryUrl).toBe('https://github.com/demo/repo')
       expect(metadata?.weeklyDownloads).toBe(1234)
     })
@@ -235,12 +244,8 @@ describe('ChangelogFetcher', () => {
 
   describe('fetchReleaseNotesForVersion()', () => {
     it('reuses package metadata fetched for the latest version when loading older release notes', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
       fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
@@ -264,18 +269,14 @@ describe('ChangelogFetcher', () => {
       const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(notes).toContain('Fixed older release')
-      expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      expect(fetchMock.mock.calls[4]?.[0]).toBe(
         'https://api.github.com/repos/demo/repo/releases/tags/v1.9.0'
       )
     })
 
     it('falls back to the releases list when exact tag lookups fail', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
       fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
@@ -310,18 +311,14 @@ describe('ChangelogFetcher', () => {
       const notes = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(notes).toContain('Release list fallback worked')
-      expect(fetchMock.mock.calls[5]?.[0]).toBe(
+      expect(fetchMock.mock.calls[6]?.[0]).toBe(
         'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
       )
     })
 
     it('falls back to the public GitHub release page when the API path has no body', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
       fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
@@ -338,16 +335,12 @@ describe('ChangelogFetcher', () => {
       expect(notes).toContain('Intro paragraph.')
       expect(notes).toContain('### Core Changes')
       expect(notes).toContain('- Fix critical bug')
-      expect(fetchMock.mock.calls[1]?.[0]).toBe('https://github.com/demo/repo/releases/tag/v1.9.0')
+      expect(fetchMock.mock.calls[2]?.[0]).toBe('https://github.com/demo/repo/releases/tag/v1.9.0')
     })
 
     it('caches the releases list fallback across multiple version lookups', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
       fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
@@ -409,7 +402,7 @@ describe('ChangelogFetcher', () => {
 
       expect(firstNotes).toContain('Older notes')
       expect(secondNotes).toContain('Even older notes')
-      expect(fetchMock).toHaveBeenCalledTimes(10)
+      expect(fetchMock).toHaveBeenCalledTimes(11)
       expect(
         fetchMock.mock.calls.filter(
           ([url]) => url === 'https://api.github.com/repos/demo/repo/releases?per_page=100&page=1'
@@ -421,12 +414,21 @@ describe('ChangelogFetcher', () => {
   describe('abort signal support', () => {
     it('aborts metadata fetch when signal is triggered', async () => {
       const controller = new AbortController()
-      let fetchResolve: ((value: any) => void) | undefined
 
+      // Mirror real `fetch`: reject with AbortError when the signal fires.
       fetchMock.mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            fetchResolve = resolve
+        (_url: string, options?: { signal?: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            const signal = options?.signal
+            if (signal?.aborted) {
+              reject(new DOMException('The operation was aborted.', 'AbortError'))
+              return
+            }
+            signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('The operation was aborted.', 'AbortError')),
+              { once: true }
+            )
           })
       )
 
@@ -437,15 +439,12 @@ describe('ChangelogFetcher', () => {
     })
 
     it('aborts release notes fetch when signal is triggered', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
-      fetchMock.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ downloads: 42 }),
-      })
+      fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ downloads: 42 }),
+        })
 
       await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
 
@@ -473,12 +472,8 @@ describe('ChangelogFetcher', () => {
     })
 
     it('does not cache aborted release notes fetches as missing', async () => {
-      fetchExactPackageManifestMock.mockResolvedValue({
-        description: 'Demo package',
-        repository: { url: 'git+https://github.com/demo/repo.git' },
-      })
-
       fetchMock
+        .mockResolvedValueOnce(githubRepoManifest)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ downloads: 42 }),
@@ -507,7 +502,7 @@ describe('ChangelogFetcher', () => {
       const retry = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(retry).toContain('Successful retry')
-      expect(fetchMock).toHaveBeenCalledTimes(4)
+      expect(fetchMock).toHaveBeenCalledTimes(5)
     })
   })
 

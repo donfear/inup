@@ -6,7 +6,6 @@ const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 import { NPM_REGISTRY_URL } from '../config'
-import { getAllPackageDataFromJsdelivr } from './jsdelivr-registry'
 import { parseVersions } from '../utils/version'
 import { sleep, isRetryableStatus, isTransientNetworkError } from './http/retry'
 import { InflightMap } from './http/inflight'
@@ -19,6 +18,8 @@ import {
 export interface PackageVersionData {
   latestVersion: string
   allVersions: string[]
+  deprecated?: string // npm deprecation message for the latest version, if any
+  enginesNode?: string // declared engines.node range for the latest version, if any
 }
 
 const inFlightLookups = new InflightMap<PackageVersionData>()
@@ -43,25 +44,12 @@ const registryPool = new Pool(registryOrigin, {
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
 
-const fetchFromJsdelivrFallback = async (
-  packageName: string,
-  currentVersion: string | undefined
-): Promise<PackageVersionData> => {
-  const jsdelivrData = await getAllPackageDataFromJsdelivr(
-    [packageName],
-    currentVersion ? new Map([[packageName, currentVersion]]) : undefined
-  )
-  return jsdelivrData.get(packageName) ?? { latestVersion: 'unknown', allVersions: [] }
-}
-
 async function getFreshPackageData(
   packageName: string,
   currentVersion: string | undefined
 ): Promise<PackageVersionData> {
   const cacheKey = `${packageName}@${currentVersion ?? ''}`
-  return inFlightLookups.dedupe(cacheKey, () =>
-    fetchPackageFromRegistryWithFallback(packageName, currentVersion)
-  )
+  return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName))
 }
 
 const encodeRegistryPath = (packageName: string): string => {
@@ -143,24 +131,17 @@ async function fetchFromRegistryWithRetries(path: string): Promise<RegistryAttem
   return lastOutcome
 }
 
-async function fetchPackageFromRegistryWithFallback(
-  packageName: string,
-  currentVersion: string | undefined
-): Promise<PackageVersionData> {
+async function fetchPackageFromRegistry(packageName: string): Promise<PackageVersionData> {
   const path = encodeRegistryPath(packageName)
   const outcome = await fetchFromRegistryWithRetries(path)
 
   if (outcome.kind === 'success') {
     return outcome.data
   }
-  if (outcome.kind === 'not-found') {
-    return { latestVersion: 'unknown', allVersions: [] }
-  }
 
-  // Only reach here after exhausted retries against real errors — try jsdelivr
-  // as last-resort safety net so we don't silently return 'unknown'.
-  const fallback = await fetchFromJsdelivrFallback(packageName, currentVersion).catch(() => null)
-  return fallback ?? { latestVersion: 'unknown', allVersions: [] }
+  // Not found, or exhausted retries against real errors: report unavailable.
+  // The registry is the single source of truth — there is no secondary fetch.
+  return { latestVersion: 'unknown', allVersions: [] }
 }
 
 /**
@@ -171,9 +152,10 @@ async function fetchPackageFromRegistryWithFallback(
  *   It doesn't interact with batch size — batches exist only to group
  *   emissions for the UI.
  * - No per-request timeouts: slow responses are allowed to finish. Real
- *   network errors are retried with exponential backoff; after that, we
- *   fall back to jsdelivr as a last resort. A result is never silently
- *   dropped due to slowness.
+ *   network errors are retried with exponential backoff; after the retry
+ *   budget is exhausted the package is reported as unavailable
+ *   (`latestVersion: 'unknown'`). A result is never silently dropped due to
+ *   slowness.
  *
  * Callbacks:
  * - `onBatchReady` fires once a whole emission batch has resolved, in

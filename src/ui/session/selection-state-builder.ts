@@ -70,6 +70,8 @@ export function createSelectionStates(
       hasRangeUpdate: pkg.hasRangeUpdate,
       hasMajorUpdate: pkg.hasMajorUpdate,
       type: pkg.type,
+      deprecated: pkg.deprecated,
+      enginesNode: pkg.enginesNode,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
       allVersions: pkg.allVersions,
     }

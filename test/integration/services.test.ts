@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { ChangelogFetcher } from '../../src/features/changelog'
 import { fetchPackageVersions } from '../../src/services/npm-registry'
-import { fetchExactPackageManifest } from '../../src/services/jsdelivr-registry'
 import { PACKAGE_NAME } from '../../src/config/constants'
 
 describe('Services Integration Tests', () => {
@@ -77,24 +76,5 @@ describe('Services Integration Tests', () => {
       })
     }, 10000)
 
-  })
-
-  describe(`jsdelivr exact manifest with ${PACKAGE_NAME}`, () => {
-    it(`should fetch exact package manifest for ${PACKAGE_NAME}`, async () => {
-      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
-
-      expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      const manifest = await fetchExactPackageManifest(PACKAGE_NAME, packageVersion)
-
-      expect(manifest).not.toBeNull()
-      expect(manifest?.name).toBe(PACKAGE_NAME)
-      expect(manifest?.version).toBe(packageVersion)
-    }, 10000)
-
-    it('should reject non-exact version lookups', async () => {
-      const manifest = await fetchExactPackageManifest(PACKAGE_NAME, 'latest')
-
-      expect(manifest).toBeNull()
-    })
   })
 })

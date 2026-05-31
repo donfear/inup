@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Pool } from 'undici'
 
-const { getAllPackageDataFromJsdelivrMock } = vi.hoisted(() => ({
-  getAllPackageDataFromJsdelivrMock: vi.fn(),
-}))
-
-vi.mock('../../../src/services/jsdelivr-registry', () => ({
-  getAllPackageDataFromJsdelivr: getAllPackageDataFromJsdelivrMock,
+// Keep retry classification real, but make backoff instant so retry-exhaustion
+// paths don't actually sleep during tests.
+vi.mock('../../../src/services/http/retry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/http/retry')>()),
+  sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
 import {
@@ -55,7 +54,6 @@ describe('npm-registry', () => {
   beforeEach(() => {
     clearPackageCache()
     requestMock.mockReset()
-    getAllPackageDataFromJsdelivrMock.mockReset()
   })
 
   afterEach(() => {
@@ -153,30 +151,17 @@ describe('npm-registry', () => {
     })
   })
 
-  it('falls back to jsdelivr when npm responds with a retryable status', async () => {
+  it('returns unknown after exhausting retries on a persistently retryable status', async () => {
     requestMock.mockResolvedValue(makeErrBody(429))
-    getAllPackageDataFromJsdelivrMock.mockResolvedValue(
-      new Map([
-        [
-          'demo-pkg',
-          {
-            latestVersion: '1.1.0',
-            allVersions: ['1.1.0', '1.0.0'],
-          },
-        ],
-      ])
-    )
 
-    const currentVersions = new Map([['demo-pkg', '1.0.0']])
-    const result = await fetchPackageVersions(['demo-pkg'], { currentVersions })
+    const result = await fetchPackageVersions(['demo-pkg'])
 
-    expect(getAllPackageDataFromJsdelivrMock).toHaveBeenCalledWith(
-      ['demo-pkg'],
-      new Map([['demo-pkg', '1.0.0']])
-    )
+    // Three attempts against a status that never recovers, then give up —
+    // there is no secondary source anymore.
+    expect(requestMock).toHaveBeenCalledTimes(3)
     expect(result.get('demo-pkg')).toEqual({
-      latestVersion: '1.1.0',
-      allVersions: ['1.1.0', '1.0.0'],
+      latestVersion: 'unknown',
+      allVersions: [],
     })
   })
 

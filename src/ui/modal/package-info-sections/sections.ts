@@ -9,6 +9,7 @@ import {
   selectRepresentativeAdvisory,
 } from '../../presenters/vulnerability'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../../utils'
+import { checkNodeEngineCompatibility } from '../../../utils'
 import { buildReleaseNotesSections } from './release-notes'
 
 function formatNumber(num: number | undefined): string {
@@ -108,6 +109,30 @@ export function buildPackageInfoSections(
     required: true,
     behavior: 'pinned',
   })
+
+  const warningRows: string[] = []
+  const warningContentWidth = Math.max(10, modalWidth - 4)
+  if (state.deprecated) {
+    // Wrap (don't truncate) so a deprecation URL stays whole and clickable —
+    // truncation with "..." produces a dead link. `wrapPlainText` breaks on
+    // spaces only, so the URL keeps its own intact line. No emoji marker:
+    // `getVisualLength` scores glyphs like ⚠ as width 2 while many terminals
+    // render them as width 1, which throws off the modal's border alignment.
+    for (const line of wrapPlainText(`Deprecated: ${state.deprecated}`, warningContentWidth)) {
+      warningRows.push(getThemeColor('warning')(line))
+    }
+  }
+  const engineWarning = checkNodeEngineCompatibility(state.enginesNode)
+  if (engineWarning) {
+    warningRows.push(getThemeColor('warning')(`Hold: ${engineWarning}`))
+  }
+  if (warningRows.length > 0) {
+    sections.push({
+      key: 'warnings',
+      rows: warningRows,
+      behavior: 'pinned',
+    })
+  }
 
   if (state.homepage) {
     sections.push({

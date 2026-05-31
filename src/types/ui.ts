@@ -19,6 +19,8 @@ export interface PackageSelectionState {
   weeklyDownloads?: number // Weekly download count from npm
   author?: string // Package author
   license?: string // Package license
+  deprecated?: string // npm deprecation message for the latest version (loaded on demand)
+  enginesNode?: string // declared engines.node range for the latest version (loaded on demand)
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions (for release notes version range)
   releaseNotesVersions?: string[] // Versions between current and target (newest first)
