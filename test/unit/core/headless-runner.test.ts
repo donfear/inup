@@ -99,6 +99,7 @@ describe('UpgradeRunner.runHeadless', () => {
     expect(logSpy).toHaveBeenCalledTimes(1)
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
 
+    expect(report.schemaVersion).toBe(1)
     expect(report.summary).toEqual({ total: 2, outdated: 1, major: 1, vulnerable: 0 })
     expect(report.outdated).toHaveLength(1)
     expect(report.outdated[0]).toMatchObject({
@@ -118,7 +119,10 @@ describe('UpgradeRunner.runHeadless', () => {
     logSpy.mockRestore()
   })
 
-  it('--json includes security advisories from the audit and counts them in the summary', async () => {
+  it('--json cross-references advisories against the upgrade targets (fixed-by verdict)', async () => {
+    // axios fixture: current ^0.27.0, range 0.27.2, latest 1.16.1.
+    // Advisory A (<1.0.0): the latest (1.16.1) escapes it, the in-range bump (0.27.2) does not.
+    // Advisory B (>=0.0.1): affects everything, so neither target fixes it.
     mocks.fetchVulnerabilities.mockResolvedValue(
       new Map([
         [
@@ -128,11 +132,18 @@ describe('UpgradeRunner.runHeadless', () => {
             highestSeverity: 'high',
             vulnerabilities: [
               {
-                id: 1234,
-                title: 'Server-Side Request Forgery',
+                id: 1,
+                title: 'SSRF',
                 severity: 'high',
-                url: 'https://github.com/advisories/GHSA-test',
+                url: 'https://github.com/advisories/GHSA-a',
                 vulnerable_versions: '<1.0.0',
+              },
+              {
+                id: 2,
+                title: 'Prototype pollution',
+                severity: 'moderate',
+                url: 'https://github.com/advisories/GHSA-b',
+                vulnerable_versions: '>=0.0.1',
               },
             ],
           },
@@ -148,11 +159,32 @@ describe('UpgradeRunner.runHeadless', () => {
 
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
     expect(report.summary.vulnerable).toBe(1)
-    expect(report.outdated[0].vulnerability).toMatchObject({
-      count: 1,
+    expect(report.outdated[0].vulnerability).toEqual({
+      count: 2,
       highestSeverity: 'high',
-      detailsUrl: 'https://github.com/advisories/GHSA-test',
-      advisories: [{ id: 1234, severity: 'high' }],
+      // Aggregates use AND across advisories: B blocks both, so neither target clears everything.
+      fixedByRange: false,
+      fixedByLatest: false,
+      advisories: [
+        {
+          id: 1,
+          title: 'SSRF',
+          severity: 'high',
+          url: 'https://github.com/advisories/GHSA-a',
+          vulnerableVersions: '<1.0.0',
+          fixedByRange: false,
+          fixedByLatest: true,
+        },
+        {
+          id: 2,
+          title: 'Prototype pollution',
+          severity: 'moderate',
+          url: 'https://github.com/advisories/GHSA-b',
+          vulnerableVersions: '>=0.0.1',
+          fixedByRange: false,
+          fixedByLatest: false,
+        },
+      ],
     })
 
     logSpy.mockRestore()

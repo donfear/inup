@@ -1,13 +1,15 @@
 import type { ChalkInstance } from 'chalk'
 
+export type VulnerabilitySeverity = 'info' | 'low' | 'moderate' | 'high' | 'critical'
+
 export interface VulnerabilitySummary {
   count: number
-  highestSeverity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+  highestSeverity: VulnerabilitySeverity
   detailsUrl?: string
   advisories: Array<{
     id: number
     title: string
-    severity: 'info' | 'low' | 'moderate' | 'high' | 'critical'
+    severity: VulnerabilitySeverity
     url: string
   }>
 }
@@ -90,6 +92,27 @@ export interface HeadlessOptions {
   check?: boolean // Exit non-zero when updates exist (CI gate)
 }
 
+/** Bump when the `--json` shape changes in a way consumers (scripts, agents) must adapt to. */
+export const HEADLESS_SCHEMA_VERSION = 1
+
+export interface HeadlessAdvisory {
+  id: number
+  title: string
+  severity: VulnerabilitySeverity
+  url: string
+  vulnerableVersions: string // The advisory's affected semver range, verbatim from npm
+  fixedByRange: boolean // The in-range target (`range`) is no longer affected
+  fixedByLatest: boolean // The latest target (`latest`) is no longer affected
+}
+
+export interface HeadlessVulnerability {
+  count: number
+  highestSeverity: VulnerabilitySeverity
+  fixedByRange: boolean // Every advisory is cleared by upgrading within the current range
+  fixedByLatest: boolean // Every advisory is cleared by upgrading to latest
+  advisories: HeadlessAdvisory[]
+}
+
 export interface HeadlessReportEntry {
   name: string
   current: string // Raw specifier from package.json (with ^/~ prefix)
@@ -100,10 +123,11 @@ export interface HeadlessReportEntry {
   hasMajorUpdate: boolean
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
-  vulnerability?: VulnerabilitySummary
+  vulnerability?: HeadlessVulnerability // Advisories on the current version + whether upgrading clears them
 }
 
 export interface HeadlessReport {
+  schemaVersion: number // HEADLESS_SCHEMA_VERSION — lets agents pin to a known shape
   summary: {
     total: number // Packages scanned
     outdated: number // Packages with an available update
