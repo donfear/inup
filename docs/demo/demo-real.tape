@@ -2,14 +2,22 @@ Output docs/demo/interactive-upgrade.gif
 
 Set Shell bash
 Set PlaybackSpeed 1.0
-Set Width 1200
-Set Height 600
+# Width/Height include a 20px Padding on every side, so the usable terminal grid
+# stays 1200x470 while inup's full-height panel borders get breathing room from the
+# video edge (Padding 0 jammed the bottom/edge borders flush against the frame).
+Set Width 1240
+Set Height 510
 Set FontSize 16
-Set Padding 0
+Set Padding 20
 
 # Change to clean temp directory (hidden from view)
 Hide
 Type "cd /tmp/my-app"
+Enter
+# Clear CI so inup renders the interactive TUI. GitHub Actions sets CI=true, which
+# the VHS-spawned shell inherits and which would otherwise route inup to its headless
+# (non-interactive) report path, leaving the tape's keystrokes to leak into bash.
+Type "unset CI"
 Enter
 Type `export PS1='$ '`
 Enter
