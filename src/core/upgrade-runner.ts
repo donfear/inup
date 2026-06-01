@@ -3,9 +3,6 @@ import { PackageDetector } from './package-detector'
 import { InteractiveUI } from '../interactive-ui'
 import { PackageUpgrader } from './upgrader'
 import {
-  HeadlessOptions,
-  HeadlessReport,
-  HeadlessReportEntry,
   PackageInfo,
   PackageLoadProgress,
   PackageSelectionState,
@@ -14,8 +11,6 @@ import {
   PackageManagerInfo,
 } from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
-import { fetchVulnerabilities } from '../services'
-import { createVulnerabilitySummary } from '../ui/presenters/vulnerability'
 import { ConsoleUtils } from '../ui/utils'
 import { getPerformanceTracker } from '../features/debug'
 
@@ -187,124 +182,6 @@ export class UpgradeRunner {
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)
     }
-  }
-
-  /**
-   * Non-interactive entry point: resolve the outdated list without rendering the
-   * TUI, then either emit a JSON report (--json) or a plain line-based report.
-   * With --check, sets a non-zero exit code when updates exist so CI can gate on it.
-   * Read-only: never writes package.json or installs.
-   */
-  public async runHeadless(options: HeadlessOptions): Promise<void> {
-    try {
-      this.checkPrerequisites()
-
-      const packages = await this.detector.getOutdatedPackages()
-      const outdated = this.detector.getOutdatedPackagesOnly(packages)
-
-      // Enrich with security advisories (one bulk request, best-effort) — the same audit the
-      // TUI runs on `s`, so --json/--check carry the vuln signal CI cares about.
-      await this.enrichWithVulnerabilities(outdated)
-
-      if (options.json) {
-        // stdout is reserved for the JSON document only.
-        console.log(JSON.stringify(this.buildHeadlessReport(packages, outdated), null, 2))
-      } else {
-        this.printPlainReport(outdated)
-      }
-
-      // Exit 1 only means "updates exist" (like `prettier --check`); 2 is reserved for errors.
-      if (options.check && outdated.length > 0) {
-        process.exitCode = 1
-      }
-    } catch (error) {
-      console.error(chalk.red(`Error: ${error instanceof Error ? error.message : String(error)}`))
-      process.exit(2)
-    }
-  }
-
-  private buildHeadlessReport(all: PackageInfo[], outdated: PackageInfo[]): HeadlessReport {
-    return {
-      summary: {
-        total: all.length,
-        outdated: outdated.length,
-        major: outdated.filter((pkg) => pkg.hasMajorUpdate).length,
-        vulnerable: outdated.filter((pkg) => (pkg.vulnerability?.count ?? 0) > 0).length,
-      },
-      outdated: outdated.map((pkg) => {
-        const entry: HeadlessReportEntry = {
-          name: pkg.name,
-          current: pkg.currentVersion,
-          range: pkg.rangeVersion,
-          latest: pkg.latestVersion,
-          type: pkg.type,
-          packageJsonPath: pkg.packageJsonPath,
-          hasMajorUpdate: pkg.hasMajorUpdate,
-        }
-        if (pkg.deprecated) entry.deprecated = pkg.deprecated
-        if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
-        if (pkg.vulnerability) entry.vulnerability = pkg.vulnerability
-        return entry
-      }),
-    }
-  }
-
-  /**
-   * Attach known security advisories to the outdated packages in place. Audits each package's
-   * currently-installed specifier (matching the interactive audit) via one bulk request.
-   * Best-effort: `fetchVulnerabilities` swallows network errors and returns an empty map, so a
-   * failed audit never blocks the report.
-   */
-  private async enrichWithVulnerabilities(outdated: PackageInfo[]): Promise<void> {
-    if (outdated.length === 0) return
-
-    // The bulk advisory API is keyed by package name (one version per name), so dedupe by name.
-    const versions = new Map<string, string>()
-    for (const pkg of outdated) {
-      if (!versions.has(pkg.name)) versions.set(pkg.name, pkg.currentVersion)
-    }
-
-    const advisories = await fetchVulnerabilities(versions)
-    if (advisories.size === 0) return
-
-    for (const pkg of outdated) {
-      const found = advisories.get(pkg.name)
-      if (!found || found.vulnerabilities.length === 0 || !found.highestSeverity) continue
-      pkg.vulnerability = createVulnerabilitySummary(
-        undefined,
-        found.vulnerabilities.map((item) => ({
-          id: item.id,
-          title: item.title,
-          severity: item.severity,
-          url: item.url,
-        })),
-        found.highestSeverity
-      )
-    }
-  }
-
-  private printPlainReport(outdated: PackageInfo[]): void {
-    if (outdated.length === 0) {
-      console.log('All dependencies are up to date — no upgrades needed.')
-      return
-    }
-
-    for (const pkg of outdated) {
-      const major = pkg.hasMajorUpdate ? ' (major)' : ''
-      const vuln =
-        pkg.vulnerability && pkg.vulnerability.count > 0
-          ? `  [vuln: ${pkg.vulnerability.count} ${pkg.vulnerability.highestSeverity}]`
-          : ''
-      const deprecated = pkg.deprecated ? '  [deprecated]' : ''
-      console.log(
-        `${pkg.name}  ${pkg.currentVersion} → ${pkg.latestVersion}  [${pkg.type}]${major}${vuln}${deprecated}`
-      )
-    }
-
-    const fileCount = new Set(outdated.map((pkg) => pkg.packageJsonPath)).size
-    const vulnerable = outdated.filter((pkg) => (pkg.vulnerability?.count ?? 0) > 0).length
-    const vulnNote = vulnerable > 0 ? ` — ${vulnerable} with known vulnerabilities` : ''
-    console.log(`\n${outdated.length} package(s) outdated across ${fileCount} file(s)${vulnNote}.`)
   }
 
   private checkPrerequisites(): void {

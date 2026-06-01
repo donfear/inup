@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   upgradeRunnerRun: vi.fn(),
-  upgradeRunnerRunHeadless: vi.fn(),
+  headlessRun: vi.fn(),
   loadProjectConfig: vi.fn(),
   checkForUpdateAsync: vi.fn(),
   getGitWorkingTreeState: vi.fn(),
@@ -12,7 +12,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../src/index', () => ({
   UpgradeRunner: class {
     run = mocks.upgradeRunnerRun
-    runHeadless = mocks.upgradeRunnerRunHeadless
+  },
+}))
+
+vi.mock('../../src/features/headless', () => ({
+  HeadlessRunner: class {
+    run = mocks.headlessRun
   },
 }))
 
@@ -58,7 +63,7 @@ describe('CLI git dirty preflight', () => {
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
-    mocks.upgradeRunnerRunHeadless.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -158,7 +163,7 @@ describe('CLI headless routing', () => {
     mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
-    mocks.upgradeRunnerRunHeadless.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -172,7 +177,7 @@ describe('CLI headless routing', () => {
 
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
 
-    expect(mocks.upgradeRunnerRunHeadless).toHaveBeenCalledWith({
+    expect(mocks.headlessRun).toHaveBeenCalledWith({
       json: undefined,
       check: undefined,
     })
@@ -185,14 +190,14 @@ describe('CLI headless routing', () => {
 
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
 
-    expect(mocks.upgradeRunnerRunHeadless).toHaveBeenCalledTimes(1)
+    expect(mocks.headlessRun).toHaveBeenCalledTimes(1)
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
   })
 
   it('routes to runHeadless with json/check flags even in a TTY', async () => {
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10', json: true, check: true })
 
-    expect(mocks.upgradeRunnerRunHeadless).toHaveBeenCalledWith({ json: true, check: true })
+    expect(mocks.headlessRun).toHaveBeenCalledWith({ json: true, check: true })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
   })
 })

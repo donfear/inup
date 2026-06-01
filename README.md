@@ -68,7 +68,15 @@ inup | cat              # plain line-based report when piped to a log
 
 Each reported package carries its health signals: `deprecated` (npm deprecation message), `enginesNode`
 (declared `engines.node`), and `vulnerability` (known advisories on the currently-installed version,
-from one bulk `npm audit`-style request). The summary includes a `vulnerable` count.
+from one bulk `npm audit`-style request). Every advisory is **cross-referenced against the upgrade
+targets**, so you know whether the upgrade actually fixes it:
+
+- `vulnerability.advisories[].fixedByRange` / `fixedByLatest` — does the in-range / latest target escape
+  this advisory's affected range?
+- `vulnerability.fixedByRange` / `fixedByLatest` — does the target clear **every** advisory?
+
+The summary includes a `vulnerable` count, and the payload carries a `schemaVersion` so scripts and
+agents can pin to a known shape.
 
 Output hygiene: with `--json`, stdout carries **only** the JSON document; all progress and warnings go
 to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
