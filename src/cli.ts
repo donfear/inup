@@ -4,9 +4,10 @@ import { Command } from 'commander'
 import chalk from 'chalk'
 import { resolve } from 'path'
 import { UpgradeRunner } from './index'
+import { HeadlessRunner } from './features/headless'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
-import { PackageManager } from './types'
+import { PackageManager, UpgradeOptions } from './types'
 import { enableDebugLogging, applyColorSetting } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
 import { TerminalInput } from './ui'
@@ -101,26 +102,28 @@ export async function runCli(options: CliOptions): Promise<void> {
     packageManager = options.packageManager as PackageManager
   }
 
-  const upgrader = new UpgradeRunner({
+  const runnerOptions: UpgradeOptions = {
     cwd,
     excludePatterns,
     scanDirs: projectConfig.scanDirs,
     maxDepth,
     ignorePackages,
     packageManager,
-    showPeerDependencyVulnerabilities:
-      projectConfig.showPeerDependencyVulnerabilities ?? false,
+    showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
-  })
+  }
+
+  // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
+  // only the interactive path builds the full TUI runner.
   if (!interactive) {
-    await upgrader.runHeadless({ json: options.json, check: options.check })
+    await new HeadlessRunner(runnerOptions).run({ json: options.json, check: options.check })
     return
   }
 
-  await upgrader.run()
+  await new UpgradeRunner(runnerOptions).run()
 
   // After the main flow completes, check if there's an update available
   const updateCheck = await updateCheckPromise
