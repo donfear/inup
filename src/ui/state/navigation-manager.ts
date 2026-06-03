@@ -159,20 +159,30 @@ export class NavigationManager {
   }
 
   // Move the cursor onto the nearest navigable row if it currently sits on an
-  // ignored one. Searches forward first, then backward. No-op if already
-  // navigable or no navigable row exists.
+  // ignored one. Searches forward first, then backward.
+  // When no navigable row exists yet (e.g. during initial load with only ignored
+  // rows seeded), sets currentRow to states.length so the renderer shows no
+  // highlighted row at all — it will snap into place on the next render once a
+  // navigable row arrives.
   ensureCursorOnNavigable(states: PackageSelectionState[]): void {
-    if (states.length === 0 || isNavigable(states[this.state.currentRow])) return
+    if (states.length === 0) return
+    if (isNavigable(states[this.state.currentRow])) return
     const forward = states.findIndex(
       (state, i) => i >= this.state.currentRow && isNavigable(state)
     )
     if (forward !== -1) {
       this.state.currentRow = forward
+      this.ensureVisible(this.state.currentRow, states.length)
     } else {
       const firstNavigable = states.findIndex((state) => isNavigable(state))
-      if (firstNavigable !== -1) this.state.currentRow = firstNavigable
+      if (firstNavigable !== -1) {
+        this.state.currentRow = firstNavigable
+        this.ensureVisible(this.state.currentRow, states.length)
+      } else {
+        // No navigable rows yet — park the cursor off-screen so nothing is highlighted.
+        this.state.currentRow = states.length
+      }
     }
-    this.ensureVisible(this.state.currentRow, states.length)
   }
 
   private firstPackageIndex(states: PackageSelectionState[]): number {

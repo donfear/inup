@@ -112,15 +112,18 @@ describe('StateManager navigation skips ignored rows', () => {
     expect(sm.getUIState().currentRow).toBe(1)
   })
 
-  it('all-ignored list leaves the cursor unchanged', () => {
+  it('all-ignored list parks the cursor off-screen (no row highlighted)', () => {
     const sm = new StateManager(0, 24)
     const states = [
       ready({ name: 'a', loadState: 'ignored' }),
       ready({ name: 'b', loadState: 'ignored' }),
     ]
     sm.ensureCursorOnNavigable(states)
+    // currentRow is set to states.length so no row index matches during render.
+    expect(sm.getUIState().currentRow).toBe(states.length)
+    // Navigating in an all-ignored list keeps cursor put.
     sm.navigateDown(states)
-    expect(sm.getUIState().currentRow).toBe(0)
+    expect(sm.getUIState().currentRow).toBe(states.length)
   })
 })
 

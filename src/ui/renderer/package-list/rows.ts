@@ -84,7 +84,7 @@ export function renderPackageLine(
   let rangeDot = ''
   let rangeVersionText = ''
   if (isIgnored) {
-    rangeDot = getThemeColor('dotEmpty')('○')
+    rangeDot = ''
     rangeVersionText = chalk.gray('(ignored)')
   } else if (isPending) {
     rangeDot = getThemeColor('dotEmpty')('◌')
@@ -173,7 +173,7 @@ export function renderPackageLine(
     ? `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}${typeBadge}`
     : `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}`
 
-  const currentSection = `${currentDot} ${currentVersion}`
+  const currentSection = isIgnored ? `  ${currentVersion}` : `${currentDot} ${currentVersion}`
   const currentSectionLength = VersionUtils.getVisualLength(currentSection) + 1
   const currentPadding = Math.max(0, currentColumnWidth - currentSectionLength)
   const currentPaddingText = shouldShowDashes(currentPadding)
@@ -183,7 +183,7 @@ export function renderPackageLine(
 
   let rangeSection = ''
   if (isIgnored || isPending || isFailed || state.hasRangeUpdate) {
-    rangeSection = `${rangeDot} ${rangeVersionText}`
+    rangeSection = rangeDot ? `${rangeDot} ${rangeVersionText}` : rangeVersionText
     const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
     const rangePaddingText = shouldShowDashes(rangePadding)
