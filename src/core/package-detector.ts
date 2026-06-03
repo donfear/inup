@@ -26,6 +26,7 @@ interface PreparedDependencies {
   allDependencies: DependencyEntry[]
   uniquePackages: string[]
   currentVersions: Map<string, string>
+  ignoredDependencies: DependencyEntry[]
 }
 
 export class PackageDetector {
@@ -87,6 +88,7 @@ export class PackageDetector {
       allDependencies: prepared.allDependencies,
       uniquePackages: prepared.uniquePackages,
       currentVersions: prepared.currentVersions,
+      ignoredDependencies: prepared.ignoredDependencies,
       progress: this.createProgressSnapshot(prepared.uniquePackages.length, 0, 0, true),
     }
 
@@ -223,6 +225,7 @@ export class PackageDetector {
     const tFilter = Date.now()
     const uniquePackageNames = new Set<string>()
     const allDependencies: DependencyEntry[] = []
+    const ignoredDependencies: DependencyEntry[] = []
     let ignoredCount = 0
     const seenWorkspaceRefs = new Set<string>()
     const seenIgnored = new Set<string>()
@@ -239,6 +242,12 @@ export class PackageDetector {
 
       if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
         ignoredCount++
+        ignoredDependencies.push({
+          name: dep.name,
+          version: dep.version,
+          type: dep.type as DependencyEntry['type'],
+          packageJsonPath: dep.packageJsonPath,
+        })
         if (!seenIgnored.has(dep.name)) {
           seenIgnored.add(dep.name)
           debugLog.info('PackageDetector', `ignoring package: ${dep.name}`)
@@ -289,6 +298,7 @@ export class PackageDetector {
       allDependencies,
       uniquePackages,
       currentVersions,
+      ignoredDependencies,
     }
   }
 

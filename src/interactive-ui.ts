@@ -1,5 +1,6 @@
 import { Key } from 'node:readline'
 import {
+  DependencyEntry,
   PackageLoadProgress,
   PackageInfo,
   PackageUpgradeChoice,
@@ -18,7 +19,9 @@ import { PackageInfoModalController, VulnerabilityAuditController } from './ui/c
 import {
   createSelectionStates,
   createPendingSelectionStates,
+  createIgnoredSelectionStates,
   createUpgradeChoices,
+  comparePackageNames,
   runInteractiveSession,
 } from './ui/session'
 
@@ -111,6 +114,10 @@ export class InteractiveUI {
     )
   }
 
+  public createIgnoredSelectionStates(ignoredDeps: DependencyEntry[]): PackageSelectionState[] {
+    return createIgnoredSelectionStates(ignoredDeps)
+  }
+
   public appendOutdatedBatchToSelectionStates(
     selectionStates: PackageSelectionState[],
     batch: StreamOutdatedPackagesBatchItem[],
@@ -130,13 +137,22 @@ export class InteractiveUI {
       selectionStates.map((state) => `${state.name}@${state.currentVersionSpecifier}@${state.type}`)
     )
 
+    let added = false
     outdatedStates.forEach((state) => {
       const key = `${state.name}@${state.currentVersionSpecifier}@${state.type}`
       if (!seen.has(key)) {
         selectionStates.push(state)
         seen.add(key)
+        added = true
       }
     })
+
+    // Streamed batches arrive in fetch order; re-sort so they interleave
+    // alphabetically with the ignored rows seeded up front (Array.sort is
+    // stable, so equal-name duplicates keep their relative order).
+    if (added) {
+      selectionStates.sort((a, b) => comparePackageNames(a.name, b.name))
+    }
 
     this.enqueueSecurityAudit(selectionStates)
   }

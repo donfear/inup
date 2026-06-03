@@ -1,4 +1,9 @@
-import { RenderableItem } from '../../types'
+import { PackageSelectionState, RenderableItem } from '../../types'
+
+/** A row is navigable unless it's a display-only ignored package. */
+function isNavigable(state: PackageSelectionState | undefined): boolean {
+  return !!state && state.loadState !== 'ignored'
+}
 
 export interface NavigationState {
   currentRow: number // Index into states array (package index)
@@ -73,26 +78,34 @@ export class NavigationManager {
     return 0
   }
 
-  // Find the next navigable package index in the given direction
+  // Find the next navigable package index in the given direction, skipping
+  // non-navigable (ignored) rows.
   private findNextPackageIndex(
     currentPackageIndex: number,
     direction: 'up' | 'down',
-    totalPackages: number
+    states: PackageSelectionState[]
   ): number {
+    const totalPackages = states.length
+
     if (this.renderableItems.length === 0) {
-      // Fallback to simple navigation if no renderable items
-      if (direction === 'up') {
-        return currentPackageIndex <= 0 ? totalPackages - 1 : currentPackageIndex - 1
-      } else {
-        return currentPackageIndex >= totalPackages - 1 ? 0 : currentPackageIndex + 1
+      // Flat mode: step in the given direction with wrap-around, skipping
+      // ignored rows. Bounded by totalPackages so an all-ignored list (no
+      // navigable target) leaves the cursor put instead of looping forever.
+      if (totalPackages === 0) return currentPackageIndex
+      const step = direction === 'up' ? -1 : 1
+      let index = currentPackageIndex
+      for (let i = 0; i < totalPackages; i++) {
+        index = (index + step + totalPackages) % totalPackages
+        if (isNavigable(states[index])) return index
       }
+      return currentPackageIndex
     }
 
-    // Get all package items with their visual indices
+    // Grouped mode (currently unused): collect navigable package items.
     const packageItems: { visualIndex: number; packageIndex: number }[] = []
     for (let i = 0; i < this.renderableItems.length; i++) {
       const item = this.renderableItems[i]
-      if (item.type === 'package') {
+      if (item.type === 'package' && isNavigable(item.state)) {
         packageItems.push({ visualIndex: i, packageIndex: item.originalIndex })
       }
     }
@@ -113,47 +126,78 @@ export class NavigationManager {
     }
   }
 
-  navigateUp(totalItems: number): void {
+  navigateUp(states: PackageSelectionState[]): void {
+    const totalItems = states.length
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'up', totalItems)
+    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'up', states)
     this.ensureVisible(this.state.currentRow, totalItems)
   }
 
-  navigateDown(totalItems: number): void {
+  navigateDown(states: PackageSelectionState[]): void {
+    const totalItems = states.length
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'down', totalItems)
+    this.state.currentRow = this.findNextPackageIndex(this.state.currentRow, 'down', states)
     this.ensureVisible(this.state.currentRow, totalItems)
   }
 
-  navigateTop(totalItems: number): void {
+  navigateTop(states: PackageSelectionState[]): void {
+    const totalItems = states.length
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.firstPackageIndex()
+    this.state.currentRow = this.firstPackageIndex(states)
     this.ensureVisible(this.state.currentRow, totalItems)
   }
 
-  navigateBottom(totalItems: number): void {
+  navigateBottom(states: PackageSelectionState[]): void {
+    const totalItems = states.length
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    this.state.currentRow = this.lastPackageIndex(totalItems)
+    this.state.currentRow = this.lastPackageIndex(states)
     this.ensureVisible(this.state.currentRow, totalItems)
   }
 
-  private firstPackageIndex(): number {
-    if (this.renderableItems.length === 0) return 0
-    const first = this.renderableItems.find((item) => item.type === 'package')
-    return first ? first.originalIndex : 0
+  // Move the cursor onto the nearest navigable row if it currently sits on an
+  // ignored one. Searches forward first, then backward. No-op if already
+  // navigable or no navigable row exists.
+  ensureCursorOnNavigable(states: PackageSelectionState[]): void {
+    if (states.length === 0 || isNavigable(states[this.state.currentRow])) return
+    const forward = states.findIndex(
+      (state, i) => i >= this.state.currentRow && isNavigable(state)
+    )
+    if (forward !== -1) {
+      this.state.currentRow = forward
+    } else {
+      const firstNavigable = states.findIndex((state) => isNavigable(state))
+      if (firstNavigable !== -1) this.state.currentRow = firstNavigable
+    }
+    this.ensureVisible(this.state.currentRow, states.length)
   }
 
-  private lastPackageIndex(totalPackages: number): number {
-    if (this.renderableItems.length === 0) return totalPackages - 1
+  private firstPackageIndex(states: PackageSelectionState[]): number {
+    if (this.renderableItems.length === 0) {
+      const idx = states.findIndex((state) => isNavigable(state))
+      return idx === -1 ? 0 : idx
+    }
+    const first = this.renderableItems.find(
+      (item) => item.type === 'package' && isNavigable(item.state)
+    )
+    return first && first.type === 'package' ? first.originalIndex : 0
+  }
+
+  private lastPackageIndex(states: PackageSelectionState[]): number {
+    if (this.renderableItems.length === 0) {
+      for (let i = states.length - 1; i >= 0; i--) {
+        if (isNavigable(states[i])) return i
+      }
+      return states.length - 1
+    }
     for (let i = this.renderableItems.length - 1; i >= 0; i--) {
       const item = this.renderableItems[i]
-      if (item.type === 'package') return item.originalIndex
+      if (item.type === 'package' && isNavigable(item.state)) return item.originalIndex
     }
-    return totalPackages - 1
+    return states.length - 1
   }
 
   private ensureVisible(packageIndex: number, totalPackages: number): void {

@@ -145,17 +145,22 @@ export function renderInterface(
     statusLine =
       matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
   } else {
+    const ignoredCount = states.filter((state) => state.loadState === 'ignored').length
+    const ignoredSuffix =
+      ignoredCount > 0 ? chalk.gray(` (${chalk.white(ignoredCount)} ignored)`) : ''
     if (totalVisualItems > maxVisibleItems) {
       statusLine =
         chalk.gray(
           `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
         ) +
+        ignoredSuffix +
         '  ' +
         chalk.bold.white('Enter ') +
         chalk.gray('Confirm')
     } else {
       statusLine =
         chalk.gray(`Showing all ${chalk.white(totalPackages)} packages`) +
+        ignoredSuffix +
         '  ' +
         chalk.bold.white('Enter ') +
         chalk.gray('Confirm')

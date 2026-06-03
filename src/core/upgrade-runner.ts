@@ -72,7 +72,11 @@ export class UpgradeRunner {
             progress.failed = event.payload.progress.failed
             progress.isLoading = event.payload.progress.isLoading
 
-            selectionStates = []
+            // Seed with display-only ignored rows (grayed out, never fetched
+            // or selected) so they appear inline from the first render.
+            selectionStates = this.ui.createIgnoredSelectionStates(
+              event.payload.ignoredDependencies
+            )
 
             this.ui
               .selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {

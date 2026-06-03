@@ -1,11 +1,25 @@
 import * as semver from 'semver'
 import {
+  DependencyEntry,
   PackageInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
   VulnerabilitySummary,
 } from '../../types'
 import { applyVersionPrefix } from '../utils'
+
+/**
+ * Shared ordering for package lists: scoped packages (@…) first, then
+ * alphabetical. Used by deduplicatePackages and by the append-sort that keeps
+ * streamed-in outdated rows interleaved with seeded ignored rows.
+ */
+export function comparePackageNames(a: string, b: string): number {
+  const aIsScoped = a.startsWith('@')
+  const bIsScoped = b.startsWith('@')
+  if (aIsScoped && !bIsScoped) return -1
+  if (!aIsScoped && bIsScoped) return 1
+  return a.localeCompare(b)
+}
 
 type CachedSummaryFn = (
   name: string,
@@ -31,13 +45,9 @@ export function deduplicatePackages(
   }
 
   return new Map(
-    Array.from(uniquePackages.entries()).sort(([, a], [, b]) => {
-      const aIsScoped = a.pkg.name.startsWith('@')
-      const bIsScoped = b.pkg.name.startsWith('@')
-      if (aIsScoped && !bIsScoped) return -1
-      if (!aIsScoped && bIsScoped) return 1
-      return a.pkg.name.localeCompare(b.pkg.name)
-    })
+    Array.from(uniquePackages.entries()).sort(([, a], [, b]) =>
+      comparePackageNames(a.pkg.name, b.pkg.name)
+    )
   )
 }
 
@@ -113,6 +123,49 @@ export function createPendingSelectionStates(
       hasMajorUpdate: false,
       type: pkg.type,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
+    }
+  })
+}
+
+/**
+ * Build display-only states for packages matched by the `.inuprc` ignore list.
+ * These are rendered grayed-out and are never fetched, selected, or upgraded —
+ * the `loadState: 'ignored'` value gates them out of every selection guard and
+ * out of createUpgradeChoices (which requires loadState === 'ready').
+ */
+export function createIgnoredSelectionStates(
+  ignoredDeps: DependencyEntry[]
+): PackageSelectionState[] {
+  const uniquePackages = deduplicatePackages(
+    ignoredDeps.map((dep) => ({
+      name: dep.name,
+      currentVersion: dep.version,
+      rangeVersion: dep.version,
+      latestVersion: dep.version,
+      type: dep.type,
+      packageJsonPath: dep.packageJsonPath,
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    }))
+  )
+
+  return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
+    const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
+
+    return {
+      name: pkg.name,
+      packageJsonPath: pkg.packageJsonPath,
+      packageJsonPaths: Array.from(packageJsonPaths),
+      currentVersionSpecifier: pkg.currentVersion,
+      currentVersion: currentClean,
+      rangeVersion: currentClean,
+      latestVersion: currentClean,
+      selectedOption: 'none',
+      loadState: 'ignored',
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      type: pkg.type,
     }
   })
 }

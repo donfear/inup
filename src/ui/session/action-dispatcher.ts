@@ -73,16 +73,16 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
 
   switch (action.type) {
     case 'navigate_up':
-      stateManager.navigateUp(filteredStates.length)
+      stateManager.navigateUp(filteredStates)
       break
     case 'navigate_down':
-      stateManager.navigateDown(filteredStates.length)
+      stateManager.navigateDown(filteredStates)
       break
     case 'navigate_top':
-      stateManager.navigateTop(filteredStates.length)
+      stateManager.navigateTop(filteredStates)
       break
     case 'navigate_bottom':
-      stateManager.navigateBottom(filteredStates.length)
+      stateManager.navigateBottom(filteredStates)
       break
     case 'select_left':
       stateManager.updateSelection(filteredStates, 'left')

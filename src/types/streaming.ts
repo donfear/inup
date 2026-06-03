@@ -19,6 +19,7 @@ export interface StreamOutdatedPackagesInitialPayload {
   allDependencies: DependencyEntry[]
   uniquePackages: string[]
   currentVersions: Map<string, string>
+  ignoredDependencies: DependencyEntry[]
   progress: PackageLoadProgress
 }
 

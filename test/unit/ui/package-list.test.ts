@@ -42,6 +42,23 @@ describe('package-list renderer', () => {
     expect(line).toContain('unavailable')
   })
 
+  it('renders ignored rows grayed with an (ignored) marker and no caret', () => {
+    const line = renderPackageLine(
+      {
+        ...baseState,
+        loadState: 'ignored',
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+      },
+      0,
+      true, // even as the "current" row, an ignored row shows no caret
+      120
+    )
+
+    expect(line).toContain('(ignored)')
+    expect(line).not.toContain('❯')
+  })
+
   it('uses fixed-width vulnerability badges so rows stay aligned', () => {
     const highLine = renderPackageLine(
       {
@@ -184,7 +201,20 @@ describe('package-list renderer', () => {
   })
 
   it('pads rendered list rows to the terminal width', () => {
-    const lines = renderInterface([baseState], 0, 0, 10, false, [], 'Deps', undefined, false, '', 1, 120)
+    const lines = renderInterface(
+      [baseState],
+      0,
+      0,
+      10,
+      false,
+      [],
+      'Deps',
+      undefined,
+      false,
+      '',
+      1,
+      120
+    )
 
     expect(lines.every((line) => VersionUtils.getVisualLength(line) >= 120)).toBe(true)
   })

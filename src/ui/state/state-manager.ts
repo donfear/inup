@@ -128,21 +128,30 @@ export class StateManager {
     this.navigationManager.setRenderableItems(items)
   }
 
-  // Navigation delegation
-  navigateUp(totalItems: number): void {
-    this.navigationManager.navigateUp(totalItems)
+  // Navigation delegation. The states array is passed (not just a count) so the
+  // navigation manager can skip non-navigable rows (e.g. ignored packages).
+  navigateUp(states: PackageSelectionState[]): void {
+    this.navigationManager.navigateUp(states)
   }
 
-  navigateDown(totalItems: number): void {
-    this.navigationManager.navigateDown(totalItems)
+  navigateDown(states: PackageSelectionState[]): void {
+    this.navigationManager.navigateDown(states)
   }
 
-  navigateTop(totalItems: number): void {
-    this.navigationManager.navigateTop(totalItems)
+  navigateTop(states: PackageSelectionState[]): void {
+    this.navigationManager.navigateTop(states)
   }
 
-  navigateBottom(totalItems: number): void {
-    this.navigationManager.navigateBottom(totalItems)
+  navigateBottom(states: PackageSelectionState[]): void {
+    this.navigationManager.navigateBottom(states)
+  }
+
+  // Move the cursor off a non-navigable (ignored) row onto the nearest
+  // navigable one. Called once before the first render and after the
+  // append-sort re-orders the list. No-op if the cursor is already navigable
+  // or every row is ignored.
+  ensureCursorOnNavigable(states: PackageSelectionState[]): void {
+    this.navigationManager.ensureCursorOnNavigable(states)
   }
 
   packageIndexToVisualIndex(packageIndex: number): number {

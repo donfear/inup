@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
   appendOutdatedBatchToSelectionStates: vi.fn(),
+  createIgnoredSelectionStates: vi.fn(() => []),
 }))
 
 vi.mock('../../../src/core/package-detector', () => ({
@@ -27,6 +28,7 @@ vi.mock('../../../src/interactive-ui', () => ({
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
     appendOutdatedBatchToSelectionStates = mocks.appendOutdatedBatchToSelectionStates
+    createIgnoredSelectionStates = mocks.createIgnoredSelectionStates
   },
 }))
 
@@ -82,6 +84,7 @@ describe('UpgradeRunner terminal handoff', () => {
           allDependencies: [],
           uniquePackages: ['next'],
           currentVersions: new Map([['next', '^1.0.0']]),
+          ignoredDependencies: [],
           progress,
         },
       })
@@ -114,8 +117,23 @@ describe('UpgradeRunner terminal handoff', () => {
 
   it('exits early with up-to-date message when no outdated packages', async () => {
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
-      onEvent({ type: 'initial', payload: { allDependencies: [], uniquePackages: [], currentVersions: new Map(), progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: true } } })
-      onEvent({ type: 'complete', payload: { packages: [], progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: false } } })
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: [],
+          currentVersions: new Map(),
+          ignoredDependencies: [],
+          progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: true },
+        },
+      })
+      onEvent({
+        type: 'complete',
+        payload: {
+          packages: [],
+          progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: false },
+        },
+      })
     })
     mocks.getOutdatedPackagesOnly.mockReturnValue([])
     mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
@@ -138,10 +156,16 @@ describe('UpgradeRunner terminal handoff', () => {
   })
 
   it('exits with "Upgrade cancelled" when user declines confirmation', async () => {
-    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([{
-      name: 'next', packageJsonPath: '/repo/package.json', dependencyType: 'dependencies',
-      upgradeType: 'range', targetVersion: '^1.1.0', currentVersionSpecifier: '^1.0.0',
-    }])
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([
+      {
+        name: 'next',
+        packageJsonPath: '/repo/package.json',
+        dependencyType: 'dependencies',
+        upgradeType: 'range',
+        targetVersion: '^1.1.0',
+        currentVersionSpecifier: '^1.0.0',
+      },
+    ])
     mocks.confirmUpgrade.mockResolvedValue(false)
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -153,8 +177,12 @@ describe('UpgradeRunner terminal handoff', () => {
 
   it('calls upgradePackages when user confirms', async () => {
     const choice = {
-      name: 'next', packageJsonPath: '/repo/package.json', dependencyType: 'dependencies',
-      upgradeType: 'range', targetVersion: '^1.1.0', currentVersionSpecifier: '^1.0.0',
+      name: 'next',
+      packageJsonPath: '/repo/package.json',
+      dependencyType: 'dependencies',
+      upgradeType: 'range',
+      targetVersion: '^1.1.0',
+      currentVersionSpecifier: '^1.0.0',
     }
     mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([choice])
     mocks.confirmUpgrade.mockResolvedValue(true)
@@ -191,8 +219,7 @@ describe('UpgradeRunner terminal handoff', () => {
       },
     ]
 
-    mocks.selectPackagesToUpgradeProgressive
-      .mockResolvedValueOnce(selectedChoices)
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValueOnce(selectedChoices)
     mocks.selectPackagesToUpgrade.mockResolvedValueOnce(selectedChoices)
     mocks.confirmUpgrade.mockResolvedValueOnce(null).mockResolvedValueOnce(false)
 

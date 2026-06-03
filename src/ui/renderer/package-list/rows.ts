@@ -36,10 +36,15 @@ export function renderPackageLine(
   terminalWidth: number = 80,
   options: PackageListRenderOptions = {}
 ): string {
-  const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
+  const isIgnored = state.loadState === 'ignored'
+  // Ignored rows are never the cursor target (navigation skips them), but guard
+  // the caret defensively so it never appears on a disabled row.
+  const prefix = isCurrentRow && !isIgnored ? getThemeColor('success')('❯ ') : '  '
 
   let packageName
-  if (state.name.startsWith('@')) {
+  if (isIgnored) {
+    packageName = chalk.gray(state.name)
+  } else if (state.name.startsWith('@')) {
     const parts = state.name.split('/')
     if (parts.length >= 2) {
       const author = parts[0]
@@ -67,12 +72,21 @@ export function renderPackageLine(
   const isPending = state.loadState === 'pending'
   const isFailed = state.loadState === 'failed'
 
-  const currentDot = isCurrentSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
-  const currentVersion = chalk.white(state.currentVersionSpecifier)
+  const currentDot = isIgnored
+    ? getThemeColor('dotEmpty')('○')
+    : isCurrentSelected
+      ? getThemeColor('dot')('●')
+      : getThemeColor('dotEmpty')('○')
+  const currentVersion = isIgnored
+    ? chalk.gray(state.currentVersionSpecifier)
+    : chalk.white(state.currentVersionSpecifier)
 
   let rangeDot = ''
   let rangeVersionText = ''
-  if (isPending) {
+  if (isIgnored) {
+    rangeDot = getThemeColor('dotEmpty')('○')
+    rangeVersionText = chalk.gray('(ignored)')
+  } else if (isPending) {
     rangeDot = getThemeColor('dotEmpty')('◌')
     rangeVersionText = chalk.gray('loading')
   } else if (isFailed) {
@@ -136,11 +150,13 @@ export function renderPackageLine(
   const displayName = truncatedName !== state.name ? truncatedName : packageName
 
   const typeBadge = getTypeBadge(state.type)
-  const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
+  // Ignored rows carry no vuln/health data and are display-only; suppress badges.
+  const shouldShowVulnerability =
+    !isIgnored && shouldDisplayVulnerabilityForDependency(state.type, options)
   const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
   const vulnBadgeWidth = vulnBadge ? VersionUtils.getVisualLength(vulnBadge) + 1 : 0
   // Deprecation / engines-incompatibility marker (independent of dep type).
-  const healthBadge = getHealthBadge(state)
+  const healthBadge = isIgnored ? '' : getHealthBadge(state)
   const healthBadgeWidth = healthBadge ? VersionUtils.getVisualLength(healthBadge) + 1 : 0
   const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(
@@ -166,7 +182,7 @@ export function renderPackageLine(
   const currentWithPadding = currentSection + ' ' + currentPaddingText
 
   let rangeSection = ''
-  if (isPending || isFailed || state.hasRangeUpdate) {
+  if (isIgnored || isPending || isFailed || state.hasRangeUpdate) {
     rangeSection = `${rangeDot} ${rangeVersionText}`
     const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)

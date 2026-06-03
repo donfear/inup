@@ -43,9 +43,11 @@ vi.mock('../../../src/ui/utils', () => ({
 }))
 
 import { PackageDetector } from '../../../src/core/package-detector'
+import { isPackageIgnored } from '../../../src/config'
 
 describe('PackageDetector streaming', () => {
   beforeEach(() => {
+    vi.mocked(isPackageIgnored).mockReturnValue(false)
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
@@ -63,7 +65,9 @@ describe('PackageDetector streaming', () => {
         packageJsonPath: '/repo/package.json',
       },
     ])
-    mocks.findClosestMinorVersion.mockImplementation((version: string, versions: string[]) => versions[0] ?? version)
+    mocks.findClosestMinorVersion.mockImplementation(
+      (version: string, versions: string[]) => versions[0] ?? version
+    )
     mocks.fetchPackageVersions.mockImplementation(
       async (
         packageNames: string[],
@@ -118,6 +122,7 @@ describe('PackageDetector streaming', () => {
 
       if (event.type === 'initial') {
         expect(event.payload.uniquePackages).toEqual(['@scope/pkg', 'zod'])
+        expect(event.payload.ignoredDependencies).toEqual([])
         expect(event.payload.progress).toMatchObject({
           total: 2,
           resolved: 0,
@@ -162,5 +167,31 @@ describe('PackageDetector streaming', () => {
     expect(packages).toHaveLength(2)
     expect(packages[0].name).toBe('@scope/pkg')
     expect(packages[1].name).toBe('zod')
+  })
+
+  it('surfaces ignored deps in the initial payload without fetching them', async () => {
+    vi.mocked(isPackageIgnored).mockImplementation((name: string) => name === 'zod')
+    const fetched: string[] = []
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        fetched.push(...packageNames)
+        return new Map()
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo', ignorePackages: ['zod'] })
+    let ignoredNames: string[] = []
+    let uniqueNames: string[] = []
+
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'initial') {
+        ignoredNames = event.payload.ignoredDependencies.map((dep) => dep.name)
+        uniqueNames = event.payload.uniquePackages
+      }
+    })
+
+    expect(ignoredNames).toEqual(['zod'])
+    expect(uniqueNames).toEqual(['@scope/pkg'])
+    expect(fetched).toEqual(['@scope/pkg']) // zod is never fetched
   })
 })

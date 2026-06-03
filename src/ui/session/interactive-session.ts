@@ -149,8 +149,12 @@ export async function runInteractiveSession(
     }
 
     const renderInterface = () => {
-      const uiState = stateManager.getUIState()
       const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
+      // Keep the cursor off display-only ignored rows. Self-heals on the first
+      // render and after streamed batches re-sort the list around seeded rows.
+      // Must run before getUIState() so the render uses the corrected row.
+      stateManager.ensureCursorOnNavigable(filteredStates)
+      const uiState = stateManager.getUIState()
       const auditProgress = vulnerabilityAuditController.getProgress()
 
       const bgCode = getTerminalBgColorCode()

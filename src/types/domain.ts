@@ -49,7 +49,7 @@ export interface DependencyEntry {
   packageJsonPath: string
 }
 
-export type PackageLoadState = 'pending' | 'ready' | 'failed'
+export type PackageLoadState = 'pending' | 'ready' | 'failed' | 'ignored'
 
 export interface PackageUpgradeChoice {
   name: string
