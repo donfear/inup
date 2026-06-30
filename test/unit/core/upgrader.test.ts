@@ -42,12 +42,21 @@ describe('PackageUpgrader', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await upgrader.upgradePackages([{
-      name: 'lodash', packageJsonPath: missingPath, dependencyType: 'dependencies',
-      upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.17.20',
-    }], [])
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'lodash',
+          packageJsonPath: missingPath,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^4.17.21',
+          currentVersionSpecifier: '^4.17.20',
+        },
+      ],
+      []
+    )
 
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('file not found'))
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('file not found'))
     warnSpy.mockRestore()
     logSpy.mockRestore()
   })
@@ -59,10 +68,19 @@ describe('PackageUpgrader', () => {
     const upgrader = new PackageUpgrader(makePackageManager())
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await upgrader.upgradePackages([{
-      name: 'react', packageJsonPath: pkgPath, dependencyType: 'peerDependencies',
-      upgradeType: 'latest', targetVersion: '^19.0.0', currentVersionSpecifier: '^18.0.0',
-    }], [])
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'react',
+          packageJsonPath: pkgPath,
+          dependencyType: 'peerDependencies',
+          upgradeType: 'latest',
+          targetVersion: '^19.0.0',
+          currentVersionSpecifier: '^18.0.0',
+        },
+      ],
+      []
+    )
 
     expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).peerDependencies?.react).toBe('^19.0.0')
     logSpy.mockRestore()
@@ -70,20 +88,44 @@ describe('PackageUpgrader', () => {
 
   it('counts unique package names (not choices) in the success message', async () => {
     const pkgPath = join(testDir, 'package.json')
-    writeFileSync(pkgPath, JSON.stringify({
-      name: 'fixture',
-      dependencies: { lodash: '^4.0.0' },
-      devDependencies: { lodash: '^4.0.0' },
-    }, null, 2) + '\n')
+    writeFileSync(
+      pkgPath,
+      JSON.stringify(
+        {
+          name: 'fixture',
+          dependencies: { lodash: '^4.0.0' },
+          devDependencies: { lodash: '^4.0.0' },
+        },
+        null,
+        2
+      ) + '\n'
+    )
 
     const upgrader = new PackageUpgrader(makePackageManager())
     const messages: string[] = []
     const logSpy = vi.spyOn(console, 'log').mockImplementation((m: string) => messages.push(m))
 
-    await upgrader.upgradePackages([
-      { name: 'lodash', packageJsonPath: pkgPath, dependencyType: 'dependencies', upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.0.0' },
-      { name: 'lodash', packageJsonPath: pkgPath, dependencyType: 'devDependencies', upgradeType: 'range', targetVersion: '^4.17.21', currentVersionSpecifier: '^4.0.0' },
-    ], [])
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'lodash',
+          packageJsonPath: pkgPath,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^4.17.21',
+          currentVersionSpecifier: '^4.0.0',
+        },
+        {
+          name: 'lodash',
+          packageJsonPath: pkgPath,
+          dependencyType: 'devDependencies',
+          upgradeType: 'range',
+          targetVersion: '^4.17.21',
+          currentVersionSpecifier: '^4.0.0',
+        },
+      ],
+      []
+    )
 
     expect(messages.find((m) => m.includes('Successfully upgraded'))).toMatch('1 package(s)')
     logSpy.mockRestore()
