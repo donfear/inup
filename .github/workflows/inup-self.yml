@@ -35,12 +35,17 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
-      - name: Link this branch's inup onto PATH
+      - name: Put this branch's inup onto PATH
         # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
-        # from this checkout instead of npx-fetching a published release. `pnpm add -g .` installs
-        # the bin into $PNPM_HOME/bin (replaces `pnpm link --global`, removed in pnpm v11), and
-        # pnpm/action-setup already put that dir on PATH, so no manual PATH fixup is needed.
-        run: pnpm add -g .
+        # from this checkout instead of npx-fetching a published release. We symlink the built
+        # bin into a dir we add to $GITHUB_PATH directly — this sidesteps pnpm's global-bin
+        # plumbing (`pnpm link --global` was removed in v11, and `pnpm add -g` needs `pnpm setup`
+        # to put PNPM_HOME/bin on PATH, which isn't run on the runner).
+        run: |
+          mkdir -p "$RUNNER_TEMP/inup-bin"
+          ln -sf "$PWD/dist/cli.js" "$RUNNER_TEMP/inup-bin/inup"
+          chmod +x dist/cli.js
+          echo "$RUNNER_TEMP/inup-bin" >> "$GITHUB_PATH"
 
       - name: Run inup via the local action
         uses: ./
