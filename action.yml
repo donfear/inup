@@ -1,0 +1,126 @@
+name: 'inup — dependency upgrade PR'
+description: 'Run inup on a schedule and open one rolling PR with safe dependency upgrades and a vulnerability-fix digest.'
+author: 'Donfear'
+branding:
+  icon: 'arrow-up-circle'
+  color: 'purple'
+
+inputs:
+  target:
+    description: 'How far to bump: minor (in-range only, default), patch, or latest (includes majors).'
+    required: false
+    default: 'minor'
+  directory:
+    description: 'Directory to run inup in.'
+    required: false
+    default: '.'
+  package-manager:
+    description: 'Force a package manager (npm, yarn, pnpm, bun). Empty = auto-detect from the lockfile.'
+    required: false
+    default: ''
+  node-version:
+    description: 'Node.js version to set up for the run.'
+    required: false
+    default: '20'
+  inup-version:
+    description: 'inup version to run via npx (e.g. "1" or "latest"). Pin for reproducible runs.'
+    required: false
+    default: 'latest'
+  pr-branch:
+    description: 'Branch for the rolling PR. Re-runs update this same branch/PR.'
+    required: false
+    default: 'inup/dependency-upgrades'
+  pr-title:
+    description: 'Title of the rolling PR.'
+    required: false
+    default: 'chore(deps): dependency upgrades'
+  commit-message:
+    description: 'Commit message for the upgrade commit.'
+    required: false
+    default: 'chore(deps): upgrade dependencies via inup'
+  base:
+    description: 'Base branch the PR targets. Empty = the default branch.'
+    required: false
+    default: ''
+  labels:
+    description: 'Comma- or newline-separated labels to apply to the PR.'
+    required: false
+    default: 'dependencies'
+  token:
+    description: 'Token used to push the branch and open the PR. Pass a PAT to let the PR trigger other workflows (CI).'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  outdated:
+    description: 'Number of outdated packages found.'
+    value: ${{ steps.inup.outputs.outdated }}
+  vulnerable:
+    description: 'Number of outdated packages with known vulnerabilities.'
+    value: ${{ steps.inup.outputs.vulnerable }}
+  pull-request-number:
+    description: 'The number of the created/updated PR (empty if no changes).'
+    value: ${{ steps.cpr.outputs.pull-request-number }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable || true
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Run inup (apply upgrades + JSON report)
+      id: inup
+      shell: bash
+      working-directory: ${{ inputs.directory }}
+      run: |
+        set -euo pipefail
+        PM_FLAG=""
+        if [ -n "${{ inputs.package-manager }}" ]; then
+          PM_FLAG="--package-manager ${{ inputs.package-manager }}"
+        fi
+
+        # Prefer an `inup` already on PATH (globally linked / workspace-installed build) so a
+        # pinned or locally built inup is used as-is; otherwise fetch the requested version via npx.
+        if command -v inup >/dev/null 2>&1; then
+          INUP=(inup)
+        else
+          INUP=(npx --yes "inup@${{ inputs.inup-version }}")
+        fi
+
+        # stdout = JSON document only (progress + install output go to stderr).
+        "${INUP[@]}" --apply --target ${{ inputs.target }} $PM_FLAG --json \
+          > "${RUNNER_TEMP}/inup-report.json"
+
+        echo "report=${RUNNER_TEMP}/inup-report.json" >> "$GITHUB_OUTPUT"
+        OUTDATED=$(node -e "process.stdout.write(String(require('${RUNNER_TEMP}/inup-report.json').summary.outdated))")
+        VULNERABLE=$(node -e "process.stdout.write(String(require('${RUNNER_TEMP}/inup-report.json').summary.vulnerable))")
+        echo "outdated=${OUTDATED}" >> "$GITHUB_OUTPUT"
+        echo "vulnerable=${VULNERABLE}" >> "$GITHUB_OUTPUT"
+
+    - name: Render PR body
+      id: body
+      shell: bash
+      run: |
+        set -euo pipefail
+        BODY_FILE="${RUNNER_TEMP}/inup-pr-body.md"
+        node "${GITHUB_ACTION_PATH}/action/render-pr-body.mjs" "${{ steps.inup.outputs.report }}" > "$BODY_FILE"
+        echo "body-file=${BODY_FILE}" >> "$GITHUB_OUTPUT"
+
+    - name: Create or update rolling pull request
+      id: cpr
+      uses: peter-evans/create-pull-request@v8
+      with:
+        token: ${{ inputs.token }}
+        branch: ${{ inputs.pr-branch }}
+        base: ${{ inputs.base }}
+        title: ${{ inputs.pr-title }}
+        body-path: ${{ steps.body.outputs.body-file }}
+        commit-message: ${{ inputs.commit-message }}
+        labels: ${{ inputs.labels }}
+        delete-branch: true
