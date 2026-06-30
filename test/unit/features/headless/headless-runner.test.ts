@@ -12,6 +12,13 @@ vi.mock('../../../../src/core/package-detector', () => ({
     getOutdatedPackages = mocks.getOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
+    getPerfConfig = vi.fn().mockReturnValue({
+      cwd: '/repo',
+      adaptive: false,
+      maxConcurrency: 8,
+      batchSize: 10,
+      poolConnections: 5,
+    })
   },
 }))
 
