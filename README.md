@@ -140,6 +140,19 @@ jobs:
 
 Outputs: `outdated`, `vulnerable`, `pull-request-number`.
 
+### Required setup
+
+The action opens a pull request, so the repo must let Actions do that. Pick **one**:
+
+- **Allow it once (simplest):** Settings → Actions → General → **Workflow permissions** → enable
+  **"Allow GitHub Actions to create and approve pull requests"**. Keep the
+  `permissions: { contents: write, pull-requests: write }` block shown above.
+- **Use a PAT:** pass a [fine-grained PAT](https://docs.github.com/actions/security-for-github-actions/security-guides/automatic-token-authentication) (contents + pull-requests: write)
+  via the `token` input. This also makes the upgrade PR trigger your CI (see below).
+
+Without one of these, the run pushes the branch but fails at PR creation with
+`GitHub Actions is not permitted to create or approve pull requests`.
+
 It honors your `.inuprc` (`ignore`, `exclude`, `scanDirs`), so packages and paths you exclude are
 never touched.
 
