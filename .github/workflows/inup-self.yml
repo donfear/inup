@@ -33,8 +33,11 @@ jobs:
           pnpm build
           # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
           # from this checkout instead of npx-fetching a published release.
+          pnpm setup
+          PNPM_HOME="$(pnpm config get global-bin-dir)"
+          export PATH="$PNPM_HOME:$PATH"
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
           pnpm link --global
-          echo "$(pnpm root -g)/../bin" >> "$GITHUB_PATH"
 
       - name: Run inup via the local action
         uses: ./
