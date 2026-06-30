@@ -52,6 +52,14 @@ inputs:
     description: 'Token used to push the branch and open the PR. Pass a PAT to let the PR trigger other workflows (CI).'
     required: false
     default: ${{ github.token }}
+  committer:
+    description: 'Commit committer, as "Display Name <email@address.com>". Defaults to the GitHub Actions bot.'
+    required: false
+    default: 'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+  author:
+    description: 'Commit author, as "Display Name <email@address.com>". Defaults to the user who triggered the run.'
+    required: false
+    default: '${{ github.actor }} <${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com>'
 
 outputs:
   outdated:
@@ -120,6 +128,8 @@ runs:
       uses: peter-evans/create-pull-request@v8
       with:
         token: ${{ inputs.token }}
+        committer: ${{ inputs.committer }}
+        author: ${{ inputs.author }}
         branch: ${{ inputs.pr-branch }}
         base: ${{ inputs.base }}
         title: ${{ inputs.pr-title }}

@@ -53,6 +53,9 @@ jobs:
           # PAT (not the default GITHUB_TOKEN) so the opened PR triggers CI workflows and to
           # bypass the "Actions can't create PRs" repo policy. Reuses the existing repo secret.
           token: ${{ secrets.GH_PAT }}
+          # Commit as the maintainer instead of github-actions[bot] (existing repo secrets).
+          committer: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
+          author: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
           # Match the Node version this job built under (undici@8 needs Node >=22.19).
           node-version: '24'
           target: minor

@@ -43,6 +43,17 @@ function escapeCell(value) {
   return String(value).replace(/\|/g, '\\|')
 }
 
+/**
+ * Whether this entry's in-range bump actually changed the version this PR installs. The report has
+ * no explicit "applied" flag, so we derive it: under minor/patch, `range` is the version satisfying
+ * the current spec, and it's only a real change when it differs from the current spec's version
+ * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
+ */
+function wasApplied(e) {
+  const cleanCurrent = String(e.current).replace(/^[\^~]/, '')
+  return e.range !== cleanCurrent && e.range !== e.current
+}
+
 function render(report) {
   const { summary, outdated } = report
   const lines = []
@@ -65,17 +76,34 @@ function render(report) {
     return lines.join('\n')
   }
 
+  // ---- Applied in this PR (the actual change set) ----
+  // The table below lists every outdated package; this section calls out the subset whose version
+  // this commit actually bumped, so reviewers see what changed without diffing current vs in-range.
+  const applied = outdated.filter(wasApplied)
+  if (applied.length > 0) {
+    lines.push('### ✅ Applied in this PR')
+    lines.push('')
+    for (const e of applied) {
+      lines.push(`- \`${e.name}\` \`${e.current}\` → \`${e.range}\` (${e.type})`)
+    }
+    lines.push('')
+  } else {
+    lines.push('_No in-range upgrades were applied — see skipped majors below._')
+    lines.push('')
+  }
+
   // ---- Upgrades table ----
   lines.push('### Updates')
   lines.push('')
-  lines.push('| Package | Current | → In-range | Latest | Type | Major? | Security |')
-  lines.push('|---|---|---|---|---|---|---|')
+  lines.push('| Package | Current | → In-range | Latest | Type | Applied | Major? | Security |')
+  lines.push('|---|---|---|---|---|---|---|---|')
   for (const e of outdated) {
     const major = e.hasMajorUpdate ? '⚠️ yes' : '—'
     const security = e.vulnerability ? vulnVerdict(e.vulnerability) : '—'
+    const appliedCell = wasApplied(e) ? '✅' : '—'
     lines.push(
       `| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(e.range)} | ` +
-        `${escapeCell(e.latest)} | ${escapeCell(e.type)} | ${major} | ${security} |`
+        `${escapeCell(e.latest)} | ${escapeCell(e.type)} | ${appliedCell} | ${major} | ${security} |`
     )
   }
   lines.push('')
