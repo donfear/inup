@@ -112,7 +112,7 @@ to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
 
 ## Privacy
 
-No tracking, no telemetry, no data collection. Package metadata is fetched directly from the npm registry. Download counts come from the npm downloads API. When needed for exact-version manifests, inup may fetch a pinned `package.json` from jsDelivr.
+No tracking, no telemetry, no data collection. Package metadata is fetched directly from the npm registry. Download counts come from the npm downloads API. Changelog and release notes are fetched from GitHub.
 
 ## License
 
