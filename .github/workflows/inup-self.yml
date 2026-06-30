@@ -50,6 +50,8 @@ jobs:
       - name: Run inup via the local action
         uses: ./
         with:
+          # Match the Node version this job built under (undici@8 needs Node >=22.19).
+          node-version: '24'
           target: minor
           pr-title: 'chore(deps): weekly dependency upgrades'
           labels: |

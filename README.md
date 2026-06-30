@@ -129,7 +129,7 @@ jobs:
 | `target` | `minor` | How far to bump: `minor` (in-range), `patch`, or `latest` (includes majors). |
 | `directory` | `.` | Directory to run in. |
 | `package-manager` | _(auto)_ | Force `npm`/`yarn`/`pnpm`/`bun`; empty auto-detects from the lockfile. |
-| `node-version` | `20` | Node.js version for the run. |
+| `node-version` | `22` | Node.js version for the run (minimum `22.19`). |
 | `inup-version` | `latest` | inup version to run (pin for reproducible runs). |
 | `pr-branch` | `inup/dependency-upgrades` | Branch for the rolling PR. |
 | `pr-title` | `chore(deps): dependency upgrades` | PR title. |
