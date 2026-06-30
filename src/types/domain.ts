@@ -85,6 +85,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
+  adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
 }
 
 export interface PackageJson {

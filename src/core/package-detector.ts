@@ -39,6 +39,7 @@ export class PackageDetector {
 
   private readonly batchSize = 10
   private readonly maxConcurrency = 10
+  private readonly adaptive: boolean
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -46,6 +47,7 @@ export class PackageDetector {
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
+    this.adaptive = options?.adaptive ?? true
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -106,6 +108,8 @@ export class PackageDetector {
       currentVersions: prepared.currentVersions,
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
+      adaptive: this.adaptive,
+      onControlTick: (tick) => performanceTracker.recordControlTick(tick),
       onBatchReady: (batch) => {
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0

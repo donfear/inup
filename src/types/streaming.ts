@@ -42,12 +42,21 @@ export type StreamOutdatedPackagesEvent =
 export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
 
 export interface FetchPackageVersionsOptions {
-  /** Total in-flight registry fetches at any moment. Default: 10. */
+  /**
+   * In-flight registry fetches at any moment. When `adaptive` is false this is
+   * the fixed cap (the A/B control arm); when adaptive it is the legacy fallback
+   * for runs too small to control. Default: 10.
+   */
   maxConcurrency?: number
   /** Size of each emission batch (UI grouping only, not concurrency). Default: 25. */
   batchSize?: number
   /** Sequence of batch sizes; overrides batchSize when provided. */
   batchSizes?: number[]
+  /**
+   * Enable the AIMD adaptive-concurrency controller. Default: true. Set false to
+   * pin concurrency at `maxConcurrency` (legacy fixed behavior / A/B baseline).
+   */
+  adaptive?: boolean
 }
 
 export interface RegistryBatchProgressItem {

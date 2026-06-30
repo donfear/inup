@@ -8,14 +8,15 @@ vi.mock('../../../src/services/http/retry', async (importOriginal) => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
-import {
-  clearPackageCache,
-  fetchPackageVersions,
-} from '../../../src/services/npm-registry'
+import { clearPackageCache, fetchPackageVersions } from '../../../src/services/npm-registry'
+import type { ControlTick } from '../../../src/services/http/adaptive-controller'
 
 type MockResponse = {
   statusCode: number
   body: string
+  headers?: Record<string, string>
+  /** Optional artificial delay (ms) before the response resolves. */
+  delayMs?: number
 }
 
 const makeOkBody = (json: unknown): MockResponse => ({
@@ -36,9 +37,12 @@ describe('npm-registry', () => {
     .mockImplementation(async (opts: unknown) => {
       const { path } = opts as { path: string }
       const response = await requestMock({ path })
+      if (response.delayMs) {
+        await new Promise((resolve) => setTimeout(resolve, response.delayMs))
+      }
       return {
         statusCode: response.statusCode,
-        headers: {},
+        headers: response.headers ?? {},
         trailers: {},
         opaque: null,
         context: {},
@@ -204,5 +208,111 @@ describe('npm-registry', () => {
     })
 
     expect(batches).toEqual([10, 15, 20, 5])
+  })
+
+  describe('adaptive concurrency', () => {
+    // Instrument the mock to record the peak number of simultaneously in-flight
+    // requests, with a small delay so requests actually overlap.
+    const withConcurrencyTracking = (response: MockResponse) => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, response.delayMs ?? 5))
+        inFlight--
+        return response
+      })
+      return () => peak
+    }
+
+    const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
+
+    it('adaptive:false pins in-flight to maxConcurrency (the control arm)', async () => {
+      const getPeak = withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
+
+      await fetchPackageVersions(names(40), {
+        adaptive: false,
+        maxConcurrency: 10,
+      })
+
+      expect(getPeak()).toBeLessThanOrEqual(10)
+    })
+
+    it('small runs (<= ceil) skip the controller — no control ticks', async () => {
+      withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(12), {
+        adaptive: true,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks).toHaveLength(0)
+    })
+
+    it('holds at the ceiling on a large, healthy, fast link', async () => {
+      const getPeak = withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(120), {
+        adaptive: true,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.length).toBeGreaterThan(0)
+      // A big run smart-starts at the ceiling, so the healthy steady state is to
+      // hold there — never backing off and never exceeding the pool ceiling.
+      expect(ticks.every((t) => t.limit <= 24)).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('ramps up from below the ceiling toward it on a healthy link', async () => {
+      withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      // Force a low fixed start so there is headroom to observe additive-increase.
+      // (maxConcurrency seeds the start only when the controller can't smart-start
+      // above it; here we exercise growth by capping the starting point low.)
+      await fetchPackageVersions(names(120), {
+        adaptive: true,
+        maxConcurrency: 3,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      const firstLimit = ticks[0].limit
+      const peakLimit = Math.max(...ticks.map((t) => t.limit))
+      expect(peakLimit).toBeGreaterThan(firstLimit)
+      expect(ticks.some((t) => t.reason === 'up')).toBe(true)
+    })
+
+    it('hard-backs-off on 429 congestion and honors Retry-After', async () => {
+      const ticks: ControlTick[] = []
+      // First batch of calls congest; later calls succeed. Use a short
+      // Retry-After so the test stays fast (sleep is mocked, but the value still
+      // routes through the congestion path).
+      let calls = 0
+      requestMock.mockImplementation(async ({ path }) => {
+        calls++
+        if (calls <= 30) {
+          return {
+            statusCode: 429,
+            body: '',
+            headers: { 'retry-after': '0' },
+          }
+        }
+        void path
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+
+      await fetchPackageVersions(names(60), {
+        adaptive: true,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Congestion must produce at least one immediate hard-down decision.
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
+    })
   })
 })

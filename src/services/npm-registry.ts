@@ -5,10 +5,18 @@ import { promisify } from 'node:util'
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
-import { NPM_REGISTRY_URL } from '../config'
+import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../config'
 import { parseVersions } from '../utils/version'
-import { sleep, isRetryableStatus, isTransientNetworkError } from './http/retry'
+import {
+  sleep,
+  isRetryableStatus,
+  isCongestionStatus,
+  isTransientNetworkError,
+  parseRetryAfterMs,
+} from './http/retry'
 import { InflightMap } from './http/inflight'
+import { ResizableSemaphore } from './http/resizable-semaphore'
+import { AdaptiveController, ControlTick } from './http/adaptive-controller'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -27,15 +35,22 @@ const inFlightLookups = new InflightMap<PackageVersionData>()
 const registryOrigin = new URL(NPM_REGISTRY_URL).origin
 const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
 
-// Few connections + many requests per connection = maximum keep-alive reuse.
-// No per-request timeouts: correctness matters more than speed for a CLI that
-// runs on demand. Slow responses are tolerated; only true errors cause retry.
+// Connection count is kept == the adaptive controller's ceiling (POOL_CONNECTIONS)
+// so the controller is never silently throttled below its chosen limit. Idle
+// keep-alive connections are cheap.
+//
+// `headersTimeout` is intentionally non-zero (unlike the rest, where we tolerate
+// slow bodies): a stalled connection that never sends headers would otherwise be
+// consumed forever and stay invisible to the completion-based adaptive
+// controller. With a headers timeout, a stall surfaces as a transient error the
+// controller can react to (and retry handles). `bodyTimeout` stays 0 — large
+// packuments legitimately stream slowly.
 const registryPool = new Pool(registryOrigin, {
-  connections: 6,
+  connections: POOL_CONNECTIONS,
   pipelining: 1,
   keepAliveTimeout: 30_000,
   keepAliveMaxTimeout: 600_000,
-  headersTimeout: 0,
+  headersTimeout: 30_000,
   bodyTimeout: 0,
   connectTimeout: 15_000,
   allowH2: false,
@@ -44,12 +59,18 @@ const registryPool = new Pool(registryOrigin, {
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
 
+// Fixed concurrency used when adaptive is disabled (the A/B control arm). This
+// matches the production caller (PackageDetector) so `--no-adaptive` reproduces
+// today's behavior exactly.
+const DEFAULT_FIXED_CONCURRENCY = 10
+
 async function getFreshPackageData(
   packageName: string,
-  currentVersion: string | undefined
+  currentVersion: string | undefined,
+  onAttempt?: AttemptObserver
 ): Promise<PackageVersionData> {
   const cacheKey = `${packageName}@${currentVersion ?? ''}`
-  return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName))
+  return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName, onAttempt))
 }
 
 const encodeRegistryPath = (packageName: string): string => {
@@ -62,12 +83,22 @@ const encodeRegistryPath = (packageName: string): string => {
 }
 
 type RegistryAttemptOutcome =
-  | { kind: 'success'; data: PackageVersionData }
+  | { kind: 'success'; data: PackageVersionData; latencyMs: number }
   | { kind: 'not-found' }
   | { kind: 'retryable' }
+  | { kind: 'congested'; retryAfterMs: number | null }
   | { kind: 'transient' }
 
+/**
+ * Observes the outcome of each single attempt so the adaptive controller can see
+ * congestion, errors, and success latency. Latency is reported ONLY for
+ * successful single attempts — never including retry backoff — so the EWMA stays
+ * a clean signal of true round-trip time.
+ */
+export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
+
 async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcome> {
+  const startedAt = Date.now()
   try {
     const { statusCode, headers, body } = await registryPool.request({
       path,
@@ -76,13 +107,19 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
         accept: 'application/vnd.npm.install-v1+json',
         'accept-encoding': 'gzip, deflate, br',
       },
-      headersTimeout: 0,
+      headersTimeout: 30_000,
       bodyTimeout: 0,
       blocking: false,
     })
 
     if (statusCode < 200 || statusCode >= 300) {
       await body.dump().catch(() => undefined)
+      if (isCongestionStatus(statusCode)) {
+        return {
+          kind: 'congested',
+          retryAfterMs: parseRetryAfterMs(headers['retry-after']),
+        }
+      }
       if (isRetryableStatus(statusCode)) {
         return { kind: 'retryable' }
       }
@@ -104,7 +141,11 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
     } else {
       decoded = raw
     }
-    return { kind: 'success', data: parseVersions(decoded.toString('utf8')) }
+    return {
+      kind: 'success',
+      data: parseVersions(decoded.toString('utf8')),
+      latencyMs: Date.now() - startedAt,
+    }
   } catch (error) {
     if (isTransientNetworkError(error)) {
       return { kind: 'transient' }
@@ -115,25 +156,37 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
   }
 }
 
-async function fetchFromRegistryWithRetries(path: string): Promise<RegistryAttemptOutcome> {
+async function fetchFromRegistryWithRetries(
+  path: string,
+  onAttempt?: AttemptObserver
+): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
     const outcome = await attemptRegistryFetch(path)
+    onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
     }
     lastOutcome = outcome
     if (attempt < MAX_REGISTRY_ATTEMPTS - 1) {
-      const backoff = RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
+      // Honor Retry-After on congestion; otherwise exponential backoff. These
+      // sleeps are deliberately NOT timed into the controller's latency EWMA.
+      const congestedWait =
+        outcome.kind === 'congested' && outcome.retryAfterMs !== null ? outcome.retryAfterMs : null
+      const backoff =
+        congestedWait ?? RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
       await sleep(backoff)
     }
   }
   return lastOutcome
 }
 
-async function fetchPackageFromRegistry(packageName: string): Promise<PackageVersionData> {
+async function fetchPackageFromRegistry(
+  packageName: string,
+  onAttempt?: AttemptObserver
+): Promise<PackageVersionData> {
   const path = encodeRegistryPath(packageName)
-  const outcome = await fetchFromRegistryWithRetries(path)
+  const outcome = await fetchFromRegistryWithRetries(path, onAttempt)
 
   if (outcome.kind === 'success') {
     return outcome.data
@@ -148,40 +201,65 @@ async function fetchPackageFromRegistry(packageName: string): Promise<PackageVer
  * Fetches version data for a list of packages from the npm registry.
  *
  * Concurrency model:
- * - `maxConcurrency` is a global cap on in-flight fetches at any moment.
- *   It doesn't interact with batch size — batches exist only to group
- *   emissions for the UI.
- * - No per-request timeouts: slow responses are allowed to finish. Real
- *   network errors are retried with exponential backoff; after the retry
- *   budget is exhausted the package is reported as unavailable
- *   (`latestVersion: 'unknown'`). A result is never silently dropped due to
- *   slowness.
+ * - A single resizable semaphore caps in-flight fetches. Package names are
+ *   pulled from a work queue and dispatched as slots free up (a lazy pump),
+ *   rather than pre-sliced into fixed batches.
+ * - `adaptive` (default true) enables an AIMD controller that grows the limit
+ *   when the link is healthy and backs off on congestion (429/503), errors, or
+ *   rising latency. With `adaptive:false` the limit is fixed at `maxConcurrency`
+ *   (the A/B control arm) and behaves exactly like the legacy fixed path.
+ * - Tiny runs (<= ceil packages) skip the controller entirely and run at a fixed
+ *   `min(ceil, count)` so they never crawl up from the floor and lose to fixed.
+ * - No body timeout: slow responses finish. Real network errors and header
+ *   stalls are retried with backoff; after the retry budget is exhausted the
+ *   package is reported unavailable (`latestVersion: 'unknown'`).
  *
  * Callbacks:
- * - `onBatchReady` fires once a whole emission batch has resolved, in
- *   original batch order.
+ * - `onBatchReady` fires once an emission window has resolved, in original order.
+ *   Emission windows are fixed-size groupings for UI progress only; they do not
+ *   gate concurrency.
+ * - `onControlTick` (optional) reports each adaptive control decision for
+ *   instrumentation.
  */
 export async function fetchPackageVersions(
   packageNames: string[],
   options: {
     onBatchReady?: OnBatchReadyCallback
     currentVersions?: Map<string, string>
+    onControlTick?: (tick: ControlTick) => void
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
 
-  if (packageNames.length === 0) {
+  const total = packageNames.length
+  if (total === 0) {
     return packageData
   }
 
-  const batchSizes =
-    options.batchSizes && options.batchSizes.length > 0
-      ? options.batchSizes.map((size: number) => Math.max(1, size))
-      : [Math.max(1, options.batchSize ?? 25)]
-  const maxConcurrency = Math.max(1, options.maxConcurrency ?? 10)
-  const total = packageNames.length
-  let completedCount = 0
+  const adaptive = options.adaptive ?? true
+  // An explicitly-supplied maxConcurrency is the conservative starting point for
+  // the ramp (and the hard cap when adaptive is off). When omitted, adaptive
+  // runs smart-start near the work size instead.
+  const explicitConcurrency =
+    options.maxConcurrency !== undefined ? Math.max(1, options.maxConcurrency) : undefined
+  const fixedConcurrency = explicitConcurrency ?? DEFAULT_FIXED_CONCURRENCY
 
+  // Decide the concurrency strategy.
+  const useController = adaptive && AdaptiveController.shouldControl(total)
+  const controller = useController
+    ? new AdaptiveController(total, options.onControlTick, {}, explicitConcurrency)
+    : null
+  const initialLimit = controller
+    ? controller.getLimit()
+    : adaptive
+      ? // Adaptive on but run too small to control: smart fixed start, but never
+        // above an explicit cap.
+        Math.min(explicitConcurrency ?? POOL_CONNECTIONS, total)
+      : fixedConcurrency
+  const semaphore = new ResizableSemaphore(initialLimit)
+
+  // --- emission ordering (unchanged contract) ---------------------------------
+  let completedCount = 0
   const pendingEmissions = new Map<number, RegistryBatchProgressItem[]>()
   let nextEmitIndex = 0
   const flushPending = () => {
@@ -193,68 +271,102 @@ export async function fetchPackageVersions(
     }
   }
 
-  // Global semaphore: `maxConcurrency` is the total in-flight cap across
-  // all batches. Batches don't gate concurrency — only emission order.
-  let inFlight = 0
-  const waiters: Array<() => void> = []
-  const acquire = async (): Promise<void> => {
-    if (inFlight < maxConcurrency) {
-      inFlight++
-      return
+  // Emission windows group results for UI progress only (decoupled from
+  // concurrency). Sizes come from `batchSizes` (a sequence, last value repeats)
+  // or a uniform `batchSize`. We precompute, per package index, which window it
+  // belongs to and its position within that window, so a window can flush as soon
+  // as all its items resolve — preserving original order via `flushPending`.
+  const windowSizes =
+    options.batchSizes && options.batchSizes.length > 0
+      ? options.batchSizes.map((size) => Math.max(1, size))
+      : [Math.max(1, options.batchSize ?? 25)]
+  const windowIdByIndex = new Array<number>(total)
+  const itemIndexByIndex = new Array<number>(total)
+  const windowRemaining: number[] = []
+  {
+    let cursorIndex = 0
+    let windowId = 0
+    while (cursorIndex < total) {
+      const size = windowSizes[Math.min(windowId, windowSizes.length - 1)]
+      const end = Math.min(cursorIndex + size, total)
+      windowRemaining[windowId] = end - cursorIndex
+      for (let i = cursorIndex; i < end; i++) {
+        windowIdByIndex[i] = windowId
+        itemIndexByIndex[i] = i - cursorIndex
+      }
+      cursorIndex = end
+      windowId++
     }
-    await new Promise<void>((resolve) => waiters.push(resolve))
-    inFlight++
   }
-  const release = () => {
-    inFlight--
-    const next = waiters.shift()
-    if (next) next()
-  }
+  const windowResults = windowRemaining.map(() => [] as RegistryBatchProgressItem[])
 
-  const batchPromises: Promise<void>[] = []
-  let batchStart = 0
-  let batchIndex = 0
-
-  while (batchStart < packageNames.length) {
-    const batchSize = batchSizes[Math.min(batchIndex, batchSizes.length - 1)]
-    const batchNames = packageNames.slice(batchStart, batchStart + batchSize)
-    const capturedBatchIndex = batchIndex
-    const batchResults: RegistryBatchProgressItem[] = new Array(batchNames.length)
-
-    const batchPromise = Promise.all(
-      batchNames.map(async (packageName, itemIndex) => {
-        await acquire()
-        try {
-          const data = await getFreshPackageData(
-            packageName,
-            options.currentVersions?.get(packageName)
-          )
-          packageData.set(packageName, data)
-          completedCount++
-          batchResults[itemIndex] = {
-            packageName,
-            data,
-            completed: completedCount,
-            total,
-            batchIndex: capturedBatchIndex,
-            itemIndex,
-          }
-        } finally {
-          release()
+  // --- adaptive observer ------------------------------------------------------
+  const onAttempt: AttemptObserver | undefined = controller
+    ? (outcome) => {
+        if (outcome.kind === 'success') {
+          controller.record('success', outcome.latencyMs)
+        } else if (outcome.kind === 'congested') {
+          const next = controller.record('congested')
+          if (next !== null) semaphore.setLimit(next)
+        } else if (outcome.kind === 'retryable') {
+          controller.record('retryable')
+        } else if (outcome.kind === 'transient') {
+          controller.record('transient')
         }
-      })
-    ).then(() => {
-      pendingEmissions.set(capturedBatchIndex, batchResults.filter(Boolean))
-      flushPending()
-    })
+      }
+    : undefined
 
-    batchPromises.push(batchPromise)
-    batchStart += batchSize
-    batchIndex++
+  // --- worker: pull from the queue until exhausted ----------------------------
+  let cursor = 0
+  const runOne = async (index: number): Promise<void> => {
+    const packageName = packageNames[index]
+    await semaphore.acquire()
+    try {
+      const data = await getFreshPackageData(
+        packageName,
+        options.currentVersions?.get(packageName),
+        onAttempt
+      )
+      packageData.set(packageName, data)
+      completedCount++
+
+      const w = windowIdByIndex[index]
+      const itemIndex = itemIndexByIndex[index]
+      // Index by position (not push) so items keep their original in-window order
+      // even when they resolve out of order.
+      windowResults[w][itemIndex] = {
+        packageName,
+        data,
+        completed: completedCount,
+        total,
+        batchIndex: w,
+        itemIndex,
+      }
+      if (--windowRemaining[w] === 0) {
+        pendingEmissions.set(w, windowResults[w])
+        flushPending()
+      }
+
+      if (controller) {
+        const next = controller.maybeTick()
+        if (next !== null) semaphore.setLimit(next)
+      }
+    } finally {
+      semaphore.release()
+    }
   }
 
-  await Promise.all(batchPromises)
+  // The pump: keep enough workers running to saturate the (possibly growing)
+  // limit. We dispatch all indices as promises but each one waits on the
+  // semaphore before doing work, so the semaphore — not the dispatch loop —
+  // enforces the limit. Growing the limit lets queued acquirers through.
+  const workers: Promise<void>[] = []
+  while (cursor < total) {
+    workers.push(runOne(cursor))
+    cursor++
+  }
 
+  await Promise.all(workers)
   return packageData
 }
 

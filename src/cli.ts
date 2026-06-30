@@ -25,6 +25,7 @@ export interface CliOptions {
   saveExact?: boolean
   json?: boolean
   check?: boolean
+  adaptive?: boolean
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
@@ -114,6 +115,14 @@ export async function runCli(options: CliOptions): Promise<void> {
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
+    // Adaptive concurrency defaults ON. Env wins over CLI for scripted A/B runs;
+    // mirrors the INUP_DEBUG convention with explicit '0'/'1' checks.
+    adaptive:
+      process.env.INUP_ADAPTIVE === '0'
+        ? false
+        : process.env.INUP_ADAPTIVE === '1'
+          ? true
+          : (options.adaptive ?? true),
   }
 
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
@@ -128,7 +137,8 @@ export async function runCli(options: CliOptions): Promise<void> {
   // After the main flow completes, check if there's an update available
   const updateCheck = await updateCheckPromise
   if (updateCheck?.isOutdated) {
-    const columns = process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80
+    const columns =
+      process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80
     const innerWidth = Math.max(40, Math.min(columns, 100) - 2) // chars between the │ borders
     const border = chalk.yellow
     const padTo = (visibleLength: number) => ' '.repeat(Math.max(0, innerWidth - visibleLength))
@@ -172,6 +182,7 @@ program
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
+  .option('--no-adaptive', 'disable adaptive registry concurrency (use a fixed pool)')
   .action(runCli)
 
 // Handle uncaught errors gracefully
