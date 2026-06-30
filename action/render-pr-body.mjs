@@ -54,8 +54,27 @@ function wasApplied(e) {
   return e.range !== cleanCurrent && e.range !== e.current
 }
 
+/**
+ * Collapse monorepo duplicates. The report carries one entry per (package, packageJsonPath, type),
+ * so the same upgrade (e.g. @apollo/client ^4.2.1 → 4.2.3) appears once per workspace and again per
+ * dependency type. Reviewers only care about the unique change, so we key on name+range+latest and
+ * keep the first entry — preserving its vulnerability/major flags, which are package-level facts.
+ */
+function dedupe(entries) {
+  const seen = new Map()
+  for (const e of entries) {
+    const key = `${e.name}@${e.range}@${e.latest}`
+    if (!seen.has(key)) seen.set(key, e)
+  }
+  return [...seen.values()]
+}
+
 function render(report) {
-  const { summary, outdated } = report
+  const { summary } = report
+  // Collapse monorepo duplicates up front so every section below counts and lists unique upgrades.
+  // summary.outdated counts per-location entries, so it overcounts in workspaces — derive the unique
+  // figure from the deduped set instead and report both so the number stays honest.
+  const outdated = dedupe(report.outdated)
   const lines = []
 
   // Packages with a major beyond the applied in-range bump. Under the default minor policy the
@@ -65,9 +84,11 @@ function render(report) {
 
   lines.push('## 📦 Dependency upgrades')
   lines.push('')
+  const uniqueNote =
+    outdated.length !== summary.outdated ? ` (${summary.outdated} across workspaces)` : ''
   lines.push(
-    `Scanned **${summary.total}** packages — **${summary.outdated}** outdated ` +
-      `(${summary.major} major, ${summary.vulnerable} with known vulnerabilities).`
+    `Scanned **${summary.total}** packages — **${outdated.length}** unique upgrade(s)${uniqueNote} ` +
+      `(${majorOnly.length} with a major available, ${outdated.filter((e) => e.vulnerability).length} with known vulnerabilities).`
   )
   lines.push('')
 
