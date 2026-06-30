@@ -180,6 +180,8 @@ describe('CLI headless routing', () => {
     expect(mocks.headlessRun).toHaveBeenCalledWith({
       json: undefined,
       check: undefined,
+      apply: undefined,
+      target: 'minor',
     })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
@@ -197,7 +199,31 @@ describe('CLI headless routing', () => {
   it('routes to runHeadless with json/check flags even in a TTY', async () => {
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10', json: true, check: true })
 
-    expect(mocks.headlessRun).toHaveBeenCalledWith({ json: true, check: true })
+    expect(mocks.headlessRun).toHaveBeenCalledWith({
+      json: true,
+      check: true,
+      apply: undefined,
+      target: 'minor',
+    })
+    expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+  })
+
+  it('routes to runHeadless with apply/target even in a TTY', async () => {
+    await runCli({
+      dir: '/repo',
+      exclude: '',
+      ignore: '',
+      maxDepth: '10',
+      apply: true,
+      target: 'latest',
+    })
+
+    expect(mocks.headlessRun).toHaveBeenCalledWith({
+      json: undefined,
+      check: undefined,
+      apply: true,
+      target: 'latest',
+    })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
   })
 })

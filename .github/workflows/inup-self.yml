@@ -1,0 +1,45 @@
+name: inup (self)
+
+# Dogfood: inup upgrades its own dependencies via the local action. Proves the rolling-PR flow
+# end to end. Runs the local action (uses: ./) against the locally built CLI rather than npx, so a
+# change to the action or the --apply path is exercised before publish.
+on:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install, build, and link this branch's inup onto PATH
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
+          # from this checkout instead of npx-fetching a published release.
+          pnpm link --global
+
+      - name: Run inup via the local action
+        uses: ./
+        with:
+          target: minor
+          pr-title: 'chore(deps): weekly dependency upgrades'
+          labels: |
+            dependencies
+            automated

@@ -3,7 +3,10 @@ name: Publish to npm
 on:
   push:
     tags:
-      - 'v*'
+      # Match full version tags (v1.2.3) only — NOT the floating major tag (v1), which the
+      # tag-major workflow force-moves on each release. Without this, moving v1 would re-trigger
+      # a duplicate npm publish of the same version.
+      - 'v*.*.*'
 
 jobs:
   publish:

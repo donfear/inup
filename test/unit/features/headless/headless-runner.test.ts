@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
   fetchVulnerabilities: vi.fn(),
+  upgradePackages: vi.fn(),
+  upgraderCtor: vi.fn(),
 }))
 
 vi.mock('../../../../src/core/package-detector', () => ({
@@ -19,6 +21,22 @@ vi.mock('../../../../src/core/package-detector', () => ({
       batchSize: 10,
       poolConnections: 5,
     })
+  },
+}))
+
+vi.mock('../../../../src/core/upgrader', () => ({
+  PackageUpgrader: class {
+    constructor(...args: unknown[]) {
+      mocks.upgraderCtor(...args)
+    }
+    upgradePackages = mocks.upgradePackages
+  },
+}))
+
+vi.mock('../../../../src/services/package-manager-detector', () => ({
+  PackageManagerDetector: {
+    detect: vi.fn().mockReturnValue({ name: 'npm', displayName: 'npm' }),
+    getInfo: vi.fn((name: string) => ({ name, displayName: name })),
   },
 }))
 
@@ -50,6 +68,19 @@ const UP_TO_DATE = {
   isOutdated: false,
   hasRangeUpdate: false,
   hasMajorUpdate: false,
+}
+
+// Only a major bump is available — no in-range update. `--target minor` must skip this entirely.
+const MAJOR_ONLY = {
+  name: 'chalk',
+  currentVersion: '^4.1.2',
+  rangeVersion: '4.1.2',
+  latestVersion: '5.6.2',
+  type: 'devDependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: false,
+  hasMajorUpdate: true,
 }
 
 describe('HeadlessRunner.run', () => {
@@ -121,7 +152,9 @@ describe('HeadlessRunner.run', () => {
       highestSeverity: 'high',
       fixedByRange: false,
       fixedByLatest: true,
-      advisories: [{ id: 1, vulnerableVersions: '<1.0.0', fixedByRange: false, fixedByLatest: true }],
+      advisories: [
+        { id: 1, vulnerableVersions: '<1.0.0', fixedByRange: false, fixedByLatest: true },
+      ],
     })
 
     logSpy.mockRestore()
@@ -166,5 +199,91 @@ describe('HeadlessRunner.run', () => {
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No package.json'))
     exitSpy.mockRestore()
     errorSpy.mockRestore()
+  })
+
+  describe('--apply', () => {
+    it('target=minor bumps in-range and skips major-only packages', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      expect(mocks.upgradePackages).toHaveBeenCalledTimes(1)
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      // axios has an in-range bump; chalk is major-only and must be skipped.
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({
+        name: 'axios',
+        upgradeType: 'range',
+        targetVersion: '^0.27.2', // range target with the original ^ prefix preserved
+        dependencyType: 'dependencies',
+        packageJsonPath: '/repo/package.json',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('target=latest bumps to latest including majors', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(2)
+      const byName = Object.fromEntries(choices.map((c: any) => [c.name, c]))
+      expect(byName.axios).toMatchObject({ upgradeType: 'latest', targetVersion: '^1.16.1' })
+      expect(byName.chalk).toMatchObject({ upgradeType: 'latest', targetVersion: '^5.6.2' })
+      logSpy.mockRestore()
+    })
+
+    it('--save-exact writes bare versions without the range prefix', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo', saveExact: true }).run({
+        apply: true,
+        target: 'minor',
+      })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices[0].targetVersion).toBe('0.27.2')
+      logSpy.mockRestore()
+    })
+
+    it('does not call the upgrader when nothing is in-range to apply', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([MAJOR_ONLY, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
+    it('--apply --json emits exactly one JSON document and runs the upgrader in quiet mode', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor', json: true })
+
+      // stdout (console.log) carries exactly the JSON document — no progress lines.
+      expect(logSpy).toHaveBeenCalledTimes(1)
+      const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+      expect(report.summary).toMatchObject({ outdated: 1 })
+
+      // The upgrader is constructed with quiet:true so it keeps stdout clean (own logs + install
+      // child's stdout go to stderr). This is the contract that protects the --json document.
+      expect(mocks.upgraderCtor).toHaveBeenCalledWith(expect.anything(), { quiet: true })
+
+      logSpy.mockRestore()
+    })
+
+    it('--apply without --json runs the upgrader in non-quiet mode', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      expect(mocks.upgraderCtor).toHaveBeenCalledWith(expect.anything(), { quiet: false })
+    })
   })
 })
