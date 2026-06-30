@@ -18,8 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Enable Corepack
-        run: corepack enable
+      # Install pnpm BEFORE setup-node: setup-node's `cache: pnpm` resolver shells out to
+      # `pnpm store path`, so pnpm must already be on PATH when that step runs. The version is
+      # picked up from the `packageManager` field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -27,17 +30,17 @@ jobs:
           node-version: 24
           cache: 'pnpm'
 
-      - name: Install, build, and link this branch's inup onto PATH
+      - name: Install and build
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
-          # from this checkout instead of npx-fetching a published release.
-          pnpm setup
-          PNPM_HOME="$(pnpm config get global-bin-dir)"
-          export PATH="$PNPM_HOME:$PATH"
-          echo "$PNPM_HOME" >> "$GITHUB_PATH"
-          pnpm link --global
+
+      - name: Link this branch's inup onto PATH
+        # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
+        # from this checkout instead of npx-fetching a published release. `pnpm add -g .` installs
+        # the bin into $PNPM_HOME/bin (replaces `pnpm link --global`, removed in pnpm v11), and
+        # pnpm/action-setup already put that dir on PATH, so no manual PATH fixup is needed.
+        run: pnpm add -g .
 
       - name: Run inup via the local action
         uses: ./
