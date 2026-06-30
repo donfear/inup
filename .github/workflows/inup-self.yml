@@ -5,7 +5,7 @@ name: inup (self)
 # change to the action or the --apply path is exercised before publish.
 on:
   schedule:
-    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+    - cron: '0 6 * * *' # daily, 06:00 UTC
   workflow_dispatch: {}
 
 permissions:
@@ -59,7 +59,7 @@ jobs:
           # Match the Node version this job built under (undici@8 needs Node >=22.19).
           node-version: '24'
           target: minor
-          pr-title: 'chore(deps): weekly dependency upgrades'
+          pr-title: 'chore(deps): dependency upgrades'
           labels: |
             dependencies
             automated
