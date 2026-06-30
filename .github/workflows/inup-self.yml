@@ -24,7 +24,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           cache: 'pnpm'
 
       - name: Install, build, and link this branch's inup onto PATH
@@ -34,6 +34,7 @@ jobs:
           # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
           # from this checkout instead of npx-fetching a published release.
           pnpm link --global
+          echo "$(pnpm root -g)/../bin" >> "$GITHUB_PATH"
 
       - name: Run inup via the local action
         uses: ./
