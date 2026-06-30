@@ -45,6 +45,7 @@ node_modules/
 
 # dotenv environment variables file
 .env
+.env.local
 .env.test
 .env.production
 
@@ -91,3 +92,6 @@ Thumbs.db
 dist/
 
 .claude
+
+# Performance debug logs (INUP_PERF=1)
+.inup-perf/

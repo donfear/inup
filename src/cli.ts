@@ -8,9 +8,14 @@ import { HeadlessRunner } from './features/headless'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
 import { PackageManager, UpgradeOptions } from './types'
-import { enableDebugLogging, applyColorSetting } from './utils'
+import { enableDebugLogging, applyColorSetting, loadInupLocalEnv } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
 import { TerminalInput } from './ui'
+
+// Load developer-only toggles from <inup-repo>/.env.local before anything reads
+// env. Best-effort, gitignored, never overrides real env. Lets perf/debug be
+// "set once" across every project without shell config.
+loadInupLocalEnv()
 
 const program = new Command()
 

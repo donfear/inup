@@ -12,7 +12,12 @@ import {
 } from '../types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
 import { ConsoleUtils } from '../ui/utils'
-import { getPerformanceTracker } from '../features/debug'
+import {
+  getPerformanceTracker,
+  isPerfLoggingEnabled,
+  perfEnv,
+  writePerfLog,
+} from '../features/debug'
 
 /**
  * Main orchestrator for the inup upgrade process
@@ -109,6 +114,17 @@ export class UpgradeRunner {
             progress.isLoading = event.payload.progress.isLoading
             performanceTracker.mark('firstBatch')
             performanceTracker.mark('allLoaded')
+            if (isPerfLoggingEnabled()) {
+              writePerfLog(
+                {
+                  ...this.detector.getPerfConfig(),
+                  packageManager: this.packageManager.name,
+                  mode: 'interactive',
+                  env: perfEnv(),
+                },
+                performanceTracker.snapshot()
+              )
+            }
             refreshUI?.()
           }
         })

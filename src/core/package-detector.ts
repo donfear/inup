@@ -17,7 +17,7 @@ import {
   findClosestMinorVersion,
 } from '../utils'
 import { fetchPackageVersions, PackageVersionData } from '../services'
-import { isPackageIgnored } from '../config'
+import { isPackageIgnored, POOL_CONNECTIONS } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
 import { getPerformanceTracker } from '../features/debug'
@@ -56,6 +56,26 @@ export class PackageDetector {
 
   public hasPackageJson(): boolean {
     return this.packageJsonPath !== null && this.packageJson !== null
+  }
+
+  /**
+   * The resolved fetch configuration for this run, for perf logging. Exposes the
+   * exact values handed to the registry fetcher so a logged run is reproducible.
+   */
+  public getPerfConfig(): {
+    cwd: string
+    adaptive: boolean
+    maxConcurrency: number
+    batchSize: number
+    poolConnections: number
+  } {
+    return {
+      cwd: this.cwd,
+      adaptive: this.adaptive,
+      maxConcurrency: this.maxConcurrency,
+      batchSize: this.batchSize,
+      poolConnections: POOL_CONNECTIONS,
+    }
   }
 
   public async getOutdatedPackages(): Promise<PackageInfo[]> {
