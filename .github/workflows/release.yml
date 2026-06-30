@@ -49,5 +49,5 @@ jobs:
         run: |
           git config --local user.email "${{ secrets.GH_EMAIL }}"
           git config --local user.name "${{ secrets.GH_USERNAME }}"
-          pnpm version ${{ github.event.inputs.version_type }}
+          pnpm version ${{ github.event.inputs.version_type }} --message "release: v%s"
           git push && git push --tags
