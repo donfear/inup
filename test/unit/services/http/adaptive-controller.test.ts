@@ -13,7 +13,6 @@ const tuning = {
   softDecreaseFactor: 0.7,
   hardDecreaseFactor: 0.5,
   ewmaAlpha: 0.5,
-  latencyDegradeRatio: 1.5,
   ticksEveryCompletions: 4,
 }
 
@@ -43,10 +42,9 @@ describe('AdaptiveController', () => {
       expect(new AdaptiveController(10, undefined, tuning).getLimit()).toBe(10)
     })
 
-    it('honors an explicit start override (used for low-start ramp scenarios)', () => {
-      // startOverride caps the start below the smart start; the controller then
-      // ramps up from there toward the ceiling.
-      const c = new AdaptiveController(50, undefined, tuning, 5)
+    it('ramps up additively from a low smart start toward the ceiling', () => {
+      // A run whose work size is below the ceiling starts there and ramps up.
+      const c = new AdaptiveController(5, undefined, tuning)
       expect(c.getLimit()).toBe(5)
       for (let i = 0; i < tuning.ticksEveryCompletions - 1; i++) c.record('success', 50)
       const { ticked } = drive(c, 'success', 50)

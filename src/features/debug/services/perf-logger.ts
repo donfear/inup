@@ -135,7 +135,7 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
     // Maintain a stable pointer to the most recent run for quick reads.
     writeFileSync(join(dir, 'latest.json'), JSON.stringify(record, null, 2))
     // And a cheap one-line-per-run index for fast scanning.
-    appendPerfIndex(config.cwd, record)
+    appendPerfIndex(dir, record)
 
     if (process.env.INUP_DEBUG === '1') {
       process.stderr.write(`[inup] perf log → ${filePath}\n`)
@@ -166,7 +166,7 @@ export function readPerfRuns(cwd: string = process.cwd()): PerfRunRecord[] {
 }
 
 /** Append a single line to a NDJSON index for ultra-cheap scanning, best-effort. */
-export function appendPerfIndex(cwd: string, record: PerfRunRecord): void {
+function appendPerfIndex(dir: string, record: PerfRunRecord): void {
   try {
     const line =
       JSON.stringify({
@@ -178,7 +178,7 @@ export function appendPerfIndex(cwd: string, record: PerfRunRecord): void {
         registryFetch: record.snapshot.phases.registryFetch,
         controlTicks: record.snapshot.controlTicks.length,
       }) + '\n'
-    appendFileSync(join(getPerfDir(cwd), 'index.ndjson'), line)
+    appendFileSync(join(dir, 'index.ndjson'), line)
   } catch {
     /* best-effort */
   }

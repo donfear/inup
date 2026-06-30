@@ -229,15 +229,16 @@ async function fetchPackageFromRegistry(
  * - A single resizable semaphore caps in-flight fetches. Package names are
  *   pulled from a work queue and dispatched as slots free up (a lazy pump),
  *   rather than pre-sliced into fixed batches.
- * - `adaptive` (default true) enables an AIMD controller that grows the limit
- *   when the link is healthy and backs off on congestion (429/503), errors, or
- *   rising latency. With `adaptive:false` the limit is fixed at `maxConcurrency`
- *   (the A/B control arm) and behaves exactly like the legacy fixed path.
- * - Tiny runs (<= ceil packages) skip the controller entirely and run at a fixed
+ * - `adaptive` (default true) enables an AIMD controller that ramps the limit to
+ *   the ceiling on a healthy link and backs off on congestion (429/503) or
+ *   errors. With `adaptive:false` the limit is fixed at `maxConcurrency` (the A/B
+ *   control arm), reproducing the legacy fixed path.
+ * - Tiny runs (<= ceil packages) skip the controller and run at a fixed
  *   `min(ceil, count)` so they never crawl up from the floor and lose to fixed.
  * - No body timeout: slow responses finish. Real network errors and header
  *   stalls are retried with backoff; after the retry budget is exhausted the
  *   package is reported unavailable (`latestVersion: 'unknown'`).
+ * - Unchanged packuments are revalidated via ETag (304), skipping re-download.
  *
  * Callbacks:
  * - `onBatchReady` fires once an emission window has resolved, in original order.
@@ -264,24 +265,19 @@ export async function fetchPackageVersions(
   }
 
   const adaptive = options.adaptive ?? true
-  // `maxConcurrency` is the fixed cap (adaptive off). When omitted, adaptive
-  // runs smart-start near the work size instead.
-  const explicitConcurrency =
-    options.maxConcurrency !== undefined ? Math.max(1, options.maxConcurrency) : undefined
-  const fixedConcurrency = explicitConcurrency ?? DEFAULT_FIXED_CONCURRENCY
+  // `maxConcurrency` is the fixed cap used only when adaptive is off; it never
+  // caps the adaptive start (the controller smart-starts near the work size and
+  // ramps to the ceiling, which beats a low fixed start on large runs).
+  const fixedConcurrency = Math.max(1, options.maxConcurrency ?? DEFAULT_FIXED_CONCURRENCY)
 
-  // Decide the concurrency strategy.
-  // Note: `maxConcurrency` is the FIXED cap (adaptive off). It deliberately does
-  // NOT cap the adaptive start — the controller smart-starts near the work size
-  // and ramps to the ceiling, which beats a low fixed start on large runs.
-  const useController = adaptive && AdaptiveController.shouldControl(total)
-  const controller = useController ? new AdaptiveController(total, options.onControlTick) : null
+  const controller =
+    adaptive && AdaptiveController.shouldControl(total)
+      ? new AdaptiveController(total, options.onControlTick)
+      : null
   const initialLimit = controller
     ? controller.getLimit()
     : adaptive
-      ? // Adaptive on but run too small to control: smart fixed start at the
-        // work size, capped by the pool ceiling.
-        Math.min(POOL_CONNECTIONS, total)
+      ? Math.min(POOL_CONNECTIONS, total) // too small to control: smart fixed start
       : fixedConcurrency
   const semaphore = new ResizableSemaphore(initialLimit)
 
@@ -402,12 +398,10 @@ export async function fetchPackageVersions(
 }
 
 /**
- * Retained for backward compatibility. Registry responses are fresh-by-default.
+ * Clears the in-run in-flight dedupe map. Only meaningful within a single run
+ * (the map collapses duplicate concurrent lookups); registry data itself is
+ * never cached in memory across runs. Used by tests to isolate fetches.
  */
 export function clearPackageCache(): void {
   inFlightLookups.clear()
-}
-
-export async function closeRegistryPool(): Promise<void> {
-  await registryPool.close()
 }

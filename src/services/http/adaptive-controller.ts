@@ -1,38 +1,41 @@
 /**
  * AIMD (additive-increase / multiplicative-decrease) concurrency controller.
  *
- * Mirrors the congestion-control family TCP uses. It does not perform any I/O or
+ * Mirrors the congestion-control family TCP uses. It performs no I/O and does not
  * own the semaphore — it is a pure decision function: feed it the outcome of each
- * request, and on each control tick it returns the next concurrency limit. The
- * caller applies that to the resizable semaphore.
+ * request, and on each control tick it returns the next concurrency limit, which
+ * the caller applies to the resizable semaphore.
  *
- * Signals (highest quality first):
+ * Back-off signals (only real errors move the limit down):
  *  - congestion (HTTP 429/503): the registry explicitly telling us to slow down →
- *    immediate hard multiplicative-decrease (*0.5), applied the moment the signal
- *    arrives, not deferred to the next tick.
- *  - retryable/transient errors: counted; any in a tick blocks an increase and
- *    triggers a soft decrease.
- *  - success latency (EWMA): rising past a factor of the recent baseline → soft
- *    decrease (*0.7). Stable/improving with no errors → additive increase (+2).
+ *    immediate hard multiplicative-decrease (×hardDecreaseFactor), the moment the
+ *    signal arrives, not deferred to the next tick.
+ *  - retryable/transient errors in a tick window → soft multiplicative-decrease
+ *    (×softDecreaseFactor) and no increase.
  *
- * Latency is sampled ONLY from successful single attempts (see npm-registry's
- * attemptRegistryFetch). Retry backoff sleeps are never timed, so they cannot
- * corrupt the EWMA.
+ * Otherwise (healthy link) the limit ramps additively (+increaseStep) toward the
+ * ceiling and holds there.
+ *
+ * NOTE on latency: we sample successful single-attempt latency into an EWMA, but
+ * it is used for *instrumentation only* — never to drive back-off. The npm
+ * registry is a CDN whose latency varies widely on a perfectly healthy link;
+ * reacting to that variance made the controller oscillate and lose to a fixed
+ * limit. Real congestion shows up as 429, which we handle directly.
  */
 
 export interface AdaptiveTuning {
+  /** Lower bound on the limit. */
   floor: number
+  /** Upper bound on the limit (kept == the pool's connection count). */
   ceil: number
   /** Additive step when healthy. */
   increaseStep: number
-  /** Multiplier for a latency-driven soft decrease. */
+  /** Multiplier on a soft (error-driven) decrease. */
   softDecreaseFactor: number
-  /** Multiplier for a congestion-driven hard decrease. */
+  /** Multiplier on a hard (congestion-driven) decrease. */
   hardDecreaseFactor: number
-  /** EWMA smoothing factor (0..1); higher = more reactive. */
+  /** EWMA smoothing factor (0..1) for the reported latency metric. */
   ewmaAlpha: number
-  /** Ratio of current EWMA to baseline EWMA above which we call it "degrading". */
-  latencyDegradeRatio: number
   /** Completions between control ticks. */
   ticksEveryCompletions: number
 }
@@ -44,11 +47,6 @@ export const DEFAULT_TUNING: AdaptiveTuning = {
   softDecreaseFactor: 0.7,
   hardDecreaseFactor: 0.5,
   ewmaAlpha: 0.3,
-  // Retained for the type/reporting only; latency drift no longer drives back-off.
-  // The npm registry is a CDN that rarely congests; when it does it returns 429,
-  // which is handled as a hard signal. Latency variance on a healthy link is just
-  // noise and was causing the controller to oscillate and lose to fixed.
-  latencyDegradeRatio: Infinity,
   ticksEveryCompletions: 6,
 }
 
@@ -78,35 +76,26 @@ export class AdaptiveController {
   private completionsSinceTick = 0
   private retriesSinceTick = 0
 
-  private peakLimit: number
-  private tickCount = 0
-
   /**
-   * @param packageCount   number of packages this run will fetch; drives the
-   *                        smart initial limit so small runs don't crawl up from
-   *                        the floor and lose to a fixed baseline.
-   * @param onTick         optional sink for instrumentation (perf modal).
-   * @param tuning         override the defaults (constants live in one place).
-   * @param startOverride  optional explicit starting limit (e.g. a caller's
-   *                        maxConcurrency). The controller still ramps from here;
-   *                        it just doesn't smart-start above it.
+   * @param packageCount  number of packages this run will fetch; drives the smart
+   *                       initial limit so a run starts near its work size and
+   *                       ramps to the ceiling, rather than crawling up from the
+   *                       floor and losing to a fixed baseline.
+   * @param onTick        optional sink for control decisions (perf modal / logs).
+   * @param tuning        override the defaults (constants live in one place).
    */
   constructor(
     packageCount: number,
     private readonly onTick?: (tick: ControlTick) => void,
-    tuning: Partial<AdaptiveTuning> = {},
-    startOverride?: number
+    tuning: Partial<AdaptiveTuning> = {}
   ) {
     this.tuning = { ...DEFAULT_TUNING, ...tuning }
-    // Smart start: never aim below the floor, never above what there is to do or
-    // the ceiling. A 12-package run starts near 12, not at 3. An explicit
-    // override caps the starting point lower (the controller ramps up from it).
-    const smartStart = Math.min(this.tuning.ceil, packageCount)
-    const desiredStart =
-      startOverride !== undefined ? Math.min(smartStart, startOverride) : smartStart
-    const start = clamp(desiredStart, this.tuning.floor, this.tuning.ceil)
-    this.limit = start
-    this.peakLimit = start
+    // Smart start: aim at the work size, clamped to [floor, ceil].
+    this.limit = clamp(
+      Math.min(this.tuning.ceil, packageCount),
+      this.tuning.floor,
+      this.tuning.ceil
+    )
   }
 
   /** Whether the controller should even run; tiny runs are better off fixed. */
@@ -118,14 +107,6 @@ export class AdaptiveController {
 
   getLimit(): number {
     return this.limit
-  }
-
-  getPeakLimit(): number {
-    return this.peakLimit
-  }
-
-  getTickCount(): number {
-    return this.tickCount
   }
 
   /**
@@ -186,10 +167,8 @@ export class AdaptiveController {
   }
 
   private tick(now: number): number {
-    // Back off ONLY on real errors (retryable/transient) seen since the last
-    // tick. Healthy link → ramp toward the ceiling and hold. Latency variance is
-    // deliberately not a signal (see DEFAULT_TUNING note): on the npm CDN it is
-    // noise, and reacting to it made the controller oscillate and lose to fixed.
+    // Back off only on real errors seen since the last tick; otherwise ramp to
+    // the ceiling and hold (latency is not a signal — see the class docblock).
     const retries = this.retriesSinceTick
 
     let reason: ControlTickReason
@@ -213,8 +192,6 @@ export class AdaptiveController {
   }
 
   private emit(reason: ControlTickReason, now: number = Date.now()): void {
-    this.peakLimit = Math.max(this.peakLimit, this.limit)
-    this.tickCount++
     this.onTick?.({
       atMs: now,
       limit: this.limit,
