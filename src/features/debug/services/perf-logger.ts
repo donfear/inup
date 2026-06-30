@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, isAbsolute, join, resolve } from 'path'
 import { DEFAULT_TUNING } from '../../../services/http/adaptive-controller'
 import type { PerformanceSnapshot } from '../types/debug.types'
@@ -145,24 +145,6 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
     // Never let perf logging affect the run.
     return null
   }
-}
-
-/** Read every run record in the perf dir, newest first. For the report tool. */
-export function readPerfRuns(cwd: string = process.cwd()): PerfRunRecord[] {
-  // Honors INUP_PERF_DIR so the report reads the same centralized location runs
-  // were written to.
-  const dir = getPerfDir(cwd)
-  if (!existsSync(dir)) return []
-  const records: PerfRunRecord[] = []
-  for (const name of readdirSync(dir)) {
-    if (!name.startsWith('run-') || !name.endsWith('.json')) continue
-    try {
-      records.push(JSON.parse(readFileSync(join(dir, name), 'utf8')) as PerfRunRecord)
-    } catch {
-      // Skip unreadable/partial files.
-    }
-  }
-  return records.sort((a, b) => b.timestamp.localeCompare(a.timestamp))
 }
 
 /** Append a single line to a NDJSON index for ultra-cheap scanning, best-effort. */

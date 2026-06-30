@@ -22,8 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
-    "perf:report": "npm run build --silent && node dist/features/debug/perf-report.js"
+    "docs:keys": "UPDATE_README=1 vitest run keymap-readme"
   },
   "author": "Donfear",
   "keywords": [

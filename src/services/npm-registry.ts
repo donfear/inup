@@ -60,9 +60,9 @@ const registryPool = new Pool(registryOrigin, {
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
 
-// Fixed concurrency used when adaptive is disabled (the A/B control arm). This
-// matches the production caller (PackageDetector) so `--no-adaptive` reproduces
-// today's behavior exactly.
+// Fixed concurrency used when adaptive is disabled (INUP_ADAPTIVE=0, the A/B
+// control arm). Matches the production caller (PackageDetector) so the fixed path
+// reproduces the legacy behavior exactly.
 const DEFAULT_FIXED_CONCURRENCY = 10
 
 async function getFreshPackageData(
