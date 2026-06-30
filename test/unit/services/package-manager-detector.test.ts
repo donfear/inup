@@ -146,6 +146,8 @@ describe('PackageManagerDetector', () => {
       expect(info.name).toBe('npm')
       expect(info.lockFile).toBe('package-lock.json')
       expect(info.installCommand).toBe('npm install')
+      // npm has no CI frozen default, so it falls back to installCommand.
+      expect(info.writeInstallCommand).toBeUndefined()
     })
 
     it('should return correct info for pnpm', () => {
@@ -154,6 +156,8 @@ describe('PackageManagerDetector', () => {
       expect(info.lockFile).toBe('pnpm-lock.yaml')
       expect(info.workspaceFile).toBe('pnpm-workspace.yaml')
       expect(info.installCommand).toBe('pnpm install')
+      // After writing upgrades, the install must opt out of CI's frozen-lockfile default.
+      expect(info.writeInstallCommand).toBe('pnpm install --no-frozen-lockfile')
     })
 
     it('should return correct info for yarn', () => {
@@ -161,6 +165,8 @@ describe('PackageManagerDetector', () => {
       expect(info.name).toBe('yarn')
       expect(info.lockFile).toBe('yarn.lock')
       expect(info.installCommand).toBe('yarn install')
+      // Yarn Berry is immutable in CI; the write-time install opts out.
+      expect(info.writeInstallCommand).toBe('yarn install --no-immutable')
     })
 
     it('should return correct info for bun', () => {

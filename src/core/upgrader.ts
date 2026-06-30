@@ -83,14 +83,19 @@ export class PackageUpgrader {
       return // Skip install, let user do it manually
     }
 
-    this.log(chalk.cyan(`\n📦 Running ${this.packageManager.installCommand}...\n`))
+    // We just rewrote package.json, so the install must be allowed to regenerate the lockfile.
+    // pnpm/yarn default to frozen/immutable installs under CI; writeInstallCommand opts out.
+    const installCommand =
+      this.packageManager.writeInstallCommand ?? this.packageManager.installCommand
+
+    this.log(chalk.cyan(`\n📦 Running ${installCommand}...\n`))
 
     // In quiet mode, send the install child's stdout to *our* stderr (fd 2). The child uses
     // inherited fds, so its progress output bypasses any JS shim — redirecting at spawn time is
     // the only reliable way to keep stdout reserved for the --json document. stderr stays inherited.
     const stdio: StdioOptions = this.quiet ? ['inherit', 2, 'inherit'] : 'inherit'
 
-    const result = spawnSync(this.packageManager.installCommand, {
+    const result = spawnSync(installCommand, {
       cwd: installDir,
       stdio,
       shell: true,
@@ -102,11 +107,9 @@ export class PackageUpgrader {
 
     if (result.status !== 0) {
       if (result.signal) {
-        throw new Error(
-          `${this.packageManager.installCommand} terminated by signal ${result.signal}`
-        )
+        throw new Error(`${installCommand} terminated by signal ${result.signal}`)
       }
-      throw new Error(`${this.packageManager.installCommand} exited with code ${result.status}`)
+      throw new Error(`${installCommand} exited with code ${result.status}`)
     }
   }
 

@@ -65,6 +65,13 @@ export interface PackageManagerInfo {
   lockFile: string
   workspaceFile: string | null
   installCommand: string
+  /**
+   * Install command used after inup writes upgrades to package.json. pnpm and yarn default to
+   * frozen/immutable installs under CI (CI=true), which refuse to update the lockfile — the exact
+   * thing an upgrade needs. This variant explicitly opts out so the lockfile is regenerated.
+   * Falls back to `installCommand` when a manager has no such default (npm, bun).
+   */
+  writeInstallCommand?: string
   color: ChalkInstance
 }
 
