@@ -27,7 +27,8 @@ function buildSections(snapshot: PerformanceSnapshot): {
   pinned: ModalSection[]
   body: ModalSection[]
 } {
-  const { phases, counts, batches, failedPackages, packageManager, totalMs } = snapshot
+  const { phases, counts, batches, controlTicks, failedPackages, packageManager, totalMs } =
+    snapshot
 
   const pinned: ModalSection[] = [
     {
@@ -79,6 +80,22 @@ function buildSections(snapshot: PerformanceSnapshot): {
     )
   } else {
     bodyRows.push(chalk.gray('  (no batches recorded)'))
+  }
+
+  bodyRows.push('')
+  bodyRows.push(chalk.bold('Concurrency'))
+  if (controlTicks.length > 0) {
+    const limits = controlTicks.map((t) => t.limit)
+    const finalTick = controlTicks[controlTicks.length - 1]
+    const hardDowns = controlTicks.filter((t) => t.reason === 'hard-down').length
+    bodyRows.push(labelValue('Start limit', formatCount(controlTicks[0].limit)))
+    bodyRows.push(labelValue('Peak limit', formatCount(Math.max(...limits))))
+    bodyRows.push(labelValue('Final limit', formatCount(finalTick.limit)))
+    bodyRows.push(labelValue('Final EWMA', formatMs(finalTick.ewmaMs)))
+    bodyRows.push(labelValue('Control ticks', formatCount(controlTicks.length)))
+    bodyRows.push(labelValue('Hard back-offs', formatCount(hardDowns)))
+  } else {
+    bodyRows.push(chalk.gray('  (fixed — adaptive off or run too small)'))
   }
 
   bodyRows.push('')

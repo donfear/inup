@@ -4,6 +4,12 @@ import type { UpgradeOptions } from '../../types'
 import { auditVulnerabilities } from './vulnerability-audit'
 import { buildHeadlessReport, renderPlainReport } from './report'
 import { HeadlessOptions } from './types'
+import {
+  getPerformanceTracker,
+  isPerfLoggingEnabled,
+  perfEnv,
+  writePerfLog,
+} from '../../features/debug'
 
 /**
  * Non-interactive entry point. Resolves the outdated list without rendering the TUI, then either
@@ -26,8 +32,27 @@ export class HeadlessRunner {
         throw new Error('No package.json found in current directory')
       }
 
+      // Start perf tracking so headless runs produce clean timing data too
+      // (the interactive runner starts it itself; headless previously did not).
+      const perfEnabled = isPerfLoggingEnabled()
+      const performanceTracker = getPerformanceTracker()
+      if (perfEnabled) performanceTracker.start()
+
       const packages = await this.detector.getOutdatedPackages()
       const outdated = this.detector.getOutdatedPackagesOnly(packages)
+
+      if (perfEnabled) {
+        performanceTracker.mark('allLoaded')
+        writePerfLog(
+          {
+            ...this.detector.getPerfConfig(),
+            packageManager: null,
+            mode: 'headless',
+            env: perfEnv(),
+          },
+          performanceTracker.snapshot()
+        )
+      }
 
       // Audit the current versions (one bulk request, best-effort) and cross-reference each
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
@@ -35,7 +60,9 @@ export class HeadlessRunner {
 
       if (options.json) {
         // stdout is reserved for the JSON document only.
-        console.log(JSON.stringify(buildHeadlessReport(packages, outdated, vulnerabilities), null, 2))
+        console.log(
+          JSON.stringify(buildHeadlessReport(packages, outdated, vulnerabilities), null, 2)
+        )
       } else {
         console.log(renderPlainReport(outdated, vulnerabilities))
       }

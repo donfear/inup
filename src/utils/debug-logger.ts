@@ -1,4 +1,5 @@
-import { appendFileSync, writeFileSync } from 'fs'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 let _enabled = false
@@ -18,7 +19,13 @@ function getLogFile(): string {
   if (!_logFile) {
     const d = new Date()
     const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    _logFile = join(`inup-debug-${dateStr}.log`)
+    // Write to the OS temp dir (matches the path advertised in --help), not the
+    // current working directory — a debug log must never litter the user's repo.
+    const dir = join(tmpdir(), 'inup')
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    _logFile = join(dir, `inup-debug-${dateStr}.log`)
     // Write a header so the file is easy to identify
     writeFileSync(_logFile, `=== inup debug log started at ${timestamp()} ===\n`, { flag: 'a' })
   }

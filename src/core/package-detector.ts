@@ -17,10 +17,10 @@ import {
   findClosestMinorVersion,
 } from '../utils'
 import { fetchPackageVersions, PackageVersionData } from '../services'
-import { isPackageIgnored } from '../config'
+import { isPackageIgnored, POOL_CONNECTIONS } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
-import { getPerformanceTracker } from '../features/debug'
+import { getPerformanceTracker, isPerfLoggingEnabled } from '../features/debug'
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
@@ -39,6 +39,7 @@ export class PackageDetector {
 
   private readonly batchSize = 10
   private readonly maxConcurrency = 10
+  private readonly adaptive: boolean
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -46,6 +47,7 @@ export class PackageDetector {
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
+    this.adaptive = options?.adaptive ?? true
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -54,6 +56,26 @@ export class PackageDetector {
 
   public hasPackageJson(): boolean {
     return this.packageJsonPath !== null && this.packageJson !== null
+  }
+
+  /**
+   * The resolved fetch configuration for this run, for perf logging. Exposes the
+   * exact values handed to the registry fetcher so a logged run is reproducible.
+   */
+  public getPerfConfig(): {
+    cwd: string
+    adaptive: boolean
+    maxConcurrency: number
+    batchSize: number
+    poolConnections: number
+  } {
+    return {
+      cwd: this.cwd,
+      adaptive: this.adaptive,
+      maxConcurrency: this.maxConcurrency,
+      batchSize: this.batchSize,
+      poolConnections: POOL_CONNECTIONS,
+    }
   }
 
   public async getOutdatedPackages(): Promise<PackageInfo[]> {
@@ -106,6 +128,11 @@ export class PackageDetector {
       currentVersions: prepared.currentVersions,
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
+      adaptive: this.adaptive,
+      onControlTick: (tick) => performanceTracker.recordControlTick(tick),
+      onPackageTiming: isPerfLoggingEnabled()
+        ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
+        : undefined,
       onBatchReady: (batch) => {
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0

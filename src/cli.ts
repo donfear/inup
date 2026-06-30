@@ -8,9 +8,14 @@ import { HeadlessRunner } from './features/headless'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
 import { PackageManager, UpgradeOptions } from './types'
-import { enableDebugLogging, applyColorSetting } from './utils'
+import { enableDebugLogging, applyColorSetting, loadInupLocalEnv } from './utils'
 import { getGitWorkingTreeState } from './utils/git'
 import { TerminalInput } from './ui'
+
+// Load developer-only toggles from <inup-repo>/.env.local before anything reads
+// env. Best-effort, gitignored, never overrides real env. Lets perf/debug be
+// "set once" across every project without shell config.
+loadInupLocalEnv()
 
 const program = new Command()
 
@@ -114,6 +119,9 @@ export async function runCli(options: CliOptions): Promise<void> {
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
+    // Adaptive concurrency defaults ON; it's an internal/dev toggle with no public
+    // flag. Set INUP_ADAPTIVE=0 to disable (e.g. for A/B perf comparisons).
+    adaptive: process.env.INUP_ADAPTIVE !== '0',
   }
 
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
@@ -128,7 +136,8 @@ export async function runCli(options: CliOptions): Promise<void> {
   // After the main flow completes, check if there's an update available
   const updateCheck = await updateCheckPromise
   if (updateCheck?.isOutdated) {
-    const columns = process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80
+    const columns =
+      process.stdout.columns && process.stdout.columns > 0 ? process.stdout.columns : 80
     const innerWidth = Math.max(40, Math.min(columns, 100) - 2) // chars between the │ borders
     const border = chalk.yellow
     const padTo = (visibleLength: number) => ' '.repeat(Math.max(0, innerWidth - visibleLength))

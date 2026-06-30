@@ -1,5 +1,7 @@
 import {
   BatchTiming,
+  ControlTick,
+  PackageTiming,
   PerformanceCounts,
   PerformancePhase,
   PerformanceSnapshot,
@@ -10,6 +12,8 @@ class PerformanceTracker {
   private phases: Partial<Record<PerformancePhase, number>> = {}
   private counts: PerformanceCounts = {}
   private batches: BatchTiming[] = []
+  private controlTicks: ControlTick[] = []
+  private packageTimings: PackageTiming[] = []
   private failedPackages: string[] = []
   private packageManager: string | null = null
 
@@ -18,6 +22,8 @@ class PerformanceTracker {
     this.phases = {}
     this.counts = {}
     this.batches = []
+    this.controlTicks = []
+    this.packageTimings = []
     this.failedPackages = []
     this.packageManager = null
   }
@@ -39,6 +45,14 @@ class PerformanceTracker {
     this.batches.push(batch)
   }
 
+  recordControlTick(tick: ControlTick): void {
+    this.controlTicks.push(tick)
+  }
+
+  recordPackageTiming(timing: PackageTiming): void {
+    this.packageTimings.push(timing)
+  }
+
   recordFailedPackage(name: string): void {
     if (!this.failedPackages.includes(name)) {
       this.failedPackages.push(name)
@@ -51,15 +65,15 @@ class PerformanceTracker {
 
   snapshot(): PerformanceSnapshot {
     const totalMs =
-      this.startedAt === null
-        ? null
-        : (this.phases.allLoaded ?? Date.now() - this.startedAt)
+      this.startedAt === null ? null : (this.phases.allLoaded ?? Date.now() - this.startedAt)
     return {
       startedAt: this.startedAt,
       phases: { ...this.phases },
       totalMs,
       counts: { ...this.counts },
       batches: [...this.batches],
+      controlTicks: [...this.controlTicks],
+      packageTimings: [...this.packageTimings],
       failedPackages: [...this.failedPackages],
       packageManager: this.packageManager,
     }
@@ -70,6 +84,8 @@ class PerformanceTracker {
     this.phases = {}
     this.counts = {}
     this.batches = []
+    this.controlTicks = []
+    this.packageTimings = []
     this.failedPackages = []
     this.packageManager = null
   }
