@@ -2,6 +2,16 @@ import { existsSync, readdirSync, statSync, realpathSync } from 'fs'
 import { promises as fsPromises } from 'fs'
 import { join, relative } from 'path'
 
+/**
+ * Normalize a relative path to forward slashes before matching `.inuprc` exclude patterns.
+ * On Windows `path.relative` yields backslash separators (e.g. `packages\skipme`), but users write
+ * exclude regexes with `/` (e.g. `^packages/skipme(?:/|$)`). Without this, excludes silently fail
+ * on Windows and a path the user meant to skip gets scanned and upgraded.
+ */
+function toPosixPath(p: string): string {
+  return p.replace(/\\/g, '/')
+}
+
 export interface PackageJsonScanOptions {
   concurrency?: number
   /** Directory names that should be scanned even though they appear in the default skip list. */
@@ -125,7 +135,8 @@ export function findAllPackageJsonFiles(
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
   function shouldExcludePath(relativePath: string): boolean {
-    return excludeRegexes.some((regex) => regex.test(relativePath))
+    const posix = toPosixPath(relativePath)
+    return excludeRegexes.some((regex) => regex.test(posix))
   }
 
   function reportProgress(currentDir: string, force: boolean = false): void {
@@ -215,7 +226,8 @@ export async function findAllPackageJsonFilesAsync(
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
   function shouldExcludePath(relativePath: string): boolean {
-    return excludeRegexes.some((regex) => regex.test(relativePath))
+    const posix = toPosixPath(relativePath)
+    return excludeRegexes.some((regex) => regex.test(posix))
   }
 
   function reportProgress(currentDir: string, force: boolean = false): void {
