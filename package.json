@@ -1,6 +1,6 @@
 {
   "name": "inup",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready. Upgrade-interactive for every package manager.",
   "main": "dist/index.js",
   "bin": {
