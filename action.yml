@@ -75,24 +75,58 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Enable Corepack
+    # Validate the enum-style inputs up front so a typo fails fast with an actionable message
+    # instead of an opaque downstream error. Inputs are read from env (never interpolated into the
+    # script body) to avoid shell injection.
+    - name: Validate inputs
       shell: bash
-      run: corepack enable || true
+      env:
+        TARGET: ${{ inputs.target }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+      run: |
+        set -euo pipefail
+        case "$TARGET" in
+          minor|patch|latest) ;;
+          *)
+            echo "::error title=inup: invalid target::'$TARGET' is not a valid target. Use one of: minor, patch, latest."
+            exit 1
+            ;;
+        esac
+        case "$PACKAGE_MANAGER" in
+          ''|npm|yarn|pnpm|bun) ;;
+          *)
+            echo "::error title=inup: invalid package-manager::'$PACKAGE_MANAGER' is not valid. Use one of: npm, yarn, pnpm, bun (or leave empty to auto-detect)."
+            exit 1
+            ;;
+        esac
 
     - name: Set up Node.js
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
 
+    # Enable Corepack *after* setup-node so it targets the Node that actually runs inup. yarn/pnpm
+    # are surfaced via Corepack so their version comes from the project's `packageManager` field.
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable || true
+
     - name: Run inup (apply upgrades + JSON report)
       id: inup
       shell: bash
       working-directory: ${{ inputs.directory }}
+      # All inputs are passed via env — never interpolated into the script text — so a crafted input
+      # value cannot inject shell commands. Inputs are validated by the step above.
+      env:
+        TARGET: ${{ inputs.target }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        INUP_VERSION: ${{ inputs.inup-version }}
       run: |
         set -euo pipefail
-        PM_FLAG=""
-        if [ -n "${{ inputs.package-manager }}" ]; then
-          PM_FLAG="--package-manager ${{ inputs.package-manager }}"
+
+        ARGS=(--apply --target "$TARGET" --json)
+        if [ -n "$PACKAGE_MANAGER" ]; then
+          ARGS+=(--package-manager "$PACKAGE_MANAGER")
         fi
 
         # Prefer an `inup` already on PATH (globally linked / workspace-installed build) so a
@@ -100,26 +134,39 @@ runs:
         if command -v inup >/dev/null 2>&1; then
           INUP=(inup)
         else
-          INUP=(npx --yes "inup@${{ inputs.inup-version }}")
+          INUP=(npx --yes "inup@${INUP_VERSION}")
         fi
 
+        REPORT="${RUNNER_TEMP}/inup-report.json"
         # stdout = JSON document only (progress + install output go to stderr).
-        "${INUP[@]}" --apply --target ${{ inputs.target }} $PM_FLAG --json \
-          > "${RUNNER_TEMP}/inup-report.json"
+        "${INUP[@]}" "${ARGS[@]}" > "$REPORT"
 
-        echo "report=${RUNNER_TEMP}/inup-report.json" >> "$GITHUB_OUTPUT"
-        OUTDATED=$(node -e "process.stdout.write(String(require('${RUNNER_TEMP}/inup-report.json').summary.outdated))")
-        VULNERABLE=$(node -e "process.stdout.write(String(require('${RUNNER_TEMP}/inup-report.json').summary.vulnerable))")
+        echo "report=${REPORT}" >> "$GITHUB_OUTPUT"
+
+        # Extract both summary counts in a single Node invocation. Tolerate a missing/malformed
+        # report (e.g. inup printed nothing) by defaulting to 0 rather than crashing the step.
+        SUMMARY=$(REPORT="$REPORT" node -e '
+          try {
+            const r = require(process.env.REPORT);
+            process.stdout.write(`${r.summary.outdated|0}\n${r.summary.vulnerable|0}\n`);
+          } catch {
+            process.stdout.write("0\n0\n");
+          }
+        ')
+        OUTDATED=$(printf '%s\n' "$SUMMARY" | sed -n '1p')
+        VULNERABLE=$(printf '%s\n' "$SUMMARY" | sed -n '2p')
         echo "outdated=${OUTDATED}" >> "$GITHUB_OUTPUT"
         echo "vulnerable=${VULNERABLE}" >> "$GITHUB_OUTPUT"
 
     - name: Render PR body
       id: body
       shell: bash
+      env:
+        REPORT: ${{ steps.inup.outputs.report }}
       run: |
         set -euo pipefail
         BODY_FILE="${RUNNER_TEMP}/inup-pr-body.md"
-        node "${GITHUB_ACTION_PATH}/action/render-pr-body.mjs" "${{ steps.inup.outputs.report }}" > "$BODY_FILE"
+        node "${GITHUB_ACTION_PATH}/action/render-pr-body.mjs" "$REPORT" > "$BODY_FILE"
         echo "body-file=${BODY_FILE}" >> "$GITHUB_OUTPUT"
 
     - name: Create or update rolling pull request
