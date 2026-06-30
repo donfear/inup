@@ -37,10 +37,7 @@ export interface PackageInfo {
 }
 
 export type DependencyType =
-  | 'dependencies'
-  | 'devDependencies'
-  | 'optionalDependencies'
-  | 'peerDependencies'
+  'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
 
 export interface DependencyEntry {
   name: string
