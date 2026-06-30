@@ -2,15 +2,30 @@ import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
-import { spawnSync } from 'child_process'
+import { spawnSync, type StdioOptions } from 'child_process'
 import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo, DependencyType } from '../types'
 import { detectJsonFormat, executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
+export interface PackageUpgraderOptions {
+  /**
+   * Keep stdout clean: route this class's own progress logs to stderr, and send the install
+   * child's stdout to stderr too. Used by `--apply --json` so the JSON document on stdout is the
+   * only thing there. The install child uses `stdio: 'inherit'`, so its stdout bypasses any
+   * `process.stdout.write` shim — the only reliable fix is to redirect the fd at spawn time.
+   */
+  quiet?: boolean
+}
+
 export class PackageUpgrader {
   private packageManager: PackageManagerInfo
+  private quiet: boolean
+  /** When quiet, send our own progress to stderr so stdout stays reserved for the JSON document. */
+  private log: (message?: unknown) => void
 
-  constructor(packageManager: PackageManagerInfo) {
+  constructor(packageManager: PackageManagerInfo, options?: PackageUpgraderOptions) {
     this.packageManager = packageManager
+    this.quiet = options?.quiet ?? false
+    this.log = this.quiet ? (msg) => console.error(msg) : (msg) => console.log(msg)
   }
 
   public async upgradePackages(
@@ -18,7 +33,7 @@ export class PackageUpgrader {
     _packageInfos: PackageInfo[]
   ): Promise<void> {
     if (choices.length === 0) {
-      console.log(chalk.yellow('No packages to upgrade.'))
+      this.log(chalk.yellow('No packages to upgrade.'))
       return
     }
 
@@ -29,13 +44,13 @@ export class PackageUpgrader {
       if (choiceList.length === 0) continue
 
       const [packageJsonPath, type] = fileAndType.split('|')
-      console.log(`Processing ${type} in ${packageJsonPath}`)
+      this.log(`Processing ${type} in ${packageJsonPath}`)
       await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as DependencyType)
     }
 
     // Count unique packages upgraded
     const uniquePackages = new Set(choices.map((c) => c.name))
-    console.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
+    this.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
 
     // Execute package manager install after all upgrades are complete
     await this.runInstall(choices)
@@ -57,7 +72,7 @@ export class PackageUpgrader {
     try {
       executeCommand(`${this.packageManager.name} --version`, installDir)
     } catch (error) {
-      console.log(
+      this.log(
         chalk.yellow(
           `\n⚠️  ${this.packageManager.displayName} is detected but not installed on your system.\n` +
             `Please run the install command manually:\n` +
@@ -68,11 +83,16 @@ export class PackageUpgrader {
       return // Skip install, let user do it manually
     }
 
-    console.log(chalk.cyan(`\n📦 Running ${this.packageManager.installCommand}...\n`))
+    this.log(chalk.cyan(`\n📦 Running ${this.packageManager.installCommand}...\n`))
+
+    // In quiet mode, send the install child's stdout to *our* stderr (fd 2). The child uses
+    // inherited fds, so its progress output bypasses any JS shim — redirecting at spawn time is
+    // the only reliable way to keep stdout reserved for the --json document. stderr stays inherited.
+    const stdio: StdioOptions = this.quiet ? ['inherit', 2, 'inherit'] : 'inherit'
 
     const result = spawnSync(this.packageManager.installCommand, {
       cwd: installDir,
-      stdio: 'inherit',
+      stdio,
       shell: true,
     })
 
@@ -113,14 +133,17 @@ export class PackageUpgrader {
   ): Promise<void> {
     // Validate that package.json exists
     if (!existsSync(packageJsonPath)) {
-      console.warn(
+      this.log(
         chalk.yellow(`⚠️  Skipping ${type} in ${packageJsonPath} - package.json file not found`)
       )
       return
     }
 
     const packageDir = packageJsonPath.replace('/package.json', '')
-    const spinner = createSpinner(`Upgrading ${type} in ${packageDir}...`).start()
+    // The spinner animates on stdout; skip it in quiet mode so the --json document stays clean.
+    const spinner = this.quiet
+      ? null
+      : createSpinner(`Upgrading ${type} in ${packageDir}...`).start()
 
     try {
       // Read the current package.json — keep the raw text so we can round-trip its formatting
@@ -168,17 +191,19 @@ export class PackageUpgrader {
         }
       }
 
-      spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })
+      if (spinner) spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })
+      else this.log(chalk.green(`✔ Upgraded ${choices.length} ${type} in ${packageDir}`))
 
       // Show which packages were upgraded
       choices.forEach((choice) => {
         const upgradeTypeColor = choice.upgradeType === 'range' ? chalk.yellow : chalk.red
-        console.log(
+        this.log(
           `  ${chalk.green('✓')} ${chalk.cyan(choice.name)} → ${upgradeTypeColor(choice.targetVersion)}`
         )
       })
     } catch (error) {
-      spinner.error({ text: `Failed to upgrade ${type} in ${packageDir}` })
+      if (spinner) spinner.error({ text: `Failed to upgrade ${type} in ${packageDir}` })
+      else this.log(chalk.red(`✖ Failed to upgrade ${type} in ${packageDir}`))
       console.error(chalk.red(`Error: ${error}`))
       throw error
     }

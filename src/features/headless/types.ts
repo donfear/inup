@@ -1,8 +1,13 @@
 import type { DependencyType, VulnerabilitySeverity } from '../../types'
 
+/** Version policy for `--apply`: how far to bump. `minor`/`patch` stay in-range; `latest` allows majors. */
+export type ApplyTarget = 'minor' | 'patch' | 'latest'
+
 export interface HeadlessOptions {
   json?: boolean // Emit a machine-readable JSON report on stdout
   check?: boolean // Exit non-zero when updates exist (CI gate)
+  apply?: boolean // Write the bumps to package.json + run install (the only write path)
+  target?: ApplyTarget // --apply version policy; defaults to 'minor' (in-range only)
 }
 
 /** Bump when the `--json` shape changes in a way consumers (scripts, agents) must adapt to. */

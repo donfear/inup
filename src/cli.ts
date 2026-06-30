@@ -30,6 +30,8 @@ export interface CliOptions {
   saveExact?: boolean
   json?: boolean
   check?: boolean
+  apply?: boolean
+  target?: string
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
@@ -43,8 +45,16 @@ export async function runCli(options: CliOptions): Promise<void> {
   }
 
   // Headless when piped, in CI, or when a non-interactive flag is set. The TUI only renders in
-  // interactive mode; everything else routes through the read-only headless report path.
-  const interactive = !!process.stdout.isTTY && !process.env.CI && !options.json && !options.check
+  // interactive mode; everything else routes through the headless path (read-only, unless --apply).
+  const interactive =
+    !!process.stdout.isTTY && !process.env.CI && !options.json && !options.check && !options.apply
+
+  // Validate --target early so a typo fails fast instead of silently defaulting.
+  if (options.target && !['minor', 'patch', 'latest'].includes(options.target)) {
+    console.error(chalk.red(`Invalid target: ${options.target}`))
+    console.error(chalk.yellow('Valid options: minor, patch, latest'))
+    process.exit(1)
+  }
 
   // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
   if (interactive) {
@@ -127,7 +137,12 @@ export async function runCli(options: CliOptions): Promise<void> {
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
   // only the interactive path builds the full TUI runner.
   if (!interactive) {
-    await new HeadlessRunner(runnerOptions).run({ json: options.json, check: options.check })
+    await new HeadlessRunner(runnerOptions).run({
+      json: options.json,
+      check: options.check,
+      apply: options.apply,
+      target: (options.target as 'minor' | 'patch' | 'latest') || 'minor',
+    })
     return
   }
 
@@ -181,6 +196,15 @@ program
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
+  .option(
+    '--apply',
+    'non-interactively write upgrades to package.json and run install (honors .inuprc ignore/exclude)'
+  )
+  .option(
+    '--target <level>',
+    'with --apply: how far to bump — minor | patch | latest (default: minor, in-range only)',
+    'minor'
+  )
   .action(runCli)
 
 // Handle uncaught errors gracefully
