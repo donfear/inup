@@ -121,6 +121,28 @@ function main(): void {
     'fixed'
   )
 
+  // Tail analysis: which individual packages cost the most? Aggregates per-package
+  // latency across all runs that captured it (newest runs include packageTimings).
+  const byPkg = new Map<string, number[]>()
+  for (const r of records) {
+    for (const t of r.snapshot.packageTimings ?? []) {
+      const arr = byPkg.get(t.name) ?? []
+      arr.push(t.latencyMs)
+      byPkg.set(t.name, arr)
+    }
+  }
+  if (byPkg.size > 0) {
+    const ranked = [...byPkg.entries()]
+      .map(([name, lats]) => ({ name, max: Math.max(...lats), avg: mean(lats) ?? 0 }))
+      .sort((a, b) => b.max - a.max)
+      .slice(0, 15)
+    console.log('\nSlowest packages (tail — these set the wall-clock floor):')
+    console.log(`  ${pad('package', 32)} ${padL('max', 8)} ${padL('avg', 8)}`)
+    for (const p of ranked) {
+      console.log(`  ${pad(p.name, 32)} ${padL(num(p.max, 'ms'), 8)} ${padL(num(p.avg, 'ms'), 8)}`)
+    }
+  }
+
   // Tuning is identical across runs (compile-time constants); show it once.
   const tuning = records[0].tuning
   console.log(

@@ -20,7 +20,7 @@ import { fetchPackageVersions, PackageVersionData } from '../services'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../config'
 import { ConsoleUtils } from '../ui/utils'
 import { debugLog } from '../utils'
-import { getPerformanceTracker } from '../features/debug'
+import { getPerformanceTracker, isPerfLoggingEnabled } from '../features/debug'
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
@@ -130,6 +130,9 @@ export class PackageDetector {
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
       onControlTick: (tick) => performanceTracker.recordControlTick(tick),
+      onPackageTiming: isPerfLoggingEnabled()
+        ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
+        : undefined,
       onBatchReady: (batch) => {
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0

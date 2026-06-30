@@ -38,14 +38,18 @@ export interface AdaptiveTuning {
 }
 
 export const DEFAULT_TUNING: AdaptiveTuning = {
-  floor: 3,
+  floor: 6,
   ceil: 24,
-  increaseStep: 2,
+  increaseStep: 4,
   softDecreaseFactor: 0.7,
   hardDecreaseFactor: 0.5,
   ewmaAlpha: 0.3,
-  latencyDegradeRatio: 1.5,
-  ticksEveryCompletions: 8,
+  // Retained for the type/reporting only; latency drift no longer drives back-off.
+  // The npm registry is a CDN that rarely congests; when it does it returns 429,
+  // which is handled as a hard signal. Latency variance on a healthy link is just
+  // noise and was causing the controller to oscillate and lose to fixed.
+  latencyDegradeRatio: Infinity,
+  ticksEveryCompletions: 6,
 }
 
 export type ControlTickReason = 'up' | 'soft-down' | 'hard-down' | 'hold'
@@ -66,11 +70,10 @@ export class AdaptiveController {
   private readonly tuning: AdaptiveTuning
   private limit: number
 
+  // EWMA of successful single-attempt latency. Kept for instrumentation only
+  // (the perf modal / logs); it does not drive concurrency decisions.
   private ewmaMs = 0
   private hasEwma = false
-  /** Slow-moving baseline the live EWMA is compared against to detect drift. */
-  private baselineMs = 0
-  private hasBaseline = false
 
   private completionsSinceTick = 0
   private retriesSinceTick = 0
@@ -167,10 +170,6 @@ export class AdaptiveController {
       const a = this.tuning.ewmaAlpha
       this.ewmaMs = a * latencyMs + (1 - a) * this.ewmaMs
     }
-    if (!this.hasBaseline) {
-      this.baselineMs = this.ewmaMs
-      this.hasBaseline = true
-    }
   }
 
   private applyHardDecrease(): number {
@@ -187,14 +186,14 @@ export class AdaptiveController {
   }
 
   private tick(now: number): number {
+    // Back off ONLY on real errors (retryable/transient) seen since the last
+    // tick. Healthy link → ramp toward the ceiling and hold. Latency variance is
+    // deliberately not a signal (see DEFAULT_TUNING note): on the npm CDN it is
+    // noise, and reacting to it made the controller oscillate and lose to fixed.
     const retries = this.retriesSinceTick
-    const degrading =
-      this.hasBaseline &&
-      this.baselineMs > 0 &&
-      this.ewmaMs > this.baselineMs * this.tuning.latencyDegradeRatio
 
     let reason: ControlTickReason
-    if (retries > 0 || degrading) {
+    if (retries > 0) {
       this.limit = clamp(
         Math.round(this.limit * this.tuning.softDecreaseFactor),
         this.tuning.floor,
@@ -206,13 +205,6 @@ export class AdaptiveController {
       reason = 'up'
     } else {
       reason = 'hold'
-    }
-
-    // Let the baseline track the live EWMA slowly so a sustained, legitimately
-    // slower link becomes the new "normal" instead of forcing perpetual back-off.
-    if (this.hasEwma) {
-      this.baselineMs = this.hasBaseline ? 0.5 * this.ewmaMs + 0.5 * this.baselineMs : this.ewmaMs
-      this.hasBaseline = true
     }
 
     this.emit(reason, now)

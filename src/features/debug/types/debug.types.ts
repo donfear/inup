@@ -34,6 +34,12 @@ export interface PerformanceCounts {
   failed?: number
 }
 
+/** Per-package network latency (successful single-attempt round-trip). */
+export interface PackageTiming {
+  name: string
+  latencyMs: number
+}
+
 export interface PerformanceSnapshot {
   startedAt: number | null
   phases: Partial<Record<PerformancePhase, number>>
@@ -41,6 +47,7 @@ export interface PerformanceSnapshot {
   counts: PerformanceCounts
   batches: BatchTiming[]
   controlTicks: ControlTick[]
+  packageTimings: PackageTiming[]
   failedPackages: string[]
   packageManager: string | null
 }

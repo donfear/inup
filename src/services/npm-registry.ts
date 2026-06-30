@@ -17,6 +17,7 @@ import {
 import { InflightMap } from './http/inflight'
 import { ResizableSemaphore } from './http/resizable-semaphore'
 import { AdaptiveController, ControlTick } from './http/adaptive-controller'
+import { readEtag, writeEtag } from './http/etag-store'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -99,18 +100,33 @@ export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 
 async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcome> {
   const startedAt = Date.now()
+  // Conditional request: if we have a stored ETag for this packument, ask the
+  // registry to validate it. Unchanged → 304 (no body) and we reuse stored data.
+  // This still hits the registry every run, so data is never served stale.
+  const cached = readEtag(path)
   try {
+    const requestHeaders: Record<string, string> = {
+      accept: 'application/vnd.npm.install-v1+json',
+      'accept-encoding': 'gzip, deflate, br',
+    }
+    if (cached) {
+      requestHeaders['if-none-match'] = cached.etag
+    }
+
     const { statusCode, headers, body } = await registryPool.request({
       path,
       method: 'GET',
-      headers: {
-        accept: 'application/vnd.npm.install-v1+json',
-        'accept-encoding': 'gzip, deflate, br',
-      },
+      headers: requestHeaders,
       headersTimeout: 30_000,
       bodyTimeout: 0,
       blocking: false,
     })
+
+    // Registry confirmed our cached copy is current — reuse it, skip the download.
+    if (statusCode === 304 && cached) {
+      await body.dump().catch(() => undefined)
+      return { kind: 'success', data: cached.data, latencyMs: Date.now() - startedAt }
+    }
 
     if (statusCode < 200 || statusCode >= 300) {
       await body.dump().catch(() => undefined)
@@ -141,9 +157,18 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
     } else {
       decoded = raw
     }
+    const data = parseVersions(decoded.toString('utf8'))
+
+    // Persist the ETag for next run's conditional request.
+    const etagHeader = headers['etag']
+    const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader
+    if (etag) {
+      writeEtag(path, etag.toString(), data)
+    }
+
     return {
       kind: 'success',
-      data: parseVersions(decoded.toString('utf8')),
+      data,
       latencyMs: Date.now() - startedAt,
     }
   } catch (error) {
@@ -227,6 +252,8 @@ export async function fetchPackageVersions(
     onBatchReady?: OnBatchReadyCallback
     currentVersions?: Map<string, string>
     onControlTick?: (tick: ControlTick) => void
+    /** Per-package successful round-trip latency, for perf diagnostics. */
+    onPackageTiming?: (name: string, latencyMs: number) => void
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
@@ -237,24 +264,24 @@ export async function fetchPackageVersions(
   }
 
   const adaptive = options.adaptive ?? true
-  // An explicitly-supplied maxConcurrency is the conservative starting point for
-  // the ramp (and the hard cap when adaptive is off). When omitted, adaptive
+  // `maxConcurrency` is the fixed cap (adaptive off). When omitted, adaptive
   // runs smart-start near the work size instead.
   const explicitConcurrency =
     options.maxConcurrency !== undefined ? Math.max(1, options.maxConcurrency) : undefined
   const fixedConcurrency = explicitConcurrency ?? DEFAULT_FIXED_CONCURRENCY
 
   // Decide the concurrency strategy.
+  // Note: `maxConcurrency` is the FIXED cap (adaptive off). It deliberately does
+  // NOT cap the adaptive start — the controller smart-starts near the work size
+  // and ramps to the ceiling, which beats a low fixed start on large runs.
   const useController = adaptive && AdaptiveController.shouldControl(total)
-  const controller = useController
-    ? new AdaptiveController(total, options.onControlTick, {}, explicitConcurrency)
-    : null
+  const controller = useController ? new AdaptiveController(total, options.onControlTick) : null
   const initialLimit = controller
     ? controller.getLimit()
     : adaptive
-      ? // Adaptive on but run too small to control: smart fixed start, but never
-        // above an explicit cap.
-        Math.min(explicitConcurrency ?? POOL_CONNECTIONS, total)
+      ? // Adaptive on but run too small to control: smart fixed start at the
+        // work size, capped by the pool ceiling.
+        Math.min(POOL_CONNECTIONS, total)
       : fixedConcurrency
   const semaphore = new ResizableSemaphore(initialLimit)
 
@@ -300,21 +327,25 @@ export async function fetchPackageVersions(
   }
   const windowResults = windowRemaining.map(() => [] as RegistryBatchProgressItem[])
 
-  // --- adaptive observer ------------------------------------------------------
-  const onAttempt: AttemptObserver | undefined = controller
-    ? (outcome) => {
-        if (outcome.kind === 'success') {
-          controller.record('success', outcome.latencyMs)
-        } else if (outcome.kind === 'congested') {
-          const next = controller.record('congested')
-          if (next !== null) semaphore.setLimit(next)
-        } else if (outcome.kind === 'retryable') {
-          controller.record('retryable')
-        } else if (outcome.kind === 'transient') {
-          controller.record('transient')
-        }
+  // --- per-attempt observer ---------------------------------------------------
+  // Feeds the adaptive controller AND (optionally) reports per-package latency
+  // for diagnostics. Built per package so the timing callback knows the name.
+  const observerFor = (packageName: string): AttemptObserver | undefined => {
+    if (!controller && !options.onPackageTiming) return undefined
+    return (outcome) => {
+      if (outcome.kind === 'success') {
+        controller?.record('success', outcome.latencyMs)
+        options.onPackageTiming?.(packageName, outcome.latencyMs)
+      } else if (outcome.kind === 'congested') {
+        const next = controller?.record('congested')
+        if (next != null) semaphore.setLimit(next)
+      } else if (outcome.kind === 'retryable') {
+        controller?.record('retryable')
+      } else if (outcome.kind === 'transient') {
+        controller?.record('transient')
       }
-    : undefined
+    }
+  }
 
   // --- worker: pull from the queue until exhausted ----------------------------
   let cursor = 0
@@ -325,7 +356,7 @@ export async function fetchPackageVersions(
       const data = await getFreshPackageData(
         packageName,
         options.currentVersions?.get(packageName),
-        onAttempt
+        observerFor(packageName)
       )
       packageData.set(packageName, data)
       completedCount++

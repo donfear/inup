@@ -1,6 +1,7 @@
 import {
   BatchTiming,
   ControlTick,
+  PackageTiming,
   PerformanceCounts,
   PerformancePhase,
   PerformanceSnapshot,
@@ -12,6 +13,7 @@ class PerformanceTracker {
   private counts: PerformanceCounts = {}
   private batches: BatchTiming[] = []
   private controlTicks: ControlTick[] = []
+  private packageTimings: PackageTiming[] = []
   private failedPackages: string[] = []
   private packageManager: string | null = null
 
@@ -21,6 +23,7 @@ class PerformanceTracker {
     this.counts = {}
     this.batches = []
     this.controlTicks = []
+    this.packageTimings = []
     this.failedPackages = []
     this.packageManager = null
   }
@@ -46,6 +49,10 @@ class PerformanceTracker {
     this.controlTicks.push(tick)
   }
 
+  recordPackageTiming(timing: PackageTiming): void {
+    this.packageTimings.push(timing)
+  }
+
   recordFailedPackage(name: string): void {
     if (!this.failedPackages.includes(name)) {
       this.failedPackages.push(name)
@@ -66,6 +73,7 @@ class PerformanceTracker {
       counts: { ...this.counts },
       batches: [...this.batches],
       controlTicks: [...this.controlTicks],
+      packageTimings: [...this.packageTimings],
       failedPackages: [...this.failedPackages],
       packageManager: this.packageManager,
     }
@@ -77,6 +85,7 @@ class PerformanceTracker {
     this.counts = {}
     this.batches = []
     this.controlTicks = []
+    this.packageTimings = []
     this.failedPackages = []
     this.packageManager = null
   }

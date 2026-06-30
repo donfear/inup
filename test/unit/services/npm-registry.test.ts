@@ -10,6 +10,8 @@ vi.mock('../../../src/services/http/retry', async (importOriginal) => ({
 
 import { clearPackageCache, fetchPackageVersions } from '../../../src/services/npm-registry'
 import type { ControlTick } from '../../../src/services/http/adaptive-controller'
+import { setEtagCacheEnabled, etagCacheDir } from '../../../src/services/http/etag-store'
+import { rmSync } from 'node:fs'
 
 type MockResponse = {
   statusCode: number
@@ -58,10 +60,14 @@ describe('npm-registry', () => {
   beforeEach(() => {
     clearPackageCache()
     requestMock.mockReset()
+    // Keep the on-disk ETag cache out of these tests for determinism; it has its
+    // own dedicated suite. (The pool mock returns no etag header anyway.)
+    setEtagCacheEnabled(false)
   })
 
   afterEach(() => {
     poolRequestSpy.mockClear()
+    setEtagCacheEnabled(true)
   })
 
   it('fetches version data from npm registry', async () => {
@@ -262,29 +268,33 @@ describe('npm-registry', () => {
 
       expect(ticks.length).toBeGreaterThan(0)
       // A big run smart-starts at the ceiling, so the healthy steady state is to
-      // hold there — never backing off and never exceeding the pool ceiling.
+      // hold there — never backing off (no oscillation), never exceeding the pool
+      // ceiling. This is the regression guard: latency variance must NOT trigger
+      // soft-downs on a healthy link.
       expect(ticks.every((t) => t.limit <= 24)).toBe(true)
       expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
+      expect(ticks.some((t) => t.reason === 'soft-down')).toBe(false)
       expect(getPeak()).toBeLessThanOrEqual(24)
     })
 
-    it('ramps up from below the ceiling toward it on a healthy link', async () => {
-      withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
+    it('does not oscillate under variable (but error-free) latency', async () => {
+      // Alternate fast/slow responses to simulate the jittery npm CDN. With the
+      // latency heuristic removed, this must NOT cause the controller to thrash.
+      let i = 0
+      requestMock.mockImplementation(async () => {
+        const delayMs = i++ % 2 === 0 ? 1 : 25
+        await new Promise((r) => setTimeout(r, delayMs))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
       const ticks: ControlTick[] = []
 
-      // Force a low fixed start so there is headroom to observe additive-increase.
-      // (maxConcurrency seeds the start only when the controller can't smart-start
-      // above it; here we exercise growth by capping the starting point low.)
       await fetchPackageVersions(names(120), {
         adaptive: true,
-        maxConcurrency: 3,
         onControlTick: (t) => ticks.push(t),
       })
 
-      const firstLimit = ticks[0].limit
-      const peakLimit = Math.max(...ticks.map((t) => t.limit))
-      expect(peakLimit).toBeGreaterThan(firstLimit)
-      expect(ticks.some((t) => t.reason === 'up')).toBe(true)
+      // No back-off of any kind without real errors.
+      expect(ticks.some((t) => t.reason === 'soft-down' || t.reason === 'hard-down')).toBe(false)
     })
 
     it('hard-backs-off on 429 congestion and honors Retry-After', async () => {
@@ -313,6 +323,68 @@ describe('npm-registry', () => {
 
       // Congestion must produce at least one immediate hard-down decision.
       expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
+    })
+  })
+
+  describe('ETag conditional caching', () => {
+    beforeEach(() => {
+      setEtagCacheEnabled(true)
+      rmSync(etagCacheDir(), { recursive: true, force: true })
+    })
+    afterEach(() => setEtagCacheEnabled(false))
+
+    it('stores the ETag on a 200 and reuses data on a subsequent 304', async () => {
+      // First run: 200 with an ETag and a body → stores {etag, data}.
+      requestMock.mockImplementation(async () => ({
+        statusCode: 200,
+        body: JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }),
+        headers: { etag: 'W/"v1"' },
+      }))
+      const first = await fetchPackageVersions(['demo-pkg'])
+      expect(first.get('demo-pkg')).toEqual({
+        latestVersion: '1.1.0',
+        allVersions: ['1.1.0', '1.0.0'],
+      })
+
+      // Second run: registry validates the stored ETag → 304 with no body. The
+      // stored data must be reused (no re-parse of a body that isn't there).
+      let sentIfNoneMatch: string | undefined
+      requestMock.mockReset()
+      poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+        const o = opts as { path: string; headers: Record<string, string> }
+        sentIfNoneMatch = o.headers['if-none-match']
+        return {
+          statusCode: 304,
+          headers: {},
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: { arrayBuffer: async () => Buffer.alloc(0), dump: async () => {} },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+      clearPackageCache() // clear in-run dedupe so the 2nd call really fetches
+
+      const second = await fetchPackageVersions(['demo-pkg'])
+      expect(sentIfNoneMatch).toBe('W/"v1"') // conditional header was sent
+      expect(second.get('demo-pkg')).toEqual({
+        latestVersion: '1.1.0',
+        allVersions: ['1.1.0', '1.0.0'],
+      })
+    })
+
+    it('still issues a request every run (304 = validated, never stale-without-checking)', async () => {
+      requestMock.mockImplementation(async () => ({
+        statusCode: 200,
+        body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        headers: { etag: 'W/"x"' },
+      }))
+      await fetchPackageVersions(['demo-pkg'])
+      const callsAfterFirst = poolRequestSpy.mock.calls.length
+      clearPackageCache()
+      await fetchPackageVersions(['demo-pkg'])
+      // A second run hits the network again (freshness), not served purely offline.
+      expect(poolRequestSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
     })
   })
 })

@@ -94,4 +94,5 @@ dist/
 .claude
 
 # Performance debug logs (INUP_PERF=1)
-.inup-perf/
+.inup-perf*
+.env.local

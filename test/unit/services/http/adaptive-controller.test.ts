@@ -42,6 +42,16 @@ describe('AdaptiveController', () => {
       expect(new AdaptiveController(2, undefined, tuning).getLimit()).toBe(3) // floor
       expect(new AdaptiveController(10, undefined, tuning).getLimit()).toBe(10)
     })
+
+    it('honors an explicit start override (used for low-start ramp scenarios)', () => {
+      // startOverride caps the start below the smart start; the controller then
+      // ramps up from there toward the ceiling.
+      const c = new AdaptiveController(50, undefined, tuning, 5)
+      expect(c.getLimit()).toBe(5)
+      for (let i = 0; i < tuning.ticksEveryCompletions - 1; i++) c.record('success', 50)
+      const { ticked } = drive(c, 'success', 50)
+      expect(ticked).toBe(5 + tuning.increaseStep) // ramps up from the low start
+    })
   })
 
   it('additively increases when healthy (no retries, stable latency)', () => {
@@ -63,21 +73,21 @@ describe('AdaptiveController', () => {
     expect(ticked).toBe(7)
   })
 
-  it('soft-decreases when latency rises past the degrade ratio', () => {
+  it('does NOT back off on rising latency alone (latency is noise, not a signal)', () => {
     const c = new AdaptiveController(10, undefined, tuning)
-    // Establish a low baseline.
+    // Establish a low EWMA.
     c.record('success', 100)
     c.record('success', 100)
     c.record('success', 100)
-    drive(c, 'success', 100) // first tick, healthy → 12, baseline ~100
+    drive(c, 'success', 100) // healthy tick → 12
 
-    // Now feed high latency so EWMA climbs well past 1.5x baseline.
+    // Now feed dramatically higher latency, but with NO errors. The controller
+    // must keep ramping — latency variance on a healthy link is not congestion.
     c.record('success', 1000)
     c.record('success', 1000)
     c.record('success', 1000)
     const { ticked } = drive(c, 'success', 1000)
-    // 12 * 0.7 = 8.4 → round 8
-    expect(ticked).toBe(8)
+    expect(ticked).toBe(14) // 12 + 2, still ramping despite the latency spike
   })
 
   it('hard-decreases immediately on congestion (429/503), independent of ticks', () => {
@@ -133,6 +143,6 @@ describe('AdaptiveController', () => {
 
   it('default tuning matches the pool ceiling', () => {
     expect(DEFAULT_TUNING.ceil).toBe(24)
-    expect(DEFAULT_TUNING.floor).toBe(3)
+    expect(DEFAULT_TUNING.floor).toBe(6)
   })
 })
