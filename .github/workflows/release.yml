@@ -51,3 +51,12 @@ jobs:
           git config --local user.name "${{ secrets.GH_USERNAME }}"
           pnpm version ${{ github.event.inputs.version_type }} --message "release: v%s"
           git push && git push --tags
+
+          # Force-move the floating major tag (e.g. v1) to this release so consumers pinned at
+          # `donfear/inup@v1` automatically pick up minor/patch fixes. A breaking change should be
+          # released as the next major (v2), which starts its own floating tag and leaves v1 frozen.
+          # publish.yml only triggers on `v*.*.*`, so re-pushing the floating tag won't re-publish.
+          NEW_VERSION="v$(node -p "require('./package.json').version")"   # e.g. v1.6.3
+          MAJOR="${NEW_VERSION%%.*}"                                       # e.g. v1
+          git tag -f "$MAJOR" "$NEW_VERSION"
+          git push -f origin "$MAJOR"

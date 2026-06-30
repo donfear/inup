@@ -124,6 +124,10 @@ jobs:
           target: minor # minor (default) | patch | latest
 ```
 
+> **Versioning:** `@v1` is a floating tag that tracks the latest `1.x` release, so you get
+> bug fixes and new features automatically while breaking changes are held back for `v2`. Pin
+> to an exact tag (`@v1.6.2`) or a commit SHA for fully reproducible runs.
+
 | Input | Default | Description |
 |---|---|---|
 | `target` | `minor` | How far to bump: `minor` (in-range), `patch`, or `latest` (includes majors). |
