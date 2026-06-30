@@ -5,7 +5,7 @@ name: inup (self)
 # change to the action or the --apply path is exercised before publish.
 on:
   schedule:
-    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+    - cron: '0 6 * * *' # daily, 06:00 UTC
   workflow_dispatch: {}
 
 permissions:
@@ -18,28 +18,48 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Enable Corepack
-        run: corepack enable
+      # Install pnpm BEFORE setup-node: setup-node's `cache: pnpm` resolver shells out to
+      # `pnpm store path`, so pnpm must already be on PATH when that step runs. The version is
+      # picked up from the `packageManager` field in package.json.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: 'pnpm'
 
-      - name: Install, build, and link this branch's inup onto PATH
+      - name: Install and build
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
-          # from this checkout instead of npx-fetching a published release.
-          pnpm link --global
+
+      - name: Put this branch's inup onto PATH
+        # The action prefers an `inup` already on PATH, so this exercises the freshly built CLI
+        # from this checkout instead of npx-fetching a published release. We symlink the built
+        # bin into a dir we add to $GITHUB_PATH directly — this sidesteps pnpm's global-bin
+        # plumbing (`pnpm link --global` was removed in v11, and `pnpm add -g` needs `pnpm setup`
+        # to put PNPM_HOME/bin on PATH, which isn't run on the runner).
+        run: |
+          mkdir -p "$RUNNER_TEMP/inup-bin"
+          ln -sf "$PWD/dist/cli.js" "$RUNNER_TEMP/inup-bin/inup"
+          chmod +x dist/cli.js
+          echo "$RUNNER_TEMP/inup-bin" >> "$GITHUB_PATH"
 
       - name: Run inup via the local action
         uses: ./
         with:
+          # PAT (not the default GITHUB_TOKEN) so the opened PR triggers CI workflows and to
+          # bypass the "Actions can't create PRs" repo policy. Reuses the existing repo secret.
+          token: ${{ secrets.GH_PAT }}
+          # Commit as the maintainer instead of github-actions[bot] (existing repo secrets).
+          committer: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
+          author: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
+          # Match the Node version this job built under (undici@8 needs Node >=22.19).
+          node-version: '24'
           target: minor
-          pr-title: 'chore(deps): weekly dependency upgrades'
+          pr-title: 'chore(deps): dependency upgrades'
           labels: |
             dependencies
             automated

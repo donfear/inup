@@ -10,6 +10,9 @@ export interface PackageManagerInfo {
   lockFile: string
   workspaceFile: string | null // null means check package.json workspaces field
   installCommand: string
+  // Install used after writing upgrades; opts out of CI frozen/immutable installs so the
+  // lockfile can be regenerated. Falls back to installCommand when not set. See domain.ts.
+  writeInstallCommand?: string
   color: typeof chalk
 }
 
@@ -28,6 +31,8 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
     lockFile: 'yarn.lock',
     workspaceFile: null, // Uses package.json workspaces field
     installCommand: 'yarn install',
+    // Yarn Berry defaults to immutable installs in CI; --no-immutable lets the lockfile update.
+    writeInstallCommand: 'yarn install --no-immutable',
     color: chalk.blue,
   },
   pnpm: {
@@ -36,6 +41,8 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
     lockFile: 'pnpm-lock.yaml',
     workspaceFile: 'pnpm-workspace.yaml',
     installCommand: 'pnpm install',
+    // pnpm defaults to --frozen-lockfile in CI; --no-frozen-lockfile lets the lockfile update.
+    writeInstallCommand: 'pnpm install --no-frozen-lockfile',
     color: chalk.yellow,
   },
   bun: {

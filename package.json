@@ -11,7 +11,7 @@
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "prepare": "npm run build",
-    "link": "pnpm build && pnpm link --global",
+    "link": "pnpm build && pnpm add -g .",
     "format": "prettier --write src/**/*.ts",
     "format:check": "prettier --check src/**/*.ts",
     "demo:record": "bash docs/demo/record-demo.sh",
@@ -60,10 +60,10 @@
   "devDependencies": {
     "@types/node": "^25.9.4",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.7",
     "prettier": "^3.9.4",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "chalk": "^5.6.2",
@@ -74,7 +74,7 @@
     "undici": "^8.5.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   },
   "packageManager": "pnpm@11.9.0+sha512.bd682d5d03fe525ef7c9fd6780c6884d1e756ac4c9c9fe00c538782824310dcf90e3ddc4f53835f06dfaebd5085e41855e0bcbb3b60de2ac5bbab89e5036f03b"
 }

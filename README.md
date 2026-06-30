@@ -93,12 +93,8 @@ to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
 
 ## GitHub Action — one rolling upgrade PR
 
-Run inup on a schedule and get **one rolling pull request** with safe upgrades applied and a digest of
-what changed — including, for each known vulnerability, whether the in-range bump already clears it or
-only the major does. Re-runs update the same PR instead of opening new ones.
-
-It's not trying to out-configure Dependabot or Renovate. It's the calm option: a single readable PR,
-on your cadence, that tells you what's safe and what fixes a CVE.
+Run inup on a schedule and get **one rolling pull request** with safe upgrades applied. Re-runs update
+the same PR instead of opening new ones.
 
 Add this workflow to **your** repo:
 
@@ -124,28 +120,43 @@ jobs:
           target: minor # minor (default) | patch | latest
 ```
 
+That's it. Also enable Settings → Actions → General → **Workflow permissions** →
+**"Allow GitHub Actions to create and approve pull requests"** so the action can open the PR.
+
+### Commit as you, not the bot
+
+By default the upgrade commit is authored by `github-actions[bot]`. To attribute it to **you**, store
+your name/email as repo secrets (Settings → Secrets and variables → Actions) and pass `committer`/`author`:
+
+```yaml
+      - uses: donfear/inup@v1
+        with:
+          committer: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
+          author: ${{ secrets.GH_USERNAME }} <${{ secrets.GH_EMAIL }}>
+```
+
+### All inputs
+
 | Input | Default | Description |
 |---|---|---|
 | `target` | `minor` | How far to bump: `minor` (in-range), `patch`, or `latest` (includes majors). |
 | `directory` | `.` | Directory to run in. |
 | `package-manager` | _(auto)_ | Force `npm`/`yarn`/`pnpm`/`bun`; empty auto-detects from the lockfile. |
-| `node-version` | `20` | Node.js version for the run. |
+| `node-version` | `22` | Node.js version for the run (minimum `22.19`). |
 | `inup-version` | `latest` | inup version to run (pin for reproducible runs). |
 | `pr-branch` | `inup/dependency-upgrades` | Branch for the rolling PR. |
 | `pr-title` | `chore(deps): dependency upgrades` | PR title. |
 | `commit-message` | `chore(deps): upgrade dependencies via inup` | Commit message. |
 | `base` | _(default branch)_ | Base branch the PR targets. |
 | `labels` | `dependencies` | Labels to apply to the PR. |
-| `token` | `${{ github.token }}` | Token to push + open the PR. |
+| `token` | `${{ github.token }}` | Token to push + open the PR. Pass a PAT to also trigger CI on the PR. |
+| `committer` | `github-actions[bot]` | Commit committer, as `Name <email>`. |
+| `author` | _(triggering user)_ | Commit author, as `Name <email>`. |
 
 Outputs: `outdated`, `vulnerable`, `pull-request-number`.
 
-It honors your `.inuprc` (`ignore`, `exclude`, `scanDirs`), so packages and paths you exclude are
-never touched.
-
-> **CI on the upgrade PR:** PRs opened with the default `GITHUB_TOKEN` don't trigger other workflows.
-> If you want CI to run on the upgrade PR, pass a [PAT](https://docs.github.com/actions/security-for-github-actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow)
-> via the `token` input.
+> `@v1` floats to the latest `1.x` release; pin to `@v1.6.2` or a SHA for reproducible runs. inup
+> honors your `.inuprc` (`ignore`, `exclude`, `scanDirs`).
 
 ## Keyboard Shortcuts
 
