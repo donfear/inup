@@ -6,9 +6,20 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/donfear/inup/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://github.com/donfear/inup/blob/main/LICENSE)
 
-Interactively upgrade outdated dependencies across npm, yarn, pnpm, and bun. Auto-detects your package manager, works in monorepos and workspaces, and requires zero configuration.
+**inup** is an interactive CLI for upgrading outdated npm dependencies — npm, yarn, pnpm, and bun all supported. It auto-detects your package manager, works in monorepos and workspaces, and requires zero configuration.
 
 ![Interactive Upgrade Demo](docs/demo/interactive-upgrade.gif)
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Why inup?](#why-inup)
+- [Options](#options)
+- [CI & Scripting](#ci--scripting)
+- [GitHub Action — one rolling upgrade PR](#github-action--one-rolling-upgrade-pr)
+- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Privacy](#privacy)
+- [License](#license)
 
 ## Quick Start
 
@@ -25,19 +36,19 @@ yarn global add inup
 bun add -g inup
 ```
 
-Run `inup` in any project — it scans for outdated packages and lets you pick what to upgrade.
+Run `inup` in any project — it scans for outdated dependencies and lets you pick what to upgrade.
 
 ## Why inup?
 
-- **All Dependencies at Once** — Dev, peer, and optional dependencies load automatically. No more re-running with `--peer` or `--dev` flags.
-- **Live Toggles** — Filter dependency types (`d`, `p`, `o`) on the fly without restarting.
-- **Zero Config** — Auto-detects npm, yarn, pnpm, or bun from your lockfile.
-- **Monorepo Ready** — Discovers and upgrades across workspaces seamlessly.
-- **Vulnerability Audit** — Flags known security vulnerabilities right in the package list so you know what's risky before upgrading.
-- **Changelog Viewer** — Read release notes and changelogs inline without leaving the terminal.
-- **Built-in Search** — Press `/` to filter packages instantly.
-- **Package Details** — Press `i` to view package info, download stats, and more.
-- **Themes** — Press `t` to switch between color themes.
+- **All Dependencies at Once** — dev, peer, and optional dependencies load automatically. No more re-running with `--peer` or `--dev` flags.
+- **Live Toggles** — filter dependency types (`d`, `p`, `o`) on the fly without restarting.
+- **Zero Config** — auto-detects npm, yarn, pnpm, or bun from your lockfile.
+- **Monorepo & Workspaces Ready** — discovers and upgrades dependencies across every workspace in one pass.
+- **Vulnerability Audit** — flags known security vulnerabilities right in the package list, so you know what's risky before you upgrade.
+- **Changelog Viewer** — read release notes and changelogs inline without leaving the terminal.
+- **Built-in Search** — press `/` to filter packages instantly.
+- **Package Details** — press `i` to view package info, download stats, and more.
+- **Themes** — press `t` to switch between color themes.
 
 ## Options
 
@@ -58,6 +69,9 @@ inup [options]
 
 ## CI & Scripting
 
+Run inup non-interactively to gate builds on outdated or vulnerable dependencies, generate a
+machine-readable dependency report, or auto-apply safe upgrades in CI/CD.
+
 `inup` runs headless automatically when stdout isn't a TTY or `$CI` is set, so it never hangs in a
 pipeline waiting on the interactive UI. Both `--json` and `--check` are **read-only** — they report,
 they never edit `package.json` or install.
@@ -69,6 +83,9 @@ inup | cat                   # plain line-based report when piped to a log
 inup --apply                 # write safe in-range bumps + install (non-interactive)
 inup --apply --target latest # include major bumps; --json to also emit the report
 ```
+
+<details>
+<summary><strong>Details: <code>--apply</code>, JSON schema, and vulnerability cross-referencing</strong></summary>
 
 Unlike `--json` and `--check`, **`--apply` writes**: it bumps `package.json` and runs your package
 manager's install to update the lockfile. By default (`--target minor`) it only applies **in-range**
@@ -91,10 +108,12 @@ agents can pin to a known shape.
 Output hygiene: with `--json`, stdout carries **only** the JSON document; all progress and warnings go
 to stderr. Exit codes: `0` up to date, `1` updates exist (`--check`), `2` error.
 
+</details>
+
 ## GitHub Action — one rolling upgrade PR
 
-Run inup on a schedule and get **one rolling pull request** with safe upgrades applied. Re-runs update
-the same PR instead of opening new ones.
+Automate dependency upgrades for your GitHub repo: run inup on a schedule and get **one rolling pull
+request** with safe upgrades applied. Re-runs update the same PR instead of opening new ones.
 
 Add this workflow to **your** repo:
 
@@ -122,6 +141,9 @@ jobs:
 
 That's it. Also enable Settings → Actions → General → **Workflow permissions** →
 **"Allow GitHub Actions to create and approve pull requests"** so the action can open the PR.
+
+<details>
+<summary><strong>Details: commit attribution, all inputs, and outputs</strong></summary>
 
 ### Commit as you, not the bot
 
@@ -158,6 +180,8 @@ Outputs: `outdated`, `vulnerable`, `pull-request-number`.
 > `@v1` floats to the latest `1.x` release; pin to `@v1.6.2` or a SHA for reproducible runs. inup
 > honors your `.inuprc` (`ignore`, `exclude`, `scanDirs`).
 
+</details>
+
 ## Keyboard Shortcuts
 
 <!-- KEYS:START -->
@@ -189,7 +213,7 @@ Outputs: `outdated`, `vulnerable`, `pull-request-number`.
 
 ## Privacy
 
-No tracking, no telemetry, no data collection. Package metadata is fetched directly from the npm registry. Download counts come from the npm downloads API. Changelog and release notes are fetched from GitHub.
+No tracking, no telemetry, no data collection. Package metadata is fetched directly from the npm registry, download counts from the npm downloads API, and changelogs/release notes from GitHub.
 
 ## License
 
