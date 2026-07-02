@@ -7,16 +7,16 @@ import {
   PackageManagerInfo,
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
-} from './shared/types'
-import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from './ui'
-import { PackageInfoModalController } from './ui/controllers'
-import { VulnerabilityAuditController } from './features/audit'
+} from '../shared/types'
+import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from '../ui'
+import { PackageInfoModalController } from '../ui/controllers'
+import { VulnerabilityAuditController } from '../features/audit'
 import {
   createSelectionStates,
   createPendingSelectionStates,
   createUpgradeChoices,
   runInteractiveSession,
-} from './ui/session'
+} from '../ui/session'
 
 interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean

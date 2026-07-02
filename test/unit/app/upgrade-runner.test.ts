@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   appendOutdatedBatchToSelectionStates: vi.fn(),
 }))
 
-vi.mock('../../../src/core/package-detector', () => ({
+vi.mock('../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
     streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
@@ -21,7 +21,7 @@ vi.mock('../../../src/core/package-detector', () => ({
   },
 }))
 
-vi.mock('../../../src/interactive-ui', () => ({
+vi.mock('../../../src/app/interactive-ui', () => ({
   InteractiveUI: class {
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
@@ -30,7 +30,7 @@ vi.mock('../../../src/interactive-ui', () => ({
   },
 }))
 
-vi.mock('../../../src/core/upgrader', () => ({
+vi.mock('../../../src/features/upgrade/upgrader', () => ({
   PackageUpgrader: class {
     upgradePackages = mocks.upgradePackages
   },
@@ -49,7 +49,7 @@ vi.mock('../../../src/shared/terminal', () => ({
   },
 }))
 
-import { UpgradeRunner } from '../../../src/core/upgrade-runner'
+import { UpgradeRunner } from '../../../src/app/upgrade-runner'
 
 describe('UpgradeRunner terminal handoff', () => {
   beforeEach(() => {

@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   upgraderCtor: vi.fn(),
 }))
 
-vi.mock('../../../../src/core/package-detector', () => ({
+vi.mock('../../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
     getOutdatedPackages = mocks.getOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
@@ -24,7 +24,7 @@ vi.mock('../../../../src/core/package-detector', () => ({
   },
 }))
 
-vi.mock('../../../../src/core/upgrader', () => ({
+vi.mock('../../../../src/features/upgrade/upgrader', () => ({
   PackageUpgrader: class {
     constructor(...args: unknown[]) {
       mocks.upgraderCtor(...args)

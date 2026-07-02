@@ -8,19 +8,19 @@ import {
   StreamOutdatedPackagesCallback,
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
-} from '../shared/types'
+} from '../../shared/types'
 import {
   findPackageJson,
   readPackageJson,
   findAllPackageJsonFilesAsync,
   collectAllDependenciesAsync,
-} from '../shared/fs'
-import { findClosestMinorVersion } from '../shared/versions'
-import { fetchPackageVersions, PackageVersionData } from '../shared/registry/npm-registry'
-import { isPackageIgnored, POOL_CONNECTIONS } from '../shared/config'
-import { ConsoleUtils } from '../shared/terminal'
-import { debugLog } from '../shared/debug-logger'
-import { getPerformanceTracker, isPerfLoggingEnabled } from '../features/debug'
+} from '../../shared/fs'
+import { findClosestMinorVersion } from '../../shared/versions'
+import { fetchPackageVersions, PackageVersionData } from '../../shared/registry/npm-registry'
+import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
+import { ConsoleUtils } from '../../shared/terminal'
+import { debugLog } from '../../shared/debug-logger'
+import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]

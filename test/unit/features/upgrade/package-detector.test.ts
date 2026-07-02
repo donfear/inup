@@ -9,14 +9,14 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
 }))
 
-vi.mock('../../../src/shared/fs', () => ({
+vi.mock('../../../../src/shared/fs', () => ({
   findPackageJson: mocks.findPackageJson,
   readPackageJson: mocks.readPackageJson,
   findAllPackageJsonFilesAsync: mocks.findAllPackageJsonFilesAsync,
   collectAllDependenciesAsync: mocks.collectAllDependenciesAsync,
 }))
 
-vi.mock('../../../src/shared/versions', async (importOriginal) => {
+vi.mock('../../../../src/shared/versions', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...(actual as object),
@@ -24,7 +24,7 @@ vi.mock('../../../src/shared/versions', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../src/shared/debug-logger', () => ({
+vi.mock('../../../../src/shared/debug-logger', () => ({
   debugLog: {
     info: vi.fn(),
     perf: vi.fn(),
@@ -33,11 +33,11 @@ vi.mock('../../../src/shared/debug-logger', () => ({
   },
 }))
 
-vi.mock('../../../src/shared/registry/npm-registry', () => ({
+vi.mock('../../../../src/shared/registry/npm-registry', () => ({
   fetchPackageVersions: mocks.fetchPackageVersions,
 }))
 
-vi.mock('../../../src/shared/config', async (importOriginal) => {
+vi.mock('../../../../src/shared/config', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...(actual as object),
@@ -45,14 +45,14 @@ vi.mock('../../../src/shared/config', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../src/shared/terminal', () => ({
+vi.mock('../../../../src/shared/terminal', () => ({
   ConsoleUtils: {
     showProgress: vi.fn(),
     clearProgress: vi.fn(),
   },
 }))
 
-import { PackageDetector } from '../../../src/core/package-detector'
+import { PackageDetector } from '../../../../src/features/upgrade/package-detector'
 
 describe('PackageDetector streaming', () => {
   beforeEach(() => {

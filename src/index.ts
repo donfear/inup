@@ -2,7 +2,7 @@
  * Public API for inup
  */
 
-export { UpgradeRunner } from './core'
+export { UpgradeRunner } from './app/upgrade-runner'
 export type {
   PackageInfo,
   UpgradeOptions,

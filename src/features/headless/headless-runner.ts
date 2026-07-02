@@ -1,6 +1,5 @@
 import chalk from 'chalk'
-import { PackageDetector } from '../../core/package-detector'
-import { PackageUpgrader } from '../../core/upgrader'
+import { PackageDetector, PackageUpgrader } from '../upgrade'
 import { PackageManagerDetector } from '../../shared/package-manager'
 import { applyVersionPrefix } from '../../shared/versions'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'

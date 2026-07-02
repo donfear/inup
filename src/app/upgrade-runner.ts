@@ -1,7 +1,7 @@
 import chalk from 'chalk'
-import { PackageDetector } from './package-detector'
-import { InteractiveUI } from '../interactive-ui'
-import { PackageUpgrader } from './upgrader'
+import { PackageDetector } from '../features/upgrade'
+import { InteractiveUI } from './interactive-ui'
+import { PackageUpgrader } from '../features/upgrade'
 import {
   PackageInfo,
   PackageLoadProgress,

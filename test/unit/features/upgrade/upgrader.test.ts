@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { PackageUpgrader } from '../../../src/core/upgrader'
-import { PackageInfo, PackageManagerInfo, PackageUpgradeChoice } from '../../../src/shared/types'
+import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
+import { PackageInfo, PackageManagerInfo, PackageUpgradeChoice } from '../../../../src/shared/types'
 
 const makePackageManager = (overrides: Partial<PackageManagerInfo> = {}): PackageManagerInfo => ({
   name: 'npm',
