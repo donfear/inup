@@ -42,7 +42,10 @@ export function buildHeadlessReport(
 }
 
 /** Render the plain, line-based report (one line per package + a recap) as a single string. */
-export function renderPlainReport(outdated: PackageInfo[], vulnerabilities: VulnerabilityMap): string {
+export function renderPlainReport(
+  outdated: PackageInfo[],
+  vulnerabilities: VulnerabilityMap
+): string {
   if (outdated.length === 0) {
     return 'All dependencies are up to date — no upgrades needed.'
   }

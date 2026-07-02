@@ -8,12 +8,7 @@ import {
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from './types'
-import {
-  UIRenderer,
-  ConfirmationInputHandler,
-  CursorUtils,
-  TerminalInput,
-} from './ui'
+import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import {
   createSelectionStates,
@@ -80,7 +75,9 @@ export class InteractiveUI {
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => { this.refreshView = refresh }
+      (refresh) => {
+        this.refreshView = refresh
+      }
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
   }
@@ -154,7 +151,9 @@ export class InteractiveUI {
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => { this.refreshView = refresh },
+      (refresh) => {
+        this.refreshView = refresh
+      },
       progress,
       attachRefresh
     )
@@ -215,4 +214,3 @@ export class InteractiveUI {
     })
   }
 }
-

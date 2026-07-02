@@ -6,7 +6,14 @@ import {
   PackageLoadProgress,
   VulnerabilityDisplayOptions,
 } from '../../types'
-import { StateManager, UIRenderer, InputHandler, CursorUtils, ConsoleUtils, TerminalInput } from '../index'
+import {
+  StateManager,
+  UIRenderer,
+  InputHandler,
+  CursorUtils,
+  ConsoleUtils,
+  TerminalInput,
+} from '../index'
 import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../utils/cursor'
 import { PackageListRenderOptions } from '../renderer/package-list'
 import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from '../themes-colors'
@@ -36,7 +43,11 @@ export async function runInteractiveSession(
 ): Promise<PackageSelectionState[]> {
   return new Promise((resolve) => {
     const states = selectionStates
-    const stateManager = new StateManager(0, getTerminalHeight(), configManager.getFilters() ?? undefined)
+    const stateManager = new StateManager(
+      0,
+      getTerminalHeight(),
+      configManager.getFilters() ?? undefined
+    )
     let isResolved = false
     let ownsAlternateScreen = false
     const vulnerabilityDisplayOptions: VulnerabilityDisplayOptions = options
@@ -186,7 +197,11 @@ export async function runInteractiveSession(
       } else if (uiState.showHelpModal) {
         const terminalWidth = process.stdout.columns || 80
         const terminalHeight = getTerminalHeight()
-        const result = renderHelpModal(terminalWidth, Math.max(8, terminalHeight - 4), uiState.helpModalScrollOffset)
+        const result = renderHelpModal(
+          terminalWidth,
+          Math.max(8, terminalHeight - 4),
+          uiState.helpModalScrollOffset
+        )
         helpModalMaxScrollOffset = result.maxScrollOffset
         stateManager.clampHelpModalScrollOffset(helpModalMaxScrollOffset)
         const helpHints = [
@@ -374,8 +389,7 @@ export async function runInteractiveSession(
       handleCancel
     )
 
-    const keypressHandler = (str: string, key: Key) =>
-      inputHandler.handleKeypress(str, key, states)
+    const keypressHandler = (str: string, key: Key) => inputHandler.handleKeypress(str, key, states)
 
     const handleResize = () => {
       inputHandler.handleResize(getTerminalHeight())

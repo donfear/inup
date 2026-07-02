@@ -142,8 +142,7 @@ export function renderInterface(
             `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
           )
         : getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`)
-    statusLine =
-      matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
+    statusLine = matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
   } else {
     if (totalVisualItems > maxVisibleItems) {
       statusLine =

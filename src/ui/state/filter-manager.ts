@@ -81,7 +81,9 @@ export class FilterManager {
     }
   }
 
-  toggleDependencyType(type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'): void {
+  toggleDependencyType(
+    type: 'dependencies' | 'devDependencies' | 'peerDependencies' | 'optionalDependencies'
+  ): void {
     switch (type) {
       case 'dependencies':
         this.state.showDependencies = !this.state.showDependencies

@@ -162,5 +162,4 @@ export class ReleaseNotesService {
 
     return extractVersionSection(fullText, version)
   }
-
 }

@@ -24,8 +24,7 @@ function getUsedByPaths(state: PackageSelectionState): string[] {
 }
 
 function buildTabBarSuffix(activeTab: InfoModalTab, usedByCount: number): string {
-  const styleFor = (tab: InfoModalTab) =>
-    tab === activeTab ? chalk.bold.underline : chalk.gray
+  const styleFor = (tab: InfoModalTab) => (tab === activeTab ? chalk.bold.underline : chalk.gray)
   const usedByLabel = `Used by${usedByCount > 0 ? ` (${usedByCount})` : ''}`
   return (
     '  ' +

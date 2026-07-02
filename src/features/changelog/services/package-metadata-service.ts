@@ -15,7 +15,11 @@ export class PackageMetadataService {
   }
 
   getCached(packageName: string, version?: string): PackageMetadata | null {
-    for (const key of [this.getCacheKey(packageName, version), this.getCacheKey(packageName), packageName]) {
+    for (const key of [
+      this.getCacheKey(packageName, version),
+      this.getCacheKey(packageName),
+      packageName,
+    ]) {
       if (this.cache.has(key)) {
         return this.cache.get(key) ?? null
       }
