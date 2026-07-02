@@ -36,24 +36,6 @@ Show
 Type "m"
 Sleep 600ms
 
-# Press 'T' to open theme menu
-Type "t"
-Sleep 600ms
-
-# Navigate down 3 positions to select a theme
-Down
-Sleep 300ms
-
-Down
-Sleep 300ms
-
-Down
-Sleep 300ms
-
-# Press Enter to apply the selected theme
-Enter
-Sleep 600ms
-
 # Demonstrate search functionality - press '/' to enter search mode
 Type "/"
 Sleep 600ms

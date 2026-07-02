@@ -50,9 +50,9 @@ The recording script (`record-demo.sh`) automatically:
 **Adjusting the Recording:**
 
 Edit `demo-real.tape` to:
-- Change `Sleep` durations if your CLI loads faster/slower (currently 3s for initial load)
+- Change `Sleep` durations if your CLI loads faster/slower (currently 5s for initial load)
 - Modify keyboard interactions (Up/Down/Left/Right/M/L/U/Enter)
-- Adjust window size, theme, or playback speed
+- Adjust window size or playback speed
 - The demo shows selecting all minor updates, then customizing individual packages (major, minor, keep current)
 - Two Enter presses complete the upgrade (confirm selections, then install)
 
@@ -138,7 +138,7 @@ This ensures there are always packages to upgrade in the demo.
 3. **Show key features**: Navigate through the UI, use shortcuts (M/L/U)
 4. **Keep it short**: 30-60 seconds is ideal
 5. **Test first**: Do a practice run to check timing
-6. **Use themes**: Catppuccin, Dracula, or Nord look great
+6. **Stay dependency-focused**: Show search, selection, package info, and the final upgrade path
 
 ## Troubleshooting
 
