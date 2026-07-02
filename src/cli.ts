@@ -12,7 +12,7 @@ import { enableDebugLogging } from './shared/debug-logger'
 import { applyColorSetting } from './shared/terminal'
 import { loadInupLocalEnv } from './shared/local-env'
 import { getGitWorkingTreeState } from './shared/git'
-import { TerminalInput } from './ui'
+import { TerminalInput } from './shared/terminal'
 
 // Load developer-only toggles from <inup-repo>/.env.local before anything reads
 // env. Best-effort, gitignored, never overrides real env. Lets perf/debug be

@@ -8,15 +8,16 @@ import {
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from '../shared/types'
-import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from '../ui'
-import { PackageInfoModalController } from '../ui/controllers'
+import { UIRenderer, ConfirmationInputHandler } from '../features/interactive'
+import { CursorUtils, TerminalInput } from '../shared/terminal'
+import { PackageInfoModalController } from '../features/interactive'
 import { VulnerabilityAuditController } from '../features/audit'
 import {
   createSelectionStates,
   createPendingSelectionStates,
   createUpgradeChoices,
   runInteractiveSession,
-} from '../ui/session'
+} from '../features/interactive'
 
 interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean
