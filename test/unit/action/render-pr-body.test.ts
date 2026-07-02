@@ -7,8 +7,13 @@ import { describe, expect, it } from 'vitest'
 
 const baseSummary = { total: 0, outdated: 0, major: 0, vulnerable: 0 }
 
+// Import via an explicit file:// URL rather than a relative specifier: Vite's SSR module
+// runner externalizes .mjs files, and on Windows a relative specifier through that path
+// resolves/transforms incorrectly and throws a SyntaxError at import time.
+const actionModuleUrl = pathToFileURL(join(process.cwd(), 'action/render-pr-body.mjs')).href
+
 async function renderPrBody(report: object): Promise<string> {
-  const { render } = await import('../../../action/render-pr-body.mjs')
+  const { render } = await import(actionModuleUrl)
   return render(report) + '\n'
 }
 
@@ -298,7 +303,7 @@ describe('render-pr-body action helper', () => {
   })
 
   it('reads report JSON from a file path and stdin handle', async () => {
-    const { readInput } = await import('../../../action/render-pr-body.mjs')
+    const { readInput } = await import(actionModuleUrl)
     const file = writeTempFile(
       JSON.stringify({
         schemaVersion: 1,
@@ -316,7 +321,7 @@ describe('render-pr-body action helper', () => {
   })
 
   it('main writes the rendered body for a valid report file', async () => {
-    const { main } = await import('../../../action/render-pr-body.mjs')
+    const { main } = await import(actionModuleUrl)
     const file = writeTempFile(
       JSON.stringify({
         schemaVersion: 1,
@@ -342,7 +347,7 @@ describe('render-pr-body action helper', () => {
   })
 
   it('main writes the fallback body for a malformed report file', async () => {
-    const { main } = await import('../../../action/render-pr-body.mjs')
+    const { main } = await import(actionModuleUrl)
     const file = writeTempFile('{not json')
     let stdout = ''
     let stderr = ''
@@ -362,7 +367,7 @@ describe('render-pr-body action helper', () => {
   })
 
   it('covers small exported helpers used by the process entrypoint', async () => {
-    const { isDirectRun, vulnVerdict } = await import('../../../action/render-pr-body.mjs')
+    const { isDirectRun, vulnVerdict } = await import(actionModuleUrl)
     const scriptPath = join(process.cwd(), 'action/render-pr-body.mjs')
 
     expect(vulnVerdict()).toBe('')
