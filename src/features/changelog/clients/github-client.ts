@@ -1,6 +1,6 @@
 import { GitHubRelease } from '../types/changelog.types'
 import { parseGitHubRepo } from '../parsers/repository-ref'
-import { PACKAGE_NAME } from '../../../config'
+import { PACKAGE_NAME } from '../../../shared/config'
 
 const GITHUB_RELEASES_PAGE_LIMIT = 3
 

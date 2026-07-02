@@ -17,7 +17,7 @@ import {
 } from '../shared/fs'
 import { findClosestMinorVersion } from '../shared/versions'
 import { fetchPackageVersions, PackageVersionData } from '../services'
-import { isPackageIgnored, POOL_CONNECTIONS } from '../config'
+import { isPackageIgnored, POOL_CONNECTIONS } from '../shared/config'
 import { ConsoleUtils } from '../shared/terminal'
 import { debugLog } from '../shared/debug-logger'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../features/debug'

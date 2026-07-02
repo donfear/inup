@@ -1,6 +1,6 @@
 import chalk from 'chalk'
 import { getCurrentThemeName } from './state/theme-manager'
-import { PACKAGE_NAME } from '../config'
+import { PACKAGE_NAME } from '../shared/config'
 
 // Centralized theme color definitions - single source of truth
 const themeColorDefinitions = {

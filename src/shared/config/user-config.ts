@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import envPaths from 'env-paths'
-import { PACKAGE_NAME } from '../config'
-import type { PersistedFilters } from '../shared/types'
+import { PACKAGE_NAME } from './package-meta'
+import type { PersistedFilters } from '../types'
 
 interface ConfigFile {
   theme?: string

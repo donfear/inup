@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
-import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../config'
+import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../shared/config'
 import { parseVersions } from '../shared/versions'
 import {
   sleep,

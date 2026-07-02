@@ -37,7 +37,7 @@ vi.mock('../../../src/services', () => ({
   fetchPackageVersions: mocks.fetchPackageVersions,
 }))
 
-vi.mock('../../../src/config', async (importOriginal) => {
+vi.mock('../../../src/shared/config', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...(actual as object),

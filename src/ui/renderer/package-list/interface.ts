@@ -7,7 +7,7 @@ import {
 } from '../../../shared/types'
 import { VersionUtils } from '../../utils'
 import { getThemeColor, coloredInupLogo } from '../../themes-colors'
-import { PACKAGE_NAME } from '../../../config'
+import { PACKAGE_NAME } from '../../../shared/config'
 import {
   padLineToWidth,
   renderPackageLine,

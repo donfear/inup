@@ -1,5 +1,5 @@
 import { themes, defaultTheme, themeNames } from '../themes'
-import { configManager } from '../../utils/config'
+import { configManager } from '../../shared/config/user-config'
 
 export interface ThemeState {
   showThemeModal: boolean

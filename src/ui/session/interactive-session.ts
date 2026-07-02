@@ -20,7 +20,7 @@ import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from '.
 import { getPerformanceTracker, renderPerformanceModal } from '../../features/debug'
 import { PackageInfoModalController, VulnerabilityAuditController } from '../controllers'
 import { renderHelpModal } from '../renderer/help-modal'
-import { configManager } from '../../utils/config'
+import { configManager } from '../../shared/config/user-config'
 import { dispatchAction } from './action-dispatcher'
 
 function getTerminalHeight(): number {
