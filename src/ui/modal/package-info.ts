@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../types'
+import { PackageSelectionState } from '../../shared/types'
 import {
   getModalWidth,
   fitModalSections,

@@ -1,4 +1,4 @@
-import type { DependencyType, VulnerabilitySeverity } from '../../types'
+import type { DependencyType, VulnerabilitySeverity } from '../../shared/types'
 
 /** Version policy for `--apply`: how far to bump. `minor`/`patch` stay in-range; `latest` allows majors. */
 export type ApplyTarget = 'minor' | 'patch' | 'latest'

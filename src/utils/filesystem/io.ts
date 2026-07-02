@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs'
 import { promises as fsPromises } from 'fs'
-import { PackageJson } from '../../types'
+import { PackageJson } from '../../shared/types'
 
 export interface CollectDependenciesOptions {
   includePeerDeps?: boolean

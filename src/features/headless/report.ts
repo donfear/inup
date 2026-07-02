@@ -1,4 +1,4 @@
-import type { PackageInfo } from '../../types'
+import type { PackageInfo } from '../../shared/types'
 import {
   HEADLESS_SCHEMA_VERSION,
   HeadlessReport,

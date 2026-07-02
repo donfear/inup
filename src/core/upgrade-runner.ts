@@ -9,7 +9,7 @@ import {
   PackageUpgradeChoice,
   UpgradeOptions,
   PackageManagerInfo,
-} from '../types'
+} from '../shared/types'
 import { PackageManagerDetector } from '../services/package-manager-detector'
 import { ConsoleUtils } from '../ui/utils'
 import {

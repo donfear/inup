@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createUpgradeChoices } from '../../../src/ui/session/selection-state-builder'
-import { PackageSelectionState } from '../../../src/types'
+import { PackageSelectionState } from '../../../src/shared/types'
 
 function makeState(overrides: Partial<PackageSelectionState> = {}): PackageSelectionState {
   return {

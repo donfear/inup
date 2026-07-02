@@ -1,4 +1,4 @@
-import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../types'
+import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../shared/types'
 import { StateManager } from '../state'
 import { InputAction } from '../input-handler'
 import { PackageInfoModalController, VulnerabilityAuditController } from '../controllers'

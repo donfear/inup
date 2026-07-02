@@ -3,4 +3,9 @@
  */
 
 export { UpgradeRunner } from './core'
-export type { PackageInfo, UpgradeOptions, PackageManager, PackageManagerInfo } from './types'
+export type {
+  PackageInfo,
+  UpgradeOptions,
+  PackageManager,
+  PackageManagerInfo,
+} from './shared/types'

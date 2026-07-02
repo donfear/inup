@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { StateManager } from '../../../src/ui/state'
-import { PackageSelectionState } from '../../../src/types'
+import { PackageSelectionState } from '../../../src/shared/types'
 
 const ready = (over: Partial<PackageSelectionState> = {}): PackageSelectionState => ({
   name: 'pkg',

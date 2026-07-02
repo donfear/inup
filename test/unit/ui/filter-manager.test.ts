@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FilterManager } from '../../../src/ui/state/filter-manager'
-import { PackageSelectionState } from '../../../src/types'
+import { PackageSelectionState } from '../../../src/shared/types'
 
 const baseState: PackageSelectionState = {
   name: 'demo-pkg',

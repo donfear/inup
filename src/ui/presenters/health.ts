@@ -1,4 +1,4 @@
-import { PackageSelectionState } from '../../types'
+import { PackageSelectionState } from '../../shared/types'
 import { checkNodeEngineCompatibility } from '../../utils'
 import { getThemeColor } from '../themes-colors'
 

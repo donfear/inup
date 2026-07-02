@@ -5,7 +5,7 @@ import {
   PackageManagerInfo,
   PackageLoadProgress,
   VulnerabilityDisplayOptions,
-} from '../../types'
+} from '../../shared/types'
 import {
   StateManager,
   UIRenderer,

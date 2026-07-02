@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Key } from 'node:readline'
 import { InputHandler, type InputAction } from '../../../src/ui/input-handler'
 import type { StateManager } from '../../../src/ui/state'
-import { PackageSelectionState } from '../../../src/types'
+import { PackageSelectionState } from '../../../src/shared/types'
 
 const uiState = {
   showThemeModal: false,

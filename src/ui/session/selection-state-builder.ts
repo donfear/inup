@@ -4,7 +4,7 @@ import {
   PackageSelectionState,
   PackageUpgradeChoice,
   VulnerabilitySummary,
-} from '../../types'
+} from '../../shared/types'
 import { applyVersionPrefix } from '../utils'
 
 type CachedSummaryFn = (

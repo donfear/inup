@@ -4,7 +4,7 @@ import {
   PackageLoadProgress,
   PackageSelectionState,
   RenderableItem,
-} from '../../../types'
+} from '../../../shared/types'
 import { VersionUtils } from '../../utils'
 import { getThemeColor, coloredInupLogo } from '../../themes-colors'
 import { PACKAGE_NAME } from '../../../config'

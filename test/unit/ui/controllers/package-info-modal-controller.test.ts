@@ -15,7 +15,7 @@ vi.mock('../../../../src/services', () => ({
 }))
 
 import { PackageInfoModalController } from '../../../../src/ui/controllers'
-import { PackageSelectionState } from '../../../../src/types'
+import { PackageSelectionState } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState = makeSelectionState({

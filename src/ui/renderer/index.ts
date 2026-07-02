@@ -4,7 +4,7 @@ import {
   PackageSelectionState,
   RenderableItem,
   PackageManagerInfo,
-} from '../../types'
+} from '../../shared/types'
 import * as PackageList from './package-list'
 import * as Confirmation from './confirmation'
 import * as Modal from '../modal'

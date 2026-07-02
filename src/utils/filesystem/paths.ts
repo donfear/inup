@@ -1,6 +1,6 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { PackageManager } from '../../types'
+import { PackageManager } from '../../shared/types'
 import { PackageManagerDetector } from '../../services/package-manager-detector'
 
 export function findPackageJson(cwd: string = process.cwd()): string | null {

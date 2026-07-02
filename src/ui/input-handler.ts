@@ -1,5 +1,5 @@
 import { Key } from 'node:readline'
-import { PackageSelectionState } from '../types'
+import { PackageSelectionState } from '../shared/types'
 import { StateManager } from './state'
 import { CursorUtils } from './utils'
 import { findBinding } from './keymap'

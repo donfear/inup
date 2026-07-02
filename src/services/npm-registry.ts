@@ -22,7 +22,7 @@ import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
   RegistryBatchProgressItem,
-} from '../types'
+} from '../shared/types'
 
 export interface PackageVersionData {
   latestVersion: string

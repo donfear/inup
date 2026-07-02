@@ -3,7 +3,12 @@ import { createSpinner } from 'nanospinner'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { dirname } from 'path'
 import { spawnSync, type StdioOptions } from 'child_process'
-import { PackageInfo, PackageUpgradeChoice, PackageManagerInfo, DependencyType } from '../types'
+import {
+  PackageInfo,
+  PackageUpgradeChoice,
+  PackageManagerInfo,
+  DependencyType,
+} from '../shared/types'
 import { detectJsonFormat, executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
 
 export interface PackageUpgraderOptions {

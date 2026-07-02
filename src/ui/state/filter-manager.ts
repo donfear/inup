@@ -1,19 +1,14 @@
-import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../types'
+import {
+  PackageSelectionState,
+  PersistedFilters,
+  VulnerabilityDisplayOptions,
+} from '../../shared/types'
 import { shouldDisplayVulnerabilityForDependency } from '../presenters/vulnerability'
 
-export interface FilterState {
+export interface FilterState extends PersistedFilters {
   filterMode: boolean // Whether we're in filter/search input mode
   filterQuery: string // Current filter/search query
-  // Dependency type visibility toggles
-  showDependencies: boolean
-  showDevDependencies: boolean
-  showPeerDependencies: boolean
-  showOptionalDependencies: boolean
-  showOnlyVulnerable: boolean // When true, only show packages with vulnerabilities
 }
-
-/** The subset of filter state persisted across runs (transient search excluded). */
-export type PersistedFilters = Omit<FilterState, 'filterMode' | 'filterQuery'>
 
 export class FilterManager {
   private state: FilterState

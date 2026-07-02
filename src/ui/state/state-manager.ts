@@ -1,7 +1,12 @@
-import { PackageSelectionState, RenderableItem, VulnerabilityDisplayOptions } from '../../types'
+import {
+  PackageSelectionState,
+  PersistedFilters,
+  RenderableItem,
+  VulnerabilityDisplayOptions,
+} from '../../shared/types'
 import { NavigationManager } from './navigation-manager'
 import { ModalManager, InfoModalTab } from './modal-manager'
-import { FilterManager, type PersistedFilters } from './filter-manager'
+import { FilterManager } from './filter-manager'
 import { ThemeManager } from './theme-manager'
 
 export interface DisplayState {

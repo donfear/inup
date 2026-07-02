@@ -8,7 +8,7 @@ import {
   StreamOutdatedPackagesCallback,
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
-} from '../types'
+} from '../shared/types'
 import {
   findPackageJson,
   readPackageJson,

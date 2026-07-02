@@ -1,5 +1,9 @@
 import chalk from 'chalk'
-import { PackageInfo, PackageSelectionState, VulnerabilityDisplayOptions } from '../../../types'
+import {
+  PackageInfo,
+  PackageSelectionState,
+  VulnerabilityDisplayOptions,
+} from '../../../shared/types'
 import { VersionUtils } from '../../utils'
 import { getThemeColor } from '../../themes-colors'
 import {

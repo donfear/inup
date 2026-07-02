@@ -1,6 +1,6 @@
 import path from 'node:path'
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../../types'
+import { PackageSelectionState } from '../../../shared/types'
 import { InfoModalTab, ModalSection } from '../types'
 import { getThemeColor } from '../../themes-colors'
 import {

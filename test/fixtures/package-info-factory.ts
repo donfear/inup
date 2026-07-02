@@ -1,4 +1,4 @@
-import { PackageInfo } from '../../src/types'
+import { PackageInfo } from '../../src/shared/types'
 
 export function makePackageInfo(overrides?: Partial<PackageInfo>): PackageInfo {
   return {

@@ -7,7 +7,7 @@ import {
   PackageManagerInfo,
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
-} from './types'
+} from './shared/types'
 import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from './ui'
 import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
 import {

@@ -1,4 +1,4 @@
-import { PackageSelectionState } from '../../src/types'
+import { PackageSelectionState } from '../../src/shared/types'
 
 export function makeSelectionState(overrides?: Partial<PackageSelectionState>): PackageSelectionState {
   return {

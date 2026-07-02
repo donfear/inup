@@ -31,6 +31,15 @@ export interface PackageSelectionState {
 
 export type StateUpdate = { name: string; patch: Partial<PackageSelectionState> }
 
+/** Dependency-type visibility toggles persisted across runs (transient search state excluded). */
+export interface PersistedFilters {
+  showDependencies: boolean
+  showDevDependencies: boolean
+  showPeerDependencies: boolean
+  showOptionalDependencies: boolean
+  showOnlyVulnerable: boolean
+}
+
 export interface GroupedPackages {
   main: PackageSelectionState[] // dependencies + devDependencies
   peer: PackageSelectionState[] // peerDependencies
