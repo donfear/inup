@@ -61,3 +61,30 @@ jobs:
           MAJOR="${NEW_VERSION%%.*}"                                       # e.g. v1
           git tag -f "$MAJOR" "$NEW_VERSION"
           git push -f origin "$MAJOR"
+
+          echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+          echo "MAJOR=$MAJOR" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release for this version
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh release create "$NEW_VERSION" \
+            --title "$NEW_VERSION" \
+            --generate-notes
+
+      - name: Update floating major release for Marketplace
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # The Marketplace listing is bound to whichever release published it — one-time manual
+          # setup via the UI (Marketplace publishing can't be toggled through the API). Once that
+          # release exists for the floating tag, we just repoint it at each new commit so
+          # `donfear/inup@v1` in Marketplace always resolves to the latest v1.x.y.
+          if gh release view "$MAJOR" >/dev/null 2>&1; then
+            gh release edit "$MAJOR" \
+              --target "$(git rev-parse "$NEW_VERSION")" \
+              --notes "Tracks the latest \`$MAJOR.x.y\` release for Marketplace users pinned to \`@$MAJOR\`. See [$NEW_VERSION]($(gh release view "$NEW_VERSION" --json url --jq .url)) for what's new."
+          else
+            echo "No existing '$MAJOR' release found — publish one manually once via the GitHub UI with 'Publish to Marketplace' checked, then this step will keep it in sync on future releases."
+          fi
