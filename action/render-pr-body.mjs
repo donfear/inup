@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Render a human-readable PR body from an `inup --json` report.
  *
