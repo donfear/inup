@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { executeCommand, executeCommandAsync } from '../../../src/utils/exec'
+import { executeCommand, executeCommandAsync } from '../../../src/shared/exec'
 import * as os from 'os'
 import * as fs from 'fs'
 

@@ -9,7 +9,8 @@ import {
   PackageManagerInfo,
   DependencyType,
 } from '../shared/types'
-import { detectJsonFormat, executeCommand, findWorkspaceRoot, readPackageJson } from '../utils'
+import { executeCommand } from '../shared/exec'
+import { detectJsonFormat, findWorkspaceRoot, readPackageJson } from '../shared/fs'
 
 export interface PackageUpgraderOptions {
   /**

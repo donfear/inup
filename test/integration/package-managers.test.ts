@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { execSync } from 'child_process'
-import { PackageManagerDetector } from '../../src/services/package-manager-detector'
+import { PackageManagerDetector } from '../../src/shared/package-manager'
 
 /**
  * Integration tests for package manager detection and compatibility

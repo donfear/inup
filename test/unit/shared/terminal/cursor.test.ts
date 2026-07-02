@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ConsoleUtils } from '../../../src/ui/utils'
+import { ConsoleUtils } from '../../../../src/shared/terminal'
 
 // Progress is cosmetic feedback. It must never touch stdout (which is reserved for the
 // --json / plain report), and it must stay silent when stderr is redirected to a log.

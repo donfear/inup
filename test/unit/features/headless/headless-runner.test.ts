@@ -33,7 +33,7 @@ vi.mock('../../../../src/core/upgrader', () => ({
   },
 }))
 
-vi.mock('../../../../src/services/package-manager-detector', () => ({
+vi.mock('../../../../src/shared/package-manager', () => ({
   PackageManagerDetector: {
     detect: vi.fn().mockReturnValue({ name: 'npm', displayName: 'npm' }),
     getInfo: vi.fn((name: string) => ({ name, displayName: name })),

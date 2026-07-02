@@ -8,8 +8,10 @@ import { HeadlessRunner } from './features/headless'
 import { checkForUpdateAsync } from './services'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './config'
 import { PackageManager, UpgradeOptions } from './shared/types'
-import { enableDebugLogging, applyColorSetting, loadInupLocalEnv } from './utils'
-import { getGitWorkingTreeState } from './utils/git'
+import { enableDebugLogging } from './shared/debug-logger'
+import { applyColorSetting } from './shared/terminal'
+import { loadInupLocalEnv } from './shared/local-env'
+import { getGitWorkingTreeState } from './shared/git'
 import { TerminalInput } from './ui'
 
 // Load developer-only toggles from <inup-repo>/.env.local before anything reads

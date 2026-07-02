@@ -9,7 +9,7 @@ import {
   selectRepresentativeAdvisory,
 } from '../../presenters/vulnerability'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../../utils'
-import { checkNodeEngineCompatibility } from '../../../utils'
+import { checkNodeEngineCompatibility } from '../../../shared/engines'
 import { buildReleaseNotesSections } from './release-notes'
 
 function formatNumber(num: number | undefined): string {

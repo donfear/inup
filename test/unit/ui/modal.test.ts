@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../src/ui/modal'
 import { PackageSelectionState } from '../../../src/shared/types'
-import { getVisualLength, stripAnsi } from '../../../src/ui/utils'
+import { getVisualLength, stripAnsi } from '../../../src/shared/terminal'
 
 const baseState: PackageSelectionState = {
   name: 'next',

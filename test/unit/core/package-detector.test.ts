@@ -9,12 +9,22 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
 }))
 
-vi.mock('../../../src/utils', () => ({
+vi.mock('../../../src/shared/fs', () => ({
   findPackageJson: mocks.findPackageJson,
   readPackageJson: mocks.readPackageJson,
   findAllPackageJsonFilesAsync: mocks.findAllPackageJsonFilesAsync,
   collectAllDependenciesAsync: mocks.collectAllDependenciesAsync,
-  findClosestMinorVersion: mocks.findClosestMinorVersion,
+}))
+
+vi.mock('../../../src/shared/versions', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...(actual as object),
+    findClosestMinorVersion: mocks.findClosestMinorVersion,
+  }
+})
+
+vi.mock('../../../src/shared/debug-logger', () => ({
   debugLog: {
     info: vi.fn(),
     perf: vi.fn(),
@@ -35,7 +45,7 @@ vi.mock('../../../src/config', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../src/ui/utils', () => ({
+vi.mock('../../../src/shared/terminal', () => ({
   ConsoleUtils: {
     showProgress: vi.fn(),
     clearProgress: vi.fn(),

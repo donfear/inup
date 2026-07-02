@@ -4,7 +4,7 @@ import {
   getOptimizedRangeVersion,
   findClosestMinorVersion,
   parseVersions,
-} from '../../../src/utils/version'
+} from '../../../src/shared/versions'
 
 describe('version utils', () => {
   describe('parseVersions()', () => {

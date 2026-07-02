@@ -14,12 +14,12 @@ import {
   readPackageJson,
   findAllPackageJsonFilesAsync,
   collectAllDependenciesAsync,
-  findClosestMinorVersion,
-} from '../utils'
+} from '../shared/fs'
+import { findClosestMinorVersion } from '../shared/versions'
 import { fetchPackageVersions, PackageVersionData } from '../services'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../config'
-import { ConsoleUtils } from '../ui/utils'
-import { debugLog } from '../utils'
+import { ConsoleUtils } from '../shared/terminal'
+import { debugLog } from '../shared/debug-logger'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../features/debug'
 
 interface PreparedDependencies {

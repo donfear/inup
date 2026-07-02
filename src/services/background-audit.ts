@@ -1,4 +1,4 @@
-import { debugLog } from '../utils'
+import { debugLog } from '../shared/debug-logger'
 
 export interface AuditPackageInput {
   name: string

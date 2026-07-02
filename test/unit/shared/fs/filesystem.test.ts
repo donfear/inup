@@ -11,7 +11,7 @@ import {
   findAllPackageJsonFiles,
   findAllPackageJsonFilesAsync,
   findWorkspaceRoot,
-} from '../../../src/utils/filesystem'
+} from '../../../../src/shared/fs'
 
 describe('filesystem utils', () => {
   let testDir: string

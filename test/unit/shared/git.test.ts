@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { executeCommand } from '../../../src/utils/exec'
-import { getGitWorkingTreeState } from '../../../src/utils/git'
+import { executeCommand } from '../../../src/shared/exec'
+import { getGitWorkingTreeState } from '../../../src/shared/git'
 
 function createTempDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'inup-git-test-'))

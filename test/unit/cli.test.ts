@@ -33,11 +33,11 @@ vi.mock('../../src/services', () => ({
   checkForUpdateAsync: mocks.checkForUpdateAsync,
 }))
 
-vi.mock('../../src/utils/git', () => ({
+vi.mock('../../src/shared/git', () => ({
   getGitWorkingTreeState: mocks.getGitWorkingTreeState,
 }))
 
-vi.mock('../../src/ui/utils/terminal-input', () => ({
+vi.mock('../../src/shared/terminal/terminal-input', () => ({
   TerminalInput: {
     promptForImmediateConfirmation: mocks.promptForImmediateConfirmation,
   },

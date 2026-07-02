@@ -152,3 +152,10 @@ export function findClosestMinorVersion(
     return null
   }
 }
+
+/** Re-apply the original specifier's range prefix (^, ~, >=, …) to a new version. */
+export function applyVersionPrefix(originalSpecifier: string, targetVersion: string): string {
+  const prefixMatch = originalSpecifier.match(/^([^\d]+)/)
+  const prefix = prefixMatch ? prefixMatch[1] : ''
+  return prefix + targetVersion
+}

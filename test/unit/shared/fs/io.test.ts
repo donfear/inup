@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { detectJsonFormat } from '../../../src/utils/filesystem/io'
+import { detectJsonFormat } from '../../../../src/shared/fs/io'
 
 describe('detectJsonFormat', () => {
   it('detects 2-space indentation', () => {

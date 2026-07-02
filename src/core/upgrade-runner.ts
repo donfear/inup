@@ -10,8 +10,8 @@ import {
   UpgradeOptions,
   PackageManagerInfo,
 } from '../shared/types'
-import { PackageManagerDetector } from '../services/package-manager-detector'
-import { ConsoleUtils } from '../ui/utils'
+import { PackageManagerDetector } from '../shared/package-manager'
+import { ConsoleUtils } from '../shared/terminal'
 import {
   getPerformanceTracker,
   isPerfLoggingEnabled,

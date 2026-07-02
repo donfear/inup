@@ -1,7 +1,7 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { PackageManager } from '../../shared/types'
-import { PackageManagerDetector } from '../../services/package-manager-detector'
+import { PackageManager } from '../types'
+import { PackageManagerDetector } from '../package-manager'
 
 export function findPackageJson(cwd: string = process.cwd()): string | null {
   const packageJsonPath = join(cwd, 'package.json')

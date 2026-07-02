@@ -1,13 +1,8 @@
 import chalk from 'chalk'
-import { stripAnsi, getVisualLength } from './text'
+import { stripAnsi, getVisualLength } from '../../shared/terminal/text'
+import { applyVersionPrefix } from '../../shared/versions'
 
-export { stripAnsi, getVisualLength }
-
-export function applyVersionPrefix(originalSpecifier: string, targetVersion: string): string {
-  const prefixMatch = originalSpecifier.match(/^([^\d]+)/)
-  const prefix = prefixMatch ? prefixMatch[1] : ''
-  return prefix + targetVersion
-}
+export { stripAnsi, getVisualLength, applyVersionPrefix }
 
 export function truncateMiddle(str: string, maxLength: number): string {
   const visualLength = getVisualLength(str)

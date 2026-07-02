@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { checkNodeEngineCompatibility } from '../../../src/utils/engines'
+import { checkNodeEngineCompatibility } from '../../../src/shared/engines'
 
 describe('checkNodeEngineCompatibility', () => {
   it('returns null when the current Node satisfies the range', () => {

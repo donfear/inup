@@ -14,7 +14,7 @@ import {
   ConsoleUtils,
   TerminalInput,
 } from '../index'
-import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../utils/cursor'
+import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../shared/terminal/cursor'
 import { PackageListRenderOptions } from '../renderer/package-list'
 import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from '../themes-colors'
 import { getPerformanceTracker, renderPerformanceModal } from '../../features/debug'

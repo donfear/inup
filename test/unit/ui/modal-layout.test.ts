@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import { describe, expect, it } from 'vitest'
 import { fitModalSections, renderModalFrame, renderModalRow } from '../../../src/ui/modal/layout'
-import { getVisualLength } from '../../../src/ui/utils'
+import { getVisualLength } from '../../../src/shared/terminal'
 
 describe('modal layout primitives', () => {
   it('renders centered modal frames', () => {

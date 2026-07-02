@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { shouldDisableColor } from '../../../src/utils/color'
+import { shouldDisableColor } from '../../../../src/shared/terminal/color'
 
 describe('shouldDisableColor', () => {
   it('disables color when the --no-color flag is set, regardless of env', () => {

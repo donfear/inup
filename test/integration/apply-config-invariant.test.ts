@@ -38,8 +38,8 @@ vi.mock('../../src/services/vulnerability-checker', async (importOriginal) => {
 
 // Make the package manager appear "not installed" so the upgrader writes package.json but skips
 // the real install (graceful path in PackageUpgrader.runInstall). Keeps the test hermetic.
-vi.mock('../../src/utils/exec', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/utils/exec')>()
+vi.mock('../../src/shared/exec', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/shared/exec')>()
   return {
     ...actual,
     executeCommand: mocks.executeCommand,

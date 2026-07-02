@@ -36,14 +36,14 @@ vi.mock('../../../src/core/upgrader', () => ({
   },
 }))
 
-vi.mock('../../../src/services/package-manager-detector', () => ({
+vi.mock('../../../src/shared/package-manager', () => ({
   PackageManagerDetector: {
     detect: mocks.detectPackageManager,
     getInfo: mocks.detectPackageManager,
   },
 }))
 
-vi.mock('../../../src/ui/utils', () => ({
+vi.mock('../../../src/shared/terminal', () => ({
   ConsoleUtils: {
     clearProgress: mocks.clearProgress,
   },
