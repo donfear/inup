@@ -48,7 +48,6 @@ Run `inup` in any project — it scans for outdated dependencies and lets you pi
 - **Changelog Viewer** — read release notes and changelogs inline without leaving the terminal.
 - **Built-in Search** — press `/` to filter packages instantly.
 - **Package Details** — press `i` to view package info, download stats, and more.
-- **Themes** — press `t` to switch between color themes.
 
 ## Options
 
@@ -122,7 +121,7 @@ Add this workflow to **your** repo:
 name: inup
 on:
   schedule:
-    - cron: '0 6 * * *' # daily at 06:00 UTC
+    - cron: '17 5 * * *' # daily around 05:17 UTC
   workflow_dispatch: {}
 
 permissions:
@@ -141,6 +140,37 @@ jobs:
 
 That's it. Also enable Settings → Actions → General → **Workflow permissions** →
 **"Allow GitHub Actions to create and approve pull requests"** so the action can open the PR.
+
+Scheduled workflows are not real-time timers. [GitHub documents](https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#schedule)
+that `schedule` runs can be delayed during busy periods; the start of each hour is especially busy,
+and very high load can even drop queued scheduled runs. If you want upgrades ready by a specific time,
+schedule inup earlier than you need it and avoid `:00` cron minutes. Otherwise, let the scheduled run
+arrive when GitHub starts it; the action will still update the same rolling PR when it runs.
+
+### What the action creates
+
+When inup finds applicable upgrades, the workflow commits the changed manifest/lockfile and opens or
+updates one pull request. The PR body looks like this:
+
+```md
+## 📦 Dependency upgrades
+
+Scanned **18** packages — **3** unique upgrade(s) (1 with a major available, 1 with known vulnerabilities).
+
+### ✅ Applied in this PR
+
+- `eslint` `^9.28.0` → `9.30.1` (devDependencies)
+- `undici` `^7.10.0` → `7.11.0` (dependencies)
+- `vite` `^6.3.0` → `6.3.5` (devDependencies)
+
+### Updates
+
+| Package | Current | → In-range | Latest | Type | Applied | Major? | Security |
+|---|---|---|---|---|---|---|---|
+| `eslint` | ^9.28.0 | 9.30.1 | 9.30.1 | devDependencies | ✅ | — | — |
+| `undici` | ^7.10.0 | 7.11.0 | 7.11.0 | dependencies | ✅ | — | 🟢 fixed by in-range bump |
+| `vite` | ^6.3.0 | 6.3.5 | 7.0.0 | devDependencies | ✅ | ⚠️ yes | — |
+```
 
 <details>
 <summary><strong>Details: commit attribution, all inputs, and outputs</strong></summary>
