@@ -6,17 +6,25 @@ This directory contains the test suite for `inup`, which includes both unit test
 
 ```
 test/
-├── unit/                  # Unit tests
-│   ├── services/
-│   │   └── package-manager-detector.test.ts
-│   └── utils/
-│       ├── exec.test.ts
-│       ├── filesystem.test.ts
-│       └── version.test.ts
-├── integration/           # Integration tests
-│   └── package-managers.test.ts
-└── fixtures/              # Test fixtures
-    └── test-package/      # Sample package for testing
+├── unit/                    # Unit tests (mirrors src/)
+│   ├── app/                 # composition root (upgrade-runner)
+│   ├── features/
+│   │   ├── audit/           # vulnerability checker, presenter, controller
+│   │   ├── changelog/
+│   │   ├── headless/
+│   │   ├── interactive/     # the TUI: state, renderer, modals, keymap
+│   │   └── upgrade/         # package detector + upgrader
+│   ├── shared/              # exec, fs, versions, config, terminal,
+│   │   └── ...              #   http, registry, package-manager
+│   ├── action/              # GitHub Action helpers
+│   └── cli.test.ts
+├── integration/             # Integration tests
+│   ├── package-managers.test.ts
+│   ├── services.test.ts
+│   └── apply-config-invariant.test.ts
+├── fixtures/                # Test fixtures and factories
+│   └── test-package/        # Sample package for testing
+└── helpers/                 # Shared test setup
 ```
 
 ## Running Tests
@@ -38,7 +46,7 @@ pnpm test:coverage
 
 Unit tests verify individual functions and modules work correctly in isolation:
 
-- **Package Manager Detector** ([unit/services/package-manager-detector.test.ts](unit/services/package-manager-detector.test.ts)) - 23 tests
+- **Package Manager Detector** ([unit/shared/package-manager.test.ts](unit/shared/package-manager.test.ts)) - 23 tests
   - Detection from `packageManager` field
   - Detection from lock files
   - Priority handling (packageManager field > lock files)
@@ -46,13 +54,13 @@ Unit tests verify individual functions and modules work correctly in isolation:
   - Workspace detection
   - Edge cases (invalid JSON, missing files)
 
-- **Version Utilities** ([unit/utils/version.test.ts](unit/utils/version.test.ts)) - 20 tests
+- **Version Utilities** ([unit/shared/versions.test.ts](unit/shared/versions.test.ts)) - 20 tests
   - Version comparison logic
   - Optimized range version calculation
   - Minor version finding
   - Semver edge cases (prereleases, invalid versions)
 
-- **Filesystem Utilities** ([unit/utils/filesystem.test.ts](unit/utils/filesystem.test.ts)) - 29 tests
+- **Filesystem Utilities** ([unit/shared/fs/filesystem.test.ts](unit/shared/fs/filesystem.test.ts)) - 29 tests
   - Finding package.json files
   - Reading and parsing package.json
   - Collecting dependencies (sync and async)
@@ -60,7 +68,7 @@ Unit tests verify individual functions and modules work correctly in isolation:
   - Workspace detection
   - Exclude patterns and depth limiting
 
-- **Exec Utilities** ([unit/utils/exec.test.ts](unit/utils/exec.test.ts)) - 9 tests
+- **Exec Utilities** ([unit/shared/exec.test.ts](unit/shared/exec.test.ts)) - 9 tests
   - Synchronous command execution
   - Asynchronous command execution
   - Error handling
@@ -106,6 +114,7 @@ Runs on every push/PR:
 - Formatting checks
 - Unit tests
 - Build verification
+- Architecture boundary checks (`pnpm lint:deps` via dependency-cruiser)
 
 ## Writing Tests
 
@@ -144,7 +153,7 @@ describe('Integration Test', () => {
     execSync('npm init -y', { cwd: testDir })
 
     // Test inup functionality
-    const { PackageManagerDetector } = require('../../src/services/package-manager-detector')
+    const { PackageManagerDetector } = require('../../src/shared/package-manager')
     const pm = PackageManagerDetector.detect(testDir)
     expect(pm.name).toBe('npm')
   })

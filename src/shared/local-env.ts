@@ -7,7 +7,7 @@ import { join, dirname, parse } from 'path'
  * project — without committing anything or touching the shell profile.
  *
  * The repo is located by walking UP from this file's own directory until a
- * `.env.local` is found, so it works regardless of nesting depth (src/utils when
+ * `.env.local` is found, so it works regardless of nesting depth (src/shared when
  * type-stripped, dist/utils when compiled) and resolves the inup repo even when
  * the binary is linked and invoked from a different project directory.
  *

@@ -1,4 +1,4 @@
-import { GitHubRelease } from '../types/changelog.types'
+import { GitHubRelease } from '../types'
 import { parseGitHubRepo } from '../parsers/repository-ref'
 import { PACKAGE_NAME } from '../../../shared/config'
 

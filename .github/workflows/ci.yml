@@ -30,6 +30,9 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Check architecture boundaries
+        run: pnpm lint:deps
+
       - name: Run tests
         run: pnpm test
 

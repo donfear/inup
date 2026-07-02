@@ -10,7 +10,7 @@ See the [legend](README.md#legend) for rating definitions.
 
 | # | Task | Value | Cx | Effort | Notes / reuse |
 |---|---|:--:|:--:|---|---|
-| 1 | **Raise core unit coverage toward ~50%+** | 🔴 | M | 2–4d | ~33 test files vs ~91 source files; no threshold configured. Prioritize the modules the feature phases touch: [upgrader.ts](../../src/core/upgrader.ts) (writes), [package-detector.ts](../../src/core/package-detector.ts), [version.ts](../../src/utils/version.ts). **The write-path golden test is owned by [P0](01-correctness.md) #1** — this item is the broader fill-in around it. Do it *before* the P0 formatting change and the P2 keymap extraction ship. |
+| 1 | **Raise core unit coverage toward ~50%+** | 🔴 | M | 2–4d | ~33 test files vs ~91 source files; no threshold configured. Prioritize the modules the feature phases touch: [upgrader.ts](../../src/features/upgrade/upgrader.ts) (writes), [package-detector.ts](../../src/features/upgrade/package-detector.ts), [version.ts](../../src/shared/versions.ts). **The write-path golden test is owned by [P0](01-correctness.md) #1** — this item is the broader fill-in around it. Do it *before* the P0 formatting change and the P2 keymap extraction ship. |
 | 2 | **Coverage threshold gate** in vitest config | 🟡 | S | 0.25d | Add `coverage.thresholds` to [vitest.config.ts](../../vitest.config.ts) (no threshold today) to prevent regression once #1 lands. |
 | 3 | **Snapshot/golden tests for the renderer** | 🟡 | M | 1–2d | Rendering is largely untested. Snapshot string output for representative states (themes, narrow width) **before** the [P2](03-trust-and-ux.md) width/keymap changes, so they lock behaviour rather than chase it. |
 
@@ -27,8 +27,8 @@ See the [legend](README.md#legend) for rating definitions.
 
 | # | Task | Value | Cx | Effort | Notes / reuse |
 |---|---|:--:|:--:|---|---|
-| 8 | **Route scattered `console.*` through a leveled logger** | 🟡 | M | 1–2d | A [debug-logger.ts](../../src/utils/debug-logger.ts) exists but is underused; direct `console.*` is sprinkled across services. **Directly supports [P1](02-headless.md)** — clean leveling (debug/info/warn/error → stderr) is what makes `--json`/`--quiet` tractable. Pull forward if you start headless work. |
-| 9 | **Tidy the renderer signatures** | 🟢 | S | 0.5d | `renderInterface` takes **15 positional args** ([renderer/index.ts:35-69](../../src/ui/renderer/index.ts#L35-L69)) and `renderPackagesTable`/`renderConfirmation` take `any[]` ([:71](../../src/ui/renderer/index.ts#L71),[:75](../../src/ui/renderer/index.ts#L75)). Move to an options object + real types — do it *alongside* the [P2](03-trust-and-ux.md) width fix that touches the same file. |
+| 8 | **Route scattered `console.*` through a leveled logger** | 🟡 | M | 1–2d | A [debug-logger.ts](../../src/shared/debug-logger.ts) exists but is underused; direct `console.*` is sprinkled across services. **Directly supports [P1](02-headless.md)** — clean leveling (debug/info/warn/error → stderr) is what makes `--json`/`--quiet` tractable. Pull forward if you start headless work. |
+| 9 | **Tidy the renderer signatures** | 🟢 | S | 0.5d | `renderInterface` takes **15 positional args** ([renderer/index.ts:35-69](../../src/features/interactive/renderer/index.ts#L35-L69)) and `renderPackagesTable`/`renderConfirmation` take `any[]` ([:71](../../src/features/interactive/renderer/index.ts#L71),[:75](../../src/features/interactive/renderer/index.ts#L75)). Move to an options object + real types — do it *alongside* the [P2](03-trust-and-ux.md) width fix that touches the same file. |
 
 ## What was *not* scheduled (deliberate de-scoping)
 

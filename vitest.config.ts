@@ -12,6 +12,7 @@ export default defineConfig({
         'docs/**',
         '**/*.config.ts',
         '**/types.ts',
+        'src/shared/types/**', // shared type vocabulary — no runtime code
         'src/cli.ts', // CLI entry point - tested via integration tests
       ],
     },

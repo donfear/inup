@@ -24,16 +24,16 @@ because the previous version of this document over-claimed it:
 
 | Asset | Where | Status today | Unlocks |
 |---|---|---|---|
-| Every published version per package | [npm-registry.ts](../../src/services/npm-registry.ts) | ✅ fetched | semver-distance scoring |
+| Every published version per package | [npm-registry.ts](../../src/shared/registry/npm-registry.ts) | ✅ fetched | semver-distance scoring |
 | `deprecated` field | abbreviated packument | ⚠️ fetched, **dropped** by [package-metadata.ts](../../src/features/changelog/parsers/package-metadata.ts) | hard-"hold" signal — just extract it |
 | `engines` field | manifest | ⚠️ present, **read nowhere** | runtime-compat warning — just extract it |
-| Vulnerability advisories incl. `vulnerable_versions` | [vulnerability-checker.ts](../../src/services/vulnerability-checker.ts) | ⚠️ fetched, **never cross-referenced to the target** | "does this upgrade *fix* the CVE?" |
+| Vulnerability advisories incl. `vulnerable_versions` | [vulnerability-checker.ts](../../src/features/audit/vulnerability-checker.ts) | ⚠️ fetched, **never cross-referenced to the target** | "does this upgrade *fix* the CVE?" |
 | Download counts | [npm-registry-client.ts](../../src/features/changelog/clients/npm-registry-client.ts) | ✅ fetched (`weeklyDownloads`) | adoption/maturity signal |
 | Changelogs / GitHub releases | [features/changelog](../../src/features/changelog/) | ✅ fetched | breaking-change detection |
-| Per-version publish **`time`** | npm registry | ❌ **NOT fetched** — inup requests the *abbreviated* doc ([npm-registry.ts:88](../../src/services/npm-registry.ts#L88)) | release-age scoring — **needs a fetch decision** ([04](04-intelligence.md) #5) |
-| Full package.json graph | [package-detector.ts](../../src/core/package-detector.ts) | ✅ | the constraint set to solve |
-| Streaming + persistent cache | [persistent-cache.ts](../../src/services/persistent-cache.ts) | ✅ | doing the above *fast* |
-| Git working-tree state | [utils/git.ts](../../src/utils/git.ts) | ✅ (read-only) | safe, revertible application |
+| Per-version publish **`time`** | npm registry | ❌ **NOT fetched** — inup requests the *abbreviated* doc ([npm-registry.ts:88](../../src/shared/registry/npm-registry.ts#L88)) | release-age scoring — **needs a fetch decision** ([04](04-intelligence.md) #5) |
+| Full package.json graph | [package-detector.ts](../../src/features/upgrade/package-detector.ts) | ✅ | the constraint set to solve |
+| Streaming + persistent cache | [persistent-cache.ts](../../src/shared/registry/persistent-cache.ts) | ✅ | doing the above *fast* |
+| Git working-tree state | [utils/git.ts](../../src/shared/git.ts) | ✅ (read-only) | safe, revertible application |
 
 The honest read: **most signals are a field-extraction away; `time` (release age) is the one that
 isn't.** That distinction *is* the sequencing of [P3](04-intelligence.md).

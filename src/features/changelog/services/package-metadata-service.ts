@@ -1,6 +1,6 @@
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
-import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
+import { PackageManifestInput, PackageMetadata } from '../types'
 import { InflightMap } from '../../../shared/http/inflight'
 
 export class PackageMetadataService {
