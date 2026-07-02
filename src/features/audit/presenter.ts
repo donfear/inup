@@ -1,0 +1,89 @@
+import chalk from 'chalk'
+import {
+  DependencyType,
+  VulnerabilityDisplayOptions,
+  VulnerabilitySummary,
+} from '../../shared/types'
+
+export function getVulnerabilitySeverityColor(
+  severity: VulnerabilitySummary['highestSeverity']
+): (text: string) => string {
+  switch (severity) {
+    case 'critical':
+      return chalk.bgRed.white.bold
+    case 'high':
+      return chalk.red
+    case 'moderate':
+      return chalk.yellow
+    case 'low':
+    case 'info':
+    default:
+      return chalk.gray
+  }
+}
+
+export function getVulnerabilityBadge(vulnerability: VulnerabilitySummary | undefined): string {
+  if (!vulnerability) return ''
+
+  switch (vulnerability.highestSeverity) {
+    case 'critical':
+      return chalk.bgRed.white.bold('[CRIT]')
+    case 'high':
+      return chalk.red('[HIGH]')
+    case 'moderate':
+      return chalk.yellow('[MOD]')
+    case 'low':
+      return chalk.gray('[LOW]')
+    case 'info':
+      return chalk.gray('[INFO]')
+    default:
+      return ''
+  }
+}
+
+export function shouldDisplayVulnerabilityForDependency(
+  dependencyType: DependencyType,
+  options: VulnerabilityDisplayOptions = {}
+): boolean {
+  switch (dependencyType) {
+    case 'peerDependencies':
+      return options.showPeerDependencyVulnerabilities === true
+    case 'optionalDependencies':
+      return options.showOptionalDependencyVulnerabilities === true
+    default:
+      return true
+  }
+}
+
+export function getVulnerabilityLinkLabel(detailsUrl: string): string {
+  return detailsUrl.includes('/advisories') ? 'Security:' : 'Details:'
+}
+
+export function selectRepresentativeAdvisory(
+  vulnerability: VulnerabilitySummary
+): VulnerabilitySummary['advisories'][number] | undefined {
+  return vulnerability.advisories[0]
+}
+
+export function createVulnerabilitySummary(
+  existing: VulnerabilitySummary | undefined,
+  advisories: VulnerabilitySummary['advisories'],
+  highestSeverity: VulnerabilitySummary['highestSeverity']
+): VulnerabilitySummary {
+  return {
+    count: advisories.length,
+    highestSeverity,
+    detailsUrl: existing?.detailsUrl || advisories[0]?.url,
+    advisories,
+  }
+}
+
+export function mergeVulnerabilitySummary(
+  existing: VulnerabilitySummary | undefined,
+  summary: VulnerabilitySummary
+): VulnerabilitySummary {
+  return {
+    ...summary,
+    detailsUrl: existing?.detailsUrl || summary.detailsUrl,
+  }
+}

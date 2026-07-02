@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   upgraderCtor: vi.fn(),
 }))
 
-vi.mock('../../../../src/core/package-detector', () => ({
+vi.mock('../../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
     getOutdatedPackages = mocks.getOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
@@ -24,7 +24,7 @@ vi.mock('../../../../src/core/package-detector', () => ({
   },
 }))
 
-vi.mock('../../../../src/core/upgrader', () => ({
+vi.mock('../../../../src/features/upgrade/upgrader', () => ({
   PackageUpgrader: class {
     constructor(...args: unknown[]) {
       mocks.upgraderCtor(...args)
@@ -33,14 +33,14 @@ vi.mock('../../../../src/core/upgrader', () => ({
   },
 }))
 
-vi.mock('../../../../src/services/package-manager-detector', () => ({
+vi.mock('../../../../src/shared/package-manager', () => ({
   PackageManagerDetector: {
     detect: vi.fn().mockReturnValue({ name: 'npm', displayName: 'npm' }),
     getInfo: vi.fn((name: string) => ({ name, displayName: name })),
   },
 }))
 
-vi.mock('../../../../src/services', () => ({
+vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
   fetchVulnerabilities: mocks.fetchVulnerabilities,
 }))
 

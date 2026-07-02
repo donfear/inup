@@ -12,8 +12,8 @@ See the [legend](README.md#legend) for rating definitions.
 
 | # | Task | Value | Cx | Effort | Notes / reuse |
 |---|---|:--:|:--:|---|---|
-| 1 | **`CONTRIBUTING.md` + architecture overview** | 🔴 | S | 0.5–1d | One onboarding pass. Document the existing scripts (`build`, `test`, `format`, `link`, `version:*`) and the `workflow_dispatch` publish flow, plus a short layer diagram: [cli.ts](../../src/cli.ts) → [core/](../../src/core/) → [ui/](../../src/ui/) → [services/](../../src/services/). The cheapest unblock for outside PRs. |
-| 2 | **Document `.inuprc` + the `s` audit in the README** | 🟡 | S | 0.5d | The config keys `ignore` / `exclude` / `showPeerDependencyVulnerabilities` / `showOptionalDependencyVulnerabilities` live in [project-config.ts:8-30](../../src/config/project-config.ts#L8-L30) but aren't documented. *(The keyboard section is now **generated** from the keymap, [03](03-trust-and-ux.md) #4 — this covers the config/audit prose that isn't auto-generated.)* |
+| 1 | **`CONTRIBUTING.md` + architecture overview** | 🔴 | S | 0.5–1d | One onboarding pass. Document the existing scripts (`build`, `test`, `format`, `link`, `version:*`) and the `workflow_dispatch` publish flow, plus a short layer diagram: [cli.ts](../../src/cli.ts) → [core/](../../src/features/upgrade/) → [ui/](../../src/features/interactive/) → [services/](../../src/shared/). The cheapest unblock for outside PRs. |
+| 2 | **Document `.inuprc` + the `s` audit in the README** | 🟡 | S | 0.5d | The config keys `ignore` / `exclude` / `showPeerDependencyVulnerabilities` / `showOptionalDependencyVulnerabilities` live in [project-config.ts:8-30](../../src/shared/config/project-config.ts#L8-L30) but aren't documented. *(The keyboard section is now **generated** from the keymap, [03](03-trust-and-ux.md) #4 — this covers the config/audit prose that isn't auto-generated.)* |
 
 ## Release automation
 

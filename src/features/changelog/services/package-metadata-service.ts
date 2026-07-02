@@ -1,7 +1,7 @@
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
-import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
-import { InflightMap } from '../../../services/http/inflight'
+import { PackageManifestInput, PackageMetadata } from '../types'
+import { InflightMap } from '../../../shared/http/inflight'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata | null>()
@@ -15,7 +15,11 @@ export class PackageMetadataService {
   }
 
   getCached(packageName: string, version?: string): PackageMetadata | null {
-    for (const key of [this.getCacheKey(packageName, version), this.getCacheKey(packageName), packageName]) {
+    for (const key of [
+      this.getCacheKey(packageName, version),
+      this.getCacheKey(packageName),
+      packageName,
+    ]) {
       if (this.cache.has(key)) {
         return this.cache.get(key) ?? null
       }

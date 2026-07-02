@@ -21,7 +21,7 @@ vi.mock('../../src/features/headless', () => ({
   },
 }))
 
-vi.mock('../../src/config', async (importOriginal) => {
+vi.mock('../../src/shared/config', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...(actual as object),
@@ -29,15 +29,15 @@ vi.mock('../../src/config', async (importOriginal) => {
   }
 })
 
-vi.mock('../../src/services', () => ({
+vi.mock('../../src/shared/registry/version-checker', () => ({
   checkForUpdateAsync: mocks.checkForUpdateAsync,
 }))
 
-vi.mock('../../src/utils/git', () => ({
+vi.mock('../../src/shared/git', () => ({
   getGitWorkingTreeState: mocks.getGitWorkingTreeState,
 }))
 
-vi.mock('../../src/ui/utils/terminal-input', () => ({
+vi.mock('../../src/shared/terminal/terminal-input', () => ({
   TerminalInput: {
     promptForImmediateConfirmation: mocks.promptForImmediateConfirmation,
   },

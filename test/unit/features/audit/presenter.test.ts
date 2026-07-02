@@ -1,0 +1,67 @@
+import { describe, expect, it } from 'vitest'
+import {
+  createVulnerabilitySummary,
+  getVulnerabilityBadge,
+  getVulnerabilityLinkLabel,
+  mergeVulnerabilitySummary,
+  selectRepresentativeAdvisory,
+} from '../../../../src/features/audit/presenter'
+
+describe('vulnerability presenter', () => {
+  it('maps severity badges consistently', () => {
+    expect(
+      getVulnerabilityBadge({
+        count: 1,
+        highestSeverity: 'critical',
+        detailsUrl: 'https://github.com/advisories/GHSA-1',
+        advisories: [],
+      })
+    ).toContain('[CRIT]')
+    expect(
+      getVulnerabilityBadge({
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-1',
+        advisories: [],
+      })
+    ).toContain('[HIGH]')
+  })
+
+  it('labels advisory links as security links', () => {
+    expect(getVulnerabilityLinkLabel('https://github.com/advisories/GHSA-1')).toBe('Security:')
+    expect(getVulnerabilityLinkLabel('https://example.com/details')).toBe('Details:')
+  })
+
+  it('preserves existing detail links when merging summaries', () => {
+    const summary = createVulnerabilitySummary(
+      {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-existing',
+        advisories: [],
+      },
+      [
+        {
+          id: 1,
+          title: 'Advisory',
+          severity: 'high',
+          url: 'https://github.com/advisories/GHSA-new',
+        },
+      ],
+      'high'
+    )
+
+    const merged = mergeVulnerabilitySummary(
+      {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-existing',
+        advisories: [],
+      },
+      summary
+    )
+
+    expect(selectRepresentativeAdvisory(merged)?.id).toBe(1)
+    expect(merged.detailsUrl).toBe('https://github.com/advisories/GHSA-existing')
+  })
+})

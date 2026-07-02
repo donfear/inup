@@ -1,10 +1,6 @@
-import type { PackageInfo } from '../../types'
-import {
-  HEADLESS_SCHEMA_VERSION,
-  HeadlessReport,
-  HeadlessReportEntry,
-  HeadlessVulnerability,
-} from './types'
+import type { PackageInfo } from '../../shared/types'
+import { HEADLESS_SCHEMA_VERSION, HeadlessReport, HeadlessReportEntry } from './types'
+import { HeadlessVulnerability } from '../audit'
 
 type VulnerabilityMap = Map<PackageInfo, HeadlessVulnerability>
 
@@ -42,7 +38,10 @@ export function buildHeadlessReport(
 }
 
 /** Render the plain, line-based report (one line per package + a recap) as a single string. */
-export function renderPlainReport(outdated: PackageInfo[], vulnerabilities: VulnerabilityMap): string {
+export function renderPlainReport(
+  outdated: PackageInfo[],
+  vulnerabilities: VulnerabilityMap
+): string {
   if (outdated.length === 0) {
     return 'All dependencies are up to date — no upgrades needed.'
   }

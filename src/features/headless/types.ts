@@ -1,4 +1,5 @@
-import type { DependencyType, VulnerabilitySeverity } from '../../types'
+import type { DependencyType } from '../../shared/types'
+import type { HeadlessVulnerability } from '../audit'
 
 /** Version policy for `--apply`: how far to bump. `minor`/`patch` stay in-range; `latest` allows majors. */
 export type ApplyTarget = 'minor' | 'patch' | 'latest'
@@ -12,24 +13,6 @@ export interface HeadlessOptions {
 
 /** Bump when the `--json` shape changes in a way consumers (scripts, agents) must adapt to. */
 export const HEADLESS_SCHEMA_VERSION = 1
-
-export interface HeadlessAdvisory {
-  id: number
-  title: string
-  severity: VulnerabilitySeverity
-  url: string
-  vulnerableVersions: string // The advisory's affected semver range, verbatim from npm
-  fixedByRange: boolean // The in-range target (`range`) is no longer affected
-  fixedByLatest: boolean // The latest target (`latest`) is no longer affected
-}
-
-export interface HeadlessVulnerability {
-  count: number
-  highestSeverity: VulnerabilitySeverity
-  fixedByRange: boolean // Every advisory is cleared by upgrading within the current range
-  fixedByLatest: boolean // Every advisory is cleared by upgrading to latest
-  advisories: HeadlessAdvisory[]
-}
 
 export interface HeadlessReportEntry {
   name: string

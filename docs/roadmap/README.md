@@ -85,10 +85,10 @@ The previous version was well-organized but rested on assertions that the code c
 corrections, because they reshaped the priorities:
 
 - **The #1 headline task was already done.** "inup strips `^`/`~` and silently pins on every upgrade"
-  is **false**: `applyVersionPrefix()` ([ui/utils/version.ts:6-10](../../src/ui/utils/version.ts#L6-L10))
+  is **false**: `applyVersionPrefix()` ([ui/utils/version.ts:6-10](../../src/features/interactive/renderer/version-format.ts#L6-L10))
   preserves the operator before the write. Deleted the task and its framing; replaced it with a
   regression test that *locks* the behavior.
-- **A cited pillar doesn't exist.** `src/ui/state/scope-grouping.ts` was referenced as a shipped
+- **A cited pillar doesn't exist.** `src/features/interactive/state/scope-grouping.ts` was referenced as a shipped
   feature and a Constraint-Solver seed; it's **absent from `src/`** (only a stale `dist/` artifact).
   Reframed the workspace-grouping items as net-new, and removed the false "extends existing grouping"
   claim from the north star.

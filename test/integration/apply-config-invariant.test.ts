@@ -20,16 +20,16 @@ const mocks = vi.hoisted(() => ({
 }))
 
 // Registry: every package resolves to 2.0.0 latest with a 1.x line available in-range.
-vi.mock('../../src/services/npm-registry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/npm-registry')>()
+vi.mock('../../src/shared/registry/npm-registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/shared/registry/npm-registry')>()
   return {
     ...actual,
     fetchPackageVersions: mocks.fetchPackageVersions,
   }
 })
 
-vi.mock('../../src/services/vulnerability-checker', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/vulnerability-checker')>()
+vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/features/audit/vulnerability-checker')>()
   return {
     ...actual,
     fetchVulnerabilities: mocks.fetchVulnerabilities,
@@ -38,8 +38,8 @@ vi.mock('../../src/services/vulnerability-checker', async (importOriginal) => {
 
 // Make the package manager appear "not installed" so the upgrader writes package.json but skips
 // the real install (graceful path in PackageUpgrader.runInstall). Keeps the test hermetic.
-vi.mock('../../src/utils/exec', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/utils/exec')>()
+vi.mock('../../src/shared/exec', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/shared/exec')>()
   return {
     ...actual,
     executeCommand: mocks.executeCommand,

@@ -1,4 +1,4 @@
-import { NPM_REGISTRY_URL } from '../../../config/constants'
+import { NPM_REGISTRY_URL } from '../../../shared/config/constants'
 
 export class NpmRegistryClient {
   async fetchPackageManifest(
