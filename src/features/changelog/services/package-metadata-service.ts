@@ -1,7 +1,7 @@
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
 import { PackageManifestInput, PackageMetadata } from '../types/changelog.types'
-import { InflightMap } from '../../../services/http/inflight'
+import { InflightMap } from '../../../shared/http/inflight'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata | null>()

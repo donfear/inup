@@ -16,7 +16,7 @@ import {
   collectAllDependenciesAsync,
 } from '../shared/fs'
 import { findClosestMinorVersion } from '../shared/versions'
-import { fetchPackageVersions, PackageVersionData } from '../services'
+import { fetchPackageVersions, PackageVersionData } from '../shared/registry/npm-registry'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../shared/config'
 import { ConsoleUtils } from '../shared/terminal'
 import { debugLog } from '../shared/debug-logger'

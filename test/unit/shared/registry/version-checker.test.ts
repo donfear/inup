@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { checkForUpdate, checkForUpdateAsync } from '../../../src/services/version-checker'
-import { PACKAGE_NAME } from '../../../src/shared/config/constants'
+import { checkForUpdate, checkForUpdateAsync } from '../../../../src/shared/registry/version-checker'
+import { PACKAGE_NAME } from '../../../../src/shared/config/constants'
 
 describe('version-checker', () => {
   describe('checkForUpdate()', () => {

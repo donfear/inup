@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
   fetchReleaseNotesForVersion: vi.fn().mockResolvedValue(null),
 }))
 
-vi.mock('../../../../src/services', () => ({
+vi.mock('../../../../src/features/changelog', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/features/changelog')>()),
   changelogFetcher: {
     fetchPackageMetadata: mocks.fetchPackageMetadata,
     getVersionsBetween: mocks.getVersionsBetween,

@@ -5,24 +5,24 @@ import { promisify } from 'node:util'
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
-import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../shared/config'
-import { parseVersions } from '../shared/versions'
+import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../config'
+import { parseVersions } from '../versions'
 import {
   sleep,
   isRetryableStatus,
   isCongestionStatus,
   isTransientNetworkError,
   parseRetryAfterMs,
-} from './http/retry'
-import { InflightMap } from './http/inflight'
-import { ResizableSemaphore } from './http/resizable-semaphore'
-import { AdaptiveController, ControlTick } from './http/adaptive-controller'
-import { readEtag, writeEtag } from './http/etag-store'
+} from '../http/retry'
+import { InflightMap } from '../http/inflight'
+import { ResizableSemaphore } from '../http/resizable-semaphore'
+import { AdaptiveController, ControlTick } from '../http/adaptive-controller'
+import { readEtag, writeEtag } from '../http/etag-store'
 import {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
   RegistryBatchProgressItem,
-} from '../shared/types'
+} from '../types'
 
 export interface PackageVersionData {
   latestVersion: string

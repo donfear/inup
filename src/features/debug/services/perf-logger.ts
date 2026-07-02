@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
 import { basename, isAbsolute, join, resolve } from 'path'
-import { DEFAULT_TUNING } from '../../../services/http/adaptive-controller'
+import { DEFAULT_TUNING } from '../../../shared/http/adaptive-controller'
 import type { PerformanceSnapshot } from '../types/debug.types'
 
 /**

@@ -10,7 +10,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { PackageVersionData } from '../npm-registry'
+import type { PackageVersionData } from '../registry/npm-registry'
 
 /**
  * On-disk ETag store for conditional registry requests.

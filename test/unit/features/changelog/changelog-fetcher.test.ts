@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-import { ChangelogFetcher } from '../../../src/features/changelog'
+import { ChangelogFetcher } from '../../../../src/features/changelog'
 
 // Package manifests now come straight from the npm registry via global `fetch`
 // (jsDelivr was removed), so a pinned-version metadata fetch makes two `fetch`

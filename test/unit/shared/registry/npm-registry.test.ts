@@ -3,14 +3,14 @@ import { Pool } from 'undici'
 
 // Keep retry classification real, but make backoff instant so retry-exhaustion
 // paths don't actually sleep during tests.
-vi.mock('../../../src/services/http/retry', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../src/services/http/retry')>()),
+vi.mock('../../../../src/shared/http/retry', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/http/retry')>()),
   sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { clearPackageCache, fetchPackageVersions } from '../../../src/services/npm-registry'
-import type { ControlTick } from '../../../src/services/http/adaptive-controller'
-import { setEtagCacheEnabled, etagCacheDir } from '../../../src/services/http/etag-store'
+import { clearPackageCache, fetchPackageVersions } from '../../../../src/shared/registry/npm-registry'
+import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
+import { setEtagCacheEnabled, etagCacheDir } from '../../../../src/shared/http/etag-store'
 import { rmSync } from 'node:fs'
 
 type MockResponse = {

@@ -5,7 +5,7 @@ import {
   writeEtag,
   setEtagCacheEnabled,
   etagCacheDir,
-} from '../../../../src/services/http/etag-store'
+} from '../../../../src/shared/http/etag-store'
 
 const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
 

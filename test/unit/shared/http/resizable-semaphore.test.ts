@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ResizableSemaphore } from '../../../../src/services/http/resizable-semaphore'
+import { ResizableSemaphore } from '../../../../src/shared/http/resizable-semaphore'
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
 

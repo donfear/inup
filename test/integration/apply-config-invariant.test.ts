@@ -20,8 +20,8 @@ const mocks = vi.hoisted(() => ({
 }))
 
 // Registry: every package resolves to 2.0.0 latest with a 1.x line available in-range.
-vi.mock('../../src/services/npm-registry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/npm-registry')>()
+vi.mock('../../src/shared/registry/npm-registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/shared/registry/npm-registry')>()
   return {
     ...actual,
     fetchPackageVersions: mocks.fetchPackageVersions,

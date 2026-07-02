@@ -29,7 +29,7 @@ vi.mock('../../src/shared/config', async (importOriginal) => {
   }
 })
 
-vi.mock('../../src/services', () => ({
+vi.mock('../../src/shared/registry/version-checker', () => ({
   checkForUpdateAsync: mocks.checkForUpdateAsync,
 }))
 

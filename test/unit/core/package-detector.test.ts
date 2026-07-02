@@ -33,7 +33,7 @@ vi.mock('../../../src/shared/debug-logger', () => ({
   },
 }))
 
-vi.mock('../../../src/services', () => ({
+vi.mock('../../../src/shared/registry/npm-registry', () => ({
   fetchPackageVersions: mocks.fetchPackageVersions,
 }))
 

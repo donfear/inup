@@ -3,7 +3,7 @@ import {
   AdaptiveController,
   ControlTick,
   DEFAULT_TUNING,
-} from '../../../../src/services/http/adaptive-controller'
+} from '../../../../src/shared/http/adaptive-controller'
 
 // Small, explicit tuning so the math in assertions is obvious.
 const tuning = {
