@@ -159,17 +159,17 @@ Scanned **18** packages — **3** unique upgrade(s) (1 with a major available, 1
 
 ### ✅ Applied in this PR
 
-- `eslint` `^9.28.0` → `9.30.1` (devDependencies)
-- `undici` `^7.10.0` → `7.11.0` (dependencies)
-- `vite` `^6.3.0` → `6.3.5` (devDependencies)
+- `eslint` `^9.28.0` → `^9.30.1` (devDependencies)
+- `undici` `^7.10.0` → `^7.11.0` (dependencies)
+- `vite` `^6.3.0` → `^6.3.5` (devDependencies)
 
 ### Updates
 
 | Package | Current | → In-range | Latest | Type | Applied | Major? | Security |
 |---|---|---|---|---|---|---|---|
-| `eslint` | ^9.28.0 | 9.30.1 | 9.30.1 | devDependencies | ✅ | — | — |
-| `undici` | ^7.10.0 | 7.11.0 | 7.11.0 | dependencies | ✅ | — | 🟢 fixed by in-range bump |
-| `vite` | ^6.3.0 | 6.3.5 | 7.0.0 | devDependencies | ✅ | ⚠️ yes | — |
+| `eslint` | ^9.28.0 | ^9.30.1 | 9.30.1 | devDependencies | ✅ | — | — |
+| `undici` | ^7.10.0 | ^7.11.0 | 7.11.0 | dependencies | ✅ | — | 🟢 fixed by in-range bump |
+| `vite` | ^6.3.0 | ^6.3.5 | 7.0.0 | devDependencies | ✅ | ⚠️ yes | — |
 ```
 
 <details>

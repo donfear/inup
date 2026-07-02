@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// @ts-check
 /**
  * Render a human-readable PR body from an `inup --json` report.
  *
@@ -43,6 +42,15 @@ function escapeCell(value) {
   return String(value).replace(/\|/g, '\\|')
 }
 
+function stripVersionPrefix(version) {
+  return String(version).replace(/^[^\d]+/, '')
+}
+
+function applyVersionPrefix(current, target) {
+  const prefixMatch = String(current).match(/^([^\d]+)/)
+  return `${prefixMatch ? prefixMatch[1] : ''}${target}`
+}
+
 /**
  * Whether this entry's in-range bump actually changed the version this PR installs. The report has
  * no explicit "applied" flag, so we derive it: under minor/patch, `range` is the version satisfying
@@ -50,7 +58,7 @@ function escapeCell(value) {
  * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
  */
 function wasApplied(e) {
-  const cleanCurrent = String(e.current).replace(/^[\^~]/, '')
+  const cleanCurrent = stripVersionPrefix(e.current)
   return e.range !== cleanCurrent && e.range !== e.current
 }
 
@@ -105,7 +113,9 @@ function render(report) {
     lines.push('### ✅ Applied in this PR')
     lines.push('')
     for (const e of applied) {
-      lines.push(`- \`${e.name}\` \`${e.current}\` → \`${e.range}\` (${e.type})`)
+      lines.push(
+        `- \`${e.name}\` \`${e.current}\` → \`${applyVersionPrefix(e.current, e.range)}\` (${e.type})`
+      )
     }
     lines.push('')
   } else {
@@ -123,7 +133,7 @@ function render(report) {
     const security = e.vulnerability ? vulnVerdict(e.vulnerability) : '—'
     const appliedCell = wasApplied(e) ? '✅' : '—'
     lines.push(
-      `| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(e.range)} | ` +
+      `| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(applyVersionPrefix(e.current, e.range))} | ` +
         `${escapeCell(e.latest)} | ${escapeCell(e.type)} | ${appliedCell} | ${major} | ${security} |`
     )
   }
