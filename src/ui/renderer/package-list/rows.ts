@@ -9,7 +9,7 @@ import { getThemeColor } from '../../themes-colors'
 import {
   getVulnerabilityBadge,
   shouldDisplayVulnerabilityForDependency,
-} from '../../presenters/vulnerability'
+} from '../../../features/audit'
 import { getHealthBadge } from '../../presenters/health'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions

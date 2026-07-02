@@ -2,11 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ fetchVulnerabilities: vi.fn() }))
 
-vi.mock('../../../../src/services', () => ({
+vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
   fetchVulnerabilities: mocks.fetchVulnerabilities,
 }))
 
-import { auditVulnerabilities, upgradeClears } from '../../../../src/features/headless'
+import { auditVulnerabilities, upgradeClears } from '../../../../src/features/audit'
 
 describe('upgradeClears', () => {
   it('reports a fix when the target escapes the affected range', () => {

@@ -4,7 +4,7 @@ import { PackageUpgrader } from '../../core/upgrader'
 import { PackageManagerDetector } from '../../shared/package-manager'
 import { applyVersionPrefix } from '../../shared/versions'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
-import { auditVulnerabilities } from './vulnerability-audit'
+import { auditVulnerabilities } from '../audit'
 import { buildHeadlessReport, renderPlainReport } from './report'
 import { ApplyTarget, HeadlessOptions } from './types'
 import {

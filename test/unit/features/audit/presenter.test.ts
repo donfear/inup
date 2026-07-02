@@ -5,7 +5,7 @@ import {
   getVulnerabilityLinkLabel,
   mergeVulnerabilitySummary,
   selectRepresentativeAdvisory,
-} from '../../../src/ui/presenters/vulnerability'
+} from '../../../../src/features/audit/presenter'
 
 describe('vulnerability presenter', () => {
   it('maps severity badges consistently', () => {

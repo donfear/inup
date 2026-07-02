@@ -28,8 +28,8 @@ vi.mock('../../src/services/npm-registry', async (importOriginal) => {
   }
 })
 
-vi.mock('../../src/services/vulnerability-checker', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/services/vulnerability-checker')>()
+vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/features/audit/vulnerability-checker')>()
   return {
     ...actual,
     fetchVulnerabilities: mocks.fetchVulnerabilities,

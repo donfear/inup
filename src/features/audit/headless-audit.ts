@@ -1,6 +1,6 @@
 import * as semver from 'semver'
 import type { PackageInfo, VulnerabilitySeverity } from '../../shared/types'
-import { fetchVulnerabilities, VulnerabilityInfo } from '../../services'
+import { fetchVulnerabilities, VulnerabilityInfo } from './vulnerability-checker'
 import { toComparableVersion } from '../../shared/versions'
 import type { HeadlessAdvisory, HeadlessVulnerability } from './types'
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BackgroundAuditTracker } from '../../../src/services/background-audit'
+import { BackgroundAuditTracker } from '../../../../src/features/audit/background-audit'
 
 describe('BackgroundAuditTracker', () => {
   it('queues unique packages once and reserves them in batches', () => {

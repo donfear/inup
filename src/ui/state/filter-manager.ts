@@ -3,7 +3,7 @@ import {
   PersistedFilters,
   VulnerabilityDisplayOptions,
 } from '../../shared/types'
-import { shouldDisplayVulnerabilityForDependency } from '../presenters/vulnerability'
+import { shouldDisplayVulnerabilityForDependency } from '../../features/audit'
 
 export interface FilterState extends PersistedFilters {
   filterMode: boolean // Whether we're in filter/search input mode

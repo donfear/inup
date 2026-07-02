@@ -1,7 +1,8 @@
 import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../shared/types'
 import { StateManager } from '../state'
 import { InputAction } from '../input-handler'
-import { PackageInfoModalController, VulnerabilityAuditController } from '../controllers'
+import { PackageInfoModalController } from '../controllers'
+import { VulnerabilityAuditController } from '../../features/audit'
 import { themeNames, themes } from '../themes'
 
 const INTERACTIVE_ACTIONS = new Set([

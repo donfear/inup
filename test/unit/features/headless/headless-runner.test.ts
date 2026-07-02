@@ -40,7 +40,7 @@ vi.mock('../../../../src/shared/package-manager', () => ({
   },
 }))
 
-vi.mock('../../../../src/services', () => ({
+vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
   fetchVulnerabilities: mocks.fetchVulnerabilities,
 }))
 

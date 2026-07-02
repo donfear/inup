@@ -7,7 +7,7 @@ import {
   getVulnerabilityLinkLabel,
   getVulnerabilitySeverityColor,
   selectRepresentativeAdvisory,
-} from '../../presenters/vulnerability'
+} from '../../../features/audit'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../../utils'
 import { checkNodeEngineCompatibility } from '../../../shared/engines'
 import { buildReleaseNotesSections } from './release-notes'

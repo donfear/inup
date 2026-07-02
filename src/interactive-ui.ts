@@ -9,7 +9,8 @@ import {
   VulnerabilityDisplayOptions,
 } from './shared/types'
 import { UIRenderer, ConfirmationInputHandler, CursorUtils, TerminalInput } from './ui'
-import { PackageInfoModalController, VulnerabilityAuditController } from './ui/controllers'
+import { PackageInfoModalController } from './ui/controllers'
+import { VulnerabilityAuditController } from './features/audit'
 import {
   createSelectionStates,
   createPendingSelectionStates,
