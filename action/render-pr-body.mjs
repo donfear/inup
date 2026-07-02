@@ -10,24 +10,25 @@
  */
 
 import { readFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
 /** @typedef {import('../src/features/headless/types').HeadlessReport} HeadlessReport */
 
-function readInput() {
-  const path = process.argv[2]
-  const raw = path && path !== '-' ? readFileSync(path, 'utf-8') : readFileSync(0, 'utf-8')
+export function readInput(argv = process.argv, stdin = 0) {
+  const path = argv[2]
+  const raw = path && path !== '-' ? readFileSync(path, 'utf-8') : readFileSync(stdin, 'utf-8')
   return JSON.parse(raw)
 }
 
 /** A short verdict on whether upgrading clears every advisory on this package. */
-function vulnVerdict(vuln) {
+export function vulnVerdict(vuln) {
   if (!vuln) return ''
   if (vuln.fixedByRange) return `🟢 fixed by in-range bump`
   if (vuln.fixedByLatest) return `🟠 fixed only by major (latest)`
   return `🔴 not fixed by any upgrade`
 }
 
-function severityBadge(sev) {
+export function severityBadge(sev) {
   const map = {
     critical: '🟣 critical',
     high: '🔴 high',
@@ -38,15 +39,15 @@ function severityBadge(sev) {
   return map[sev] ?? sev
 }
 
-function escapeCell(value) {
+export function escapeCell(value) {
   return String(value).replace(/\|/g, '\\|')
 }
 
-function stripVersionPrefix(version) {
+export function stripVersionPrefix(version) {
   return String(version).replace(/^[^\d]+/, '')
 }
 
-function applyVersionPrefix(current, target) {
+export function applyVersionPrefix(current, target) {
   const prefixMatch = String(current).match(/^([^\d]+)/)
   return `${prefixMatch ? prefixMatch[1] : ''}${target}`
 }
@@ -57,7 +58,7 @@ function applyVersionPrefix(current, target) {
  * the current spec, and it's only a real change when it differs from the current spec's version
  * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
  */
-function wasApplied(e) {
+export function wasApplied(e) {
   const cleanCurrent = stripVersionPrefix(e.current)
   return e.range !== cleanCurrent && e.range !== e.current
 }
@@ -68,7 +69,7 @@ function wasApplied(e) {
  * dependency type. Reviewers only care about the unique change, so we key on name+range+latest and
  * keep the first entry — preserving its vulnerability/major flags, which are package-level facts.
  */
-function dedupe(entries) {
+export function dedupe(entries) {
   const seen = new Map()
   for (const e of entries) {
     const key = `${e.name}@${e.range}@${e.latest}`
@@ -77,7 +78,7 @@ function dedupe(entries) {
   return [...seen.values()]
 }
 
-function render(report) {
+export function render(report) {
   const { summary } = report
   // Collapse monorepo duplicates up front so every section below counts and lists unique upgrades.
   // summary.outdated counts per-location entries, so it overcounts in workspaces — derive the unique
@@ -184,11 +185,28 @@ function render(report) {
   return lines.join('\n')
 }
 
-try {
-  const report = readInput()
-  process.stdout.write(render(report) + '\n')
-} catch (err) {
-  process.stderr.write(`render-pr-body: ${err instanceof Error ? err.message : String(err)}\n`)
-  // Fall back to a minimal body so the Action can still open a PR.
-  process.stdout.write('## 📦 Dependency upgrades\n\nSee the diff for upgraded dependencies.\n')
+export function main({
+  argv = process.argv,
+  stdin = 0,
+  stdout = process.stdout,
+  stderr = process.stderr,
+} = {}) {
+  try {
+    const report = readInput(argv, stdin)
+    stdout.write(render(report) + '\n')
+  } catch (err) {
+    stderr.write(`render-pr-body: ${err}\n`)
+    // Fall back to a minimal body so the Action can still open a PR.
+    stdout.write('## 📦 Dependency upgrades\n\nSee the diff for upgraded dependencies.\n')
+  }
+}
+
+export function isDirectRun(argv = process.argv, moduleUrl = import.meta.url) {
+  const entry = argv[1]
+  return Boolean(entry && moduleUrl === pathToFileURL(entry).href)
+}
+
+/* v8 ignore next 3 -- process entrypoint; main() is tested directly */
+if (isDirectRun()) {
+  main()
 }
