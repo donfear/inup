@@ -10,10 +10,18 @@ const jsonResponse = (data: unknown, ok = true) => ({
 
 const abortError = () => new DOMException('aborted', 'AbortError')
 
+// Fixed registry targets so tests never depend on the machine's npm config.
+const publicRegistry = () => ({ origin: 'https://registry.npmjs.org', pathPrefix: '' })
+const privateRegistry = () => ({
+  origin: 'https://registry.example.com',
+  pathPrefix: '/npm',
+  authHeader: 'Bearer sekret',
+})
+
 let client: NpmRegistryClient
 
 beforeEach(() => {
-  client = new NpmRegistryClient()
+  client = new NpmRegistryClient(publicRegistry)
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
 })
@@ -32,6 +40,20 @@ describe('NpmRegistryClient.fetchPackageManifest', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/%40scope%2Fpkg/1.0.0'),
       expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  it('fetches from the npmrc-resolved registry with its authorization header', async () => {
+    client = new NpmRegistryClient(privateRegistry)
+    fetchMock.mockResolvedValue(jsonResponse({ name: '@scope/pkg', version: '1.0.0' }))
+
+    await client.fetchPackageManifest('@scope/pkg', '1.0.0')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://registry.example.com/npm/%40scope%2Fpkg/1.0.0',
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer sekret' }),
+      })
     )
   })
 
@@ -67,6 +89,29 @@ describe('NpmRegistryClient.fetchDownloadStats', () => {
     fetchMock.mockResolvedValue(jsonResponse({}))
 
     expect(await client.fetchDownloadStats('demo')).toEqual({ downloads: 0 })
+  })
+
+  it('skips the public downloads API for packages on other registries', async () => {
+    client = new NpmRegistryClient(privateRegistry)
+
+    expect(await client.fetchDownloadStats('@scope/private-pkg')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('never forwards registry credentials to the downloads API', async () => {
+    // A user logged into npmjs has an authHeader on the public target; the
+    // downloads endpoint is a different service and must stay anonymous.
+    client = new NpmRegistryClient(() => ({
+      origin: 'https://registry.npmjs.org',
+      pathPrefix: '',
+      authHeader: 'Bearer npm-token',
+    }))
+    fetchMock.mockResolvedValue(jsonResponse({ downloads: 1 }))
+
+    await client.fetchDownloadStats('demo')
+
+    const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
+    expect(headers['authorization']).toBeUndefined()
   })
 
   it('returns null for unknown packages and network errors', async () => {
