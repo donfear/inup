@@ -119,6 +119,15 @@ describe('writePerfLog', () => {
     expect(filePath).toMatch(/run-\d{8}-\d{6}-\d{3}-inup-perf-test-.*-fixed-headless\.json$/)
   })
 
+  it('slugs the filesystem root as "root"', () => {
+    vi.stubEnv('INUP_PERF', '1')
+    vi.stubEnv('INUP_PERF_DIR', tempDir)
+
+    const filePath = writePerfLog(makeConfig({ cwd: '/' }), makeSnapshot())
+
+    expect(filePath).toMatch(/-root-adaptive-interactive\.json$/)
+  })
+
   it('maintains a latest.json pointer and appends an ndjson index line per run', async () => {
     vi.stubEnv('INUP_PERF', '1')
 

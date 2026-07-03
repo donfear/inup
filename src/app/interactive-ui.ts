@@ -175,7 +175,8 @@ export class InteractiveUI {
     console.log(this.renderer.renderConfirmation(choices))
 
     return new Promise((resolve) => {
-      let cleanupConfirmationSession = () => {
+      // Replaced synchronously below before any keypress can invoke it.
+      let cleanupConfirmationSession = /* v8 ignore next */ () => {
         CursorUtils.show()
       }
 

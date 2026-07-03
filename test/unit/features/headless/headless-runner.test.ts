@@ -285,6 +285,57 @@ describe('HeadlessRunner.run', () => {
 
       expect(mocks.upgraderCtor).toHaveBeenCalledWith(expect.anything(), { quiet: false })
     })
+
+    it('defaults to target=minor when --apply is given without a target', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({ name: 'axios', upgradeType: 'range' })
+      logSpy.mockRestore()
+    })
+
+    it('skips packages whose target version is empty', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([
+        { ...OUTDATED, rangeVersion: '' },
+        UP_TO_DATE,
+      ])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+  })
+
+  it('stringifies non-Error failures before exiting', async () => {
+    mocks.getOutdatedPackages.mockRejectedValue('string failure')
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('string failure'))
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    exitSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('resolves the package manager from options and defaults cwd when applying', async () => {
+    // The package manager is only resolved when --apply hands work to the upgrader.
+    const { PackageManagerDetector } = await import('../../../../src/shared/package-manager')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ packageManager: 'pnpm' }).run({ apply: true })
+    expect(vi.mocked(PackageManagerDetector.getInfo)).toHaveBeenCalledWith('pnpm')
+
+    await new HeadlessRunner().run({ apply: true })
+    expect(vi.mocked(PackageManagerDetector.detect)).toHaveBeenCalledWith(process.cwd())
+    logSpy.mockRestore()
   })
   it('writes a perf log when INUP_PERF is enabled', async () => {
     const { mkdtempSync, readdirSync, rmSync } = await import('fs')

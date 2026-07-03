@@ -75,6 +75,15 @@ describe('renderPlainReport', () => {
     expect(text).toContain('1 package(s) outdated across 1 file(s).')
   })
 
+  it('omits the major marker for in-range-only updates', () => {
+    const pkg = makePackageInfo({ hasMajorUpdate: false })
+
+    const text = renderPlainReport([pkg], new Map())
+
+    expect(text).toContain('test-pkg')
+    expect(text).not.toContain('(major)')
+  })
+
   it('tags vulnerabilities with the cheapest fixing action', () => {
     const byRange = makePackageInfo({ name: 'range-fix' })
     const byLatest = makePackageInfo({ name: 'latest-fix' })
