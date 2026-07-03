@@ -239,8 +239,6 @@ export class PackageUpgrader {
       const rangeChoices = choices.filter((c) => c.upgradeType === 'range')
       const latestChoices = choices.filter((c) => c.upgradeType === 'latest')
 
-      let modified = false
-
       // Upgrade range versions by directly modifying package.json
       if (rangeChoices.length > 0) {
         if (!packageJson[type]) {
@@ -249,7 +247,6 @@ export class PackageUpgrader {
 
         rangeChoices.forEach((choice) => {
           packageJson[type]![choice.name] = choice.targetVersion
-          modified = true
         })
       }
 
@@ -261,23 +258,16 @@ export class PackageUpgrader {
 
         latestChoices.forEach((choice) => {
           packageJson[type]![choice.name] = choice.targetVersion
-          modified = true
         })
       }
 
       // Write back the modified package.json, preserving the original indentation and
       // trailing-newline style. Skip the write entirely when nothing actually changed.
-      // (`modified` is always true today — groups are never empty — so the real
-      // skip-write protection is the rawContent comparison below.)
-      /* v8 ignore start */
-      if (modified) {
-        /* v8 ignore stop */
-        const format = detectJsonFormat(rawContent)
-        const nextContent =
-          JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
-        if (nextContent !== rawContent) {
-          writeFileSync(packageJsonPath, nextContent)
-        }
+      const format = detectJsonFormat(rawContent)
+      const nextContent =
+        JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
+      if (nextContent !== rawContent) {
+        writeFileSync(packageJsonPath, nextContent)
       }
 
       if (spinner) spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })

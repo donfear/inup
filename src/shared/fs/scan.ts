@@ -323,12 +323,8 @@ export async function findAllPackageJsonFilesAsync(
 
   function pump(): void {
     while (activeTasks < concurrency && pending.length > 0 && !failedError) {
-      const next = pending.shift()
-      // pending.length > 0 was just checked and nothing runs in between, so
-      // shift() cannot come back empty; guard kept for type narrowing.
-      /* v8 ignore start */
-      if (!next) break
-      /* v8 ignore stop */
+      // Non-null: pending.length > 0 was just checked and nothing runs in between.
+      const next = pending.shift()!
 
       activeTasks++
       void processDirectory(next.dir, next.depth)
