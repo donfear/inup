@@ -2,3 +2,4 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - prettier@3.9.4
+  - undici@8.6.0
