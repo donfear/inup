@@ -78,7 +78,9 @@ describe('buildUsedBySections', () => {
       packageJsonPaths: ['/repo/a/package.json', '/repo/b/package.json'],
     })
 
-    const text = plain(buildUsedBySections(state, MODAL_WIDTH))
+    // Paths render via path.relative, so normalize Windows backslashes
+    // before asserting.
+    const text = plain(buildUsedBySections(state, MODAL_WIDTH)).replaceAll('\\', '/')
 
     expect(text).toContain('2 package.json files depend on test-pkg')
     expect(text).toContain('Type: dependencies')
