@@ -184,7 +184,10 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
         g: parseInt(result[2], 16),
         b: parseInt(result[3], 16),
       }
-    : { r: 0, g: 0, b: 0 }
+    : // Unreachable with the theme definitions in this file (all valid hex);
+      // black is the safe answer if a malformed value ever slips in.
+      /* v8 ignore next */
+      { r: 0, g: 0, b: 0 }
 }
 
 /**

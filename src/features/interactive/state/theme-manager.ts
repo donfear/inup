@@ -93,7 +93,11 @@ export class ThemeManager {
 
 // Helper function for renderers to get current theme colors
 export function getThemeColors() {
+  // Every setter validates against themeNames, so the fallback cannot trigger
+  // today; kept in case a future writer skips validation.
+  /* v8 ignore start */
   return themes[globalCurrentTheme]?.colors || themes[defaultTheme].colors
+  /* v8 ignore stop */
 }
 
 // Helper function to get current theme name

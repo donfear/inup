@@ -41,6 +41,25 @@ describe('pnpm-catalogs', () => {
     return path
   }
 
+  describe('load edge cases', () => {
+    it('returns null for an empty workspace file', () => {
+      writeWorkspaceFile('')
+
+      expect(PnpmCatalogs.load(testDir)).toBeNull()
+    })
+
+    it('drops catalogs whose entries are all non-strings', () => {
+      writeWorkspaceFile('catalog:\n  react: 18\ncatalogs:\n  next:\n    react: ^19.0.0\n')
+
+      const catalogs = PnpmCatalogs.load(testDir)
+      expect(catalogs?.resolve('react', 'catalog:')).toBeNull()
+      expect(catalogs?.resolve('react', 'catalog:next')).toEqual({
+        catalog: 'next',
+        range: '^19.0.0',
+      })
+    })
+  })
+
   describe('isCatalogReference', () => {
     it('matches the catalog protocol only', () => {
       expect(isCatalogReference('catalog:')).toBe(true)

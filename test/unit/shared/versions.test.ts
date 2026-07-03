@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  applyVersionPrefix,
   extractMajorVersion,
   isVersionOutdated,
   getOptimizedRangeVersion,
@@ -221,5 +222,36 @@ describe('invalid version tolerance', () => {
 
   it('findClosestMinorVersion skips invalid versions in the patch fallback pass', () => {
     expect(findClosestMinorVersion('1.0.0', ['garbage', '1.0.5'])).toBe('1.0.5')
+  })
+
+  it('parseVersions handles a packument without a versions field', () => {
+    const result = parseVersions('{}')
+    expect(result.latestVersion).toBe('unknown')
+    expect(result.allVersions).toEqual([])
+  })
+
+  it('getOptimizedRangeVersion treats an invalid range as unsatisfiable', () => {
+    expect(getOptimizedRangeVersion('pkg', 'not-a-range!!!', ['1.0.0', '1.1.0'], '9.9.9')).toBe(
+      '9.9.9'
+    )
+  })
+
+  it('getOptimizedRangeVersion falls back to latest when the version list is broken', () => {
+    expect(getOptimizedRangeVersion('pkg', '^1.0.0', null as unknown as string[], '9.9.9')).toBe(
+      '9.9.9'
+    )
+  })
+
+  it('findClosestMinorVersion keeps the highest patch when candidates arrive out of order', () => {
+    expect(findClosestMinorVersion('1.0.0', ['1.0.5', '1.0.3'])).toBe('1.0.5')
+  })
+
+  it('findClosestMinorVersion returns null when the version list is broken', () => {
+    expect(findClosestMinorVersion('1.0.0', null as unknown as string[])).toBeNull()
+  })
+
+  it('applyVersionPrefix leaves an unprefixed specifier bare', () => {
+    expect(applyVersionPrefix('1.2.3', '2.0.0')).toBe('2.0.0')
+    expect(applyVersionPrefix('^1.2.3', '2.0.0')).toBe('^2.0.0')
   })
 })

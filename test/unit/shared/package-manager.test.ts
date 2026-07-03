@@ -27,6 +27,17 @@ describe('PackageManagerDetector', () => {
       expect(result.name).toBe('npm')
     })
 
+    it('ignores an unrecognized packageManager field and falls back to the lockfile', () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({ packageManager: 'weird@1.0.0' })
+      )
+      writeFileSync(join(testDir, 'yarn.lock'), '')
+
+      const result = PackageManagerDetector.detect(testDir)
+      expect(result.name).toBe('yarn')
+    })
+
     it('should detect pnpm from packageManager field', () => {
       writeFileSync(
         join(testDir, 'package.json'),

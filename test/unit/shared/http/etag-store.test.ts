@@ -79,6 +79,24 @@ describe('etag-store', () => {
     expect(readEtag('/pkg')?.etag).toBe('etag-after-wipe')
   })
 
+  it('sweeps entries older than the max age on first use', async () => {
+    const { readdirSync, utimesSync } = await import('node:fs')
+    // Populate the cache, then age one entry far past the cutoff.
+    writeEtag('/stale-pkg', 'W/"old"', data)
+    writeEtag('/fresh-pkg', 'W/"new"', data)
+    const dir = etagCacheDir()
+    const files = readdirSync(dir).map((name) => join(dir, name))
+    const ancient = new Date(2000, 0, 1)
+    utimesSync(files[0], ancient, ancient)
+
+    // Re-pointing the root resets the once-per-process sweep latch.
+    setEtagCacheRoot(testRoot)
+    readEtag('/anything')
+
+    expect(existsSync(files[0])).toBe(false)
+    expect(existsSync(files[1])).toBe(true)
+  })
+
   it('sweeps orphaned schema generations from the persistent root', () => {
     // The cache root is persistent now (env-paths, not tmpdir), so old
     // generations must be reclaimed by the store itself after a SCHEMA bump.
