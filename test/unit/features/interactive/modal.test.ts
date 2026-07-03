@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../../src/features/interactive/modal'
 import { PackageSelectionState } from '../../../../src/shared/types'
 import { getVisualLength, stripAnsi } from '../../../../src/shared/terminal'
+import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState: PackageSelectionState = {
   name: 'next',
@@ -344,22 +345,10 @@ describe('modal renderer', () => {
   })
 })
 
-// A state with no optional metadata: only the required header + meta sections
-// render, which lets the scroll-geometry tests below control every row.
-const minimalState: PackageSelectionState = {
-  name: 'tiny',
-  packageJsonPath: '/repo/package.json',
-  packageJsonPaths: ['/repo/package.json'],
-  currentVersionSpecifier: '^1.0.0',
-  currentVersion: '1.0.0',
-  rangeVersion: '1.1.0',
-  latestVersion: '2.0.0',
-  selectedOption: 'range',
-  loadState: 'ready',
-  hasRangeUpdate: true,
-  hasMajorUpdate: true,
-  type: 'dependencies',
-}
+// A state with no optional metadata (the factory adds none): only the required
+// header + meta sections render, which lets the scroll-geometry tests below
+// control every row.
+const minimalState = makeSelectionState({ name: 'tiny', selectedOption: 'range' })
 
 describe('modal renderer edge paths', () => {
   it('shows N/A downloads and an uncounted Used-by tab for an unused package', () => {
