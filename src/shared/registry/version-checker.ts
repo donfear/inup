@@ -60,27 +60,14 @@ export async function checkForUpdate(
 }
 
 /**
- * Check for updates in the background without blocking
- * Resolves immediately, result available via promise
+ * Check for updates in the background without blocking.
+ *
+ * `checkForUpdate` self-caps at UPDATE_CHECK_TIMEOUT_MS and never rejects
+ * (every failure resolves to null), so no extra timeout race is needed here.
  */
 export function checkForUpdateAsync(
   packageName: string,
   currentVersion: string
 ): Promise<VersionCheckResult | null> {
-  return new Promise((resolve) => {
-    // Set a timeout to prevent hanging
-    const timeout = setTimeout(() => {
-      resolve(null)
-    }, 5000)
-
-    checkForUpdate(packageName, currentVersion)
-      .then((result) => {
-        clearTimeout(timeout)
-        resolve(result)
-      })
-      .catch(() => {
-        clearTimeout(timeout)
-        resolve(null)
-      })
-  })
+  return checkForUpdate(packageName, currentVersion)
 }

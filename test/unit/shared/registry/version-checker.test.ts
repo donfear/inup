@@ -92,6 +92,30 @@ describe('checkForUpdate', () => {
 
     expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
   })
+
+  it('fails silently when the request times out', async () => {
+    // AbortSignal.timeout rejects the fetch with a TimeoutError DOMException.
+    fetchMock.mockRejectedValue(new DOMException('The operation timed out', 'TimeoutError'))
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently on malformed JSON bodies', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON')
+      },
+    })
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently when the manifest version is not a string', async () => {
+    fetchMock.mockResolvedValue(versionResponse(42))
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
 })
 
 describe('checkForUpdateAsync', () => {

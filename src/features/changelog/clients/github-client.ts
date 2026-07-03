@@ -22,6 +22,22 @@ function githubApiHeaders(): Record<string, string> {
   return headers
 }
 
+/**
+ * GET an api.github.com URL, retrying anonymously when the ambient token is
+ * rejected (401). A stale/revoked GITHUB_TOKEN sitting in the environment must
+ * never make release notes *worse* than having no token at all — public-repo
+ * requests that used to succeed anonymously keep succeeding.
+ */
+async function fetchGitHubApi(url: string, signal: AbortSignal): Promise<Response> {
+  const headers = githubApiHeaders()
+  const response = await fetch(url, { method: 'GET', headers, signal })
+  if (response.status === 401 && headers['authorization']) {
+    const { authorization: _rejected, ...anonymousHeaders } = headers
+    return fetch(url, { method: 'GET', headers: anonymousHeaders, signal })
+  }
+  return response
+}
+
 export class GitHubClient {
   private releasesCache = new Map<string, GitHubRelease[] | null>()
   private rawChangelogCache = new Map<string, string | null>()
@@ -40,13 +56,9 @@ export class GitHubClient {
     if (!repo) return null
 
     try {
-      const response = await fetch(
+      const response = await fetchGitHubApi(
         `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases/tags/${tag}`,
-        {
-          method: 'GET',
-          headers: githubApiHeaders(),
-          signal,
-        }
+        signal
       )
 
       if (!response.ok) return null
@@ -104,13 +116,9 @@ export class GitHubClient {
 
     for (let page = 1; page <= GITHUB_RELEASES_PAGE_LIMIT; page += 1) {
       try {
-        const response = await fetch(
+        const response = await fetchGitHubApi(
           `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases?per_page=100&page=${page}`,
-          {
-            method: 'GET',
-            headers: githubApiHeaders(),
-            signal,
-          }
+          signal
         )
 
         if (!response.ok) break

@@ -13,8 +13,10 @@ import {
   fetchPackageVersions,
 } from '../../../../src/shared/registry/npm-registry'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, etagCacheDir } from '../../../../src/shared/http/etag-store'
-import { rmSync } from 'node:fs'
+import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 type MockResponse = {
   statusCode: number
@@ -330,11 +332,20 @@ describe('npm-registry', () => {
   })
 
   describe('ETag conditional caching', () => {
+    // Isolated root per test: never wipe (or race parallel test files on) the
+    // user's real persistent cache directory.
+    let etagTestRoot: string
+
     beforeEach(() => {
+      etagTestRoot = mkdtempSync(join(tmpdir(), 'inup-npm-registry-etag-'))
+      setEtagCacheRoot(etagTestRoot)
       setEtagCacheEnabled(true)
-      rmSync(etagCacheDir(), { recursive: true, force: true })
     })
-    afterEach(() => setEtagCacheEnabled(false))
+    afterEach(() => {
+      setEtagCacheRoot(null)
+      setEtagCacheEnabled(false)
+      rmSync(etagTestRoot, { recursive: true, force: true })
+    })
 
     it('stores the ETag on a 200 and reuses data on a subsequent 304', async () => {
       // First run: 200 with an ETag and a body → stores {etag, data}.

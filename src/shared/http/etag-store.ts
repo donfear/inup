@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -44,26 +45,50 @@ const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
 
 let enabled = true
 let sweptThisProcess = false
+let cacheRootOverride: string | null = null
+let resolvedSchemaDir: string | null = null
 
 /** Allow tests/callers to toggle the store without touching call sites. */
 export function setEtagCacheEnabled(value: boolean): void {
   enabled = value
 }
 
-/** Resolve (and lazily create) the cache directory, sweeping stale entries once. */
-function cacheDir(): string {
+/**
+ * Test hook: point the store at an isolated root instead of the user's real
+ * cache directory (null restores the default). Tests must never wipe or race
+ * on the persistent per-user cache.
+ */
+export function setEtagCacheRoot(root: string | null): void {
+  cacheRootOverride = root
+  resolvedSchemaDir = null
+  sweptThisProcess = false
+}
+
+/** The root holding one subdirectory per schema generation. */
+function cacheRoot(): string {
   // Version data is not project-specific, so it lives in the per-user cache
   // directory (env-paths, like the config dir), shared across every project the
   // user scans. It used to live in the OS temp dir, but macOS clears that on
   // reboot and Linux distros sweep it periodically — throwing the cache away
   // exactly when it is most useful.
-  const dir = join(envPaths(PACKAGE_NAME).cache, 'etag-cache', SCHEMA)
+  return cacheRootOverride ?? join(envPaths(PACKAGE_NAME).cache, 'etag-cache')
+}
+
+/** Resolve (and lazily create) the cache directory, sweeping stale entries once. */
+function cacheDir(): string {
+  if (resolvedSchemaDir === null) {
+    // The location is process-invariant; derive it once instead of running
+    // env-paths on every cache read/write of the registry hot path.
+    resolvedSchemaDir = join(cacheRoot(), SCHEMA)
+  }
+  const dir = resolvedSchemaDir
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
   if (!sweptThisProcess) {
     sweptThisProcess = true
     sweepStale(dir)
+    sweepOldGenerations(cacheRoot())
   }
   return dir
 }
@@ -78,6 +103,26 @@ function sweepStale(dir: string): void {
         if (statSync(file).mtimeMs < cutoff) unlinkSync(file)
       } catch {
         /* skip files we can't stat/remove */
+      }
+    }
+  } catch {
+    /* sweeping is optional; never fail a run over it */
+  }
+}
+
+/**
+ * Remove schema generations other than the active one. The cache directory is
+ * persistent (unlike the old tmpdir location, which the OS reclaimed), so after
+ * a SCHEMA bump the previous generation would otherwise live on disk forever.
+ */
+function sweepOldGenerations(root: string): void {
+  try {
+    for (const name of readdirSync(root)) {
+      if (name === SCHEMA) continue
+      try {
+        rmSync(join(root, name), { recursive: true, force: true })
+      } catch {
+        /* skip generations we can't remove */
       }
     }
   } catch {
