@@ -143,5 +143,48 @@ describe('pnpm-catalogs', () => {
       expect(raw).not.toContain('ghost')
       expect(raw).toContain('react: ^18.2.0')
     })
+
+    it('preserves quote style on updated and untouched entries', () => {
+      const path = writeWorkspaceFile('catalog:\n  react: "^18.2.0"\n  lodash: "^4.17.0"\n')
+
+      writeCatalogUpdates(path, [{ catalog: 'default', name: 'react', range: '^18.3.1' }])
+
+      const raw = readFileSync(path, 'utf8')
+      expect(raw).toContain('react: "^18.3.1"')
+      expect(raw).toContain('lodash: "^4.17.0"')
+    })
+
+    it('applies the surviving updates even when some entries are missing', () => {
+      const path = writeWorkspaceFile(FIXTURE)
+
+      writeCatalogUpdates(path, [
+        { catalog: 'default', name: 'ghost', range: '^1.0.0' },
+        { catalog: 'default', name: 'react', range: '^18.3.1' },
+      ])
+
+      const raw = readFileSync(path, 'utf8')
+      expect(raw).not.toContain('ghost')
+      expect(raw).toContain('react: ^18.3.1')
+    })
+  })
+
+  describe('malformed catalog values', () => {
+    it('ignores non-string and empty values without crashing', () => {
+      // YAML parses an unquoted `18` as a number and a bare key as null;
+      // neither is a usable range, and neither may break the load.
+      writeWorkspaceFile('catalog:\n  react: 18\n  lodash:\n  zod: ^3.0.0\n')
+
+      const catalogs = PnpmCatalogs.load(testDir)!
+
+      expect(catalogs.resolve('zod', 'catalog:')).toEqual({ catalog: 'default', range: '^3.0.0' })
+      expect(catalogs.resolve('react', 'catalog:')).toBeNull()
+      expect(catalogs.resolve('lodash', 'catalog:')).toBeNull()
+    })
+
+    it('returns null for structurally garbage catalog shapes', () => {
+      writeWorkspaceFile('catalog:\n  - not\n  - a-map\ncatalogs: nope\n')
+
+      expect(PnpmCatalogs.load(testDir)).toBeNull()
+    })
   })
 })

@@ -256,4 +256,101 @@ describe('PackageDetector streaming', () => {
     })
     expect(packages.some((pkg) => pkg.name === 'ghost')).toBe(false)
   })
+
+  it('skips catalog entries whose resolved range is a workspace reference', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: () => ({ catalog: 'default', range: 'workspace:*' }),
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'internal-lib',
+        version: 'catalog:',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/a/package.json',
+      },
+    ])
+    mocks.fetchPackageVersions.mockImplementation(async (packageNames: string[]) => {
+      expect(packageNames).toEqual([])
+      return new Map()
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+
+    expect(await detector.getOutdatedPackages()).toEqual([])
+  })
+
+  it('keeps one entry per catalog even when referenced under different dep types', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: (_name: string, spec: string) =>
+        spec === 'catalog:' ? { catalog: 'default', range: '^1.0.0' } : null,
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'shared-lib',
+        version: 'catalog:',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/a/package.json',
+      },
+      {
+        name: 'shared-lib',
+        version: 'catalog:',
+        type: 'devDependencies',
+        packageJsonPath: '/repo/packages/b/package.json',
+      },
+    ])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        expect(packageNames).toEqual(['shared-lib'])
+        const data = { latestVersion: '1.2.0', allVersions: ['1.2.0', '1.0.0'] }
+        options.onBatchReady([
+          { packageName: 'shared-lib', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
+        ])
+        return new Map([['shared-lib', data]])
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    // The catalog entry is written once to pnpm-workspace.yaml no matter how
+    // many packages reference it; the first referencing type wins for display.
+    expect(packages).toHaveLength(1)
+    expect(packages[0]).toMatchObject({
+      name: 'shared-lib',
+      type: 'dependencies',
+      catalog: 'default',
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+    })
+  })
+
+  it('applies the ignore list to catalog entries', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string) => name === 'react')
+    try {
+      mocks.loadPnpmCatalogs.mockReturnValue({
+        path: '/repo/pnpm-workspace.yaml',
+        resolve: () => ({ catalog: 'default', range: '^18.0.0' }),
+      })
+      mocks.collectAllDependenciesAsync.mockResolvedValue([
+        {
+          name: 'react',
+          version: 'catalog:',
+          type: 'dependencies',
+          packageJsonPath: '/repo/packages/a/package.json',
+        },
+      ])
+      mocks.fetchPackageVersions.mockImplementation(async (packageNames: string[]) => {
+        expect(packageNames).toEqual([])
+        return new Map()
+      })
+
+      const detector = new PackageDetector({ cwd: '/repo', ignorePackages: ['react'] })
+
+      expect(await detector.getOutdatedPackages()).toEqual([])
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
 })

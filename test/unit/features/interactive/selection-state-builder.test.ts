@@ -4,6 +4,7 @@ import {
   createSelectionStates,
   createUpgradeChoices,
   deduplicatePackages,
+  selectionKey,
 } from '../../../../src/features/interactive/session/selection-state-builder'
 import { PackageSelectionState } from '../../../../src/shared/types'
 import { makePackageInfo } from '../../../fixtures/package-info-factory'
@@ -26,6 +27,24 @@ function makeState(overrides: Partial<PackageSelectionState> = {}): PackageSelec
     ...overrides,
   }
 }
+
+describe('selectionKey', () => {
+  it('keeps the legacy format for regular deps and namespaces catalog entries', () => {
+    // The non-catalog format must stay stable: previousSelections round-trips
+    // through it between re-scans (see upgrade-runner).
+    expect(selectionKey('react', '^18.0.0', 'dependencies')).toBe('react@^18.0.0@dependencies')
+    expect(selectionKey('react', '^18.0.0', 'dependencies', 'default')).toBe(
+      'react@^18.0.0@dependencies@catalog:default'
+    )
+  })
+
+  it('separates identical entries from different catalogs', () => {
+    const fromDefault = selectionKey('react', '^18.0.0', 'dependencies', 'default')
+    const fromNamed = selectionKey('react', '^18.0.0', 'dependencies', 'react18')
+
+    expect(fromDefault).not.toBe(fromNamed)
+  })
+})
 
 describe('createUpgradeChoices', () => {
   it('preserves the range prefix by default', () => {

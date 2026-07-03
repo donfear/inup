@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
@@ -453,6 +453,64 @@ catalogs:
     )
 
     expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).optionalDependencies?.react).toBe('^18.3.0')
+    logSpy.mockRestore()
+  })
+
+  it('reports and rethrows when pnpm-workspace.yaml cannot be read for a catalog write', async () => {
+    // A directory named pnpm-workspace.yaml passes the existsSync guard but
+    // fails the read — the failure must surface, not be swallowed.
+    const yamlPath = join(testDir, 'pnpm-workspace.yaml')
+    mkdirSync(yamlPath)
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      upgrader.upgradePackages(
+        [
+          {
+            name: 'react',
+            packageJsonPath: yamlPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^18.3.1',
+            currentVersionSpecifier: '^18.2.0',
+            catalog: 'default',
+          },
+        ],
+        []
+      )
+    ).rejects.toThrow()
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Error:'))
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('skips catalog writes cleanly when pnpm-workspace.yaml has vanished', async () => {
+    const missingYaml = join(testDir, 'gone', 'pnpm-workspace.yaml')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const messages: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((m: string) => messages.push(m))
+
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'react',
+          packageJsonPath: missingYaml,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^18.3.1',
+          currentVersionSpecifier: '^18.2.0',
+          catalog: 'default',
+        },
+      ],
+      []
+    )
+
+    expect(messages.some((m) => m.includes('file not found'))).toBe(true)
     logSpy.mockRestore()
   })
 
