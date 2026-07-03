@@ -328,6 +328,9 @@ export async function runInteractiveSession(
 
     // Safety net: restore terminal if the process exits without going through finalizeSelection.
     // Only synchronous writes work in an 'exit' handler, but that's all we need here.
+    // Coverage: the body only runs during a real process 'exit' event, which
+    // cannot be fired safely inside the test process.
+    /* v8 ignore start */
     const emergencyCleanup = () => {
       if (ownsAlternateScreen) {
         process.stdout.write(RAW_EXIT_ALT_SCREEN)
@@ -337,6 +340,7 @@ export async function runInteractiveSession(
         process.stdin.setRawMode(false)
       }
     }
+    /* v8 ignore stop */
     process.on('exit', emergencyCleanup)
 
     let cleanupInteractiveSession = () => {
