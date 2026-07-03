@@ -5,7 +5,8 @@ import { promisify } from 'node:util'
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
-import { NPM_REGISTRY_URL, POOL_CONNECTIONS } from '../config'
+import { POOL_CONNECTIONS } from '../config'
+import { registryTargetFor, RegistryTarget } from './registry-config'
 import { parseVersions } from '../versions'
 import {
   sleep,
@@ -33,9 +34,10 @@ export interface PackageVersionData {
 
 const inFlightLookups = new InflightMap<PackageVersionData>()
 
-const registryOrigin = new URL(NPM_REGISTRY_URL).origin
-const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
-
+// One pool per registry origin: scoped packages may resolve to different
+// registries (`@scope:registry` in .npmrc), and each origin keeps its own
+// keep-alive connections. Most runs still touch a single origin.
+//
 // Connection count is kept == the adaptive controller's ceiling (POOL_CONNECTIONS)
 // so the controller is never silently throttled below its chosen limit. Idle
 // keep-alive connections are cheap.
@@ -46,16 +48,25 @@ const registryPathPrefix = new URL(NPM_REGISTRY_URL).pathname.replace(/\/$/, '')
 // controller. With a headers timeout, a stall surfaces as a transient error the
 // controller can react to (and retry handles). `bodyTimeout` stays 0 — large
 // packuments legitimately stream slowly.
-const registryPool = new Pool(registryOrigin, {
-  connections: POOL_CONNECTIONS,
-  pipelining: 1,
-  keepAliveTimeout: 30_000,
-  keepAliveMaxTimeout: 600_000,
-  headersTimeout: 30_000,
-  bodyTimeout: 0,
-  connectTimeout: 15_000,
-  allowH2: false,
-})
+const poolByOrigin = new Map<string, Pool>()
+
+function poolFor(origin: string): Pool {
+  let pool = poolByOrigin.get(origin)
+  if (!pool) {
+    pool = new Pool(origin, {
+      connections: POOL_CONNECTIONS,
+      pipelining: 1,
+      keepAliveTimeout: 30_000,
+      keepAliveMaxTimeout: 600_000,
+      headersTimeout: 30_000,
+      bodyTimeout: 0,
+      connectTimeout: 15_000,
+      allowH2: false,
+    })
+    poolByOrigin.set(origin, pool)
+  }
+  return pool
+}
 
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
@@ -74,13 +85,13 @@ async function getFreshPackageData(
   return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName, onAttempt))
 }
 
-const encodeRegistryPath = (packageName: string): string => {
+const encodeRegistryPath = (packageName: string, pathPrefix: string): string => {
   const encodedName = packageName.startsWith('@')
     ? `@${encodeURIComponent(packageName.slice(1).split('/')[0])}/${encodeURIComponent(
         packageName.slice(packageName.indexOf('/') + 1)
       )}`
     : encodeURIComponent(packageName)
-  return `${registryPathPrefix}/${encodedName}`
+  return `${pathPrefix}/${encodedName}`
 }
 
 type RegistryAttemptOutcome =
@@ -98,22 +109,30 @@ type RegistryAttemptOutcome =
  */
 export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 
-async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcome> {
+async function attemptRegistryFetch(
+  target: RegistryTarget,
+  path: string
+): Promise<RegistryAttemptOutcome> {
   const startedAt = Date.now()
   // Conditional request: if we have a stored ETag for this packument, ask the
   // registry to validate it. Unchanged → 304 (no body) and we reuse stored data.
   // This still hits the registry every run, so data is never served stale.
-  const cached = readEtag(path)
+  // Keys are origin-qualified so two registries can never collide on a path.
+  const cacheKey = `${target.origin}${path}`
+  const cached = readEtag(cacheKey)
   try {
     const requestHeaders: Record<string, string> = {
       accept: 'application/vnd.npm.install-v1+json',
       'accept-encoding': 'gzip, deflate, br',
     }
+    if (target.authHeader) {
+      requestHeaders['authorization'] = target.authHeader
+    }
     if (cached) {
       requestHeaders['if-none-match'] = cached.etag
     }
 
-    const { statusCode, headers, body } = await registryPool.request({
+    const { statusCode, headers, body } = await poolFor(target.origin).request({
       path,
       method: 'GET',
       headers: requestHeaders,
@@ -163,7 +182,7 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
     const etagHeader = headers['etag']
     const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader
     if (etag) {
-      writeEtag(path, etag.toString(), data)
+      writeEtag(cacheKey, etag.toString(), data)
     }
 
     return {
@@ -182,12 +201,13 @@ async function attemptRegistryFetch(path: string): Promise<RegistryAttemptOutcom
 }
 
 async function fetchFromRegistryWithRetries(
+  target: RegistryTarget,
   path: string,
   onAttempt?: AttemptObserver
 ): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
-    const outcome = await attemptRegistryFetch(path)
+    const outcome = await attemptRegistryFetch(target, path)
     onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
@@ -210,8 +230,11 @@ async function fetchPackageFromRegistry(
   packageName: string,
   onAttempt?: AttemptObserver
 ): Promise<PackageVersionData> {
-  const path = encodeRegistryPath(packageName)
-  const outcome = await fetchFromRegistryWithRetries(path, onAttempt)
+  // Scoped packages may live on a different registry (with credentials) than
+  // unscoped ones — resolved from the npm config chain, memoized per scope.
+  const target = registryTargetFor(packageName)
+  const path = encodeRegistryPath(packageName, target.pathPrefix)
+  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt)
 
   if (outcome.kind === 'success') {
     return outcome.data

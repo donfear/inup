@@ -8,6 +8,21 @@ vi.mock('../../../../src/shared/http/retry', async (importOriginal) => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Pin registry resolution to the public registry so this suite never depends on
+// the machine's real npm configuration. Individual tests override per call.
+const { registryTargetMock } = vi.hoisted(() => ({
+  registryTargetMock: vi.fn(
+    (): { origin: string; pathPrefix: string; authHeader?: string } => ({
+      origin: 'https://registry.npmjs.org',
+      pathPrefix: '',
+    })
+  ),
+}))
+vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/registry/registry-config')>()),
+  registryTargetFor: registryTargetMock,
+}))
+
 import {
   clearPackageCache,
   fetchPackageVersions,
@@ -92,6 +107,34 @@ describe('npm-registry', () => {
       latestVersion: '1.2.0',
       allVersions: ['1.2.0', '1.1.0', '1.0.0'],
     })
+  })
+
+  it('sends no authorization header when the registry has no credentials', async () => {
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+
+    await fetchPackageVersions(['demo-pkg'])
+
+    const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
+    expect(opts.headers['authorization']).toBeUndefined()
+  })
+
+  it('routes scoped packages to their npmrc registry with its authorization header', async () => {
+    registryTargetMock.mockReturnValueOnce({
+      origin: 'https://registry.example.com',
+      pathPrefix: '/npm',
+      authHeader: 'Bearer sekret',
+    })
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+
+    const result = await fetchPackageVersions(['@myco/private-pkg'])
+
+    const opts = poolRequestSpy.mock.calls[0][0] as {
+      path: string
+      headers: Record<string, string>
+    }
+    expect(opts.path).toBe('/npm/@myco/private-pkg')
+    expect(opts.headers['authorization']).toBe('Bearer sekret')
+    expect(result.get('@myco/private-pkg')?.latestVersion).toBe('1.1.0')
   })
 
   it('returns empty map for empty input', async () => {
