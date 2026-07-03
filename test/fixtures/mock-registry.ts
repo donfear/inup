@@ -12,15 +12,17 @@ export function mockRegistry(options: MockRegistryOptions = {}) {
     allVersions: ['2.0.0', '1.1.0', '1.0.0'],
   }
 
-  const fetchPackageVersions = vi.fn().mockImplementation(
-    async (packageNames: string[], opts: { onBatchReady?: (batch: unknown[]) => void }) => {
-      const batch = packageNames.map((name) => ({
-        name,
-        ...(options.packageData?.get(name) ?? defaultData),
-      }))
-      opts.onBatchReady?.(batch)
-    }
-  )
+  const fetchPackageVersions = vi
+    .fn()
+    .mockImplementation(
+      async (packageNames: string[], opts: { onBatchReady?: (batch: unknown[]) => void }) => {
+        const batch = packageNames.map((name) => ({
+          name,
+          ...(options.packageData?.get(name) ?? defaultData),
+        }))
+        opts.onBatchReady?.(batch)
+      }
+    )
 
   return { fetchPackageVersions }
 }

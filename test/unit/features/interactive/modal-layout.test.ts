@@ -1,6 +1,10 @@
 import chalk from 'chalk'
 import { describe, expect, it } from 'vitest'
-import { fitModalSections, renderModalFrame, renderModalRow } from '../../../../src/features/interactive/modal/layout'
+import {
+  fitModalSections,
+  renderModalFrame,
+  renderModalRow,
+} from '../../../../src/features/interactive/modal/layout'
 import { getVisualLength } from '../../../../src/shared/terminal'
 
 describe('modal layout primitives', () => {

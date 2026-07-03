@@ -73,7 +73,9 @@ describe('PackageDetector streaming', () => {
         packageJsonPath: '/repo/package.json',
       },
     ])
-    mocks.findClosestMinorVersion.mockImplementation((version: string, versions: string[]) => versions[0] ?? version)
+    mocks.findClosestMinorVersion.mockImplementation(
+      (version: string, versions: string[]) => versions[0] ?? version
+    )
     mocks.fetchPackageVersions.mockImplementation(
       async (
         packageNames: string[],
