@@ -4,7 +4,7 @@ import { UIRenderer } from '../../../../src/features/interactive/renderer'
 import { themeNames } from '../../../../src/features/interactive/themes'
 import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
 import type { VulnerabilityAuditController } from '../../../../src/features/audit'
-import { TerminalInput } from '../../../../src/shared/terminal'
+import { CursorUtils, TerminalInput } from '../../../../src/shared/terminal'
 import { configManager } from '../../../../src/shared/config/user-config'
 import {
   PackageManagerInfo,
@@ -319,5 +319,116 @@ describe('runInteractiveSession fallback', () => {
       log.mockRestore()
       startSpy.mockRestore()
     }
+  })
+
+  it('falls back cleanly when even claiming the alternate screen fails', async () => {
+    const enterSpy = vi.spyOn(CursorUtils, 'enterAlternateScreen').mockImplementation(() => {
+      throw new Error('not a terminal')
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    try {
+      const states = [makeSelectionState({ selectedOption: 'range' })]
+      const { promise } = startSession(states)
+
+      const result = await promise
+
+      expect(result).toBe(states)
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('fallback interface'))
+      // The alternate screen was never claimed, so it must not be "released".
+      expect(stdout.output()).not.toContain('\x1b[?1049l')
+    } finally {
+      log.mockRestore()
+      enterSpy.mockRestore()
+    }
+  })
+})
+
+describe('runInteractiveSession edge paths', () => {
+  it('renders every modal with fallback dimensions when the terminal reports no size', async () => {
+    stdout.restore()
+    stdout = captureStdout({ columns: 0, rows: 0, isTTY: true })
+
+    const states = [makeSelectionState({ name: 'fallback-pkg', selectedOption: 'latest' })]
+    const { promise } = startSession(states)
+
+    await fake.sendKeys('t') // theme modal
+    await fake.sendKeys('\r') // confirm current theme
+    await fake.sendKeys('?') // help modal
+    await fake.sendKeys('?')
+    await fake.sendKeys('!') // performance modal
+    await fake.sendKeys('!')
+    await fake.sendKeys('i') // info modal
+    await fake.sendKeys('i')
+    await fake.sendKeys('\r')
+    await promise
+
+    expect(stripAnsi(stdout.output())).toContain('fallback-pkg')
+  })
+
+  it('omits scroll hints when the modals fit a tall terminal', async () => {
+    stdout.restore()
+    stdout = captureStdout({ columns: 120, rows: 100, isTTY: true })
+
+    const states = [makeSelectionState({ name: 'tall-pkg', selectedOption: 'latest' })]
+    const { promise } = startSession(states)
+
+    await fake.sendKeys('?')
+    await fake.sendKeys('?')
+    await fake.sendKeys('!')
+    await fake.sendKeys('!')
+    await fake.sendKeys('i')
+    await fake.sendKeys('\t') // switch to the Used-by tab
+    await fake.sendKeys('\t') // and back to Info
+    await fake.sendKeys('i')
+    await fake.sendKeys('\r')
+    await promise
+
+    expect(stripAnsi(stdout.output())).toContain('tall-pkg')
+  })
+
+  it('shows the scroll hint for long release notes and re-paints embedded resets', async () => {
+    const noisyNotes = [
+      '## Changes',
+      `- includes a raw \x1b[0m reset escape`,
+      ...Array.from({ length: 60 }, (_, i) => `- change number ${i}`),
+    ].join('\n')
+    const states = [
+      makeSelectionState({
+        name: 'notes-pkg',
+        selectedOption: 'latest',
+        releaseNotesVersions: ['9.9.9'],
+        releaseNotesLoaded: new Map([['9.9.9', noisyNotes]]),
+        releaseNotesViewIndex: 0,
+      }),
+    ]
+    const { promise } = startSession(states)
+
+    await fake.sendKeys('i')
+    await fake.sendKeys('\x1b[B') // scroll inside the modal
+    await fake.sendKeys('i')
+    await fake.sendKeys('\r')
+    await promise
+
+    expect(stripAnsi(stdout.output())).toContain('change number')
+  })
+
+  it('ignores refresh callbacks that arrive after the session resolved', async () => {
+    const refreshCalls: Array<(() => void) | undefined> = []
+    const attached: Array<() => void> = []
+    const states = [makeSelectionState({ selectedOption: 'latest' })]
+
+    const { promise } = startSession(states, {
+      onRefreshViewReady: (refresh) => refreshCalls.push(refresh),
+      attachRefresh: (refresh) => attached.push(refresh),
+    })
+
+    await fake.sendKeys('\r')
+    await promise
+
+    stdout.clear()
+    refreshCalls[0]!()
+    attached[0]()
+    expect(stdout.output()).toBe('')
   })
 })
