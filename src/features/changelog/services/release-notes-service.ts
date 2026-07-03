@@ -86,10 +86,14 @@ export class ReleaseNotesService {
           () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
           () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
         ]
-      : [
+      : // Dead while PREFER_GITHUB_RELEASE_PAGE is hardcoded true; kept so the
+        // flag can be flipped without re-plumbing the source order.
+        /* v8 ignore start */
+        [
           () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
           () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
         ]
+    /* v8 ignore stop */
 
     return [
       ...directReleaseSources,
