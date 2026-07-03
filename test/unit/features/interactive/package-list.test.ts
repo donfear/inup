@@ -119,6 +119,8 @@ describe('package-list renderer', () => {
       }),
       makeSelectionState({ name: '@scope/a-rather-long-package-name-for-testing' }),
       makeSelectionState({ name: 'demo-pkg', type: 'devDependencies' }),
+      makeSelectionState({ name: 'demo-pkg', catalog: 'default' }),
+      makeSelectionState({ name: 'demo-pkg', catalog: 'react19', type: 'devDependencies' }),
     ]
 
     // Rows use emoji badges and dot glyphs whose measured width feeds the
@@ -132,6 +134,32 @@ describe('package-list renderer', () => {
       ])
       expect(new Set(widths).size).toBe(1)
     }
+  })
+
+  it('marks catalog entries with a [C] badge', () => {
+    const line = renderPackageLine(
+      makeSelectionState({ name: 'demo-pkg', catalog: 'default' }),
+      0,
+      false,
+      120
+    )
+
+    expect(stripAnsi(line)).toContain('[C]')
+  })
+
+  it('shows the catalog badge alongside the dep-type badge', () => {
+    const line = renderPackageLine(
+      makeSelectionState({ name: 'demo-pkg', catalog: 'react19', type: 'devDependencies' }),
+      0,
+      false,
+      120
+    )
+
+    expect(stripAnsi(line)).toContain('[C][D]')
+  })
+
+  it('shows no catalog badge for regular dependencies', () => {
+    expect(stripAnsi(renderPackageLine(baseState, 0, false, 120))).not.toContain('[C]')
   })
 
   it('uses fixed-width vulnerability badges so rows stay aligned', () => {

@@ -113,6 +113,21 @@ describe('buildPackageInfoSections (info tab)', () => {
     expect(plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))).toContain('Target: 1.1.0')
   })
 
+  it('names the pnpm catalog for catalog-sourced entries', () => {
+    const state = makeSelectionState({ catalog: 'react19' })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
+
+    expect(text).toContain('Catalog: react19')
+    expect(text).toContain('pnpm-workspace.yaml')
+  })
+
+  it('shows no catalog row for regular dependencies', () => {
+    const text = plain(buildPackageInfoSections(makeSelectionState(), MODAL_WIDTH, 'info'))
+
+    expect(text).not.toContain('Catalog:')
+  })
+
   it('formats weekly downloads into human units', () => {
     const millions = makeSelectionState({ weeklyDownloads: 2_500_000 })
     const thousands = makeSelectionState({ weeklyDownloads: 12_300 })

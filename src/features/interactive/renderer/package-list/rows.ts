@@ -30,6 +30,11 @@ function getTypeBadge(type: PackageInfo['type']): string {
   }
 }
 
+/** Marks entries whose range lives in a pnpm catalog (pnpm-workspace.yaml), not a package.json. */
+function getCatalogBadge(catalog: string | undefined): string {
+  return catalog ? getThemeColor('textSecondary')('[C]') : ''
+}
+
 export function renderPackageLine(
   state: PackageSelectionState,
   _index: number,
@@ -127,7 +132,9 @@ export function renderPackageLine(
     Math.max(minPackageNameWidth, availableForPackageName)
   )
 
-  const badgeWidth = state.type === 'dependencies' ? 0 : 3
+  // Trailing badges each occupy 3 columns: the dep-type marker ([D]/[P]/[O])
+  // and the pnpm-catalog marker ([C]); both may be present at once.
+  const badgeWidth = (state.type === 'dependencies' ? 0 : 3) + (state.catalog ? 3 : 0)
   const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1 - badgeWidth)
 
   const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
@@ -154,8 +161,9 @@ export function renderPackageLine(
 
   const vulnSuffix = vulnBadge ? ` ${vulnBadge}` : ''
   const healthSuffix = healthBadge ? ` ${healthBadge}` : ''
-  const packageNameSection = typeBadge
-    ? `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}${typeBadge}`
+  const trailingBadges = `${getCatalogBadge(state.catalog)}${typeBadge}`
+  const packageNameSection = trailingBadges
+    ? `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}${trailingBadges}`
     : `${displayName} ${nameDashes}${vulnSuffix}${healthSuffix}`
 
   const currentSection = `${currentDot} ${currentVersion}`

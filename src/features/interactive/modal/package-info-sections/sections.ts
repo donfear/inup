@@ -101,6 +101,13 @@ export function buildPackageInfoSections(
     key: 'meta',
     rows: [
       `Current: ${currentVersion}  Target: ${targetVersion}`,
+      ...(state.catalog
+        ? [
+            getThemeColor('textSecondary')(
+              `Catalog: ${state.catalog} — range lives in pnpm-workspace.yaml`
+            ),
+          ]
+        : []),
       ...(state.weeklyDownloads !== undefined
         ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
         : []),
