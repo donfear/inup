@@ -105,5 +105,66 @@ describe('registry-config', () => {
       // Same object identity ⇒ the npm config chain was only resolved once.
       expect(second).toBe(first)
     })
+
+    it('treats an unset ${ENV_VAR} token as no credentials, never `Bearer undefined`', () => {
+      // registry-auth-token stringifies unset env references into the literal
+      // "undefined"; sending that guarantees a 401 where anonymous might work.
+      const target = registryTargetFor('@env/pkg', {
+        '@env:registry': 'https://registry.example.com/',
+        '//registry.example.com/:_authToken': '${DEFINITELY_UNSET_INUP_VAR}',
+      })
+
+      expect(target.authHeader).toBeUndefined()
+    })
+
+    it('ignores empty auth tokens', () => {
+      const target = registryTargetFor('@empty/pkg', {
+        '@empty:registry': 'https://registry.example.com/',
+        '//registry.example.com/:_authToken': '',
+      })
+
+      expect(target.authHeader).toBeUndefined()
+    })
+
+    it('supports the legacy global _auth credential', () => {
+      const target = registryTargetFor('@legacy/pkg', {
+        '@legacy:registry': 'https://registry.example.com/',
+        _auth: Buffer.from('user:pass', 'utf8').toString('base64'),
+      })
+
+      expect(target.authHeader).toBe(`Basic ${Buffer.from('user:pass', 'utf8').toString('base64')}`)
+    })
+
+    it('normalizes registries declared without a trailing slash', () => {
+      const target = registryTargetFor('@noslash/pkg', {
+        '@noslash:registry': 'https://registry.example.com/npm',
+      })
+
+      expect(target.origin).toBe('https://registry.example.com')
+      expect(target.pathPrefix).toBe('/npm')
+    })
+
+    it('falls back to the public registry when the configured URL is garbage', () => {
+      const target = registryTargetFor('@broken/pkg', {
+        '@broken:registry': 'not a url at all',
+      })
+
+      expect(target.origin).toBe('https://registry.npmjs.org')
+      expect(target.pathPrefix).toBe('')
+    })
+
+    it('never lets an npmrc override poison the per-scope cache', () => {
+      const withOverride = registryTargetFor('@iso/pkg', {
+        '@iso:registry': 'https://registry.example.com/',
+      })
+      const withDifferentOverride = registryTargetFor('@iso/pkg', {
+        '@iso:registry': 'https://other.example.com/',
+      })
+
+      // Each override resolves independently — no stale memoized result leaks
+      // from one injected config into the next.
+      expect(withOverride.origin).toBe('https://registry.example.com')
+      expect(withDifferentOverride.origin).toBe('https://other.example.com')
+    })
   })
 })

@@ -75,7 +75,10 @@ function resolveTarget(scope: string | undefined, npmrc?: NpmrcOverride): Regist
   let authHeader: string | undefined
   try {
     const auth = getAuthToken(parsed.href, { recursive: true, ...(npmrc ? { npmrc } : {}) })
-    if (auth?.token) {
+    // registry-auth-token stringifies an unset ${ENV_VAR} reference into the
+    // literal "undefined". Sending `Bearer undefined` guarantees a 401 where an
+    // anonymous request might succeed, so treat it as no credentials.
+    if (auth?.token && auth.token !== 'undefined') {
       authHeader = `${auth.type} ${auth.token}`
     }
   } catch {

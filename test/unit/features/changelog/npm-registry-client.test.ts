@@ -98,6 +98,22 @@ describe('NpmRegistryClient.fetchDownloadStats', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('never forwards registry credentials to the downloads API', async () => {
+    // A user logged into npmjs has an authHeader on the public target; the
+    // downloads endpoint is a different service and must stay anonymous.
+    client = new NpmRegistryClient(() => ({
+      origin: 'https://registry.npmjs.org',
+      pathPrefix: '',
+      authHeader: 'Bearer npm-token',
+    }))
+    fetchMock.mockResolvedValue(jsonResponse({ downloads: 1 }))
+
+    await client.fetchDownloadStats('demo')
+
+    const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
+    expect(headers['authorization']).toBeUndefined()
+  })
+
   it('returns null for unknown packages and network errors', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(null, false))
     expect(await client.fetchDownloadStats('demo')).toBeNull()

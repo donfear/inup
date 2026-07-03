@@ -11,12 +11,10 @@ vi.mock('../../../../src/shared/http/retry', async (importOriginal) => ({
 // Pin registry resolution to the public registry so this suite never depends on
 // the machine's real npm configuration. Individual tests override per call.
 const { registryTargetMock } = vi.hoisted(() => ({
-  registryTargetMock: vi.fn(
-    (): { origin: string; pathPrefix: string; authHeader?: string } => ({
-      origin: 'https://registry.npmjs.org',
-      pathPrefix: '',
-    })
-  ),
+  registryTargetMock: vi.fn((): { origin: string; pathPrefix: string; authHeader?: string } => ({
+    origin: 'https://registry.npmjs.org',
+    pathPrefix: '',
+  })),
 }))
 vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../src/shared/registry/registry-config')>()),
@@ -431,6 +429,51 @@ describe('npm-registry', () => {
       await fetchPackageVersions(['demo-pkg'])
       // A second run hits the network again (freshness), not served purely offline.
       expect(poolRequestSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
+    })
+
+    it('scopes cached ETags by registry origin — no cross-registry reuse', async () => {
+      // Store an ETag for demo-pkg on origin A.
+      registryTargetMock.mockReturnValueOnce({
+        origin: 'https://registry-a.example.com',
+        pathPrefix: '',
+      })
+      requestMock.mockImplementation(async () => ({
+        statusCode: 200,
+        body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        headers: { etag: 'W/"origin-a"' },
+      }))
+      await fetchPackageVersions(['demo-pkg'])
+
+      // The same registry path on origin B must NOT validate against origin
+      // A's cached ETag: keys are origin-qualified.
+      clearPackageCache()
+      registryTargetMock.mockReturnValueOnce({
+        origin: 'https://registry-b.example.com',
+        pathPrefix: '',
+      })
+      let sentIfNoneMatch: string | undefined = 'not-captured'
+      poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+        const o = opts as { headers: Record<string, string> }
+        sentIfNoneMatch = o.headers['if-none-match']
+        return {
+          statusCode: 200,
+          headers: {},
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: {
+            arrayBuffer: async () =>
+              Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8'),
+            dump: async () => {},
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+
+      const result = await fetchPackageVersions(['demo-pkg'])
+
+      expect(sentIfNoneMatch).toBeUndefined()
+      expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
     })
   })
 })
