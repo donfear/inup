@@ -96,6 +96,44 @@ describe('package-list renderer', () => {
     expect(line).toContain('unavailable')
   })
 
+  it('renders every state variant at the same visual width so columns align', () => {
+    const variants = [
+      baseState,
+      makeSelectionState({
+        name: 'demo-pkg',
+        vulnerability: {
+          count: 2,
+          highestSeverity: 'high',
+          detailsUrl: 'https://github.com/advisories/GHSA-high',
+          advisories: [],
+        },
+      }),
+      makeSelectionState({ name: 'demo-pkg', deprecated: 'use something else instead' }),
+      makeSelectionState({
+        name: 'demo-pkg',
+        loadState: 'failed',
+        rangeVersion: 'unknown',
+        latestVersion: 'unknown',
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+      }),
+      makeSelectionState({ name: '@scope/a-rather-long-package-name-for-testing' }),
+      makeSelectionState({ name: 'demo-pkg', type: 'devDependencies' }),
+    ]
+
+    // Rows use emoji badges and dot glyphs whose measured width feeds the
+    // column math. Whatever the state (badges, selection, failures, long
+    // names), every row must come out at the same visual width — one glyph
+    // measured differently from how it renders would shift the whole column.
+    for (const terminalWidth of [90, 120]) {
+      const widths = variants.flatMap((state) => [
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, false, terminalWidth)),
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, true, terminalWidth)),
+      ])
+      expect(new Set(widths).size).toBe(1)
+    }
+  })
+
   it('uses fixed-width vulnerability badges so rows stay aligned', () => {
     const highLine = renderPackageLine(
       {

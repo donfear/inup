@@ -40,8 +40,42 @@ describe('modal layout primitives', () => {
     expect(getVisualLength(`${chalk.red('abc')}🙂`)).toBe(5)
   })
 
-  it('treats emoji variation selectors as zero-width', () => {
+  it('measures emoji presentation (VS16) as wide, text presentation as narrow', () => {
     expect(getVisualLength('ℹ️')).toBe(2)
-    expect(getVisualLength('⚠')).toBe(2)
+    // Bare U+26A0 has text presentation: terminals render it one column wide,
+    // and string-width agrees (the old heuristic mis-scored it as 2).
+    expect(getVisualLength('⚠')).toBe(1)
+    expect(getVisualLength('⚠️')).toBe(2)
+  })
+
+  it('keeps borders aligned across plain, CJK, emoji, colored, and hyperlink rows', () => {
+    const modalWidth = 40
+    const padding = 3
+    const rows = [
+      'plain text',
+      '你好世界パッケージ',
+      'emoji 🚀 and family 👨‍👩‍👧‍👦',
+      `${chalk.red('colored')} ${chalk.bold('bold')}`,
+      '\u001b]8;;https://example.com\u0007homepage\u001b]8;;\u0007',
+      '',
+    ]
+
+    // Every row must render at exactly padding + modalWidth columns, or the
+    // right border drifts. This is the invariant the width swap must uphold.
+    const widths = rows.map((row) => getVisualLength(renderModalRow(padding, modalWidth, row)))
+    expect(widths).toEqual(rows.map(() => padding + modalWidth))
+  })
+
+  it('renders every frame line at the same visual width with mixed content', () => {
+    const lines = renderModalFrame(
+      [
+        { key: 'header', rows: ['📦 test-pkg'], required: true },
+        { key: 'description', rows: ['一个用于升级依赖的交互式命令行工具'] },
+      ],
+      { terminalWidth: 80, terminalHeight: 20, minWidth: 60, maxWidth: 60 }
+    )
+
+    const widths = lines.filter((line) => line !== '').map((line) => getVisualLength(line))
+    expect(new Set(widths).size).toBe(1)
   })
 })
