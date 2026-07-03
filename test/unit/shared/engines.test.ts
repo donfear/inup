@@ -19,3 +19,15 @@ describe('checkNodeEngineCompatibility', () => {
     expect(checkNodeEngineCompatibility('garbage', '20.0.0')).toBeNull()
   })
 })
+
+describe('checkNodeEngineCompatibility edge cases', () => {
+  it('returns null when the current Node version cannot be parsed', () => {
+    expect(checkNodeEngineCompatibility('>=18', 'garbage')).toBeNull()
+  })
+
+  it('includes both versions in the warning message', () => {
+    const msg = checkNodeEngineCompatibility('>=99', '20.11.0')
+    expect(msg).toContain('>=99')
+    expect(msg).toContain('20.11.0')
+  })
+})

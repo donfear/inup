@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
+  extractMajorVersion,
   isVersionOutdated,
   getOptimizedRangeVersion,
   findClosestMinorVersion,
   parseVersions,
+  toComparableVersion,
+  versionIdentity,
 } from '../../../src/shared/versions'
 
 describe('version utils', () => {
@@ -180,5 +183,43 @@ describe('version utils', () => {
     it('should not return a lower version when already on latest within major', () => {
       expect(findClosestMinorVersion('1.2.5', ['1.0.0', '1.2.3', '2.0.0'])).toBeNull()
     })
+  })
+})
+
+describe('version identity helpers', () => {
+  it('extractMajorVersion pulls the major from loose specifiers', () => {
+    expect(extractMajorVersion('^2.1.0')).toBe('2')
+    expect(extractMajorVersion('v3')).toBe('3')
+  })
+
+  it('extractMajorVersion returns null for unusable input', () => {
+    expect(extractMajorVersion('')).toBeNull()
+    expect(extractMajorVersion('not-a-version')).toBeNull()
+  })
+
+  it('toComparableVersion normalizes valid and coercible versions', () => {
+    expect(toComparableVersion('1.2.3')).toBe('1.2.3')
+    expect(toComparableVersion('^1.2.3')).toBe('1.2.3')
+    expect(toComparableVersion('v2')).toBe('2.0.0')
+  })
+
+  it('toComparableVersion returns null for garbage', () => {
+    expect(toComparableVersion('workspace:*')).toBeNull()
+  })
+
+  it('versionIdentity falls back to a raw marker for non-semver input', () => {
+    expect(versionIdentity('1.2.3')).toBe('1.2.3')
+    expect(versionIdentity('^1.2.3')).toBe('1.2.3')
+    expect(versionIdentity('workspace:*')).toBe('raw:workspace:*')
+  })
+})
+
+describe('invalid version tolerance', () => {
+  it('getOptimizedRangeVersion skips versions that crash the range check', () => {
+    expect(getOptimizedRangeVersion('pkg', '^1.0.0', ['garbage', '1.2.0'], '2.0.0')).toBe('1.2.0')
+  })
+
+  it('findClosestMinorVersion skips invalid versions in the patch fallback pass', () => {
+    expect(findClosestMinorVersion('1.0.0', ['garbage', '1.0.5'])).toBe('1.0.5')
   })
 })

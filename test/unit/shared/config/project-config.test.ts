@@ -170,3 +170,43 @@ describe('project-config', () => {
     })
   })
 })
+
+describe('config normalization of list fields', () => {
+  let testDir: string
+
+  beforeEach(() => {
+    testDir = join(tmpdir(), `inup-test-normalize-${Date.now()}`)
+    mkdirSync(testDir, { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  it('keeps only string entries in exclude and scanDirs', () => {
+    writeFileSync(
+      join(testDir, '.inuprc'),
+      JSON.stringify({
+        exclude: ['dist', 42, null, 'coverage'],
+        scanDirs: ['packages', false, 'apps'],
+      })
+    )
+
+    const config = loadProjectConfig(testDir)
+
+    expect(config.exclude).toEqual(['dist', 'coverage'])
+    expect(config.scanDirs).toEqual(['packages', 'apps'])
+  })
+
+  it('drops non-array exclude and scanDirs values', () => {
+    writeFileSync(
+      join(testDir, '.inuprc'),
+      JSON.stringify({ exclude: 'dist', scanDirs: { nope: true } })
+    )
+
+    const config = loadProjectConfig(testDir)
+
+    expect(config.exclude).toBeUndefined()
+    expect(config.scanDirs).toBeUndefined()
+  })
+})

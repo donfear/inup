@@ -37,3 +37,40 @@ describe('detectJsonFormat', () => {
     expect(result.trailingNewline).toBe(true)
   })
 })
+
+describe('collectAllDependenciesAsync', () => {
+  it('collects dependencies from every type and skips malformed files', async () => {
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const { join } = await import('path')
+    const { collectAllDependenciesAsync } = await import('../../../../src/shared/fs/io')
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
+    try {
+      const good = join(tempDir, 'good')
+      const bad = join(tempDir, 'bad')
+      mkdirSync(good)
+      mkdirSync(bad)
+      writeFileSync(
+        join(good, 'package.json'),
+        JSON.stringify({
+          dependencies: { alpha: '^1.0.0' },
+          devDependencies: { beta: '~2.0.0' },
+          peerDependencies: { gamma: '>=3' },
+          optionalDependencies: { delta: '4.0.0' },
+        })
+      )
+      writeFileSync(join(bad, 'package.json'), '{malformed')
+
+      const deps = await collectAllDependenciesAsync([
+        join(good, 'package.json'),
+        join(bad, 'package.json'),
+      ])
+
+      expect(deps.map((d) => d.name).sort()).toEqual(['alpha', 'beta', 'delta', 'gamma'])
+      expect(deps.find((d) => d.name === 'gamma')?.type).toBe('peerDependencies')
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+})

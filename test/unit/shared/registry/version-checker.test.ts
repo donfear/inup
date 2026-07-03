@@ -1,53 +1,106 @@
-import { describe, it, expect } from 'vitest'
-import { checkForUpdate, checkForUpdateAsync } from '../../../../src/shared/registry/version-checker'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { execSync } from 'child_process'
+import {
+  checkForUpdate,
+  checkForUpdateAsync,
+} from '../../../../src/shared/registry/version-checker'
 import { PACKAGE_NAME } from '../../../../src/shared/config/constants'
 
-describe('version-checker', () => {
-  describe('checkForUpdate()', () => {
-    it(`should check for updates for ${PACKAGE_NAME}`, async () => {
-      const result = await checkForUpdate(PACKAGE_NAME, '1.0.0')
+// `npm view` is mocked so this suite is deterministic and offline-safe.
+vi.mock('child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('child_process')>()
+  return { ...original, execSync: vi.fn() }
+})
 
-      expect(result).not.toBeNull()
-      expect(result?.currentVersion).toBe('1.0.0')
-      expect(result?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-      expect(result?.updateCommand).toBeTruthy()
-    }, 30000)
+const execMock = vi.mocked(execSync)
+const originalArgv1 = process.argv[1]
 
-    it('should detect up-to-date version', async () => {
-      // Use a very high version that likely doesn't exist yet
-      const result = await checkForUpdate(PACKAGE_NAME, '999.999.999')
+beforeEach(() => {
+  execMock.mockReset()
+  execMock.mockReturnValue('2.0.0\n')
+})
 
-      expect(result).not.toBeNull()
-      expect(result?.isOutdated).toBe(false)
-    }, 10000)
+afterEach(() => {
+  process.argv[1] = originalArgv1
+})
 
-    it('should have update command', async () => {
-      const result = await checkForUpdate(PACKAGE_NAME, '1.0.0')
+describe('checkForUpdate', () => {
+  it('queries the registry via npm view', async () => {
+    await checkForUpdate(PACKAGE_NAME, '1.0.0')
 
-      expect(result).not.toBeNull()
-      // Should contain either npm install or npx
-      expect(result?.updateCommand).toMatch(/(npm install|npx)/)
-      expect(result?.updateCommand).toContain(PACKAGE_NAME)
-    }, 10000)
+    expect(execMock).toHaveBeenCalledWith(
+      `npm view ${PACKAGE_NAME} version`,
+      expect.objectContaining({ encoding: 'utf-8' })
+    )
   })
 
-  describe('checkForUpdateAsync()', () => {
-    it(`should check for updates asynchronously for ${PACKAGE_NAME}`, async () => {
-      const result = await checkForUpdateAsync(PACKAGE_NAME, '1.0.0')
+  it('flags older versions as outdated', async () => {
+    const result = await checkForUpdate(PACKAGE_NAME, '1.0.0')
 
-      expect(result).not.toBeNull()
-      expect(result?.currentVersion).toBe('1.0.0')
-      expect(result?.latestVersion).toMatch(/^\d+\.\d+\.\d+$/)
-    }, 10000)
+    expect(result).toEqual({
+      currentVersion: '1.0.0',
+      latestVersion: '2.0.0',
+      isOutdated: true,
+      updateCommand: expect.stringContaining(PACKAGE_NAME),
+    })
+  })
 
-    it('should timeout properly', async () => {
-      const startTime = Date.now()
-      const result = await checkForUpdateAsync(PACKAGE_NAME, '1.0.0')
-      const duration = Date.now() - startTime
+  it('accepts the latest version as current', async () => {
+    const result = await checkForUpdate(PACKAGE_NAME, '2.0.0')
 
-      // Should complete within reasonable time (not hang)
-      expect(duration).toBeLessThan(10000)
-      expect(result).toBeDefined()
-    }, 15000)
+    expect(result?.isOutdated).toBe(false)
+  })
+
+  it('accepts versions newer than the registry (pre-release installs)', async () => {
+    const result = await checkForUpdate(PACKAGE_NAME, '3.0.0')
+
+    expect(result?.isOutdated).toBe(false)
+  })
+
+  it('suggests npx when running via npx', async () => {
+    process.argv[1] = '/home/user/.npm/_npx/123/node_modules/.bin/inup'
+
+    const result = await checkForUpdate(PACKAGE_NAME, '1.0.0')
+
+    expect(result?.updateCommand).toBe(`npx ${PACKAGE_NAME}@latest`)
+  })
+
+  it('suggests a global install otherwise', async () => {
+    process.argv[1] = '/usr/local/bin/inup'
+
+    const result = await checkForUpdate(PACKAGE_NAME, '1.0.0')
+
+    expect(result?.updateCommand).toBe(`npm install -g ${PACKAGE_NAME}@latest`)
+  })
+
+  it('fails silently when npm is unavailable', async () => {
+    execMock.mockImplementation(() => {
+      throw new Error('npm not found')
+    })
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently on unparseable registry output', async () => {
+    execMock.mockReturnValue('not-a-version\n')
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+})
+
+describe('checkForUpdateAsync', () => {
+  it('resolves with the update result', async () => {
+    const result = await checkForUpdateAsync(PACKAGE_NAME, '1.0.0')
+
+    expect(result?.latestVersion).toBe('2.0.0')
+    expect(result?.isOutdated).toBe(true)
+  })
+
+  it('resolves null instead of rejecting on failure', async () => {
+    execMock.mockImplementation(() => {
+      throw new Error('offline')
+    })
+
+    await expect(checkForUpdateAsync(PACKAGE_NAME, '1.0.0')).resolves.toBeNull()
   })
 })
