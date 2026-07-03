@@ -33,8 +33,13 @@ jobs:
       - name: Check architecture boundaries
         run: pnpm lint:deps
 
-      - name: Run tests
-        run: pnpm test
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      # Coverage output only exists after the run above, so the in-run badge
+      # check is a no-op on a fresh checkout; re-run it now that numbers exist.
+      - name: Check README test badges
+        run: pnpm vitest run badges-readme
 
       - name: Build
         run: pnpm build

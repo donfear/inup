@@ -1,0 +1,84 @@
+import { describe, expect, it } from 'vitest'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+const README_PATH = join(process.cwd(), 'README.md')
+const COVERAGE_SUMMARY_PATH = join(process.cwd(), 'coverage', 'coverage-summary.json')
+const TEST_RESULTS_PATH = join(process.cwd(), 'coverage', 'test-results.json')
+const START = '<!-- TEST-BADGES:START -->'
+const END = '<!-- TEST-BADGES:END -->'
+
+// Both files are written by `pnpm test:coverage` *after* the run finishes, so a
+// run always checks the previous run's numbers. These caps bound how stale the
+// badges may get before this test demands a `pnpm docs:badges` regeneration.
+const COVERAGE_DRIFT_PCT = 1
+const TEST_COUNT_DRIFT = 50
+
+function renderTestBadges(testCount: number, linesPct: number): string {
+  const pct = encodeURIComponent(`${linesPct.toFixed(1)}%`)
+  const ci = 'https://github.com/donfear/inup/actions/workflows/ci.yml'
+  return [
+    `[![Tests](https://img.shields.io/badge/tests-${testCount}_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](${ci})`,
+    `[![Coverage](https://img.shields.io/badge/coverage-${pct}-brightgreen?style=for-the-badge)](${ci})`,
+  ].join('\n')
+}
+
+function readBadgesRegion(readme: string): string {
+  const start = readme.indexOf(START)
+  const end = readme.indexOf(END)
+  if (start === -1 || end === -1) {
+    throw new Error('TEST-BADGES markers not found in README.md')
+  }
+  return readme
+    .slice(start + START.length, end)
+    .replace(/\r\n/g, '\n')
+    .trim()
+}
+
+describe('readme test badges', () => {
+  // Run `pnpm docs:badges` to regenerate the badges from a fresh coverage run;
+  // normal runs only assert the README stays within drift bounds. CI re-runs
+  // this file after `pnpm test:coverage` so drift beyond the bounds fails CI.
+  it('README test badges stay in sync with measured coverage and test count', () => {
+    if (!existsSync(COVERAGE_SUMMARY_PATH)) return // needs a prior `pnpm test:coverage`
+
+    const linesPct: number = JSON.parse(readFileSync(COVERAGE_SUMMARY_PATH, 'utf-8')).total.lines
+      .pct
+    const testCount: number | undefined = existsSync(TEST_RESULTS_PATH)
+      ? JSON.parse(readFileSync(TEST_RESULTS_PATH, 'utf-8')).numPassedTests
+      : undefined
+
+    if (process.env.UPDATE_README) {
+      if (testCount === undefined) {
+        throw new Error('coverage/test-results.json not found — run `pnpm test:coverage` first')
+      }
+      const readme = readFileSync(README_PATH, 'utf-8')
+      const start = readme.indexOf(START)
+      const end = readme.indexOf(END)
+      if (start === -1 || end === -1) {
+        throw new Error('TEST-BADGES markers not found in README.md')
+      }
+      const updated =
+        readme.slice(0, start + START.length) +
+        '\n' +
+        renderTestBadges(testCount, linesPct) +
+        '\n' +
+        readme.slice(end)
+      writeFileSync(README_PATH, updated, 'utf-8')
+    }
+
+    const region = readBadgesRegion(readFileSync(README_PATH, 'utf-8'))
+
+    const badgePct = Number(/badge\/coverage-([\d.]+)%25/.exec(region)?.[1])
+    expect(badgePct).toBeGreaterThan(0)
+    expect(Math.abs(badgePct - linesPct)).toBeLessThan(COVERAGE_DRIFT_PCT)
+
+    if (testCount !== undefined) {
+      const badgeCount = Number(/badge\/tests-(\d+)_passing/.exec(region)?.[1])
+      expect(badgeCount).toBeGreaterThan(0)
+      // Never advertise more tests than actually pass; allow modest staleness below.
+      expect(badgeCount).toBeLessThanOrEqual(testCount)
+      expect(testCount - badgeCount).toBeLessThanOrEqual(TEST_COUNT_DRIFT)
+    }
+  })
+})
