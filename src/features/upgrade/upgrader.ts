@@ -53,7 +53,10 @@ export class PackageUpgrader {
     const choicesByFileAndType = this.groupChoicesByFileAndType(fileChoices)
 
     for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
+      // groupChoicesByFileAndType only creates a group when it has a member.
+      /* v8 ignore start */
       if (choiceList.length === 0) continue
+      /* v8 ignore stop */
 
       const [packageJsonPath, type] = fileAndType.split('|')
       this.log(`Processing ${type} in ${packageJsonPath}`)
@@ -73,9 +76,13 @@ export class PackageUpgrader {
   }
 
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
+    // upgradePackages returns early for an empty selection, so this guard only
+    // protects future direct callers.
+    /* v8 ignore start */
     if (choices.length === 0) {
       return
     }
+    /* v8 ignore stop */
 
     // Determine the directory to run install in
     // Use workspace root if it exists, otherwise use the directory of the first package.json
@@ -260,7 +267,11 @@ export class PackageUpgrader {
 
       // Write back the modified package.json, preserving the original indentation and
       // trailing-newline style. Skip the write entirely when nothing actually changed.
+      // (`modified` is always true today — groups are never empty — so the real
+      // skip-write protection is the rawContent comparison below.)
+      /* v8 ignore start */
       if (modified) {
+        /* v8 ignore stop */
         const format = detectJsonFormat(rawContent)
         const nextContent =
           JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
