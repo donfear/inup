@@ -22,3 +22,31 @@ describe('shouldDisableColor', () => {
     expect(shouldDisableColor(true, {})).toBe(false)
   })
 })
+
+describe('applyColorSetting', () => {
+  it('sets chalk level to 0 when color should be disabled', async () => {
+    const chalk = (await import('chalk')).default
+    const { applyColorSetting } = await import('../../../../src/shared/terminal/color')
+    const originalLevel = chalk.level
+    try {
+      chalk.level = 3
+      applyColorSetting(false, {})
+      expect(chalk.level).toBe(0)
+    } finally {
+      chalk.level = originalLevel
+    }
+  })
+
+  it('leaves chalk alone when color stays enabled', async () => {
+    const chalk = (await import('chalk')).default
+    const { applyColorSetting } = await import('../../../../src/shared/terminal/color')
+    const originalLevel = chalk.level
+    try {
+      chalk.level = 3
+      applyColorSetting(undefined, { FORCE_COLOR: '1' })
+      expect(chalk.level).toBe(3)
+    } finally {
+      chalk.level = originalLevel
+    }
+  })
+})

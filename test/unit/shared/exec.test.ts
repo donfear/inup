@@ -42,9 +42,7 @@ describe('exec utils', () => {
     })
 
     it('should reject for invalid command', async () => {
-      await expect(executeCommandAsync('nonexistent-command-xyz')).rejects.toThrow(
-        'Command failed'
-      )
+      await expect(executeCommandAsync('nonexistent-command-xyz')).rejects.toThrow('Command failed')
     })
 
     it('should return output from successful command', async () => {
@@ -63,5 +61,17 @@ describe('exec utils', () => {
       expect(results[1].trim()).toBe('test2')
       expect(results[2].trim()).toBe('test3')
     })
+  })
+})
+describe('executeCommandAsync stderr handling', () => {
+  it('rejects when a command produces only stderr output', async () => {
+    await expect(executeCommandAsync(`node -e "console.error('boom')"`)).rejects.toThrow(
+      'Command failed'
+    )
+  })
+
+  it('tolerates stderr noise when stdout has content', async () => {
+    const output = await executeCommandAsync(`node -e "console.error('warn'); console.log('ok')"`)
+    expect(output.trim()).toBe('ok')
   })
 })

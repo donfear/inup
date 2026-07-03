@@ -60,7 +60,13 @@ describe('auditVulnerabilities', () => {
             highestSeverity: 'high',
             vulnerabilities: [
               { id: 1, title: 'A', severity: 'high', url: 'u1', vulnerable_versions: '<1.0.0' },
-              { id: 2, title: 'B', severity: 'moderate', url: 'u2', vulnerable_versions: '>=0.0.1' },
+              {
+                id: 2,
+                title: 'B',
+                severity: 'moderate',
+                url: 'u2',
+                vulnerable_versions: '>=0.0.1',
+              },
             ],
           },
         ],
@@ -76,7 +82,11 @@ describe('auditVulnerabilities', () => {
     expect(summary.fixedByRange).toBe(false)
     expect(summary.fixedByLatest).toBe(false)
     expect(summary.advisories[0]).toMatchObject({ id: 1, fixedByLatest: true, fixedByRange: false })
-    expect(summary.advisories[1]).toMatchObject({ id: 2, fixedByLatest: false, fixedByRange: false })
+    expect(summary.advisories[1]).toMatchObject({
+      id: 2,
+      fixedByLatest: false,
+      fixedByRange: false,
+    })
   })
 
   it('omits packages with no advisories', async () => {

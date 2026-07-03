@@ -8,7 +8,10 @@ vi.mock('../../../../src/shared/http/retry', async (importOriginal) => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { clearPackageCache, fetchPackageVersions } from '../../../../src/shared/registry/npm-registry'
+import {
+  clearPackageCache,
+  fetchPackageVersions,
+} from '../../../../src/shared/registry/npm-registry'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
 import { setEtagCacheEnabled, etagCacheDir } from '../../../../src/shared/http/etag-store'
 import { rmSync } from 'node:fs'

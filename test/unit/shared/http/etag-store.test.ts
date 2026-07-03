@@ -54,3 +54,32 @@ describe('etag-store', () => {
     expect(readEtag('/pkg')?.etag).toBe('etag2')
   })
 })
+
+describe('etag-store corruption handling', () => {
+  it('treats corrupt cache entries as a miss', async () => {
+    const { writeFileSync, readdirSync } = await import('node:fs')
+    const { join } = await import('node:path')
+
+    setEtagCacheEnabled(true)
+    writeEtag('/corrupt-pkg', 'W/"x"', data)
+    const dir = etagCacheDir()
+    for (const name of readdirSync(dir)) {
+      writeFileSync(join(dir, name), '{not json')
+    }
+
+    expect(readEtag('/corrupt-pkg')).toBeNull()
+  })
+
+  it('rejects structurally invalid entries', async () => {
+    const { writeFileSync, readdirSync } = await import('node:fs')
+    const { join } = await import('node:path')
+
+    writeEtag('/invalid-pkg', 'W/"x"', data)
+    const dir = etagCacheDir()
+    for (const name of readdirSync(dir)) {
+      writeFileSync(join(dir, name), JSON.stringify({ etag: 42 }))
+    }
+
+    expect(readEtag('/invalid-pkg')).toBeNull()
+  })
+})

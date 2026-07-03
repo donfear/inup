@@ -286,4 +286,24 @@ describe('HeadlessRunner.run', () => {
       expect(mocks.upgraderCtor).toHaveBeenCalledWith(expect.anything(), { quiet: false })
     })
   })
+  it('writes a perf log when INUP_PERF is enabled', async () => {
+    const { mkdtempSync, readdirSync, rmSync } = await import('fs')
+    const { tmpdir } = await import('os')
+    const { join } = await import('path')
+    const perfDir = mkdtempSync(join(tmpdir(), 'inup-headless-perf-'))
+    vi.stubEnv('INUP_PERF', '1')
+    vi.stubEnv('INUP_PERF_DIR', perfDir)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    try {
+      await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+      const files = readdirSync(perfDir)
+      expect(files.some((name) => name.startsWith('run-') && name.includes('headless'))).toBe(true)
+    } finally {
+      logSpy.mockRestore()
+      vi.unstubAllEnvs()
+      rmSync(perfDir, { recursive: true, force: true })
+    }
+  })
 })

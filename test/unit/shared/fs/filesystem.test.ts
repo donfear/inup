@@ -185,13 +185,16 @@ describe('filesystem utils', () => {
       mkdirSync(join(testDir, 'pkg2'), { recursive: true })
 
       writeFileSync(pkg1Path, JSON.stringify({ name: 'pkg1', dependencies: { chalk: '5.0.0' } }))
-      writeFileSync(pkg2Path, JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } }))
+      writeFileSync(
+        pkg2Path,
+        JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } })
+      )
 
       const result = collectAllDependencies([pkg1Path, pkg2Path])
 
       expect(result).toHaveLength(2)
-      expect(result.find(d => d.name === 'chalk')).toBeDefined()
-      expect(result.find(d => d.name === 'commander')).toBeDefined()
+      expect(result.find((d) => d.name === 'chalk')).toBeDefined()
+      expect(result.find((d) => d.name === 'commander')).toBeDefined()
     })
   })
 
@@ -220,7 +223,10 @@ describe('filesystem utils', () => {
       mkdirSync(join(testDir, 'pkg2'), { recursive: true })
 
       writeFileSync(pkg1Path, JSON.stringify({ name: 'pkg1', dependencies: { chalk: '5.0.0' } }))
-      writeFileSync(pkg2Path, JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } }))
+      writeFileSync(
+        pkg2Path,
+        JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } })
+      )
 
       const result = await collectAllDependenciesAsync([pkg1Path, pkg2Path])
 
@@ -510,10 +516,7 @@ describe('filesystem utils', () => {
 
   describe('findWorkspaceRoot()', () => {
     it('should find workspace root with pnpm', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ name: 'root' })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
       writeFileSync(join(testDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*')
       writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
 

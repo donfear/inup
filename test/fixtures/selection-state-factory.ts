@@ -1,6 +1,8 @@
 import { PackageSelectionState } from '../../src/shared/types'
 
-export function makeSelectionState(overrides?: Partial<PackageSelectionState>): PackageSelectionState {
+export function makeSelectionState(
+  overrides?: Partial<PackageSelectionState>
+): PackageSelectionState {
   return {
     name: 'test-pkg',
     packageJsonPath: '/repo/package.json',

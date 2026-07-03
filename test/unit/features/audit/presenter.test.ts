@@ -3,8 +3,10 @@ import {
   createVulnerabilitySummary,
   getVulnerabilityBadge,
   getVulnerabilityLinkLabel,
+  getVulnerabilitySeverityColor,
   mergeVulnerabilitySummary,
   selectRepresentativeAdvisory,
+  shouldDisplayVulnerabilityForDependency,
 } from '../../../../src/features/audit/presenter'
 
 describe('vulnerability presenter', () => {
@@ -63,5 +65,51 @@ describe('vulnerability presenter', () => {
 
     expect(selectRepresentativeAdvisory(merged)?.id).toBe(1)
     expect(merged.detailsUrl).toBe('https://github.com/advisories/GHSA-existing')
+  })
+})
+
+describe('severity presentation matrix', () => {
+  const summary = (highestSeverity: 'critical' | 'high' | 'moderate' | 'low' | 'info') => ({
+    count: 1,
+    highestSeverity,
+    detailsUrl: 'https://github.com/advisories/GHSA-1',
+    advisories: [],
+  })
+
+  it('maps every severity to a badge and none for missing data', () => {
+    expect(getVulnerabilityBadge(summary('moderate'))).toContain('[MOD]')
+    expect(getVulnerabilityBadge(summary('low'))).toContain('[LOW]')
+    expect(getVulnerabilityBadge(summary('info'))).toContain('[INFO]')
+    expect(getVulnerabilityBadge(undefined)).toBe('')
+  })
+
+  it('provides a color function for every severity', () => {
+    for (const severity of ['critical', 'high', 'moderate', 'low', 'info'] as const) {
+      const color = getVulnerabilitySeverityColor(severity)
+      expect(color('x')).toBeTypeOf('string')
+    }
+  })
+})
+
+describe('shouldDisplayVulnerabilityForDependency', () => {
+  it('always shows production and dev dependency vulnerabilities', () => {
+    expect(shouldDisplayVulnerabilityForDependency('dependencies')).toBe(true)
+    expect(shouldDisplayVulnerabilityForDependency('devDependencies')).toBe(true)
+  })
+
+  it('hides peer and optional dependency vulnerabilities unless opted in', () => {
+    expect(shouldDisplayVulnerabilityForDependency('peerDependencies')).toBe(false)
+    expect(shouldDisplayVulnerabilityForDependency('optionalDependencies')).toBe(false)
+
+    expect(
+      shouldDisplayVulnerabilityForDependency('peerDependencies', {
+        showPeerDependencyVulnerabilities: true,
+      })
+    ).toBe(true)
+    expect(
+      shouldDisplayVulnerabilityForDependency('optionalDependencies', {
+        showOptionalDependencyVulnerabilities: true,
+      })
+    ).toBe(true)
   })
 })

@@ -333,4 +333,71 @@ describe('PackageUpgrader', () => {
       logSpy.mockRestore()
     })
   })
+
+  it('creates a missing dep section for range upgrades too', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(pkgPath, JSON.stringify({ name: 'fixture' }, null, 2) + '\n')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'react',
+          packageJsonPath: pkgPath,
+          dependencyType: 'optionalDependencies',
+          upgradeType: 'range',
+          targetVersion: '^18.3.0',
+          currentVersionSpecifier: '^18.0.0',
+        },
+      ],
+      []
+    )
+
+    expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).optionalDependencies?.react).toBe('^18.3.0')
+    logSpy.mockRestore()
+  })
+
+  it('reports and rethrows when a package.json cannot be parsed', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(pkgPath, '{malformed json')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.0.0',
+          },
+        ],
+        []
+      )
+    ).rejects.toThrow()
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Error:'))
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('routes its own progress to stderr in quiet mode', async () => {
+    const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await upgrader.upgradePackages([], [])
+
+    expect(logSpy).not.toHaveBeenCalled()
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No packages to upgrade'))
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
 })

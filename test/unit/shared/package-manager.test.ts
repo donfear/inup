@@ -21,10 +21,7 @@ describe('PackageManagerDetector', () => {
 
   describe('detect()', () => {
     it('should detect npm from packageManager field', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ packageManager: 'npm@9.0.0' })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ packageManager: 'npm@9.0.0' }))
 
       const result = PackageManagerDetector.detect(testDir)
       expect(result.name).toBe('npm')
@@ -41,20 +38,14 @@ describe('PackageManagerDetector', () => {
     })
 
     it('should detect yarn from packageManager field', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ packageManager: 'yarn@4.0.0' })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ packageManager: 'yarn@4.0.0' }))
 
       const result = PackageManagerDetector.detect(testDir)
       expect(result.name).toBe('yarn')
     })
 
     it('should detect bun from packageManager field', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ packageManager: 'bun@1.0.0' })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ packageManager: 'bun@1.0.0' }))
 
       const result = PackageManagerDetector.detect(testDir)
       expect(result.name).toBe('bun')
@@ -117,7 +108,7 @@ describe('PackageManagerDetector', () => {
       writeFileSync(join(testDir, 'package-lock.json'), '{}')
 
       // Wait a bit to ensure different mtime
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
 
       // Create yarn.lock after npm lock to ensure it's newer
       writeFileSync(join(testDir, 'yarn.lock'), '')
@@ -191,10 +182,7 @@ describe('PackageManagerDetector', () => {
     })
 
     it('should find workspace root with package.json workspaces array', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ workspaces: ['packages/*'] })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
 
       const packagesDir = join(testDir, 'packages', 'pkg1')
       mkdirSync(packagesDir, { recursive: true })
@@ -226,10 +214,7 @@ describe('PackageManagerDetector', () => {
     })
 
     it('should handle empty workspaces array', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ workspaces: [] })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ workspaces: [] }))
 
       const root = PackageManagerDetector.findWorkspaceRoot(testDir, 'npm')
       expect(root).toBeNull()
@@ -238,10 +223,7 @@ describe('PackageManagerDetector', () => {
 
   describe('isInWorkspace()', () => {
     it('should return true when in a workspace', () => {
-      writeFileSync(
-        join(testDir, 'package.json'),
-        JSON.stringify({ workspaces: ['packages/*'] })
-      )
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
 
       const packagesDir = join(testDir, 'packages', 'pkg1')
       mkdirSync(packagesDir, { recursive: true })

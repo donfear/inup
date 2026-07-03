@@ -183,12 +183,16 @@ export class InteractiveUI {
       // The confirmation screen does not enter the alternate screen, so alt-screen
       // restoration is intentionally omitted here. If that ever changes, mirror the
       // ownsAlternateScreen-gated pattern from selectPackages.
+      // Coverage: the body only runs during a real process 'exit' event, which
+      // cannot be fired safely inside the test process.
+      /* v8 ignore start */
       const confirmEmergencyCleanup = () => {
         process.stdout.write('\x1b[?25h')
         if (process.stdin.setRawMode) {
           process.stdin.setRawMode(false)
         }
       }
+      /* v8 ignore stop */
       process.on('exit', confirmEmergencyCleanup)
 
       const handleConfirmWithCleanup = (confirmed: boolean | null) => {

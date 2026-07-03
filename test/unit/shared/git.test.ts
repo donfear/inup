@@ -57,3 +57,15 @@ describe('git utils', () => {
     expect(getGitWorkingTreeState(dir)).toEqual({ isRepo: false, isDirty: false })
   })
 })
+
+it('reports non-worktree git contexts as not a repo', () => {
+  const repoDir = createTempDir()
+
+  executeCommand('git init', repoDir)
+
+  // Inside the .git directory itself, rev-parse answers 'false'.
+  expect(getGitWorkingTreeState(path.join(repoDir, '.git'))).toEqual({
+    isRepo: false,
+    isDirty: false,
+  })
+})

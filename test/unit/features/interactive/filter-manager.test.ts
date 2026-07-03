@@ -42,13 +42,15 @@ describe('FilterManager text and type filtering', () => {
 
   it('toggling all types off returns empty list', () => {
     const fm = new FilterManager()
-    ;(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const).forEach(
-      (t) => fm.toggleDependencyType(t)
-    )
-    expect(fm.getFilteredStates([
-      { ...baseState, name: 'a', type: 'dependencies' },
-      { ...baseState, name: 'b', type: 'devDependencies' },
-    ])).toHaveLength(0)
+    ;(
+      ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
+    ).forEach((t) => fm.toggleDependencyType(t))
+    expect(
+      fm.getFilteredStates([
+        { ...baseState, name: 'a', type: 'dependencies' },
+        { ...baseState, name: 'b', type: 'devDependencies' },
+      ])
+    ).toHaveLength(0)
   })
 
   it('deleteFromFilterQuery removes last character and does nothing on empty', () => {
@@ -65,9 +67,9 @@ describe('FilterManager text and type filtering', () => {
 
   it('getActiveFilterLabel returns None when all types are hidden', () => {
     const fm = new FilterManager()
-    ;(['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const).forEach(
-      (t) => fm.toggleDependencyType(t)
-    )
+    ;(
+      ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
+    ).forEach((t) => fm.toggleDependencyType(t))
     expect(fm.getActiveFilterLabel()).toBe('None')
   })
 
@@ -193,5 +195,42 @@ describe('FilterManager persistence', () => {
       showOnlyVulnerable: true,
     })
     expect('filterQuery' in persisted).toBe(false)
+  })
+})
+
+describe('FilterManager direct accessors', () => {
+  it('reports the filter mode and query', async () => {
+    const { FilterManager } =
+      await import('../../../../src/features/interactive/state/filter-manager')
+    const manager = new FilterManager()
+
+    expect(manager.isFilterMode()).toBe(false)
+    expect(manager.getFilterQuery()).toBe('')
+
+    manager.enterFilterMode()
+    manager.appendToFilterQuery('x')
+
+    expect(manager.isFilterMode()).toBe(true)
+    expect(manager.getFilterQuery()).toBe('x')
+  })
+
+  it('filters optional dependencies when toggled off', async () => {
+    const { FilterManager } =
+      await import('../../../../src/features/interactive/state/filter-manager')
+    const { makeSelectionState } = await import('../../../fixtures/selection-state-factory')
+    const manager = new FilterManager()
+    const states = [
+      makeSelectionState({ name: 'opt-pkg', type: 'optionalDependencies' }),
+      makeSelectionState({ name: 'peer-pkg', type: 'peerDependencies' }),
+      makeSelectionState({ name: 'main-pkg' }),
+    ]
+
+    expect(manager.getFilteredStates(states)).toHaveLength(3)
+
+    manager.toggleDependencyType('optionalDependencies')
+    expect(manager.getFilteredStates(states).map((s) => s.name)).toEqual(['peer-pkg', 'main-pkg'])
+
+    manager.toggleDependencyType('peerDependencies')
+    expect(manager.getFilteredStates(states).map((s) => s.name)).toEqual(['main-pkg'])
   })
 })

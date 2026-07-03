@@ -29,7 +29,8 @@ vi.mock('../../src/shared/registry/npm-registry', async (importOriginal) => {
 })
 
 vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/features/audit/vulnerability-checker')>()
+  const actual =
+    await importOriginal<typeof import('../../src/features/audit/vulnerability-checker')>()
   return {
     ...actual,
     fetchVulnerabilities: mocks.fetchVulnerabilities,

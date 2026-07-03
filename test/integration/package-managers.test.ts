@@ -122,10 +122,7 @@ describe('Package Manager Integration Tests', () => {
 
     it('should detect pnpm workspace configuration', () => {
       createTestPackage(testDir)
-      writeFileSync(
-        join(testDir, 'pnpm-workspace.yaml'),
-        'packages:\n  - packages/*'
-      )
+      writeFileSync(join(testDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*')
 
       const root = PackageManagerDetector.findWorkspaceRoot(testDir, 'pnpm')
       expect(root).toBe(testDir)

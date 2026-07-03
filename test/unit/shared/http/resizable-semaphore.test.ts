@@ -109,3 +109,25 @@ describe('ResizableSemaphore', () => {
     expect(sem.getInFlight()).toBeLessThanOrEqual(1)
   })
 })
+
+describe('inspection helpers', () => {
+  it('exposes the current limit and in-flight count', async () => {
+    const { ResizableSemaphore } = await import('../../../../src/shared/http/resizable-semaphore')
+    const semaphore = new ResizableSemaphore(2)
+
+    expect(semaphore.getLimit()).toBe(2)
+    expect(semaphore.getInFlight()).toBe(0)
+
+    await semaphore.acquire()
+    expect(semaphore.getInFlight()).toBe(1)
+    semaphore.release()
+    expect(semaphore.getInFlight()).toBe(0)
+  })
+
+  it('clamps a fractional or non-positive initial limit to at least one', async () => {
+    const { ResizableSemaphore } = await import('../../../../src/shared/http/resizable-semaphore')
+
+    expect(new ResizableSemaphore(0).getLimit()).toBe(1)
+    expect(new ResizableSemaphore(2.9).getLimit()).toBe(2)
+  })
+})

@@ -13,7 +13,8 @@ describe('Services Integration Tests', () => {
     })
 
     it(`should fetch metadata for ${PACKAGE_NAME}`, async () => {
-      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+      const packageVersion =
+        (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
 
       expect(packageVersion).toMatch(/^\d+\.\d+\.\d+$/)
       const metadata = await fetcher.fetchPackageMetadata(PACKAGE_NAME, packageVersion)
@@ -27,13 +28,16 @@ describe('Services Integration Tests', () => {
     }, 10000)
 
     it('should return null for nonexistent package', async () => {
-      const metadata = await fetcher.fetchPackageMetadata('this-package-definitely-does-not-exist-xyz123')
+      const metadata = await fetcher.fetchPackageMetadata(
+        'this-package-definitely-does-not-exist-xyz123'
+      )
 
       expect(metadata).toBeNull()
     }, 10000)
 
     it('should use cache on second fetch', async () => {
-      const packageVersion = (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
+      const packageVersion =
+        (await fetchPackageVersions([PACKAGE_NAME])).get(PACKAGE_NAME)?.latestVersion ?? ''
 
       const start1 = Date.now()
       await fetcher.fetchPackageMetadata('inup', packageVersion)
@@ -75,6 +79,5 @@ describe('Services Integration Tests', () => {
         expect(version).not.toContain('rc')
       })
     }, 10000)
-
   })
 })

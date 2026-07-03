@@ -30,7 +30,14 @@ const baseState = makeSelectionState({
     count: 1,
     highestSeverity: 'high',
     detailsUrl: 'https://github.com/advisories/GHSA-1',
-    advisories: [{ id: 1, title: 'Security issue', severity: 'high', url: 'https://github.com/advisories/GHSA-1' }],
+    advisories: [
+      {
+        id: 1,
+        title: 'Security issue',
+        severity: 'high',
+        url: 'https://github.com/advisories/GHSA-1',
+      },
+    ],
   },
 })
 
@@ -355,5 +362,137 @@ describe('PackageInfoModalController', () => {
     expect(state.releaseNotesLoaded?.has('16.2.3')).toBe(false)
     expect(state.releaseNotesLoaded?.has('16.2.2')).toBe(false)
     expect(state.releaseNotesLoaded?.get('16.2.1')).toBe('latest requested notes')
+  })
+  it('covers the guard rails for states without release note data', async () => {
+    const controller = new PackageInfoModalController()
+    const bare = makeSelectionState({
+      releaseNotesVersions: undefined,
+      releaseNotesLoaded: undefined,
+    })
+
+    expect(await controller.loadVersionAtIndex(bare, 0, () => {})).toBe(false)
+    expect(controller.navigateVersion(bare, 'older')).toBe(-1)
+    expect(controller.isVersionLoaded(bare, 0)).toBe(false)
+    expect(controller.getVersionCount(bare)).toBe(0)
+    expect(controller.canNavigate(bare, 'older')).toBe(false)
+    expect(controller.canNavigate(bare, 'newer')).toBe(false)
+  })
+
+  it('rejects out-of-range indices and already-loaded versions', async () => {
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map([['2.0.0', 'cached notes']]),
+    })
+
+    expect(await controller.loadVersionAtIndex(state, -1, () => {})).toBe(false)
+    expect(await controller.loadVersionAtIndex(state, 5, () => {})).toBe(false)
+    expect(await controller.loadVersionAtIndex(state, 0, () => {})).toBe(false) // already loaded
+    expect(controller.isVersionLoaded(state, -1)).toBe(false)
+    expect(controller.isVersionLoaded(state, 5)).toBe(false)
+    expect(controller.isVersionLoaded(state, 0)).toBe(true)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+  })
+
+  it('reports navigation availability at the list boundaries', () => {
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0', '1.5.0'],
+      releaseNotesViewIndex: 0,
+    })
+
+    expect(controller.canNavigate(state, 'newer')).toBe(false)
+    expect(controller.canNavigate(state, 'older')).toBe(true)
+    expect(controller.navigateVersion(state, 'newer')).toBe(-1)
+
+    state.releaseNotesViewIndex = 1
+    expect(controller.canNavigate(state, 'newer')).toBe(true)
+    expect(controller.canNavigate(state, 'older')).toBe(false)
+    expect(controller.navigateVersion(state, 'older')).toBe(-1)
+  })
+
+  it('cancel() flushes a pending debounced load as not-loaded', async () => {
+    vi.useFakeTimers()
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map(),
+    })
+
+    const pending = controller.loadVersionAtIndex(state, 0, () => {})
+    controller.cancel() // clears the debounce timer before it fires
+
+    await expect(pending).resolves.toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('hydrate() cancels a pending debounced load from a previous package', async () => {
+    vi.useFakeTimers()
+    mocks.fetchPackageMetadata.mockResolvedValue({
+      description: 'demo',
+      homepage: 'https://demo.dev',
+    })
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map(),
+    })
+
+    const pending = controller.loadVersionAtIndex(state, 0, () => {})
+    const hydrating = controller.hydrate(baseState)
+    await vi.runAllTimersAsync()
+
+    await expect(pending).resolves.toBe(false)
+    await hydrating
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('resolves false when the debounce fires while another version is loading', async () => {
+    vi.useFakeTimers()
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0', '1.5.0'],
+      releaseNotesLoaded: new Map(),
+      releaseNotesLoadingVersion: undefined,
+    })
+
+    const first = controller.loadVersionAtIndex(state, 0, () => {})
+    state.releaseNotesLoadingVersion = '9.9.9' // something else started loading meanwhile
+    await vi.runAllTimersAsync()
+
+    await expect(first).resolves.toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('builds an empty version queue for non-semver targets', async () => {
+    mocks.fetchPackageMetadata.mockResolvedValue({ description: 'demo' })
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      allVersions: ['1.0.0', '2.0.0'],
+      selectedOption: 'latest',
+      latestVersion: 'not-a-version',
+    })
+
+    const update = await controller.hydrate(state)
+
+    expect(update?.patch.releaseNotesVersions).toEqual([])
+  })
+
+  it('keeps every version at or below target when the current version is not semver', async () => {
+    mocks.fetchPackageMetadata.mockResolvedValue({ description: 'demo' })
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      allVersions: ['0.5.0', '1.0.0', '2.0.0', '3.0.0'],
+      currentVersion: 'workspace:*',
+      selectedOption: 'latest',
+      latestVersion: '2.0.0',
+    })
+
+    const update = await controller.hydrate(state)
+
+    expect(update?.patch.releaseNotesVersions).toEqual(['2.0.0', '1.0.0', '0.5.0'])
   })
 })

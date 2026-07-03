@@ -133,11 +133,9 @@ describe('ChangelogFetcher', () => {
 
     it('dedupes concurrent requests while metadata is in flight', async () => {
       let resolveRegistry:
-        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
-        | undefined
+        ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void) | undefined
       let resolveDownloads:
-        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
-        | undefined
+        ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void) | undefined
 
       fetchMock
         .mockImplementationOnce(
@@ -439,12 +437,10 @@ describe('ChangelogFetcher', () => {
     })
 
     it('aborts release notes fetch when signal is triggered', async () => {
-      fetchMock
-        .mockResolvedValueOnce(githubRepoManifest)
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ downloads: 42 }),
-        })
+      fetchMock.mockResolvedValueOnce(githubRepoManifest).mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ downloads: 42 }),
+      })
 
       await fetcher.fetchPackageMetadata('demo-pkg', '2.0.0')
 
