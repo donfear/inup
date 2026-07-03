@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../../src/features/interactive/modal'
 import { PackageSelectionState } from '../../../../src/shared/types'
+import { join } from 'node:path'
 import { getVisualLength, stripAnsi } from '../../../../src/shared/terminal'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
@@ -368,7 +369,7 @@ describe('modal renderer edge paths', () => {
     const result = renderPackageInfoModal(
       {
         ...minimalState,
-        packageJsonPaths: [process.cwd(), `${process.cwd()}/packages/a/package.json`],
+        packageJsonPaths: [process.cwd(), join(process.cwd(), 'packages', 'a', 'package.json')],
       },
       120,
       30,
@@ -380,7 +381,8 @@ describe('modal renderer edge paths', () => {
     expect(rendered).toContain('2 package.json files depend on tiny')
     // path.relative(cwd, cwd) is '' — the absolute path is the fallback.
     expect(rendered).toContain(process.cwd())
-    expect(rendered).toContain('packages/a/package.json')
+    // path.relative renders platform separators (backslashes on Windows).
+    expect(rendered).toContain(join('packages', 'a', 'package.json'))
   })
 
   it('truncates the fourth description line instead of overflowing', () => {
@@ -489,8 +491,9 @@ describe('modal renderer edge paths', () => {
     const rendered = stripAnsi(result.lines.join('\n'))
     expect(rendered).toContain('Lines 1-')
     // The window starts at the top: both used-by rows plus the separator into
-    // the catalog section are inside the visible slice.
-    expect(rendered).toContain('packages/a/package.json')
+    // the catalog section are inside the visible slice. path.relative renders
+    // platform separators, so build the expected substring the same way.
+    expect(rendered).toContain(join('packages', 'a', 'package.json'))
   })
 
   it('renders a scrolling modal with no footer when the body fits exactly', () => {
@@ -515,7 +518,7 @@ describe('modal renderer edge paths', () => {
     expect(result.usesInternalScroll).toBe(true)
     expect(result.maxScrollOffset).toBe(0)
     const rendered = stripAnsi(result.lines.join('\n'))
-    expect(rendered).toContain('packages/c/package.json')
+    expect(rendered).toContain(join('packages', 'c', 'package.json'))
     expect(rendered).not.toContain('Lines 1-')
     expect(rendered).not.toContain('End of release notes')
   })
