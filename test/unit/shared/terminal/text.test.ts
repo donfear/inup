@@ -12,7 +12,7 @@ describe('stripAnsi', () => {
   })
 
   it('removes OSC-8 hyperlink wrappers', () => {
-    expect(stripAnsi('\u001b]8;;https://example.comlink\u001b]8;;')).toBe('link')
+    expect(stripAnsi('\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007')).toBe('link')
   })
 
   it('leaves plain text untouched', () => {
@@ -47,6 +47,29 @@ describe('getVisualLength', () => {
     expect(getVisualLength('パッケージ')).toBe(10)
     expect(getVisualLength('한국어')).toBe(6)
   })
+
+  it('measures complex grapheme clusters as single wide glyphs', () => {
+    expect(getVisualLength('👨‍👩‍👧‍👦')).toBe(2) // ZWJ family sequence
+    expect(getVisualLength('👍🏽')).toBe(2) // skin-tone modifier
+    expect(getVisualLength('🇺🇸')).toBe(2) // regional-indicator flag
+  })
+
+  it('measures OSC-8 hyperlinks by their visible label only', () => {
+    // The modal linkifies mentions/PRs/commits into OSC-8 hyperlinks; layout
+    // math must see only the label, or every linked row would be misaligned.
+    const hyperlink = '\u001b]8;;https://example.com\u0007docs\u001b]8;;\u0007'
+    expect(getVisualLength(hyperlink)).toBe(4)
+    expect(stripAnsi(hyperlink)).toBe('docs')
+  })
+
+  it('returns zero for empty and ANSI-only strings', () => {
+    expect(getVisualLength('')).toBe(0)
+    expect(getVisualLength('\u001b[31m\u001b[39m')).toBe(0)
+  })
+
+  it('measures colored CJK/emoji mixes by visible content', () => {
+    expect(getVisualLength('\u001b[31m你好\u001b[39m 🚀 ok')).toBe(10)
+  })
 })
 
 describe('truncatePlainText', () => {
@@ -74,6 +97,29 @@ describe('truncatePlainText', () => {
     // units and could overflow the column.
     expect(truncatePlainText('你好世界', 7)).toBe('你好...')
   })
+
+  it('drops a wide char that cannot fit rather than overflow an odd budget', () => {
+    // At width 6 a second wide char plus the ellipsis would need 7 columns,
+    // so only one CJK char survives (total width 5 ≤ 6).
+    expect(truncatePlainText('你好世界', 6)).toBe('你...')
+  })
+
+  it('never exceeds the width budget for any input', () => {
+    const inputs = [
+      'hello world',
+      '你好世界啊',
+      'パッケージ管理ツール',
+      'emoji 🚀🚀🚀 tail',
+      'ab 👨‍👩‍👧‍👦 cd',
+      'mixed 你好 text 🚀',
+    ]
+    for (const input of inputs) {
+      for (let width = 1; width <= 12; width++) {
+        const result = truncatePlainText(input, width)
+        expect(getVisualLength(result)).toBeLessThanOrEqual(width)
+      }
+    }
+  })
 })
 
 describe('wrapPlainText', () => {
@@ -92,5 +138,44 @@ describe('wrapPlainText', () => {
 
   it('puts an overlong word on its own line', () => {
     expect(wrapPlainText('a extraordinarily b', 6)).toEqual(['a', 'extraordinarily', 'b'])
+  })
+
+  it('wraps CJK text by visual width', () => {
+    // Each pair is 4 columns wide, so a 4-column budget fits exactly one pair
+    // per line. The old width-1-per-char math would have packed two.
+    expect(wrapPlainText('你好 世界 你好', 4)).toEqual(['你好', '世界', '你好'])
+  })
+
+  it('re-balances ANSI color codes across wrapped lines', () => {
+    // The old implementation wrapped ANSI-blind: an opened color bled across
+    // the line break and the padding after it.
+    const lines = wrapPlainText('\u001b[31mone two three four\u001b[39m', 8)
+
+    expect(lines.map(stripAnsi)).toEqual(['one two', 'three', 'four'])
+    for (const line of lines) {
+      expect(line).toContain('\u001b[31m') // color re-opened on every line
+      expect(line).toContain('\u001b[39m') // and closed before the break
+      expect(getVisualLength(line)).toBeLessThanOrEqual(8)
+    }
+  })
+
+  it('keeps every wrapped line within the width budget for any input', () => {
+    const inputs = [
+      'plain words to wrap around',
+      '你好 世界 你好 世界',
+      'emoji 🚀 rocket 🚀 tail',
+      'a 👨‍👩‍👧‍👦 b 👨‍👩‍👧‍👦 c',
+      'パッケージ 管理 ツール',
+    ]
+    for (const input of inputs) {
+      for (let width = 4; width <= 12; width++) {
+        for (const line of wrapPlainText(input, width)) {
+          // Overflow is only permitted for a single unbreakable word.
+          if (getVisualLength(line) > width) {
+            expect(line).not.toContain(' ')
+          }
+        }
+      }
+    }
   })
 })
