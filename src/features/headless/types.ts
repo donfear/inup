@@ -20,7 +20,8 @@ export interface HeadlessReportEntry {
   range: string // Latest version satisfying the current range
   latest: string // Absolute latest version
   type: DependencyType
-  packageJsonPath: string
+  packageJsonPath: string // pnpm-workspace.yaml for catalog entries
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
   hasMajorUpdate: boolean
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any

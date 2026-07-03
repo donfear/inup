@@ -13,6 +13,7 @@ export interface PackageSelectionState {
   hasRangeUpdate: boolean
   hasMajorUpdate: boolean
   type: DependencyType
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases

@@ -17,6 +17,7 @@ import {
   createPendingSelectionStates,
   createUpgradeChoices,
   runInteractiveSession,
+  selectionKey,
 } from '../features/interactive'
 
 interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
@@ -99,7 +100,9 @@ export class InteractiveUI {
   }
 
   public createPendingSelectionStates(
-    packages: Array<Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath'>>,
+    packages: Array<
+      Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath' | 'catalog'>
+    >,
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): PackageSelectionState[] {
     return createPendingSelectionStates(
@@ -126,11 +129,13 @@ export class InteractiveUI {
     }
 
     const seen = new Set(
-      selectionStates.map((state) => `${state.name}@${state.currentVersionSpecifier}@${state.type}`)
+      selectionStates.map((state) =>
+        selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
+      )
     )
 
     outdatedStates.forEach((state) => {
-      const key = `${state.name}@${state.currentVersionSpecifier}@${state.type}`
+      const key = selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
       if (!seen.has(key)) {
         selectionStates.push(state)
         seen.add(key)

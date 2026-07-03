@@ -6,6 +6,7 @@ export {
   createSelectionStates,
   createPendingSelectionStates,
   createUpgradeChoices,
+  selectionKey,
 } from './session'
 export { PackageInfoModalController } from './controllers'
 export { renderReadmeKeyTable } from './keymap'

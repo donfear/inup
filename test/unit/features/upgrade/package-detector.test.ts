@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   collectAllDependenciesAsync: vi.fn(),
   findClosestMinorVersion: vi.fn(),
   fetchPackageVersions: vi.fn(),
+  loadPnpmCatalogs: vi.fn(),
 }))
 
 vi.mock('../../../../src/shared/fs', () => ({
@@ -21,6 +22,16 @@ vi.mock('../../../../src/shared/versions', async (importOriginal) => {
   return {
     ...(actual as object),
     findClosestMinorVersion: mocks.findClosestMinorVersion,
+  }
+})
+
+// Keep catalog loading hermetic: neither the machine's nor this repo's own
+// pnpm-workspace.yaml may leak into these tests.
+vi.mock('../../../../src/shared/pnpm-catalogs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../src/shared/pnpm-catalogs')>()
+  return {
+    ...actual,
+    PnpmCatalogs: { load: mocks.loadPnpmCatalogs },
   }
 })
 
@@ -56,6 +67,7 @@ import { PackageDetector } from '../../../../src/features/upgrade/package-detect
 
 describe('PackageDetector streaming', () => {
   beforeEach(() => {
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
@@ -174,5 +186,74 @@ describe('PackageDetector streaming', () => {
     expect(packages).toHaveLength(2)
     expect(packages[0].name).toBe('@scope/pkg')
     expect(packages[1].name).toBe('zod')
+  })
+
+  it('resolves catalog refs into single entries sourced from pnpm-workspace.yaml', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: (name: string, spec: string) => {
+        if (name === 'react' && spec === 'catalog:') return { catalog: 'default', range: '^18.2.0' }
+        if (name === 'react' && spec === 'catalog:react19')
+          return { catalog: 'react19', range: '^19.0.0' }
+        return null
+      },
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      // Two packages referencing the same default-catalog entry → ONE dependency.
+      {
+        name: 'react',
+        version: 'catalog:',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/a/package.json',
+      },
+      {
+        name: 'react',
+        version: 'catalog:',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/b/package.json',
+      },
+      // A named catalog is a distinct entry.
+      {
+        name: 'react',
+        version: 'catalog:react19',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/c/package.json',
+      },
+      // Unresolvable refs are dropped, never sent to the registry.
+      {
+        name: 'ghost',
+        version: 'catalog:missing',
+        type: 'dependencies',
+        packageJsonPath: '/repo/packages/a/package.json',
+      },
+    ])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        expect(packageNames).toEqual(['react'])
+        const data = { latestVersion: '19.1.0', allVersions: ['19.1.0', '18.3.0', '18.2.0'] }
+        options.onBatchReady([
+          { packageName: 'react', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
+        ])
+        return new Map([['react', data]])
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages).toHaveLength(2)
+    expect(packages[0]).toMatchObject({
+      name: 'react',
+      currentVersion: '^18.2.0',
+      catalog: 'default',
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+    })
+    expect(packages[1]).toMatchObject({
+      name: 'react',
+      currentVersion: '^19.0.0',
+      catalog: 'react19',
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+    })
+    expect(packages.some((pkg) => pkg.name === 'ghost')).toBe(false)
   })
 })

@@ -44,6 +44,7 @@ Run `inup` in any project — it scans for outdated dependencies and lets you pi
 - **Live Toggles** — filter dependency types (`d`, `p`, `o`) on the fly without restarting.
 - **Zero Config** — auto-detects npm, yarn, pnpm, or bun from your lockfile.
 - **Monorepo & Workspaces Ready** — discovers and upgrades dependencies across every workspace in one pass.
+- **pnpm Catalogs** — dependencies declared as `catalog:` / `catalog:<name>` are resolved from `pnpm-workspace.yaml` and upgraded right there, preserving the file's comments and formatting.
 - **Vulnerability Audit** — flags known security vulnerabilities right in the package list, so you know what's risky before you upgrade.
 - **Changelog Viewer** — read release notes and changelogs inline without leaving the terminal.
 - **Built-in Search** — press `/` to filter packages instantly.
