@@ -324,15 +324,23 @@ export async function findAllPackageJsonFilesAsync(
   function pump(): void {
     while (activeTasks < concurrency && pending.length > 0 && !failedError) {
       const next = pending.shift()
+      // pending.length > 0 was just checked and nothing runs in between, so
+      // shift() cannot come back empty; guard kept for type narrowing.
+      /* v8 ignore start */
       if (!next) break
+      /* v8 ignore stop */
 
       activeTasks++
       void processDirectory(next.dir, next.depth)
         .catch((error) => {
+          // First error wins; a second in-flight task rejecting in the same
+          // tick is a race window that cannot be scheduled deterministically.
+          /* v8 ignore start */
           if (!failedError) {
             failedError = error
             rejectDone?.(error)
           }
+          /* v8 ignore stop */
         })
         .finally(() => {
           activeTasks--

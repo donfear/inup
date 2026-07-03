@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync, chmodSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -533,6 +533,112 @@ describe('filesystem utils', () => {
 
       const result = findWorkspaceRoot(testDir, 'npm')
       expect(result).toBeNull()
+    })
+  })
+
+  describe('scan edge paths', () => {
+    it('warns when a pruned lib dir holds a package.json directly', () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      mkdirSync(join(testDir, 'lib'))
+      writeFileSync(join(testDir, 'lib', 'package.json'), JSON.stringify({ name: 'inner' }))
+      const skipped: string[] = []
+
+      const files = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+
+      expect(files).toEqual([join(testDir, 'package.json')])
+      expect(skipped).toEqual(['lib'])
+    })
+
+    it('does not warn for a pruned lib dir whose children hold no packages', () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      mkdirSync(join(testDir, 'lib'))
+      mkdirSync(join(testDir, 'lib', '.hidden'))
+      writeFileSync(join(testDir, 'lib', 'index.js'), '')
+      mkdirSync(join(testDir, 'lib', 'nested'))
+      writeFileSync(join(testDir, 'lib', 'nested', 'index.js'), '')
+      const skipped: string[] = []
+
+      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+
+      expect(skipped).toEqual([])
+    })
+
+    it('treats an unreadable pruned lib dir as packageless', () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      mkdirSync(join(testDir, 'lib'))
+      chmodSync(join(testDir, 'lib'), 0o000)
+      const skipped: string[] = []
+
+      try {
+        findAllPackageJsonFiles(testDir, [], 10, undefined, {
+          onSkippedPackageDir: (dir) => skipped.push(dir),
+        })
+        expect(skipped).toEqual([])
+      } finally {
+        chmodSync(join(testDir, 'lib'), 0o755)
+      }
+    })
+
+    it('survives symlink cycles and broken symlinks in both scanners', async () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      mkdirSync(join(testDir, 'a'))
+      // Cycle: a/loop points back at the root that is already being scanned.
+      symlinkSync(testDir, join(testDir, 'a', 'loop'), 'dir')
+      // Broken symlink: stat fails, entry must be skipped.
+      symlinkSync(join(testDir, 'gone'), join(testDir, 'broken'), 'file')
+
+      const syncFiles = findAllPackageJsonFiles(testDir)
+      const asyncFiles = await findAllPackageJsonFilesAsync(testDir)
+
+      expect(syncFiles).toEqual([join(testDir, 'package.json')])
+      expect(asyncFiles).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('resolves to an empty list for a vanished root (async)', async () => {
+      await expect(findAllPackageJsonFilesAsync(join(testDir, 'no-such-dir'))).resolves.toEqual([])
+    })
+
+    it('skips an unreadable subdirectory (async)', async () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      mkdirSync(join(testDir, 'locked'))
+      chmodSync(join(testDir, 'locked'), 0o000)
+
+      try {
+        await expect(findAllPackageJsonFilesAsync(testDir)).resolves.toEqual([
+          join(testDir, 'package.json'),
+        ])
+      } finally {
+        chmodSync(join(testDir, 'locked'), 0o755)
+      }
+    })
+
+    it('rejects the scan when the progress callback throws mid-run', async () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
+      // Enough directories that BOTH the forced 10th and 20th progress reports
+      // fire (outside the root '.' report). With every directory in flight at
+      // once, both reports throw: the first rejection fails the scan, the
+      // second exercises the already-failed path.
+      for (let i = 0; i < 25; i++) {
+        mkdirSync(join(testDir, `pkg-${i}`))
+      }
+
+      await expect(
+        findAllPackageJsonFilesAsync(
+          testDir,
+          [],
+          10,
+          (dir) => {
+            if (dir !== '.') {
+              throw new Error('progress boom')
+            }
+          },
+          { concurrency: 64 }
+        )
+      ).rejects.toThrow('progress boom')
     })
   })
 })
