@@ -94,6 +94,11 @@ updates and leaves majors for you to review; `--target latest` includes majors. 
 (`ignore`, `exclude`, `scanDirs`) exactly as the report does — a package the config excludes is
 never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 
+**pnpm catalogs work in every mode.** Dependencies declared as `catalog:` / `catalog:<name>` are
+resolved from `pnpm-workspace.yaml`; `--apply` writes the new range back into that file (comments
+and formatting preserved), and in `--json` output such entries carry a `"catalog"` field with their
+`packageJsonPath` pointing at `pnpm-workspace.yaml`.
+
 Each reported package carries its health signals: `deprecated` (npm deprecation message), `enginesNode`
 (declared `engines.node`), and `vulnerability` (known advisories on the currently-installed version,
 from one bulk `npm audit`-style request). Every advisory is **cross-referenced against the upgrade
@@ -162,6 +167,7 @@ Scanned **18** packages — **3** unique upgrade(s) (1 with a major available, 1
 ### ✅ Applied in this PR
 
 - `eslint` `^9.28.0` → `^9.30.1` (devDependencies)
+- `react` `^18.2.0` → `^18.3.1` (dependencies · catalog:default)
 - `undici` `^7.10.0` → `^7.11.0` (dependencies)
 - `vite` `^6.3.0` → `^6.3.5` (devDependencies)
 
@@ -170,9 +176,13 @@ Scanned **18** packages — **3** unique upgrade(s) (1 with a major available, 1
 | Package | Current | → In-range | Latest | Type | Applied | Major? | Security |
 |---|---|---|---|---|---|---|---|
 | `eslint` | ^9.28.0 | ^9.30.1 | 9.30.1 | devDependencies | ✅ | — | — |
+| `react` | ^18.2.0 | ^18.3.1 | 19.2.0 | dependencies · catalog:default | ✅ | ⚠️ yes | — |
 | `undici` | ^7.10.0 | ^7.11.0 | 7.11.0 | dependencies | ✅ | — | 🟢 fixed by in-range bump |
 | `vite` | ^6.3.0 | ^6.3.5 | 7.0.0 | devDependencies | ✅ | ⚠️ yes | — |
 ```
+
+Catalog-sourced upgrades (pnpm `catalog:` deps) are applied to `pnpm-workspace.yaml` and marked
+`catalog:<name>` in the PR body so reviewers know which file the diff touches.
 
 <details>
 <summary><strong>Details: commit attribution, all inputs, and outputs</strong></summary>

@@ -1,0 +1,12 @@
+# Shared versions for the whole monorepo — inup upgrades these in place.
+packages:
+  - packages/*
+
+catalog:
+  react: ^18.2.0
+  react-dom: ^18.2.0 # keep in sync with react
+  lodash: ^4.17.19
+
+catalogs:
+  react17:
+    react: ^17.0.2

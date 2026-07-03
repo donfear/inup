@@ -63,15 +63,25 @@ export function wasApplied(e) {
 }
 
 /**
+ * Where the upgrade is written: the dependency type, plus the pnpm catalog when the range lives in
+ * pnpm-workspace.yaml instead of a package.json — reviewers should know the diff touches the
+ * workspace file.
+ */
+export function sourceLabel(e) {
+  return e.catalog ? `${e.type} · catalog:${e.catalog}` : e.type
+}
+
+/**
  * Collapse monorepo duplicates. The report carries one entry per (package, packageJsonPath, type),
  * so the same upgrade (e.g. @apollo/client ^4.2.1 → 4.2.3) appears once per workspace and again per
  * dependency type. Reviewers only care about the unique change, so we key on name+range+latest and
  * keep the first entry — preserving its vulnerability/major flags, which are package-level facts.
+ * Catalog entries stay distinct from same-range direct deps: they are written to different files.
  */
 export function dedupe(entries) {
   const seen = new Map()
   for (const e of entries) {
-    const key = `${e.name}@${e.range}@${e.latest}`
+    const key = `${e.name}@${e.range}@${e.latest}@${e.catalog ?? ''}`
     if (!seen.has(key)) seen.set(key, e)
   }
   return [...seen.values()]
@@ -114,7 +124,7 @@ export function render(report) {
     lines.push('')
     for (const e of applied) {
       lines.push(
-        `- \`${e.name}\` \`${e.current}\` → \`${applyVersionPrefix(e.current, e.range)}\` (${e.type})`
+        `- \`${e.name}\` \`${e.current}\` → \`${applyVersionPrefix(e.current, e.range)}\` (${sourceLabel(e)})`
       )
     }
     lines.push('')
@@ -134,7 +144,7 @@ export function render(report) {
     const appliedCell = wasApplied(e) ? '✅' : '—'
     lines.push(
       `| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(applyVersionPrefix(e.current, e.range))} | ` +
-        `${escapeCell(e.latest)} | ${escapeCell(e.type)} | ${appliedCell} | ${major} | ${security} |`
+        `${escapeCell(e.latest)} | ${escapeCell(sourceLabel(e))} | ${appliedCell} | ${major} | ${security} |`
     )
   }
   lines.push('')
@@ -172,7 +182,7 @@ export function render(report) {
     )
     lines.push('')
     for (const e of majorOnly) {
-      lines.push(`- \`${e.name}\` (current \`${e.current}\`) → **${e.latest}** (${e.type})`)
+      lines.push(`- \`${e.name}\` (current \`${e.current}\`) → **${e.latest}** (${sourceLabel(e)})`)
     }
     lines.push('')
   }
