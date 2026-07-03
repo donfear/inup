@@ -39,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('GitHubClient.fetchReleaseByTag', () => {
@@ -57,6 +58,31 @@ describe('GitHubClient.fetchReleaseByTag', () => {
       'https://api.github.com/repos/octo/demo/releases/tags/v1.0.0',
       expect.objectContaining({ method: 'GET' })
     )
+  })
+
+  it('authenticates api.github.com requests when GITHUB_TOKEN is set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'gh-token-123')
+    fetchMock.mockResolvedValue(jsonResponse({ body: 'notes' }))
+
+    await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('api.github.com'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer gh-token-123' }),
+      })
+    )
+  })
+
+  it('stays anonymous without an ambient token', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('GH_TOKEN', '')
+    fetchMock.mockResolvedValue(jsonResponse({ body: 'notes' }))
+
+    await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
+    expect(headers['authorization']).toBeUndefined()
   })
 
   it('returns null for missing releases, empty bodies, and network errors', async () => {

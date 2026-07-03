@@ -4,6 +4,24 @@ import { PACKAGE_NAME } from '../../../shared/config'
 
 const GITHUB_RELEASES_PAGE_LIMIT = 3
 
+/**
+ * Headers for api.github.com requests. Honors an ambient token (GitHub Actions
+ * sets GITHUB_TOKEN, gh CLI users often export GH_TOKEN): authenticated requests
+ * get 5,000 req/hr instead of the 60 req/hr anonymous limit, which large upgrade
+ * sessions can exhaust while fetching release notes.
+ */
+function githubApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    accept: 'application/vnd.github.v3+json',
+    'user-agent': `${PACKAGE_NAME}-cli`,
+  }
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
+  if (token) {
+    headers['authorization'] = `Bearer ${token}`
+  }
+  return headers
+}
+
 export class GitHubClient {
   private releasesCache = new Map<string, GitHubRelease[] | null>()
   private rawChangelogCache = new Map<string, string | null>()
@@ -26,10 +44,7 @@ export class GitHubClient {
         `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases/tags/${tag}`,
         {
           method: 'GET',
-          headers: {
-            accept: 'application/vnd.github.v3+json',
-            'user-agent': `${PACKAGE_NAME}-cli`,
-          },
+          headers: githubApiHeaders(),
           signal,
         }
       )
@@ -93,10 +108,7 @@ export class GitHubClient {
           `https://api.github.com/repos/${repo.owner}/${repo.repo}/releases?per_page=100&page=${page}`,
           {
             method: 'GET',
-            headers: {
-              accept: 'application/vnd.github.v3+json',
-              'user-agent': `${PACKAGE_NAME}-cli`,
-            },
+            headers: githubApiHeaders(),
             signal,
           }
         )

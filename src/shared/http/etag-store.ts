@@ -8,8 +8,9 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import envPaths from 'env-paths'
+import { PACKAGE_NAME } from '../config'
 import type { PackageVersionData } from '../registry/npm-registry'
 
 /**
@@ -51,9 +52,12 @@ export function setEtagCacheEnabled(value: boolean): void {
 
 /** Resolve (and lazily create) the cache directory, sweeping stale entries once. */
 function cacheDir(): string {
-  // Version data is not project-specific, so it lives in the OS temp area, shared
-  // across every project the user scans.
-  const dir = join(tmpdir(), 'inup', 'etag-cache', SCHEMA)
+  // Version data is not project-specific, so it lives in the per-user cache
+  // directory (env-paths, like the config dir), shared across every project the
+  // user scans. It used to live in the OS temp dir, but macOS clears that on
+  // reboot and Linux distros sweep it periodically — throwing the cache away
+  // exactly when it is most useful.
+  const dir = join(envPaths(PACKAGE_NAME).cache, 'etag-cache', SCHEMA)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
