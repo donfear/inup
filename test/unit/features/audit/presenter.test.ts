@@ -34,6 +34,17 @@ describe('vulnerability presenter', () => {
     expect(getVulnerabilityLinkLabel('https://example.com/details')).toBe('Details:')
   })
 
+  it('renders no badge for an unrecognized severity', () => {
+    expect(
+      getVulnerabilityBadge({
+        count: 1,
+        highestSeverity: 'bizarre' as never,
+        detailsUrl: 'https://github.com/advisories/GHSA-1',
+        advisories: [],
+      })
+    ).toBe('')
+  })
+
   it('preserves existing detail links when merging summaries', () => {
     const summary = createVulnerabilitySummary(
       {

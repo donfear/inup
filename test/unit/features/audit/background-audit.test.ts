@@ -24,6 +24,18 @@ describe('BackgroundAuditTracker', () => {
     })
   })
 
+  it('skips entries without a name or version', () => {
+    const tracker = new BackgroundAuditTracker()
+
+    const added = tracker.enqueue([
+      { name: '', version: '^1.0.0' },
+      { name: 'left-pad', version: '' },
+    ])
+
+    expect(added).toBe(0)
+    expect(tracker.reserveNextBatch(20).packageNames).toEqual([])
+  })
+
   it('marks completed packages and does not requeue them', () => {
     const tracker = new BackgroundAuditTracker()
 
