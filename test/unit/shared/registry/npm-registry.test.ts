@@ -30,6 +30,7 @@ import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/ht
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { gzipSync, brotliCompressSync, deflateSync } from 'node:zlib'
 
 type MockResponse = {
   statusCode: number
@@ -221,6 +222,89 @@ describe('npm-registry', () => {
     })
   })
 
+  it('retries retryable 5xx statuses that are not congestion signals', async () => {
+    requestMock.mockResolvedValue(makeErrBody(500))
+
+    const result = await fetchPackageVersions(['demo-pkg'])
+
+    expect(requestMock).toHaveBeenCalledTimes(3)
+    expect(result.get('demo-pkg')).toEqual({
+      latestVersion: 'unknown',
+      allVersions: [],
+    })
+  })
+
+  it('treats network-level failures as transient and retries', async () => {
+    const abortError = new Error('aborted')
+    abortError.name = 'AbortError'
+    requestMock.mockRejectedValue(abortError)
+
+    const result = await fetchPackageVersions(['demo-pkg'])
+
+    expect(requestMock).toHaveBeenCalledTimes(3)
+    expect(result.get('demo-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+  })
+
+  it('treats unrecognized errors as transient rather than failing the run', async () => {
+    requestMock.mockRejectedValue(new Error('weird one-off failure'))
+
+    const result = await fetchPackageVersions(['demo-pkg'])
+
+    expect(requestMock).toHaveBeenCalledTimes(3)
+    expect(result.get('demo-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+  })
+
+  it('marks a package unknown when an error body fails to drain', async () => {
+    poolRequestSpy.mockImplementationOnce(async () => {
+      return {
+        statusCode: 404,
+        headers: {},
+        trailers: {},
+        opaque: null,
+        context: {},
+        body: {
+          arrayBuffer: async () => Buffer.alloc(0),
+          dump: async () => {
+            throw new Error('drain failed')
+          },
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any
+    })
+
+    const result = await fetchPackageVersions(['demo-pkg'])
+
+    expect(result.get('demo-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+  })
+
+  it('decompresses gzip, brotli, and deflate bodies, including array headers', async () => {
+    const payload = JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } })
+    const encoded: Array<[string, Buffer]> = [
+      ['gzip', gzipSync(payload)],
+      ['br', brotliCompressSync(payload)],
+      ['deflate', deflateSync(payload)],
+    ]
+
+    for (const [encoding, buffer] of encoded) {
+      clearPackageCache()
+      poolRequestSpy.mockImplementationOnce(async () => {
+        return {
+          statusCode: 200,
+          // Array-valued header: undici surfaces repeated headers as arrays.
+          headers: { 'content-encoding': [encoding] },
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: { arrayBuffer: async () => buffer, dump: async () => {} },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+
+      const result = await fetchPackageVersions(['demo-pkg'])
+      expect(result.get('demo-pkg')?.latestVersion).toBe('1.1.0')
+    }
+  })
+
   it('emits batched results in request order', async () => {
     requestMock.mockImplementation(async ({ path }) => {
       if (path.includes('pkg-a')) {
@@ -370,6 +454,63 @@ describe('npm-registry', () => {
       // Congestion must produce at least one immediate hard-down decision.
       expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
     })
+
+    it('records retryable outcomes with the controller and reports package timings', async () => {
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls <= 30) {
+          return makeErrBody(500)
+        }
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const timed: string[] = []
+
+      const result = await fetchPackageVersions(names(60), {
+        adaptive: true,
+        onPackageTiming: (name) => timed.push(name),
+      })
+
+      expect(result.size).toBe(60)
+      expect(timed.length).toBeGreaterThan(0)
+    })
+
+    it('observes congested and not-found outcomes without a controller (small timed run)', async () => {
+      // Small runs skip the adaptive controller entirely, but a provided
+      // onPackageTiming still installs the observer; congestion then has no
+      // new limit to apply and not-found outcomes fall through unrecorded.
+      requestMock.mockImplementation(async ({ path }) => {
+        if (path.includes('congested-pkg')) return makeErrBody(429)
+        return makeErrBody(404)
+      })
+      const timed: string[] = []
+
+      const result = await fetchPackageVersions(['congested-pkg', 'missing-pkg'], {
+        adaptive: true,
+        onPackageTiming: (name) => timed.push(name),
+      })
+
+      expect(result.get('congested-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      expect(result.get('missing-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      expect(timed).toHaveLength(0)
+    })
+
+    it('records transient outcomes with the controller', async () => {
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls % 5 === 0) {
+          const error = new Error('connection reset')
+          error.name = 'AbortError'
+          throw error
+        }
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+
+      const result = await fetchPackageVersions(names(60), { adaptive: true })
+
+      expect(result.size).toBe(60)
+    })
   })
 
   describe('ETag conditional caching', () => {
@@ -440,6 +581,53 @@ describe('npm-registry', () => {
       await fetchPackageVersions(['demo-pkg'])
       // A second run hits the network again (freshness), not served purely offline.
       expect(poolRequestSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
+    })
+
+    it('stores an array-valued ETag header and reuses data on 304 despite a failing drain', async () => {
+      poolRequestSpy.mockImplementationOnce(async () => {
+        return {
+          statusCode: 200,
+          headers: { etag: ['W/"array-form"'] },
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: {
+            arrayBuffer: async () =>
+              Buffer.from(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }), 'utf8'),
+            dump: async () => {},
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+      const first = await fetchPackageVersions(['demo-pkg'])
+      expect(first.get('demo-pkg')?.latestVersion).toBe('1.1.0')
+
+      clearPackageCache()
+      let sentIfNoneMatch: string | undefined
+      poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+        const o = opts as { headers: Record<string, string> }
+        sentIfNoneMatch = o.headers['if-none-match']
+        return {
+          statusCode: 304,
+          headers: {},
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: {
+            arrayBuffer: async () => Buffer.alloc(0),
+            // Draining the empty 304 body may itself fail; the cached data
+            // must still be served.
+            dump: async () => {
+              throw new Error('drain failed')
+            },
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+
+      const second = await fetchPackageVersions(['demo-pkg'])
+      expect(sentIfNoneMatch).toBe('W/"array-form"')
+      expect(second.get('demo-pkg')?.latestVersion).toBe('1.1.0')
     })
 
     it('scopes cached ETags by registry origin — no cross-registry reuse', async () => {
