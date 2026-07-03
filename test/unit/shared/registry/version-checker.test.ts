@@ -1,36 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { execSync } from 'child_process'
 import {
   checkForUpdate,
   checkForUpdateAsync,
 } from '../../../../src/shared/registry/version-checker'
-import { PACKAGE_NAME } from '../../../../src/shared/config/constants'
+import { NPM_REGISTRY_URL, PACKAGE_NAME } from '../../../../src/shared/config/constants'
 
-// `npm view` is mocked so this suite is deterministic and offline-safe.
-vi.mock('child_process', async (importOriginal) => {
-  const original = await importOriginal<typeof import('child_process')>()
-  return { ...original, execSync: vi.fn() }
+// The registry request is mocked so this suite is deterministic and offline-safe.
+const fetchMock = vi.fn()
+
+const versionResponse = (version: unknown, ok = true) => ({
+  ok,
+  json: async () => ({ version }),
 })
 
-const execMock = vi.mocked(execSync)
 const originalArgv1 = process.argv[1]
 
 beforeEach(() => {
-  execMock.mockReset()
-  execMock.mockReturnValue('2.0.0\n')
+  fetchMock.mockReset()
+  fetchMock.mockResolvedValue(versionResponse('2.0.0'))
+  vi.stubGlobal('fetch', fetchMock)
 })
 
 afterEach(() => {
   process.argv[1] = originalArgv1
+  vi.unstubAllGlobals()
 })
 
 describe('checkForUpdate', () => {
-  it('queries the registry via npm view', async () => {
+  it('queries the registry latest endpoint directly (no npm spawn)', async () => {
     await checkForUpdate(PACKAGE_NAME, '1.0.0')
 
-    expect(execMock).toHaveBeenCalledWith(
-      `npm view ${PACKAGE_NAME} version`,
-      expect.objectContaining({ encoding: 'utf-8' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${NPM_REGISTRY_URL}/${PACKAGE_NAME}/latest`,
+      expect.objectContaining({ method: 'GET' })
     )
   })
 
@@ -73,16 +75,44 @@ describe('checkForUpdate', () => {
     expect(result?.updateCommand).toBe(`npm install -g ${PACKAGE_NAME}@latest`)
   })
 
-  it('fails silently when npm is unavailable', async () => {
-    execMock.mockImplementation(() => {
-      throw new Error('npm not found')
-    })
+  it('fails silently when the registry is unreachable', async () => {
+    fetchMock.mockRejectedValue(new Error('offline'))
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently on non-2xx responses', async () => {
+    fetchMock.mockResolvedValue(versionResponse(undefined, false))
 
     expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
   })
 
   it('fails silently on unparseable registry output', async () => {
-    execMock.mockReturnValue('not-a-version\n')
+    fetchMock.mockResolvedValue(versionResponse('not-a-version'))
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently when the request times out', async () => {
+    // AbortSignal.timeout rejects the fetch with a TimeoutError DOMException.
+    fetchMock.mockRejectedValue(new DOMException('The operation timed out', 'TimeoutError'))
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently on malformed JSON bodies', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON')
+      },
+    })
+
+    expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
+  })
+
+  it('fails silently when the manifest version is not a string', async () => {
+    fetchMock.mockResolvedValue(versionResponse(42))
 
     expect(await checkForUpdate(PACKAGE_NAME, '1.0.0')).toBeNull()
   })
@@ -97,9 +127,7 @@ describe('checkForUpdateAsync', () => {
   })
 
   it('resolves null instead of rejecting on failure', async () => {
-    execMock.mockImplementation(() => {
-      throw new Error('offline')
-    })
+    fetchMock.mockRejectedValue(new Error('offline'))
 
     await expect(checkForUpdateAsync(PACKAGE_NAME, '1.0.0')).resolves.toBeNull()
   })

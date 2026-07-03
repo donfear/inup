@@ -45,6 +45,7 @@ Run `inup` in any project — it scans for outdated dependencies and lets you pi
 - **Zero Config** — auto-detects npm, yarn, pnpm, or bun from your lockfile.
 - **Monorepo & Workspaces Ready** — discovers and upgrades dependencies across every workspace in one pass.
 - **pnpm Catalogs** — dependencies declared as `catalog:` / `catalog:<name>` are resolved from `pnpm-workspace.yaml` and upgraded right there, preserving the file's comments and formatting.
+- **Private Registries** — honors your `.npmrc` (project, user, and global): scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, `${ENV_VAR}` expansion) work exactly like npm's own resolution.
 - **Vulnerability Audit** — flags known security vulnerabilities right in the package list, so you know what's risky before you upgrade.
 - **Changelog Viewer** — read release notes and changelogs inline without leaving the terminal.
 - **Built-in Search** — press `/` to filter packages instantly.

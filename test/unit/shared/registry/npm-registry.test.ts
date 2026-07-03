@@ -8,13 +8,28 @@ vi.mock('../../../../src/shared/http/retry', async (importOriginal) => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }))
 
+// Pin registry resolution to the public registry so this suite never depends on
+// the machine's real npm configuration. Individual tests override per call.
+const { registryTargetMock } = vi.hoisted(() => ({
+  registryTargetMock: vi.fn((): { origin: string; pathPrefix: string; authHeader?: string } => ({
+    origin: 'https://registry.npmjs.org',
+    pathPrefix: '',
+  })),
+}))
+vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/registry/registry-config')>()),
+  registryTargetFor: registryTargetMock,
+}))
+
 import {
   clearPackageCache,
   fetchPackageVersions,
 } from '../../../../src/shared/registry/npm-registry'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, etagCacheDir } from '../../../../src/shared/http/etag-store'
-import { rmSync } from 'node:fs'
+import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 type MockResponse = {
   statusCode: number
@@ -92,6 +107,34 @@ describe('npm-registry', () => {
       latestVersion: '1.2.0',
       allVersions: ['1.2.0', '1.1.0', '1.0.0'],
     })
+  })
+
+  it('sends no authorization header when the registry has no credentials', async () => {
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+
+    await fetchPackageVersions(['demo-pkg'])
+
+    const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
+    expect(opts.headers['authorization']).toBeUndefined()
+  })
+
+  it('routes scoped packages to their npmrc registry with its authorization header', async () => {
+    registryTargetMock.mockReturnValueOnce({
+      origin: 'https://registry.example.com',
+      pathPrefix: '/npm',
+      authHeader: 'Bearer sekret',
+    })
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+
+    const result = await fetchPackageVersions(['@myco/private-pkg'])
+
+    const opts = poolRequestSpy.mock.calls[0][0] as {
+      path: string
+      headers: Record<string, string>
+    }
+    expect(opts.path).toBe('/npm/@myco/private-pkg')
+    expect(opts.headers['authorization']).toBe('Bearer sekret')
+    expect(result.get('@myco/private-pkg')?.latestVersion).toBe('1.1.0')
   })
 
   it('returns empty map for empty input', async () => {
@@ -330,11 +373,20 @@ describe('npm-registry', () => {
   })
 
   describe('ETag conditional caching', () => {
+    // Isolated root per test: never wipe (or race parallel test files on) the
+    // user's real persistent cache directory.
+    let etagTestRoot: string
+
     beforeEach(() => {
+      etagTestRoot = mkdtempSync(join(tmpdir(), 'inup-npm-registry-etag-'))
+      setEtagCacheRoot(etagTestRoot)
       setEtagCacheEnabled(true)
-      rmSync(etagCacheDir(), { recursive: true, force: true })
     })
-    afterEach(() => setEtagCacheEnabled(false))
+    afterEach(() => {
+      setEtagCacheRoot(null)
+      setEtagCacheEnabled(false)
+      rmSync(etagTestRoot, { recursive: true, force: true })
+    })
 
     it('stores the ETag on a 200 and reuses data on a subsequent 304', async () => {
       // First run: 200 with an ETag and a body → stores {etag, data}.
@@ -388,6 +440,51 @@ describe('npm-registry', () => {
       await fetchPackageVersions(['demo-pkg'])
       // A second run hits the network again (freshness), not served purely offline.
       expect(poolRequestSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
+    })
+
+    it('scopes cached ETags by registry origin — no cross-registry reuse', async () => {
+      // Store an ETag for demo-pkg on origin A.
+      registryTargetMock.mockReturnValueOnce({
+        origin: 'https://registry-a.example.com',
+        pathPrefix: '',
+      })
+      requestMock.mockImplementation(async () => ({
+        statusCode: 200,
+        body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        headers: { etag: 'W/"origin-a"' },
+      }))
+      await fetchPackageVersions(['demo-pkg'])
+
+      // The same registry path on origin B must NOT validate against origin
+      // A's cached ETag: keys are origin-qualified.
+      clearPackageCache()
+      registryTargetMock.mockReturnValueOnce({
+        origin: 'https://registry-b.example.com',
+        pathPrefix: '',
+      })
+      let sentIfNoneMatch: string | undefined = 'not-captured'
+      poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+        const o = opts as { headers: Record<string, string> }
+        sentIfNoneMatch = o.headers['if-none-match']
+        return {
+          statusCode: 200,
+          headers: {},
+          trailers: {},
+          opaque: null,
+          context: {},
+          body: {
+            arrayBuffer: async () =>
+              Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8'),
+            dump: async () => {},
+          },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any
+      })
+
+      const result = await fetchPackageVersions(['demo-pkg'])
+
+      expect(sentIfNoneMatch).toBeUndefined()
+      expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
     })
   })
 })

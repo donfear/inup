@@ -12,7 +12,7 @@ import {
   pushWrappedLines,
   sanitizeMarkdownText,
 } from '../../../../src/features/interactive/modal/package-info-sections/text'
-import { stripAnsi } from '../../../../src/shared/terminal/text'
+import { getVisualLength, stripAnsi } from '../../../../src/shared/terminal/text'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const MODAL_WIDTH = 70
@@ -179,6 +179,40 @@ describe('buildPackageInfoSections (info tab)', () => {
 
     expect(text).toContain('depend on test-pkg')
     expect(text).not.toContain('Current: ^1.0.0')
+  })
+
+  it('keeps every row within the content width for CJK/emoji registry text', () => {
+    // Registry metadata is arbitrary text: CJK descriptions, deprecation
+    // notices, and advisory titles all flow into modal rows. Any row wider
+    // than the content area pushes the right border out of alignment.
+    const state = makeSelectionState({
+      description:
+        '一个交互式命令行工具，用于升级过时的依赖项 🚀 パッケージ管理を簡単にするツールです、モノレポ対応',
+      deprecated:
+        'このパッケージは非推奨です。代わりに 别的包 を使ってください。移行ガイド: https://example.com/migrate',
+      homepage: 'https://example.com/你好/文档/getting-started',
+      vulnerability: {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-demo',
+        advisories: [
+          {
+            id: 'GHSA-demo',
+            title: '原型污染の脆弱性が発見されました、直ちにアップグレードしてください',
+            severity: 'high',
+            url: 'https://github.com/advisories/GHSA-demo',
+          },
+        ],
+      },
+    })
+
+    const sections = buildPackageInfoSections(state, MODAL_WIDTH, 'info')
+
+    for (const section of sections) {
+      for (const row of section.rows) {
+        expect(getVisualLength(row)).toBeLessThanOrEqual(MODAL_WIDTH - 4)
+      }
+    }
   })
 })
 

@@ -1,50 +1,20 @@
-const ANSI_PATTERN = /\[[0-9;?]*[ -/]*[@-~]/g
-const OSC8_PATTERN = /]8;;.*?(?:|\\)|]8;;(?:|\\)/g
+import stringWidth from 'string-width'
+import stripAnsiPackaged from 'strip-ansi'
+import wrapAnsi from 'wrap-ansi'
+import cliTruncate from 'cli-truncate'
+
+// Thin wrappers over the battle-tested terminal-string stack (string-width,
+// strip-ansi, wrap-ansi, cli-truncate). The previous hand-rolled versions
+// handled emoji but had no East Asian Width tables, so CJK text was counted at
+// width 1 and misaligned every column that contained it.
 
 export function stripAnsi(text: string): string {
-  return text.replace(OSC8_PATTERN, '').replace(ANSI_PATTERN, '')
+  return stripAnsiPackaged(text)
 }
 
+/** Terminal columns `text` occupies: ANSI-aware, emoji- and CJK-correct. */
 export function getVisualLength(text: string): number {
-  const cleaned = stripAnsi(text)
-  const SegmenterCtor = (
-    Intl as typeof Intl & {
-      Segmenter?: new (
-        locales?: string | string[],
-        options?: { granularity: 'grapheme' }
-      ) => {
-        segment(input: string): Iterable<{ segment: string }>
-      }
-    }
-  ).Segmenter
-  let length = 0
-
-  const segments = SegmenterCtor
-    ? SegmenterCtor.prototype.segment.call(
-        new SegmenterCtor(undefined, { granularity: 'grapheme' }),
-        cleaned
-      )
-    : cleaned
-
-  for (const item of segments) {
-    const segment = typeof item === 'string' ? item : item.segment
-    if (/\p{Extended_Pictographic}/u.test(segment) || segment.includes('\uFE0F')) {
-      length += 2
-    } else {
-      for (const char of segment) {
-        const codePoint = char.codePointAt(0) ?? 0
-        if (
-          (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
-          (codePoint >= 0x0300 && codePoint <= 0x036f)
-        ) {
-          continue
-        }
-        length += 1
-      }
-    }
-  }
-
-  return length
+  return stringWidth(text)
 }
 
 export function truncatePlainText(text: string, maxWidth: number): string {
@@ -60,7 +30,7 @@ export function truncatePlainText(text: string, maxWidth: number): string {
     return '.'.repeat(maxWidth)
   }
 
-  return text.substring(0, maxWidth - 3) + '...'
+  return cliTruncate(text, maxWidth, { truncationCharacter: '...' })
 }
 
 export function wrapPlainText(text: string, maxWidth: number): string[] {
@@ -72,25 +42,7 @@ export function wrapPlainText(text: string, maxWidth: number): string[] {
     return [text]
   }
 
-  const lines: string[] = []
-  let current = ''
-  const words = text.split(' ')
-
-  for (const word of words) {
-    const candidate = (current + ' ' + word).trim()
-    if (getVisualLength(candidate) > maxWidth) {
-      if (current) {
-        lines.push(current)
-      }
-      current = word
-    } else {
-      current = current ? `${current} ${word}` : word
-    }
-  }
-
-  if (current) {
-    lines.push(current)
-  }
-
-  return lines
+  // Soft wrap: words longer than maxWidth get their own (overflowing) line,
+  // matching the previous behavior. ANSI codes are re-balanced per line.
+  return wrapAnsi(text, maxWidth).split('\n')
 }
