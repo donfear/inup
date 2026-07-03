@@ -172,8 +172,9 @@ export class StateManager {
         }
       } else if (currentState.selectedOption === 'range') {
         currentState.selectedOption = 'none'
-      } else if (currentState.selectedOption === 'none') {
-        // Wrap around to the last available option
+      } else {
+        // selectedOption === 'none' (the union has exactly three members):
+        // wrap around to the last available option.
         if (currentState.hasMajorUpdate) {
           currentState.selectedOption = 'latest'
         } else if (currentState.hasRangeUpdate) {
@@ -195,8 +196,9 @@ export class StateManager {
           // Wrap around to none
           currentState.selectedOption = 'none'
         }
-      } else if (currentState.selectedOption === 'latest') {
-        // Wrap around to none
+      } else {
+        // selectedOption === 'latest' (the union has exactly three members):
+        // wrap around to none.
         currentState.selectedOption = 'none'
       }
     }

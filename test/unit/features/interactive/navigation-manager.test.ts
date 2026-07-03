@@ -15,6 +15,31 @@ function makeGroupedItems(): RenderableItem[] {
   ]
 }
 
+describe('NavigationManager edge paths', () => {
+  it('steps up one row when no renderable items exist', () => {
+    const nav = new NavigationManager(2, 5)
+
+    nav.navigateUp(5)
+
+    expect(nav.getCurrentRow()).toBe(1)
+  })
+
+  it('pins the wrap-around target to the bottom of a one-row viewport', () => {
+    const nav = new NavigationManager(0, 1)
+    nav.setRenderableItems([
+      { type: 'package', state: makeSelectionState({ name: 'pkg-0' }), originalIndex: 0 },
+      { type: 'header', title: 'Dev Dependencies', sectionType: 'main' },
+      { type: 'package', state: makeSelectionState({ name: 'pkg-1' }), originalIndex: 1 },
+    ])
+    nav.setScrollOffset(2)
+
+    nav.navigateDown(2)
+
+    expect(nav.getCurrentRow()).toBe(1)
+    expect(nav.getScrollOffset()).toBe(2)
+  })
+})
+
 describe('NavigationManager (flat mode)', () => {
   it('starts at the initial row with no scroll', () => {
     const nav = new NavigationManager(2, 5)

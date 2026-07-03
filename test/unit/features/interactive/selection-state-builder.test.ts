@@ -335,3 +335,38 @@ describe('createPendingSelectionStates', () => {
     expect(state.selectedOption).toBe('range')
   })
 })
+
+describe('ordering and version fallbacks', () => {
+  it('sorts scoped packages before unscoped ones', () => {
+    const states = createSelectionStates(
+      ['zod', '@s/b', 'alpha', '@s/a', 'beta', '@s/c'].map((name) => makePackageInfo({ name })),
+      noSummary
+    )
+
+    expect(states.map((state) => state.name)).toEqual([
+      '@s/a',
+      '@s/b',
+      '@s/c',
+      'alpha',
+      'beta',
+      'zod',
+    ])
+  })
+
+  it('keeps a non-coercible current version in pending states', () => {
+    const [state] = createPendingSelectionStates(
+      [
+        {
+          name: 'left-pad',
+          currentVersion: 'latest',
+          type: 'dependencies',
+          packageJsonPath: '/repo/package.json',
+        },
+      ],
+      noSummary
+    )
+
+    expect(state.currentVersion).toBe('latest')
+    expect(state.loadState).toBe('pending')
+  })
+})
