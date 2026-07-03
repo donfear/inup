@@ -292,6 +292,71 @@ describe('render-pr-body action helper', () => {
     expect(body).toContain('affects `<1.0.1 \\|\\| >=2.0.0`')
   })
 
+  it('annotates catalog-sourced upgrades everywhere they appear', async () => {
+    const body = await renderPrBody({
+      schemaVersion: 1,
+      summary: { ...baseSummary, total: 2, outdated: 2 },
+      outdated: [
+        {
+          name: 'react',
+          current: '^18.2.0',
+          range: '18.3.1',
+          latest: '19.2.0',
+          type: 'dependencies',
+          packageJsonPath: '/repo/pnpm-workspace.yaml',
+          catalog: 'default',
+          hasMajorUpdate: true,
+        },
+        {
+          name: 'ms',
+          current: '^2.0.0',
+          range: '2.1.3',
+          latest: '2.1.3',
+          type: 'dependencies',
+          packageJsonPath: '/repo/packages/api/package.json',
+          hasMajorUpdate: false,
+        },
+      ],
+    })
+
+    // Applied list, table, and skipped-majors all say where the bump lands.
+    expect(body).toContain('- `react` `^18.2.0` → `^18.3.1` (dependencies · catalog:default)')
+    expect(body).toContain('| dependencies · catalog:default |')
+    expect(body).toContain(
+      '- `react` (current `^18.2.0`) → **19.2.0** (dependencies · catalog:default)'
+    )
+    // Non-catalog entries stay unannotated.
+    expect(body).toContain('- `ms` `^2.0.0` → `^2.1.3` (dependencies)')
+  })
+
+  it('keeps a catalog entry distinct from a same-range direct dependency', async () => {
+    const shared = {
+      current: '^18.2.0',
+      range: '18.3.1',
+      latest: '18.3.1',
+      type: 'dependencies',
+      hasMajorUpdate: false,
+    }
+    const body = await renderPrBody({
+      schemaVersion: 1,
+      summary: { ...baseSummary, total: 2, outdated: 2 },
+      outdated: [
+        {
+          name: 'react',
+          ...shared,
+          packageJsonPath: '/repo/pnpm-workspace.yaml',
+          catalog: 'default',
+        },
+        { name: 'react', ...shared, packageJsonPath: '/repo/packages/legacy/package.json' },
+      ],
+    })
+
+    // Two write locations → two applied lines, not one deduped line.
+    expect(body).toContain('(dependencies · catalog:default)')
+    expect(body).toContain('- `react` `^18.2.0` → `^18.3.1` (dependencies)')
+    expect(body).toContain('**2** unique upgrade(s)')
+  })
+
   it('falls back to a minimal body for malformed stdin', () => {
     const result = renderFromStdin('{not json')
 

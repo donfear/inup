@@ -1,4 +1,9 @@
-import type { DependencyType, PackageLoadState, VulnerabilitySummary } from './domain'
+import type {
+  CatalogEntrySummary,
+  DependencyType,
+  PackageLoadState,
+  VulnerabilitySummary,
+} from './domain'
 
 export interface PackageSelectionState {
   name: string
@@ -13,6 +18,9 @@ export interface PackageSelectionState {
   hasRangeUpdate: boolean
   hasMajorUpdate: boolean
   type: DependencyType
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
+  catalogEntries?: CatalogEntrySummary[] // Full contents of that catalog (for the info modal)
+  catalogReferencedBy?: string[] // package.json paths that reference this catalog entry
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases

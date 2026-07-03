@@ -41,6 +41,21 @@ describe('buildHeadlessReport', () => {
 
     expect(report.outdated[0]).not.toHaveProperty('deprecated')
     expect(report.outdated[0]).not.toHaveProperty('vulnerability')
+    expect(report.outdated[0]).not.toHaveProperty('catalog')
+  })
+
+  it('includes the pnpm catalog for catalog-sourced entries', () => {
+    const pkg = makePackageInfo({
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+      catalog: 'react19',
+    })
+
+    const report = buildHeadlessReport([pkg], [pkg], new Map())
+
+    expect(report.outdated[0]).toMatchObject({
+      catalog: 'react19',
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+    })
   })
 })
 

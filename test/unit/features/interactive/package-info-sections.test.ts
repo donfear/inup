@@ -113,6 +113,66 @@ describe('buildPackageInfoSections (info tab)', () => {
     expect(plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))).toContain('Target: 1.1.0')
   })
 
+  it('names the pnpm catalog for catalog-sourced entries', () => {
+    const state = makeSelectionState({ catalog: 'react19' })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
+
+    expect(text).toContain('Catalog: react19')
+    expect(text).toContain('pnpm-workspace.yaml')
+  })
+
+  it('shows no catalog row for regular dependencies', () => {
+    const text = plain(buildPackageInfoSections(makeSelectionState(), MODAL_WIDTH, 'info'))
+
+    expect(text).not.toContain('Catalog:')
+  })
+
+  it('lists the referencing packages and full catalog contents on the usedBy tab', () => {
+    const state = makeSelectionState({
+      name: 'react',
+      packageJsonPath: '/repo/pnpm-workspace.yaml',
+      packageJsonPaths: ['/repo/pnpm-workspace.yaml'],
+      catalog: 'default',
+      catalogEntries: [
+        { name: 'react', range: '^18.2.0' },
+        { name: 'react-dom', range: '^18.2.0' },
+        { name: 'lodash', range: '^4.17.0' },
+      ],
+      catalogReferencedBy: [
+        '/repo/packages/web-app/package.json',
+        '/repo/packages/ui/package.json',
+      ],
+    })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'usedBy'))
+
+    // "Used by" answers with the real referencing packages, not the yaml path.
+    expect(text).toContain('2 package.json files depend on react')
+    expect(text).toContain('via catalog:default')
+    expect(text).toContain('web-app')
+    expect(text).toContain('ui')
+    expect(text).not.toMatch(/• .*pnpm-workspace\.yaml/) // path list shows members, not the yaml
+
+    // ...and shows everything else the catalog pins.
+    expect(text).toContain('Catalog "default"')
+    expect(text).toContain('react: ^18.2.0')
+    expect(text).toContain('react-dom: ^18.2.0')
+    expect(text).toContain('lodash: ^4.17.0')
+  })
+
+  it('keeps the plain used-by view for non-catalog entries', () => {
+    const state = makeSelectionState({
+      packageJsonPaths: ['/repo/a/package.json', '/repo/b/package.json'],
+    })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'usedBy'))
+
+    expect(text).toContain('2 package.json files depend on test-pkg')
+    expect(text).not.toContain('via catalog')
+    expect(text).not.toContain('Catalog "')
+  })
+
   it('formats weekly downloads into human units', () => {
     const millions = makeSelectionState({ weeklyDownloads: 2_500_000 })
     const thousands = makeSelectionState({ weeklyDownloads: 12_300 })

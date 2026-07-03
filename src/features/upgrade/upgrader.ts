@@ -11,6 +11,7 @@ import {
 } from '../../shared/types'
 import { executeCommand } from '../../shared/exec'
 import { detectJsonFormat, findWorkspaceRoot, readPackageJson } from '../../shared/fs'
+import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
 
 export interface PackageUpgraderOptions {
   /**
@@ -43,8 +44,13 @@ export class PackageUpgrader {
       return
     }
 
+    // Catalog entries live in pnpm-workspace.yaml, not a package.json — they
+    // take the YAML write path below.
+    const catalogChoices = choices.filter((choice) => choice.catalog)
+    const fileChoices = choices.filter((choice) => !choice.catalog)
+
     // Group choices by package.json path and dependency type
-    const choicesByFileAndType = this.groupChoicesByFileAndType(choices)
+    const choicesByFileAndType = this.groupChoicesByFileAndType(fileChoices)
 
     for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
       if (choiceList.length === 0) continue
@@ -52,6 +58,10 @@ export class PackageUpgrader {
       const [packageJsonPath, type] = fileAndType.split('|')
       this.log(`Processing ${type} in ${packageJsonPath}`)
       await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as DependencyType)
+    }
+
+    if (catalogChoices.length > 0) {
+      await this.upgradeCatalogChoices(catalogChoices)
     }
 
     // Count unique packages upgraded
@@ -116,6 +126,65 @@ export class PackageUpgrader {
         throw new Error(`${installCommand} terminated by signal ${result.signal}`)
       }
       throw new Error(`${installCommand} exited with code ${result.status}`)
+    }
+  }
+
+  /**
+   * Apply catalog upgrades by rewriting the referenced ranges inside
+   * pnpm-workspace.yaml (comment- and format-preserving). One write per file.
+   */
+  private async upgradeCatalogChoices(choices: PackageUpgradeChoice[]): Promise<void> {
+    const choicesByFile = new Map<string, PackageUpgradeChoice[]>()
+    choices.forEach((choice) => {
+      const group = choicesByFile.get(choice.packageJsonPath) ?? []
+      group.push(choice)
+      choicesByFile.set(choice.packageJsonPath, group)
+    })
+
+    for (const [workspaceFilePath, fileChoices] of choicesByFile) {
+      if (!existsSync(workspaceFilePath)) {
+        this.log(
+          chalk.yellow(`⚠️  Skipping catalog entries in ${workspaceFilePath} - file not found`)
+        )
+        continue
+      }
+
+      this.log(`Processing catalog entries in ${workspaceFilePath}`)
+      const spinner = this.quiet
+        ? null
+        : createSpinner(`Upgrading catalog entries in ${workspaceFilePath}...`).start()
+
+      try {
+        writeCatalogUpdates(
+          workspaceFilePath,
+          fileChoices.map((choice) => ({
+            catalog: choice.catalog!,
+            name: choice.name,
+            range: choice.targetVersion,
+          }))
+        )
+
+        const message = `Upgraded ${fileChoices.length} catalog entr${
+          fileChoices.length === 1 ? 'y' : 'ies'
+        } in ${workspaceFilePath}`
+        if (spinner) spinner.success({ text: message })
+        else this.log(chalk.green(`✔ ${message}`))
+
+        fileChoices.forEach((choice) => {
+          const upgradeTypeColor = choice.upgradeType === 'range' ? chalk.yellow : chalk.red
+          const catalogLabel =
+            choice.catalog === 'default' ? 'catalog' : `catalog:${choice.catalog}`
+          this.log(
+            `  ${chalk.green('✓')} ${chalk.cyan(choice.name)} (${catalogLabel}) → ${upgradeTypeColor(choice.targetVersion)}`
+          )
+        })
+      } catch (error) {
+        if (spinner)
+          spinner.error({ text: `Failed to upgrade catalog entries in ${workspaceFilePath}` })
+        else this.log(chalk.red(`✖ Failed to upgrade catalog entries in ${workspaceFilePath}`))
+        console.error(chalk.red(`Error: ${error}`))
+        throw error
+      }
     }
   }
 

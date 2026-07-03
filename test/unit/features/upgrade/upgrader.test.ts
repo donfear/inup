@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
@@ -334,6 +334,103 @@ describe('PackageUpgrader', () => {
     })
   })
 
+  describe('pnpm catalog entries', () => {
+    const WORKSPACE_YAML = `# workspace layout
+packages:
+  - packages/*
+
+catalog:
+  react: ^18.2.0
+  lodash: ^4.17.0 # untouched
+
+catalogs:
+  react19:
+    react: ^19.0.0
+`
+
+    it('writes catalog upgrades into pnpm-workspace.yaml, preserving comments', async () => {
+      const yamlPath = join(testDir, 'pnpm-workspace.yaml')
+      writeFileSync(yamlPath, WORKSPACE_YAML)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'react',
+            packageJsonPath: yamlPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^18.3.1',
+            currentVersionSpecifier: '^18.2.0',
+            catalog: 'default',
+          },
+          {
+            name: 'react',
+            packageJsonPath: yamlPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'latest',
+            targetVersion: '^19.2.0',
+            currentVersionSpecifier: '^19.0.0',
+            catalog: 'react19',
+          },
+        ],
+        []
+      )
+
+      const raw = readFileSync(yamlPath, 'utf-8')
+      expect(raw).toContain('react: ^18.3.1')
+      expect(raw).toContain('react: ^19.2.0')
+      expect(raw).toContain('# workspace layout')
+      expect(raw).toContain('lodash: ^4.17.0 # untouched')
+      logSpy.mockRestore()
+    })
+
+    it('routes mixed selections to package.json and pnpm-workspace.yaml respectively', async () => {
+      const yamlPath = join(testDir, 'pnpm-workspace.yaml')
+      const pkgPath = join(testDir, 'package.json')
+      writeFileSync(yamlPath, WORKSPACE_YAML)
+      writeFileSync(
+        pkgPath,
+        JSON.stringify({ name: 'fixture', dependencies: { zod: '^3.0.0' } }, null, 2) + '\n'
+      )
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'zod',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^3.25.0',
+            currentVersionSpecifier: '^3.0.0',
+          },
+          {
+            name: 'react',
+            packageJsonPath: yamlPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^18.3.1',
+            currentVersionSpecifier: '^18.2.0',
+            catalog: 'default',
+          },
+        ],
+        []
+      )
+
+      expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).dependencies.zod).toBe('^3.25.0')
+      const raw = readFileSync(yamlPath, 'utf-8')
+      expect(raw).toContain('react: ^18.3.1')
+      // The YAML file must never be touched by the JSON writer.
+      expect(raw).toContain('packages:')
+      logSpy.mockRestore()
+    })
+  })
+
   it('creates a missing dep section for range upgrades too', async () => {
     const pkgPath = join(testDir, 'package.json')
     writeFileSync(pkgPath, JSON.stringify({ name: 'fixture' }, null, 2) + '\n')
@@ -356,6 +453,64 @@ describe('PackageUpgrader', () => {
     )
 
     expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).optionalDependencies?.react).toBe('^18.3.0')
+    logSpy.mockRestore()
+  })
+
+  it('reports and rethrows when pnpm-workspace.yaml cannot be read for a catalog write', async () => {
+    // A directory named pnpm-workspace.yaml passes the existsSync guard but
+    // fails the read — the failure must surface, not be swallowed.
+    const yamlPath = join(testDir, 'pnpm-workspace.yaml')
+    mkdirSync(yamlPath)
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      upgrader.upgradePackages(
+        [
+          {
+            name: 'react',
+            packageJsonPath: yamlPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^18.3.1',
+            currentVersionSpecifier: '^18.2.0',
+            catalog: 'default',
+          },
+        ],
+        []
+      )
+    ).rejects.toThrow()
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Error:'))
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('skips catalog writes cleanly when pnpm-workspace.yaml has vanished', async () => {
+    const missingYaml = join(testDir, 'gone', 'pnpm-workspace.yaml')
+
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const messages: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((m: string) => messages.push(m))
+
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'react',
+          packageJsonPath: missingYaml,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^18.3.1',
+          currentVersionSpecifier: '^18.2.0',
+          catalog: 'default',
+        },
+      ],
+      []
+    )
+
+    expect(messages.some((m) => m.includes('file not found'))).toBe(true)
     logSpy.mockRestore()
   })
 

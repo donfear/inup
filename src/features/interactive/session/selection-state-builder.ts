@@ -13,13 +13,28 @@ type CachedSummaryFn = (
   type: PackageSelectionState['type']
 ) => VulnerabilitySummary | undefined
 
+/**
+ * Identity of a selectable row. Catalog entries carry the catalog name so a
+ * pnpm catalog entry never merges with a direct dependency that happens to have
+ * the same name/range/type — they are written to different files.
+ */
+export function selectionKey(
+  name: string,
+  versionSpecifier: string,
+  type: string,
+  catalog?: string
+): string {
+  const base = `${name}@${versionSpecifier}@${type}`
+  return catalog ? `${base}@catalog:${catalog}` : base
+}
+
 export function deduplicatePackages(
   packages: PackageInfo[]
 ): Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }> {
   const uniquePackages = new Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }>()
 
   for (const pkg of packages) {
-    const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
+    const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     if (!uniquePackages.has(key)) {
       uniquePackages.set(key, {
         pkg,
@@ -54,7 +69,7 @@ export function createSelectionStates(
     const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
     const rangeClean = semver.coerce(pkg.rangeVersion)?.version || pkg.rangeVersion
     const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
-    const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
+    const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 
     return {
@@ -70,6 +85,9 @@ export function createSelectionStates(
       hasRangeUpdate: pkg.hasRangeUpdate,
       hasMajorUpdate: pkg.hasMajorUpdate,
       type: pkg.type,
+      catalog: pkg.catalog,
+      catalogEntries: pkg.catalogEntries,
+      catalogReferencedBy: pkg.catalogReferencedBy,
       deprecated: pkg.deprecated,
       enginesNode: pkg.enginesNode,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
@@ -79,7 +97,9 @@ export function createSelectionStates(
 }
 
 export function createPendingSelectionStates(
-  packages: Array<Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath'>>,
+  packages: Array<
+    Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath' | 'catalog'>
+  >,
   getCachedSummary: CachedSummaryFn,
   previousSelections?: Map<string, 'none' | 'range' | 'latest'>
 ): PackageSelectionState[] {
@@ -96,7 +116,7 @@ export function createPendingSelectionStates(
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
     const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
-    const key = `${pkg.name}@${pkg.currentVersion}@${pkg.type}`
+    const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 
     return {
@@ -112,6 +132,7 @@ export function createPendingSelectionStates(
       hasRangeUpdate: false,
       hasMajorUpdate: false,
       type: pkg.type,
+      catalog: pkg.catalog,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
     }
   })
@@ -141,6 +162,7 @@ export function createUpgradeChoices(
           upgradeType: state.selectedOption,
           targetVersion: targetVersionWithPrefix,
           currentVersionSpecifier: state.currentVersionSpecifier,
+          catalog: state.catalog,
         })
       })
     })

@@ -78,7 +78,8 @@
     "string-width": "^8.2.1",
     "strip-ansi": "^7.2.0",
     "undici": "^8.5.0",
-    "wrap-ansi": "^10.0.0"
+    "wrap-ansi": "^10.0.0",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=22.19.0"

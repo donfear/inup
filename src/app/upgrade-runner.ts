@@ -12,6 +12,7 @@ import {
 } from '../shared/types'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
+import { selectionKey } from '../features/interactive'
 import {
   getPerformanceTracker,
   isPerfLoggingEnabled,
@@ -157,7 +158,12 @@ export class UpgradeRunner {
         // Group by package name and version specifier
         const choiceMap = new Map<string, 'range' | 'latest'>()
         selectedChoices.forEach((choice) => {
-          const key = `${choice.name}@${choice.currentVersionSpecifier}@${choice.dependencyType}`
+          const key = selectionKey(
+            choice.name,
+            choice.currentVersionSpecifier,
+            choice.dependencyType,
+            choice.catalog
+          )
           choiceMap.set(key, choice.upgradeType as 'range' | 'latest')
         })
         // Convert to the format expected by selectPackagesToUpgrade

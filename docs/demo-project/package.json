@@ -1,18 +1,12 @@
 {
-  "name": "demo-project",
+  "name": "demo-monorepo",
   "version": "1.0.0",
-  "description": "Demo project for inup showcase",
+  "description": "Demo monorepo for inup showcase",
   "private": true,
-  "dependencies": {
-    "chalk": "^4.0.0",
-    "commander": "^8.0.0",
-    "express": "^4.17.1",
-    "axios": "^0.27.0"
-  },
   "devDependencies": {
     "@types/node": "^18.0.0",
     "typescript": "^4.5.0",
     "prettier": "^2.5.0"
   },
-  "packageManager": "pnpm@10.32.1"
+  "packageManager": "pnpm@11.9.0"
 }

@@ -1,0 +1,18 @@
+{
+  "name": "web",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "lodash": "catalog:",
+    "chalk": "^4.0.0",
+    "moment": "^2.29.1",
+    "left-pad": "^1.0.0",
+    "json5": "^2.1.0",
+    "postcss": "^7.0.0",
+    "got": "^11.0.0",
+    "request": "^2.88.0",
+    "nanoid": "^3.1.0"
+  }
+}

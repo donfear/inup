@@ -20,6 +20,11 @@ function formatNumber(num: number | undefined): string {
 }
 
 function getUsedByPaths(state: PackageSelectionState): string[] {
+  // Catalog entries live in pnpm-workspace.yaml; the interesting "used by"
+  // answer is the member packages that reference the catalog entry.
+  if (state.catalog && state.catalogReferencedBy?.length) {
+    return state.catalogReferencedBy
+  }
   return state.packageJsonPaths ?? [state.packageJsonPath]
 }
 
@@ -48,14 +53,18 @@ export function buildUsedBySections(
     return truncatePlainText(display, contentWidth)
   }
 
-  return [
+  const sections: ModalSection[] = [
     {
       key: 'used-by-summary',
       rows: [
         chalk.bold(
           `${paths.length} package.json file${paths.length === 1 ? '' : 's'} depend on ${state.name}`
         ),
-        chalk.gray(`Type: ${state.type}`),
+        chalk.gray(
+          state.catalog
+            ? `Type: ${state.type} • via catalog:${state.catalog}`
+            : `Type: ${state.type}`
+        ),
       ],
       required: true,
       behavior: 'pinned',
@@ -66,6 +75,27 @@ export function buildUsedBySections(
       behavior: 'body',
     },
   ]
+
+  // For catalog entries, also show what else the catalog pins — the whole
+  // point of a catalog is that these versions move together.
+  if (state.catalog && state.catalogEntries?.length) {
+    sections.push({
+      key: 'catalog-contents',
+      rows: [
+        chalk.bold(`Catalog "${state.catalog}"`) + chalk.gray(' — pnpm-workspace.yaml'),
+        ...state.catalogEntries.map((entry) => {
+          const isCurrent = entry.name === state.name
+          const label = truncatePlainText(`${entry.name}: ${entry.range}`, contentWidth - 2)
+          return isCurrent
+            ? `${getThemeColor('packageName')('▸')} ${chalk.bold(label)}`
+            : `${chalk.gray('•')} ${label}`
+        }),
+      ],
+      behavior: 'body',
+    })
+  }
+
+  return sections
 }
 
 export function buildPackageInfoSections(
@@ -101,6 +131,13 @@ export function buildPackageInfoSections(
     key: 'meta',
     rows: [
       `Current: ${currentVersion}  Target: ${targetVersion}`,
+      ...(state.catalog
+        ? [
+            getThemeColor('textSecondary')(
+              `Catalog: ${state.catalog} — range lives in pnpm-workspace.yaml`
+            ),
+          ]
+        : []),
       ...(state.weeklyDownloads !== undefined
         ? [getThemeColor('primary')(`Downloads/week: ${formatNumber(state.weeklyDownloads)}`)]
         : []),

@@ -20,7 +20,10 @@ export interface PackageInfo {
   rangeVersion: string // Version that satisfies current range
   latestVersion: string // Absolute latest version
   type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
-  packageJsonPath: string // Path to the package.json file
+  packageJsonPath: string // Path to the package.json file (pnpm-workspace.yaml for catalog entries)
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
+  catalogEntries?: CatalogEntrySummary[] // Full contents of that catalog (for the info modal)
+  catalogReferencedBy?: string[] // package.json paths that reference this catalog entry
   isOutdated: boolean
   hasRangeUpdate: boolean // If range version is different from current
   hasMajorUpdate: boolean // If latest version is a major update
@@ -44,17 +47,27 @@ export interface DependencyEntry {
   version: string
   type: DependencyType
   packageJsonPath: string
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
+  catalogEntries?: CatalogEntrySummary[] // Full contents of that catalog (for the info modal)
+  catalogReferencedBy?: string[] // package.json paths that reference this catalog entry
+}
+
+/** One entry of a pnpm catalog, as shown in the info modal's catalog listing. */
+export interface CatalogEntrySummary {
+  name: string
+  range: string
 }
 
 export type PackageLoadState = 'pending' | 'ready' | 'failed'
 
 export interface PackageUpgradeChoice {
   name: string
-  packageJsonPath: string // Path to the package.json file to upgrade
+  packageJsonPath: string // File to upgrade (package.json, or pnpm-workspace.yaml for catalog entries)
   dependencyType: DependencyType
   upgradeType: 'none' | 'range' | 'latest'
   targetVersion: string
   currentVersionSpecifier: string // Original version specifier with prefix
+  catalog?: string // pnpm catalog to write the new range to ('default' or a named catalog)
 }
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'

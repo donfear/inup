@@ -1,0 +1,17 @@
+{
+  "name": "legacy-admin",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "react": "catalog:react17",
+    "uuid": "^3.4.0",
+    "yargs-parser": "^13.1.0",
+    "shell-quote": "^1.7.2",
+    "minimatch": "^3.0.4",
+    "decode-uri-component": "^0.2.0",
+    "ejs": "^3.1.5",
+    "glob": "^7.1.0",
+    "rimraf": "^2.7.0",
+    "debug": "^4.1.0"
+  }
+}

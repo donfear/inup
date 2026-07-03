@@ -16,6 +16,7 @@ import {
   collectAllDependenciesAsync,
 } from '../../shared/fs'
 import { findClosestMinorVersion } from '../../shared/versions'
+import { PnpmCatalogs, isCatalogReference } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, PackageVersionData } from '../../shared/registry/npm-registry'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
 import { ConsoleUtils } from '../../shared/terminal'
@@ -254,7 +255,51 @@ export class PackageDetector {
     const seenWorkspaceRefs = new Set<string>()
     const seenIgnored = new Set<string>()
 
-    for (const dep of allDepsRaw) {
+    // pnpm catalogs: `"react": "catalog:"` gets its real range from
+    // pnpm-workspace.yaml. Each catalog entry becomes ONE upgradable dependency
+    // sourced from that file, no matter how many workspace packages reference it.
+    const catalogs = PnpmCatalogs.load(this.cwd)
+    const seenCatalogEntries = new Map<string, DependencyEntry>()
+
+    for (const rawDep of allDepsRaw) {
+      let dep: DependencyEntry = {
+        name: rawDep.name,
+        version: rawDep.version,
+        type: rawDep.type as DependencyEntry['type'],
+        packageJsonPath: rawDep.packageJsonPath,
+      }
+
+      if (isCatalogReference(rawDep.version)) {
+        const resolution = catalogs?.resolve(rawDep.name, rawDep.version) ?? null
+        if (!resolution) {
+          debugLog.warn(
+            'PackageDetector',
+            `skipping unresolvable catalog ref: ${rawDep.name}@${rawDep.version}`
+          )
+          continue
+        }
+        const catalogKey = `${resolution.catalog}:${rawDep.name}`
+        const existing = seenCatalogEntries.get(catalogKey)
+        if (existing) {
+          // Same catalog entry, another referencing package: remember who uses
+          // it (for the info modal's Used-by tab) but keep the single entry.
+          if (!existing.catalogReferencedBy!.includes(rawDep.packageJsonPath)) {
+            existing.catalogReferencedBy!.push(rawDep.packageJsonPath)
+          }
+          continue
+        }
+        dep = {
+          name: rawDep.name,
+          version: resolution.range,
+          type: rawDep.type as DependencyEntry['type'],
+          packageJsonPath: catalogs!.path,
+          catalog: resolution.catalog,
+          catalogEntries: catalogs!.entriesOf(resolution.catalog),
+          catalogReferencedBy: [rawDep.packageJsonPath],
+        }
+        seenCatalogEntries.set(catalogKey, dep)
+      }
+
       if (this.isWorkspaceReference(dep.version)) {
         const key = `${dep.name}@${dep.version}`
         if (!seenWorkspaceRefs.has(key)) {
@@ -273,12 +318,7 @@ export class PackageDetector {
         continue
       }
 
-      allDependencies.push({
-        name: dep.name,
-        version: dep.version,
-        type: dep.type as DependencyEntry['type'],
-        packageJsonPath: dep.packageJsonPath,
-      })
+      allDependencies.push(dep)
       uniquePackageNames.add(dep.name)
     }
 
@@ -376,6 +416,9 @@ export class PackageDetector {
           latestVersion,
           type: dep.type,
           packageJsonPath: dep.packageJsonPath,
+          catalog: dep.catalog,
+          catalogEntries: dep.catalogEntries,
+          catalogReferencedBy: dep.catalogReferencedBy,
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
@@ -398,6 +441,9 @@ export class PackageDetector {
       latestVersion: 'unknown',
       type: dep.type,
       packageJsonPath: dep.packageJsonPath,
+      catalog: dep.catalog,
+      catalogEntries: dep.catalogEntries,
+      catalogReferencedBy: dep.catalogReferencedBy,
       isOutdated: false,
       hasRangeUpdate: false,
       hasMajorUpdate: false,

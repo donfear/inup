@@ -7,7 +7,6 @@
 set -e
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-SOURCE_PACKAGE="$REPO_ROOT/docs/demo-project/package.json"
 DEMO_PROJECT_DIR="$REPO_ROOT/docs/demo-project"
 TEMP_DIR="/tmp/my-app"
 TAPE_FILE="$REPO_ROOT/docs/demo/demo-real.tape"
@@ -25,7 +24,9 @@ echo "Installing demo-project dependencies..."
 echo "Setting up temporary demo directory..."
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR" "$WRAPPER_BIN_DIR"
-cp "$SOURCE_PACKAGE" "$TEMP_DIR/package.json"
+# Copy the whole monorepo (pnpm-workspace.yaml with catalogs + member packages),
+# not just the root package.json — the demo shows workspace + catalog support.
+rsync -a --exclude node_modules "$DEMO_PROJECT_DIR/" "$TEMP_DIR/"
 
 # Wrapper script invokes the freshly built CLI directly — no pnpm link needed.
 cat > "$WRAPPER_BIN_DIR/inup" <<EOF

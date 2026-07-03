@@ -141,6 +141,7 @@ export class HeadlessRunner {
         upgradeType: useLatest ? 'latest' : 'range',
         targetVersion: targetVersionWithPrefix,
         currentVersionSpecifier: pkg.currentVersion,
+        catalog: pkg.catalog,
       })
     }
 

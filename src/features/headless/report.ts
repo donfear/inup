@@ -28,6 +28,7 @@ export function buildHeadlessReport(
         packageJsonPath: pkg.packageJsonPath,
         hasMajorUpdate: pkg.hasMajorUpdate,
       }
+      if (pkg.catalog) entry.catalog = pkg.catalog
       if (pkg.deprecated) entry.deprecated = pkg.deprecated
       if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
       const vulnerability = vulnerabilities.get(pkg)
