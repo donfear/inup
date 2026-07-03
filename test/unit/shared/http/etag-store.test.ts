@@ -1,25 +1,35 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   readEtag,
   writeEtag,
   setEtagCacheEnabled,
+  setEtagCacheRoot,
   etagCacheDir,
 } from '../../../../src/shared/http/etag-store'
 
 const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
 
+// Every test runs against an isolated throwaway root: the suite must never
+// touch (or race other parallel test files on) the user's real persistent
+// cache directory.
+let testRoot: string
+
+beforeEach(() => {
+  testRoot = mkdtempSync(join(tmpdir(), 'inup-etag-test-'))
+  setEtagCacheRoot(testRoot)
+  setEtagCacheEnabled(true)
+})
+
+afterEach(() => {
+  setEtagCacheRoot(null)
+  setEtagCacheEnabled(true)
+  rmSync(testRoot, { recursive: true, force: true })
+})
+
 describe('etag-store', () => {
-  beforeEach(() => {
-    setEtagCacheEnabled(true)
-    // Start from a clean cache dir each test.
-    rmSync(etagCacheDir(), { recursive: true, force: true })
-  })
-
-  afterEach(() => {
-    setEtagCacheEnabled(true)
-  })
-
   it('round-trips an etag + data entry', () => {
     expect(readEtag('/some-pkg')).toBeNull()
     writeEtag('/some-pkg', 'W/"abc123"', data)
@@ -53,31 +63,57 @@ describe('etag-store', () => {
     writeEtag('/pkg', 'etag2', data) // valid again
     expect(readEtag('/pkg')?.etag).toBe('etag2')
   })
+
+  it('resolves the cache dir under the configured root', () => {
+    expect(etagCacheDir().startsWith(testRoot)).toBe(true)
+  })
+
+  it('recreates the cache dir after it is deleted mid-process', () => {
+    writeEtag('/pkg', 'etag', data)
+    rmSync(etagCacheDir(), { recursive: true, force: true })
+
+    // The resolved path is memoized, but the mkdir guard must still run per
+    // write — otherwise a swept cache silently disables the store for the
+    // rest of the process.
+    writeEtag('/pkg', 'etag-after-wipe', data)
+    expect(readEtag('/pkg')?.etag).toBe('etag-after-wipe')
+  })
+
+  it('sweeps orphaned schema generations from the persistent root', () => {
+    // The cache root is persistent now (env-paths, not tmpdir), so old
+    // generations must be reclaimed by the store itself after a SCHEMA bump.
+    const oldGeneration = join(testRoot, 'v0')
+    mkdirSync(oldGeneration, { recursive: true })
+    writeFileSync(join(oldGeneration, 'stale.json'), '{}')
+
+    // First cache access triggers the one-time sweep.
+    readEtag('/anything')
+
+    expect(existsSync(oldGeneration)).toBe(false)
+    expect(existsSync(etagCacheDir())).toBe(true)
+  })
 })
 
 describe('etag-store corruption handling', () => {
   it('treats corrupt cache entries as a miss', async () => {
-    const { writeFileSync, readdirSync } = await import('node:fs')
-    const { join } = await import('node:path')
+    const { writeFileSync: write, readdirSync } = await import('node:fs')
 
-    setEtagCacheEnabled(true)
     writeEtag('/corrupt-pkg', 'W/"x"', data)
     const dir = etagCacheDir()
     for (const name of readdirSync(dir)) {
-      writeFileSync(join(dir, name), '{not json')
+      write(join(dir, name), '{not json')
     }
 
     expect(readEtag('/corrupt-pkg')).toBeNull()
   })
 
   it('rejects structurally invalid entries', async () => {
-    const { writeFileSync, readdirSync } = await import('node:fs')
-    const { join } = await import('node:path')
+    const { writeFileSync: write, readdirSync } = await import('node:fs')
 
     writeEtag('/invalid-pkg', 'W/"x"', data)
     const dir = etagCacheDir()
     for (const name of readdirSync(dir)) {
-      writeFileSync(join(dir, name), JSON.stringify({ etag: 42 }))
+      write(join(dir, name), JSON.stringify({ etag: 42 }))
     }
 
     expect(readEtag('/invalid-pkg')).toBeNull()

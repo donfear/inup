@@ -39,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('GitHubClient.fetchReleaseByTag', () => {
@@ -57,6 +58,80 @@ describe('GitHubClient.fetchReleaseByTag', () => {
       'https://api.github.com/repos/octo/demo/releases/tags/v1.0.0',
       expect.objectContaining({ method: 'GET' })
     )
+  })
+
+  it('authenticates api.github.com requests when GITHUB_TOKEN is set', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'gh-token-123')
+    fetchMock.mockResolvedValue(jsonResponse({ body: 'notes' }))
+
+    await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('api.github.com'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer gh-token-123' }),
+      })
+    )
+  })
+
+  it('stays anonymous without an ambient token', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('GH_TOKEN', '')
+    fetchMock.mockResolvedValue(jsonResponse({ body: 'notes' }))
+
+    await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
+    expect(headers['authorization']).toBeUndefined()
+  })
+
+  it('falls back to GH_TOKEN when GITHUB_TOKEN is unset', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('GH_TOKEN', 'gh-cli-token')
+    fetchMock.mockResolvedValue(jsonResponse({ body: 'notes' }))
+
+    await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('api.github.com'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer gh-cli-token' }),
+      })
+    )
+  })
+
+  it('retries anonymously when the ambient token is rejected (401)', async () => {
+    // A stale/revoked token in the environment must never lose release notes
+    // that an anonymous request would have fetched.
+    vi.stubEnv('GITHUB_TOKEN', 'stale-token')
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+      .mockResolvedValueOnce(jsonResponse({ body: 'notes' }))
+
+    const body = await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
+
+    expect(body).toBe('notes')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const retryHeaders = (fetchMock.mock.calls[1][1] as { headers: Record<string, string> }).headers
+    expect(retryHeaders['authorization']).toBeUndefined()
+    expect(retryHeaders['user-agent']).toBeDefined()
+  })
+
+  it('does not retry non-401 failures', async () => {
+    vi.stubEnv('GITHUB_TOKEN', 'valid-token')
+    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({}) })
+
+    expect(await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('never retries with credentials when the request was already anonymous', async () => {
+    vi.stubEnv('GITHUB_TOKEN', '')
+    vi.stubEnv('GH_TOKEN', '')
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({}) })
+
+    expect(await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('returns null for missing releases, empty bodies, and network errors', async () => {

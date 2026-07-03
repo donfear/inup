@@ -1,6 +1,8 @@
-import { execSync } from 'child_process'
 import * as semver from 'semver'
-import { REQUEST_TIMEOUT } from '../config'
+import { NPM_REGISTRY_URL } from '../config'
+
+/** Cap for the self-update check; it must never hold up an interactive session. */
+const UPDATE_CHECK_TIMEOUT_MS = 5000
 
 export interface VersionCheckResult {
   currentVersion: string
@@ -10,21 +12,31 @@ export interface VersionCheckResult {
 }
 
 /**
- * Check if the current package version is outdated compared to npm registry
+ * Check if the current package version is outdated compared to npm registry.
+ *
+ * One small registry request (`{registry}/{name}/latest`) instead of spawning
+ * the npm CLI — `npm view` paid a few hundred ms of process startup for the
+ * same answer.
  */
 export async function checkForUpdate(
   packageName: string,
   currentVersion: string
 ): Promise<VersionCheckResult | null> {
   try {
-    // Use npm view to get the latest version from registry
-    const result = execSync(`npm view ${packageName} version`, {
-      encoding: 'utf-8',
-      timeout: REQUEST_TIMEOUT,
-      stdio: ['pipe', 'pipe', 'pipe'],
+    const response = await fetch(`${NPM_REGISTRY_URL}/${encodeURIComponent(packageName)}/latest`, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(UPDATE_CHECK_TIMEOUT_MS),
     })
+    if (!response.ok) {
+      return null
+    }
 
-    const latestVersion = result.trim()
+    const manifest = (await response.json()) as { version?: string }
+    const latestVersion = typeof manifest.version === 'string' ? manifest.version.trim() : ''
+    if (!semver.valid(latestVersion)) {
+      return null
+    }
 
     // Compare versions
     const isOutdated = semver.lt(currentVersion, latestVersion)
@@ -48,27 +60,14 @@ export async function checkForUpdate(
 }
 
 /**
- * Check for updates in the background without blocking
- * Resolves immediately, result available via promise
+ * Check for updates in the background without blocking.
+ *
+ * `checkForUpdate` self-caps at UPDATE_CHECK_TIMEOUT_MS and never rejects
+ * (every failure resolves to null), so no extra timeout race is needed here.
  */
 export function checkForUpdateAsync(
   packageName: string,
   currentVersion: string
 ): Promise<VersionCheckResult | null> {
-  return new Promise((resolve) => {
-    // Set a timeout to prevent hanging
-    const timeout = setTimeout(() => {
-      resolve(null)
-    }, 5000)
-
-    checkForUpdate(packageName, currentVersion)
-      .then((result) => {
-        clearTimeout(timeout)
-        resolve(result)
-      })
-      .catch(() => {
-        clearTimeout(timeout)
-        resolve(null)
-      })
-  })
+  return checkForUpdate(packageName, currentVersion)
 }
