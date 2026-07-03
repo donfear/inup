@@ -40,6 +40,13 @@ describe('getVisualLength', () => {
     // is inside the skipped combining range.
     expect(getVisualLength('è')).toBe(1)
   })
+  it('counts CJK characters as two terminal columns', () => {
+    // The old hand-rolled version had no East Asian Width tables and scored
+    // these as width 1, misaligning every column containing CJK text.
+    expect(getVisualLength('你好')).toBe(4)
+    expect(getVisualLength('パッケージ')).toBe(10)
+    expect(getVisualLength('한국어')).toBe(6)
+  })
 })
 
 describe('truncatePlainText', () => {
@@ -59,6 +66,13 @@ describe('truncatePlainText', () => {
 
   it('truncates with a three-dot ellipsis', () => {
     expect(truncatePlainText('hello world', 8)).toBe('hello...')
+  })
+
+  it('truncates by visual width, not code units', () => {
+    // Four CJK chars are 8 columns; a 7-column budget keeps two of them
+    // (4 columns) plus the 3-column ellipsis. The old version sliced by code
+    // units and could overflow the column.
+    expect(truncatePlainText('你好世界', 7)).toBe('你好...')
   })
 })
 

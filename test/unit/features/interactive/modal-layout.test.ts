@@ -40,8 +40,11 @@ describe('modal layout primitives', () => {
     expect(getVisualLength(`${chalk.red('abc')}🙂`)).toBe(5)
   })
 
-  it('treats emoji variation selectors as zero-width', () => {
+  it('measures emoji presentation (VS16) as wide, text presentation as narrow', () => {
     expect(getVisualLength('ℹ️')).toBe(2)
-    expect(getVisualLength('⚠')).toBe(2)
+    // Bare U+26A0 has text presentation: terminals render it one column wide,
+    // and string-width agrees (the old heuristic mis-scored it as 2).
+    expect(getVisualLength('⚠')).toBe(1)
+    expect(getVisualLength('⚠️')).toBe(2)
   })
 })

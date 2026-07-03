@@ -115,8 +115,8 @@ export function buildPackageInfoSections(
     // Wrap (don't truncate) so a deprecation URL stays whole and clickable —
     // truncation with "..." produces a dead link. `wrapPlainText` breaks on
     // spaces only, so the URL keeps its own intact line. No emoji marker:
-    // `getVisualLength` scores glyphs like ⚠ as width 2 while many terminals
-    // render them as width 1, which throws off the modal's border alignment.
+    // terminal fonts disagree on whether such glyphs render one or two columns
+    // wide, which throws off the modal's border alignment.
     for (const line of wrapPlainText(`Deprecated: ${state.deprecated}`, warningContentWidth)) {
       warningRows.push(getThemeColor('warning')(line))
     }
