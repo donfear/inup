@@ -86,6 +86,8 @@ export function createSelectionStates(
       hasMajorUpdate: pkg.hasMajorUpdate,
       type: pkg.type,
       catalog: pkg.catalog,
+      catalogEntries: pkg.catalogEntries,
+      catalogReferencedBy: pkg.catalogReferencedBy,
       deprecated: pkg.deprecated,
       enginesNode: pkg.enginesNode,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),

@@ -85,6 +85,20 @@ describe('pnpm-catalogs', () => {
     })
   })
 
+  describe('entriesOf', () => {
+    it('lists every entry of a catalog and returns [] for unknown ones', () => {
+      writeWorkspaceFile(FIXTURE)
+      const catalogs = PnpmCatalogs.load(testDir)!
+
+      expect(catalogs.entriesOf('default')).toEqual([
+        { name: 'react', range: '^18.2.0' },
+        { name: 'lodash', range: '^4.17.0' },
+      ])
+      expect(catalogs.entriesOf('react19')).toEqual([{ name: 'react', range: '^19.0.0' }])
+      expect(catalogs.entriesOf('missing')).toEqual([])
+    })
+  })
+
   describe('resolve', () => {
     it('resolves catalog:default to the default catalog and misses cleanly', () => {
       writeWorkspaceFile(FIXTURE)

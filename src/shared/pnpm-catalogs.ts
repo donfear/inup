@@ -86,6 +86,13 @@ export class PnpmCatalogs {
     const range = this.catalogs.get(name)?.get(packageName)
     return range === undefined ? null : { catalog: name, range }
   }
+
+  /** Every entry declared in the given catalog (empty for unknown catalogs). */
+  entriesOf(catalogName: string): Array<{ name: string; range: string }> {
+    const entries = this.catalogs.get(catalogName)
+    if (!entries) return []
+    return Array.from(entries, ([name, range]) => ({ name, range }))
+  }
 }
 
 /**

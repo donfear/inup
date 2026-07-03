@@ -259,7 +259,7 @@ export class PackageDetector {
     // pnpm-workspace.yaml. Each catalog entry becomes ONE upgradable dependency
     // sourced from that file, no matter how many workspace packages reference it.
     const catalogs = PnpmCatalogs.load(this.cwd)
-    const seenCatalogEntries = new Set<string>()
+    const seenCatalogEntries = new Map<string, DependencyEntry>()
 
     for (const rawDep of allDepsRaw) {
       let dep: DependencyEntry = {
@@ -279,17 +279,25 @@ export class PackageDetector {
           continue
         }
         const catalogKey = `${resolution.catalog}:${rawDep.name}`
-        if (seenCatalogEntries.has(catalogKey)) {
+        const existing = seenCatalogEntries.get(catalogKey)
+        if (existing) {
+          // Same catalog entry, another referencing package: remember who uses
+          // it (for the info modal's Used-by tab) but keep the single entry.
+          if (!existing.catalogReferencedBy!.includes(rawDep.packageJsonPath)) {
+            existing.catalogReferencedBy!.push(rawDep.packageJsonPath)
+          }
           continue
         }
-        seenCatalogEntries.add(catalogKey)
         dep = {
           name: rawDep.name,
           version: resolution.range,
           type: rawDep.type as DependencyEntry['type'],
           packageJsonPath: catalogs!.path,
           catalog: resolution.catalog,
+          catalogEntries: catalogs!.entriesOf(resolution.catalog),
+          catalogReferencedBy: [rawDep.packageJsonPath],
         }
+        seenCatalogEntries.set(catalogKey, dep)
       }
 
       if (this.isWorkspaceReference(dep.version)) {
@@ -409,6 +417,8 @@ export class PackageDetector {
           type: dep.type,
           packageJsonPath: dep.packageJsonPath,
           catalog: dep.catalog,
+          catalogEntries: dep.catalogEntries,
+          catalogReferencedBy: dep.catalogReferencedBy,
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
@@ -432,6 +442,8 @@ export class PackageDetector {
       type: dep.type,
       packageJsonPath: dep.packageJsonPath,
       catalog: dep.catalog,
+      catalogEntries: dep.catalogEntries,
+      catalogReferencedBy: dep.catalogReferencedBy,
       isOutdated: false,
       hasRangeUpdate: false,
       hasMajorUpdate: false,

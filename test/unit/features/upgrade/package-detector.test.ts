@@ -197,6 +197,13 @@ describe('PackageDetector streaming', () => {
           return { catalog: 'react19', range: '^19.0.0' }
         return null
       },
+      entriesOf: (catalog: string) =>
+        catalog === 'default'
+          ? [
+              { name: 'react', range: '^18.2.0' },
+              { name: 'lodash', range: '^4.17.0' },
+            ]
+          : [{ name: 'react', range: '^19.0.0' }],
     })
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       // Two packages referencing the same default-catalog entry → ONE dependency.
@@ -255,12 +262,25 @@ describe('PackageDetector streaming', () => {
       packageJsonPath: '/repo/pnpm-workspace.yaml',
     })
     expect(packages.some((pkg) => pkg.name === 'ghost')).toBe(false)
+
+    // The catalog's full contents and every referencing package are carried
+    // along for the info modal.
+    expect(packages[0].catalogEntries).toEqual([
+      { name: 'react', range: '^18.2.0' },
+      { name: 'lodash', range: '^4.17.0' },
+    ])
+    expect(packages[0].catalogReferencedBy).toEqual([
+      '/repo/packages/a/package.json',
+      '/repo/packages/b/package.json',
+    ])
+    expect(packages[1].catalogReferencedBy).toEqual(['/repo/packages/c/package.json'])
   })
 
   it('skips catalog entries whose resolved range is a workspace reference', async () => {
     mocks.loadPnpmCatalogs.mockReturnValue({
       path: '/repo/pnpm-workspace.yaml',
       resolve: () => ({ catalog: 'default', range: 'workspace:*' }),
+      entriesOf: () => [],
     })
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       {
@@ -285,6 +305,7 @@ describe('PackageDetector streaming', () => {
       path: '/repo/pnpm-workspace.yaml',
       resolve: (_name: string, spec: string) =>
         spec === 'catalog:' ? { catalog: 'default', range: '^1.0.0' } : null,
+      entriesOf: () => [{ name: 'shared-lib', range: '^1.0.0' }],
     })
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       {
@@ -323,6 +344,11 @@ describe('PackageDetector streaming', () => {
       catalog: 'default',
       packageJsonPath: '/repo/pnpm-workspace.yaml',
     })
+    // Both referencing packages are remembered for the Used-by tab.
+    expect(packages[0].catalogReferencedBy).toEqual([
+      '/repo/packages/a/package.json',
+      '/repo/packages/b/package.json',
+    ])
   })
 
   it('applies the ignore list to catalog entries', async () => {
@@ -332,6 +358,7 @@ describe('PackageDetector streaming', () => {
       mocks.loadPnpmCatalogs.mockReturnValue({
         path: '/repo/pnpm-workspace.yaml',
         resolve: () => ({ catalog: 'default', range: '^18.0.0' }),
+        entriesOf: () => [],
       })
       mocks.collectAllDependenciesAsync.mockResolvedValue([
         {
