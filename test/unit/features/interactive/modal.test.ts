@@ -343,3 +343,232 @@ describe('modal renderer', () => {
     expect(new Set(widths).size).toBe(1)
   })
 })
+
+// A state with no optional metadata: only the required header + meta sections
+// render, which lets the scroll-geometry tests below control every row.
+const minimalState: PackageSelectionState = {
+  name: 'tiny',
+  packageJsonPath: '/repo/package.json',
+  packageJsonPaths: ['/repo/package.json'],
+  currentVersionSpecifier: '^1.0.0',
+  currentVersion: '1.0.0',
+  rangeVersion: '1.1.0',
+  latestVersion: '2.0.0',
+  selectedOption: 'range',
+  loadState: 'ready',
+  hasRangeUpdate: true,
+  hasMajorUpdate: true,
+  type: 'dependencies',
+}
+
+describe('modal renderer edge paths', () => {
+  it('shows N/A downloads and an uncounted Used-by tab for an unused package', () => {
+    const result = renderPackageInfoModal(
+      { ...minimalState, weeklyDownloads: 0, packageJsonPaths: [] },
+      100,
+      24
+    )
+
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('Downloads/week: N/A')
+    expect(rendered).toContain('Used by ]')
+    expect(rendered).not.toContain('Used by (')
+  })
+
+  it('renders used-by paths relative to cwd, keeping cwd itself absolute', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        packageJsonPaths: [process.cwd(), `${process.cwd()}/packages/a/package.json`],
+      },
+      120,
+      30,
+      0,
+      'usedBy'
+    )
+
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('2 package.json files depend on tiny')
+    // path.relative(cwd, cwd) is '' — the absolute path is the fallback.
+    expect(rendered).toContain(process.cwd())
+    expect(rendered).toContain('packages/a/package.json')
+  })
+
+  it('truncates the fourth description line instead of overflowing', () => {
+    const result = renderPackageInfoModal(
+      { ...minimalState, description: 'wordy '.repeat(80).trim() },
+      100,
+      40
+    )
+
+    const rendered = result.lines.map((line) => stripAnsi(line))
+    const descriptionRows = rendered.filter((line) => line.includes('wordy'))
+    // The description wraps to more than four lines but is capped at four.
+    expect(descriptionRows).toHaveLength(4)
+  })
+
+  it('omits the vulnerability link row when no advisory details exist', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        vulnerability: { count: 2, highestSeverity: 'low', detailsUrl: '', advisories: [] },
+      },
+      100,
+      24
+    )
+
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('2 known vulnerabilities')
+    expect(rendered).toContain('... and 1 more')
+    expect(rendered).not.toContain('https://')
+  })
+
+  it('falls back to the representative advisory url when detailsUrl is missing', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        vulnerability: {
+          count: 1,
+          highestSeverity: 'low',
+          detailsUrl: '',
+          advisories: [
+            { id: 9, title: 'Prototype pollution', severity: 'low', url: 'https://osv.dev/GHSA-9' },
+          ],
+        },
+      },
+      100,
+      24
+    )
+
+    expect(stripAnsi(result.lines.join('\n'))).toContain('https://osv.dev/GHSA-9')
+  })
+
+  it('formats awkward release-notes markdown: admonitions, blanks, fences, breaking bullets', () => {
+    const notes = [
+      '',
+      '> [!NOTE]',
+      'Some intro',
+      '',
+      '',
+      '**',
+      // Long enough to wrap: the continuation lines must stay red-styled too.
+      `- breaking: drops Node 18 and ${'rewrites the module resolution pipeline '.repeat(4)}end`,
+      '```',
+      'code sample',
+      '```',
+      '',
+    ].join('\n')
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        releaseNotesVersions: ['1.1.0'],
+        releaseNotesLoaded: new Map([['1.1.0', notes]]),
+      },
+      100,
+      40
+    )
+
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('Note')
+    expect(rendered).toContain('Some intro')
+    expect(rendered).toContain('breaking: drops Node 18')
+    expect(rendered).toContain('code sample')
+  })
+
+  it('scrolls the Used-by tab and renders the body separator inside the window', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        catalog: 'default',
+        catalogEntries: [
+          { name: 'tiny', range: '^1.0.0' },
+          { name: 'react', range: '^19.0.0' },
+          { name: 'lodash', range: '^4.17.0' },
+          { name: 'chalk', range: '^5.0.0' },
+          { name: 'zod', range: '^3.0.0' },
+        ],
+        catalogReferencedBy: ['/repo/packages/a/package.json', '/repo/packages/b/package.json'],
+      },
+      80,
+      12,
+      0,
+      'usedBy'
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.maxScrollOffset).toBeGreaterThan(0)
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('Lines 1-')
+    // The window starts at the top: both used-by rows plus the separator into
+    // the catalog section are inside the visible slice.
+    expect(rendered).toContain('packages/a/package.json')
+  })
+
+  it('renders a scrolling modal with no footer when the body fits exactly', () => {
+    // Geometry: header(2)+summary(2)+separator = 5 pinned rows, 3 body rows,
+    // maxHeight 10 → the frame is one row too tall for compact mode but the
+    // body fits the scroll window exactly, so no footer status is shown.
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        packageJsonPaths: [
+          '/repo/packages/a/package.json',
+          '/repo/packages/b/package.json',
+          '/repo/packages/c/package.json',
+        ],
+      },
+      80,
+      12,
+      0,
+      'usedBy'
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.maxScrollOffset).toBe(0)
+    const rendered = stripAnsi(result.lines.join('\n'))
+    expect(rendered).toContain('packages/c/package.json')
+    expect(rendered).not.toContain('Lines 1-')
+    expect(rendered).not.toContain('End of release notes')
+  })
+
+  it('builds direction hints while scrolling when newer versions exist', () => {
+    // Empty-rendering notes ('```' fences only) make the body exactly
+    // versionHeader + separator + nav = 3 rows, which fits the floor of 3
+    // visible rows and exercises the hint construction in scroll mode.
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        deprecated: 'no longer maintained',
+        releaseNotesVersions: ['3.0.0', '2.0.0', '1.0.0'],
+        releaseNotesViewIndex: 2,
+        releaseNotesLoaded: new Map([['1.0.0', '```\n```']]),
+      },
+      80,
+      12,
+      0
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.maxScrollOffset).toBe(1)
+    expect(stripAnsi(result.lines.join('\n'))).toContain('Lines 1-2 of 3')
+  })
+
+  it('builds direction hints while scrolling when older versions exist', () => {
+    const result = renderPackageInfoModal(
+      {
+        ...minimalState,
+        deprecated: 'no longer maintained',
+        releaseNotesVersions: ['2.0.0', '1.0.0'],
+        releaseNotesViewIndex: 0,
+        releaseNotesLoaded: new Map([['2.0.0', '```\n```']]),
+      },
+      80,
+      12,
+      0
+    )
+
+    expect(result.usesInternalScroll).toBe(true)
+    expect(result.maxScrollOffset).toBe(1)
+    expect(stripAnsi(result.lines.join('\n'))).toContain('Lines 1-2 of 3')
+  })
+})
