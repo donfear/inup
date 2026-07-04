@@ -29,6 +29,16 @@ describe('FilterManager text and type filtering', () => {
     expect(filtered.map((s) => s.name)).toEqual(['React'])
   })
 
+  it('keeps states with an unrecognized dependency type', () => {
+    const fm = new FilterManager()
+
+    const filtered = fm.getFilteredStates([
+      { ...baseState, name: 'odd', type: 'bundledDependencies' as PackageSelectionState['type'] },
+    ])
+
+    expect(filtered.map((s) => s.name)).toEqual(['odd'])
+  })
+
   it('toggling a dep type off removes it from results', () => {
     const fm = new FilterManager()
     fm.toggleDependencyType('devDependencies')

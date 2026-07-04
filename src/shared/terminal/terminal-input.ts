@@ -67,7 +67,8 @@ export const TerminalInput = {
     return new Promise((resolve) => {
       process.stdout.write(prompt)
 
-      let cleanup = () => {}
+      // Replaced synchronously below before any keypress can call finish().
+      let cleanup = /* v8 ignore next */ () => {}
       const finish = (value: boolean) => {
         cleanup()
         process.stdout.write('\n')

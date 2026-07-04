@@ -584,3 +584,45 @@ describe('renderPackageLine option columns', () => {
     expect(stripAnsi(selected)).toContain('● ^2.0.0')
   })
 })
+
+describe('package-list render fallbacks', () => {
+  it('renders a scoped name without a slash on both row states', () => {
+    const state = makeSelectionState({ name: '@solo' })
+
+    expect(stripAnsi(renderPackageLine(state, 0, true, 120))).toContain('@solo')
+    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('@solo')
+  })
+
+  it('pads the current-version column with spaces when dashes do not fit', () => {
+    const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-beta.12' })
+
+    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-beta.12')
+  })
+
+  it('colors the header with the provided color for unknown package managers', () => {
+    const rendered = renderPlain([baseState], {
+      packageManager: {
+        ...npmInfo,
+        name: 'other' as PackageManagerInfo['name'],
+        displayName: 'Other PM',
+        color: (text: string) => text,
+      } as PackageManagerInfo,
+    })
+
+    expect(rendered).toContain('Other PM')
+  })
+
+  it('renders an empty search query cursor in filter mode', () => {
+    const rendered = renderPlain([baseState], { filterMode: true, filterQuery: '' })
+
+    expect(rendered).toContain('Search:')
+  })
+
+  it('skips renderable items of unknown type', () => {
+    const rendered = renderPlain([baseState], {
+      renderableItems: [{ type: 'mystery' } as unknown as RenderableItem],
+    })
+
+    expect(rendered).not.toContain('mystery')
+  })
+})

@@ -32,6 +32,13 @@ describe('project-config', () => {
       expect(config.ignore).toEqual(['lodash', 'moment'])
     })
 
+    it('drops a non-array ignore field', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: 'react' }))
+
+      const config = loadProjectConfig(testDir)
+      expect(config.ignore).toBeUndefined()
+    })
+
     it('should load config from .inuprc.json', () => {
       const configContent = {
         ignore: ['react', 'react-dom'],

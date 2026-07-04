@@ -533,3 +533,80 @@ describe('dispatchAction cancel', () => {
     expect(render).not.toHaveBeenCalled()
   })
 })
+
+describe('dispatchAction edge paths', () => {
+  it('clears the loading state when hydration fails', async () => {
+    const { dispatch, packageInfoModalController, stateManager } = makeHarness()
+    packageInfoModalController.hydrate.mockRejectedValueOnce(new Error('offline'))
+
+    dispatch({ type: 'toggle_info_modal' })
+    await flushAsync()
+
+    expect(stateManager.getUIState().isLoadingModalInfo).toBe(false)
+    expect(stateManager.getUIState().showInfoModal).toBe(true)
+  })
+
+  it('ignores a hydration failure that lands after the session resolved', async () => {
+    const { dispatch, packageInfoModalController, stateManager, setResolved } = makeHarness()
+    let rejectHydrate: ((error: Error) => void) | undefined
+    packageInfoModalController.hydrate.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectHydrate = reject
+        })
+    )
+
+    dispatch({ type: 'toggle_info_modal' })
+    setResolved(true)
+    rejectHydrate!(new Error('too late'))
+    await flushAsync()
+
+    // The loading flag is left alone: the session is gone.
+    expect(stateManager.getUIState().isLoadingModalInfo).toBe(true)
+  })
+
+  it('skips re-rendering version loads that finish after the session resolved', async () => {
+    const { dispatch, packageInfoModalController, render, setResolved } = makeHarness()
+    packageInfoModalController.getVersionCount.mockReturnValue(2)
+    packageInfoModalController.navigateVersion.mockReturnValue(1)
+    packageInfoModalController.isVersionLoaded.mockReturnValue(false)
+    const callbacks: Array<() => void> = []
+    packageInfoModalController.loadVersionAtIndex.mockImplementation(
+      (_state: unknown, _index: number, onLoaded: () => void) => {
+        callbacks.push(onLoaded)
+      }
+    )
+
+    dispatch({ type: 'toggle_info_modal' })
+    await flushAsync() // hydrate resolves → the initial version load is queued
+    dispatch({ type: 'navigate_info_modal_version', direction: 'older' })
+    expect(callbacks.length).toBeGreaterThanOrEqual(2)
+
+    setResolved(true)
+    const rendersBefore = render.mock.calls.length
+    callbacks.forEach((onLoaded) => onLoaded())
+    expect(render.mock.calls.length).toBe(rendersBefore)
+  })
+
+  it('stops re-rendering when modal scrolling hits the bottom', () => {
+    const { dispatch, render } = makeHarness()
+
+    for (let i = 0; i < 7; i++) dispatch({ type: 'scroll_help_modal_down' })
+    // The offset is capped at 5, so only the first five presses re-render.
+    expect(render).toHaveBeenCalledTimes(5)
+
+    for (let i = 0; i < 7; i++) dispatch({ type: 'scroll_debug_modal_down' })
+    expect(render).toHaveBeenCalledTimes(10)
+  })
+
+  it('steps the theme preview back to the previous theme', () => {
+    const { dispatch, stateManager } = makeHarness()
+
+    dispatch({ type: 'toggle_theme_modal' })
+    dispatch({ type: 'theme_navigate_down' })
+    dispatch({ type: 'theme_navigate_up' })
+
+    expect(stateManager.getThemeManager().getPreviewTheme()).toBe(themeNames[0])
+    expect(stateManager.getThemeManager().getPreviewTheme()).toBe(defaultTheme)
+  })
+})

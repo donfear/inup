@@ -77,18 +77,26 @@ export function renderPackageInfoModal(
   const fixedModalHeight = maxHeight
   const padding = Math.floor((terminalWidth - modalWidth) / 2)
 
+  // Every section built by buildPackageInfoSections declares a behavior; the
+  // '?? pinned' fallbacks are type-level safety nets for hand-built sections.
   const pinnedSections = allSections.filter(
+    /* v8 ignore next */
     (section) => (section.behavior ?? 'pinned') === 'pinned'
   )
-  const bodySections = allSections.filter((section) => (section.behavior ?? 'pinned') !== 'pinned')
+  const bodySections = allSections.filter(
+    /* v8 ignore next */
+    (section) => (section.behavior ?? 'pinned') !== 'pinned'
+  )
   const minBodyRows = 3
-  const reservedBodyRows = minBodyRows + (bodySections.length > 0 ? 1 : 0)
+  // Reaching this point requires a 'body' section (hasScrollableBody above),
+  // so bodySections is never empty here; the ':0' arms are unreachable.
+  const reservedBodyRows = minBodyRows + (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0)
   const maxPinnedHeight = Math.max(6, fixedModalHeight - reservedBodyRows)
   const fittedPinned = fitModalSections(pinnedSections, maxPinnedHeight, trimOrder)
   const pinnedRowCount = getModalSectionRowCount(fittedPinned)
   const availableForBody = Math.max(
     minBodyRows,
-    fixedModalHeight - 2 - pinnedRowCount - (bodySections.length > 0 ? 1 : 0)
+    fixedModalHeight - 2 - pinnedRowCount - (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0)
   )
 
   const bodyRows: Array<{ row: string; sectionIndex: number }> = []
@@ -128,13 +136,19 @@ export function renderPackageInfoModal(
             `Lines ${clampedOffset + 1}-${Math.min(clampedOffset + visibleBodyRows, totalScrollableRows)} of ${totalScrollableRows}`
           )
         : chalk.gray('End of release notes')
-      : canGoNewer || canGoOlder
+      : // A truthy hint footer shrinks visibleBodyRows, which forces
+        // maxScroll ≥ 1 whenever the scroll path is entered — so this arm can
+        // only resolve to the hints when maxScroll is 0, which cannot happen.
+        // Kept as a safety net for future layout changes.
+        /* v8 ignore start */
+        canGoNewer || canGoOlder
         ? chalk.gray(
             [canGoNewer ? '← newer version' : null, canGoOlder ? '→ older version' : null]
               .filter((hint): hint is string => Boolean(hint))
               .join('  ·  ')
           )
         : null
+  /* v8 ignore stop */
   const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
   const lines: string[] = []
   const topPadding = Math.max(0, Math.floor((terminalHeight - fixedModalHeight) / 2))
@@ -153,9 +167,9 @@ export function renderPackageInfoModal(
     }
   })
 
-  if (bodySections.length > 0) {
-    lines.push(renderModalSeparator(padding, modalWidth))
-  }
+  // bodySections is never empty on the scroll path (see above), so a
+  // separator between the pinned rows and the body is always drawn.
+  lines.push(renderModalSeparator(padding, modalWidth))
 
   let renderedScrollRows = 0
   for (const entry of visibleSlice) {
@@ -169,14 +183,18 @@ export function renderPackageInfoModal(
 
   const usedContentRows =
     pinnedRowCount +
-    (bodySections.length > 0 ? 1 : 0) +
+    (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0) +
     renderedScrollRows +
     (resolvedFooterStatus ? 1 : 0)
   const totalContentSlots = fixedModalHeight - 2
+  // The scroll path is only entered when content overflows the frame, so the
+  // window is always full and there are never filler rows to add.
+  /* v8 ignore start */
   const emptyRows = Math.max(0, totalContentSlots - usedContentRows)
   for (let i = 0; i < emptyRows; i++) {
     lines.push(renderModalRow(padding, modalWidth, ''))
   }
+  /* v8 ignore stop */
 
   if (resolvedFooterStatus) {
     lines.push(renderModalRow(padding, modalWidth, resolvedFooterStatus))

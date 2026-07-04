@@ -427,6 +427,82 @@ describe('PackageInfoModalController', () => {
     vi.useRealTimers()
   })
 
+  it('hydrate() clears a still-armed debounce timer', async () => {
+    vi.useFakeTimers()
+    mocks.fetchPackageMetadata.mockResolvedValue({
+      description: 'demo',
+      homepage: 'https://demo.dev',
+    })
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map(),
+    })
+
+    const pending = controller.loadVersionAtIndex(state, 0, () => {})
+    // hydrate() completes before the debounce fires: the timer is still armed
+    // and must be cleared, flushing the pending load as not-loaded.
+    const update = await controller.hydrate(baseState)
+
+    expect(update).not.toBeNull()
+    await expect(pending).resolves.toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('clears a debounce armed while hydration was in flight', async () => {
+    vi.useFakeTimers()
+    let resolveFetch: ((value: unknown) => void) | undefined
+    mocks.fetchPackageMetadata.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve
+        })
+    )
+    const controller = new PackageInfoModalController()
+
+    const hydrating = controller.hydrate(baseState)
+    // Arm a debounce while the metadata fetch is still in flight; hydrate must
+    // clear it when it completes.
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map(),
+    })
+    const pending = controller.loadVersionAtIndex(state, 0, () => {})
+    resolveFetch!({ description: 'demo', homepage: 'https://demo.dev' })
+
+    const update = await hydrating
+    expect(update).not.toBeNull()
+    await expect(pending).resolves.toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('resolves false when the notes map vanishes before the debounce fires', async () => {
+    vi.useFakeTimers()
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({
+      releaseNotesVersions: ['2.0.0'],
+      releaseNotesLoaded: new Map(),
+    })
+
+    const pending = controller.loadVersionAtIndex(state, 0, () => {})
+    state.releaseNotesLoaded = undefined
+    await vi.runAllTimersAsync()
+
+    await expect(pending).resolves.toBe(false)
+    expect(mocks.fetchReleaseNotesForVersion).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('treats a missing view index as the newest version', () => {
+    const controller = new PackageInfoModalController()
+    const state = makeSelectionState({ releaseNotesVersions: ['2.0.0', '1.0.0'] })
+
+    expect(controller.canNavigate(state, 'older')).toBe(true)
+    expect(controller.navigateVersion(state, 'older')).toBe(1)
+  })
+
   it('hydrate() cancels a pending debounced load from a previous package', async () => {
     vi.useFakeTimers()
     mocks.fetchPackageMetadata.mockResolvedValue({

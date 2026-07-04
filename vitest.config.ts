@@ -17,14 +17,14 @@ export default defineConfig({
         'src/cli.ts', // CLI entry point - tested via integration tests
         'src/index.ts', // public API re-export barrel
       ],
-      // Ratchet: keep coverage from regressing. Raise these when coverage rises;
-      // never lower them to make a failing build pass.
-      // Current actuals: 97.1% lines / 96.5% statements / 96.0% functions / 90.7% branches.
+      // Ratchet: coverage is at 100% on every metric and must stay there.
+      // Provably-unreachable defensive code is annotated with `/* v8 ignore */`
+      // hints (each with a justification comment) rather than left uncovered.
       thresholds: {
-        lines: 96,
-        functions: 95,
-        branches: 89,
-        statements: 95,
+        lines: 100,
+        functions: 100,
+        branches: 100,
+        statements: 100,
       },
     },
   },

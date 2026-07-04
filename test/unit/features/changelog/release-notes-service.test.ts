@@ -83,6 +83,25 @@ describe('ReleaseNotesService source fallback chain', () => {
     )
   })
 
+  it('skips page HTML that yields no extractable notes', async () => {
+    const { service, githubClient } = makeHarness()
+    githubClient.fetchReleasePageHtml.mockResolvedValue('<html><body>no markers</body></html>')
+    githubClient.fetchReleaseByTag.mockResolvedValueOnce('api notes')
+
+    const notes = await service.fetchReleaseNotesForVersion('demo', '1.0.0')
+
+    expect(notes).toBe('api notes')
+  })
+
+  it('returns null for a version that is not valid semver', async () => {
+    const { service, githubClient } = makeHarness()
+    githubClient.fetchReleases.mockResolvedValue([makeRelease()])
+
+    const notes = await service.fetchReleaseNotesForVersion('demo', 'not-a-version')
+
+    expect(notes).toBeNull()
+  })
+
   it('falls back to the release list, skipping drafts and normalizing tags', async () => {
     const { service, githubClient } = makeHarness()
     githubClient.fetchReleases.mockResolvedValue([

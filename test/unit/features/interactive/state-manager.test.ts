@@ -38,6 +38,28 @@ describe('StateManager.toggleSelection', () => {
     expect(states[0].selectedOption).toBe('latest')
   })
 
+  it('is a no-op for an empty list and for packages without updates', () => {
+    const sm = new StateManager(0, 24)
+    sm.toggleSelection([])
+
+    const states = [ready({ hasRangeUpdate: false, hasMajorUpdate: false })]
+    sm.toggleSelection(states)
+    expect(states[0].selectedOption).toBe('none')
+  })
+
+  it('resetForResize falls back to renderable items, then the visible row count', () => {
+    const sm = new StateManager(0, 24)
+    sm.setRenderableItems([
+      { type: 'package', state: ready(), originalIndex: 0 } as RenderableItem,
+    ])
+    sm.resetForResize(0)
+    expect(sm.getUIState().scrollOffset).toBe(0)
+
+    sm.setRenderableItems([])
+    sm.resetForResize()
+    expect(sm.getUIState().scrollOffset).toBe(0)
+  })
+
   it('clears the selection when one is already set', () => {
     const sm = new StateManager(0, 24)
     const states = [ready({ selectedOption: 'latest' })]

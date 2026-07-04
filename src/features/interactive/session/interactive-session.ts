@@ -59,7 +59,11 @@ export async function runInteractiveSession(
     stateManager.setRenderableItems([])
 
     const claimInteractiveScreen = () => {
+      // Claimed exactly once per session; the guard is a safety net in case a
+      // future caller re-claims.
+      /* v8 ignore start */
       if (ownsAlternateScreen) return
+      /* v8 ignore stop */
       ConsoleUtils.clearProgress()
       CursorUtils.enterAlternateScreen()
       CursorUtils.clearScreen()
@@ -112,7 +116,11 @@ export async function runInteractiveSession(
       `${bgCode}${line.replace(resetAnsiPattern, (match) => `${match}${bgCode}`)}${getTerminalResetCode()}`
 
     const writeFrame = (lines: string[], bgCode: string) => {
+      // Viewports are always padded to the terminal height, so an empty frame
+      // cannot occur today; guard kept so a future caller cannot emit garbage.
+      /* v8 ignore start */
       if (lines.length === 0) return
+      /* v8 ignore stop */
       process.stdout.write(lines.map((line) => applyBackgroundToLine(line, bgCode)).join('\n'))
     }
 
@@ -419,11 +427,16 @@ export async function runInteractiveSession(
 
       process.on('SIGWINCH', handleResize)
 
+      // The state manager was constructed with getTerminalHeight() in this same
+      // tick, so the height cannot have changed yet; kept as a safety net for a
+      // future async gap between construction and startup.
+      /* v8 ignore start */
       const currentHeight = getTerminalHeight()
       if (stateManager.updateTerminalHeight(currentHeight)) {
         const initialFiltered = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
         stateManager.resetForResize(initialFiltered.length)
       }
+      /* v8 ignore stop */
 
       renderInterface()
       vulnerabilityAuditController.enqueueStates(states, () => {

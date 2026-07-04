@@ -20,6 +20,26 @@ describe('extractReleaseNotesFromHtml', () => {
     ).toBeNull()
   })
 
+  it('returns null when the markdown container tag never opens', () => {
+    expect(
+      extractReleaseNotesFromHtml('<div data-test-selector="body-content"><div class="markdown-body')
+    ).toBeNull()
+  })
+
+  it('returns null when nested divs leave the container unbalanced', () => {
+    // The inner <div> closes, but the markdown-body itself never does — the
+    // scan runs off the end of the document with depth still positive.
+    expect(
+      extractReleaseNotesFromHtml(
+        '<div data-test-selector="body-content"><div class="markdown-body"><div>x</div>'
+      )
+    ).toBeNull()
+  })
+
+  it('returns null when the release body is empty after cleanup', () => {
+    expect(extractReleaseNotesFromHtml(wrap('   <p>   </p>  '))).toBeNull()
+  })
+
   it('extracts plain paragraphs', () => {
     expect(extractReleaseNotesFromHtml(wrap('<p>Hello release</p>'))).toBe('Hello release')
   })

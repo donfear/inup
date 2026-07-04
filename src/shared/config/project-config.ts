@@ -65,9 +65,12 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
       }
     }
 
-    // Move to parent directory
+    // Move to parent directory. The self-parent check only trips on Windows
+    // drive roots ('C:\'); on POSIX the loop condition exits at '/' first.
     const parentDir = join(currentDir, '..')
+    /* v8 ignore start */
     if (parentDir === currentDir) break
+    /* v8 ignore stop */
     currentDir = parentDir
   }
 

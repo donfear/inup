@@ -1,5 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'fs'
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, readFileSync, rmSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+// The logger writes to os.tmpdir()/inup — the same directory a real inup run
+// uses. Point tmpdir() at an isolated per-process root so the tests below can
+// delete the log directory without wiping a developer's actual debug logs or
+// racing another vitest worker / live inup session.
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>()
+  const { mkdirSync } = await import('node:fs')
+  const { join: joinPath } = await import('node:path')
+  const isolatedRoot = joinPath(actual.tmpdir(), `inup-debug-logger-test-${process.pid}`)
+  mkdirSync(isolatedRoot, { recursive: true })
+  return { ...actual, tmpdir: () => isolatedRoot }
+})
+
+afterAll(() => {
+  // tmpdir() resolves to the isolated root under the mock above.
+  rmSync(tmpdir(), { recursive: true, force: true })
+})
 
 type DebugLoggerModule = typeof import('../../../src/shared/debug-logger')
 
@@ -113,5 +133,28 @@ describe('debug log lines', () => {
     const match = content.match(new RegExp(`\\[PERF\\] \\[${ctx}\\] fetch — (\\d+)ms`))
     expect(match).not.toBeNull()
     expect(Number(match![1])).toBeGreaterThanOrEqual(150)
+  })
+
+  it('creates the log directory when it does not exist yet', () => {
+    const dir = join(tmpdir(), 'inup')
+    rmSync(dir, { recursive: true, force: true })
+
+    logger.enableDebugLogging()
+    logger.debugLog.info(uniqueContext(), 'first write recreates the directory')
+
+    expect(existsSync(dir)).toBe(true)
+    expect(logger.getDebugLogPath()).not.toBeNull()
+  })
+
+  it('logs an error without a stack trace', () => {
+    logger.enableDebugLogging()
+    const ctx = uniqueContext()
+    const bare = new Error('stackless')
+    bare.stack = undefined
+
+    logger.debugLog.error(ctx, 'failed', bare)
+
+    const content = readFileSync(logger.getDebugLogPath()!, 'utf8')
+    expect(content).toContain(`[${ctx}] failed | Error: stackless`)
   })
 })

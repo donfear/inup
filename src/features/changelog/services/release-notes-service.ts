@@ -5,7 +5,6 @@ import { extractReleaseNotesFromHtml } from '../parsers/github-release-html-pars
 import { PackageMetadataService } from './package-metadata-service'
 
 const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
-const PREFER_GITHUB_RELEASE_PAGE = true
 
 export class ReleaseNotesService {
   private releaseNotesCache = new Map<string, string | null>()
@@ -81,15 +80,12 @@ export class ReleaseNotesService {
     version: string,
     signal: AbortSignal
   ): Array<() => Promise<string | null>> {
-    const directReleaseSources = PREFER_GITHUB_RELEASE_PAGE
-      ? [
-          () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
-          () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
-        ]
-      : [
-          () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
-          () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
-        ]
+    // Scraped release page first (richer content than the API body), then the
+    // release API by tag.
+    const directReleaseSources = [
+      () => this.fetchGitHubReleasePageNotes(repoUrl, version, signal),
+      () => this.fetchGitHubReleaseNotes(repoUrl, version, signal),
+    ]
 
     return [
       ...directReleaseSources,

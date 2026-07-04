@@ -128,3 +128,22 @@ describe('coloredInupLogo', () => {
     }
   })
 })
+
+describe('unknown theme fallback', () => {
+  // themeNames lives in themes.ts while the color maps live here; if the two
+  // ever drift, unknown names must fall back to dracula instead of crashing.
+  it('falls back to dracula colors for a theme missing from the color maps', async () => {
+    vi.resetModules()
+    vi.doMock('../../../../src/features/interactive/state/theme-manager', () => ({
+      getCurrentThemeName: () => 'not-a-registered-theme',
+    }))
+    try {
+      const mod = await import('../../../../src/features/interactive/themes-colors')
+      expect(mod.getThemeColor('primary')('x')).toBeTypeOf('string')
+      expect(mod.getThemeBgColor()).toMatch(/^#/)
+    } finally {
+      vi.doUnmock('../../../../src/features/interactive/state/theme-manager')
+      vi.resetModules()
+    }
+  })
+})

@@ -91,6 +91,12 @@ describe('promptForConfirmation', () => {
 
     expect(stdout.output()).toContain('Proceed? ')
   })
+
+  it('resolves false when interrupted with Ctrl+C', async () => {
+    const promise = TerminalInput.promptForConfirmation('Proceed? ')
+    await fake.sendKeys('\x03')
+    await expect(promise).resolves.toBe(false)
+  })
 })
 
 describe('promptForImmediateConfirmation', () => {

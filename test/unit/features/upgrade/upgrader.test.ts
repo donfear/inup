@@ -1,7 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+// spawnSync runs the real package-manager install; individual tests override it
+// to simulate spawn errors, signals, and exit codes without shelling out.
+const { spawnSyncMock } = vi.hoisted(() => ({ spawnSyncMock: vi.fn() }))
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>()
+  spawnSyncMock.mockImplementation(actual.spawnSync)
+  return { ...actual, spawnSync: spawnSyncMock }
+})
+
 import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
 import { PackageInfo, PackageManagerInfo, PackageUpgradeChoice } from '../../../../src/shared/types'
 
@@ -554,5 +572,207 @@ catalogs:
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No packages to upgrade'))
     logSpy.mockRestore()
     errorSpy.mockRestore()
+  })
+
+  describe('install failure handling', () => {
+    const writeFixture = (dir: string) => {
+      const pkgPath = join(dir, 'package.json')
+      writeFileSync(
+        pkgPath,
+        JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.0.0' } }, null, 2) + '\n'
+      )
+      return pkgPath
+    }
+    const makeChoice = (pkgPath: string): PackageUpgradeChoice => ({
+      name: 'lodash',
+      packageJsonPath: pkgPath,
+      dependencyType: 'dependencies',
+      upgradeType: 'range',
+      targetVersion: '^4.17.21',
+      currentVersionSpecifier: '^4.0.0',
+    })
+
+    it('throws the spawn error when the install cannot start', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ error: new Error('spawn failed') })
+
+      try {
+        await expect(upgrader.upgradePackages([makeChoice(pkgPath)], [])).rejects.toThrow(
+          'spawn failed'
+        )
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('reports the signal when the install is killed', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: null, signal: 'SIGKILL' })
+
+      try {
+        await expect(upgrader.upgradePackages([makeChoice(pkgPath)], [])).rejects.toThrow(
+          'terminated by signal SIGKILL'
+        )
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('reports the exit code when the install fails', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 3, signal: null })
+
+      try {
+        await expect(upgrader.upgradePackages([makeChoice(pkgPath)], [])).rejects.toThrow(
+          'exited with code 3'
+        )
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('redirects the install stdout to stderr in quiet mode', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 0, signal: null })
+
+      try {
+        await upgrader.upgradePackages([makeChoice(pkgPath)], [])
+        const installCall = spawnSyncMock.mock.calls.at(-1)
+        expect(installCall?.[1]).toMatchObject({ stdio: ['inherit', 2, 'inherit'] })
+      } finally {
+        errorSpy.mockRestore()
+      }
+    })
+  })
+
+  describe('quiet catalog upgrades', () => {
+    it('logs catalog success without a spinner in quiet mode', async () => {
+      const workspacePath = join(testDir, 'pnpm-workspace.yaml')
+      writeFileSync(workspacePath, 'catalog:\n  react: ^18.0.0\n')
+      const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 0, signal: null })
+
+      try {
+        await upgrader.upgradePackages(
+          [
+            {
+              name: 'react',
+              packageJsonPath: workspacePath,
+              dependencyType: 'dependencies',
+              upgradeType: 'latest',
+              targetVersion: '^19.0.0',
+              currentVersionSpecifier: '^18.0.0',
+              catalog: 'default',
+            },
+          ],
+          []
+        )
+
+        expect(readFileSync(workspacePath, 'utf-8')).toContain('react: ^19.0.0')
+        expect(errorSpy.mock.calls.flat().join('\n')).toContain('Upgraded 1 catalog entry')
+      } finally {
+        errorSpy.mockRestore()
+      }
+    })
+
+    it('logs catalog failure without a spinner in quiet mode', async () => {
+      const workspacePath = join(testDir, 'pnpm-workspace.yaml')
+      writeFileSync(workspacePath, 'catalog:\n  react: ^18.0.0\n')
+      chmodSync(workspacePath, 0o000)
+      const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      try {
+        await expect(
+          upgrader.upgradePackages(
+            [
+              {
+                name: 'react',
+                packageJsonPath: workspacePath,
+                dependencyType: 'dependencies',
+                upgradeType: 'latest',
+                targetVersion: '^19.0.0',
+                currentVersionSpecifier: '^18.0.0',
+                catalog: 'default',
+              },
+            ],
+            []
+          )
+        ).rejects.toThrow()
+        expect(errorSpy.mock.calls.flat().join('\n')).toContain(
+          'Failed to upgrade catalog entries'
+        )
+      } finally {
+        chmodSync(workspacePath, 0o644)
+        errorSpy.mockRestore()
+      }
+    })
+  })
+
+  it('skips the file write when the dependency is already at the target version', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    const original =
+      JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.17.21' } }, null, 2) + '\n'
+    writeFileSync(pkgPath, original)
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    spawnSyncMock.mockReturnValueOnce({ status: 0, signal: null })
+
+    try {
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.17.21',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(original)
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('logs a plain failure without a spinner when a quiet upgrade throws', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(pkgPath, 'this is not json {')
+    const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      await expect(
+        upgrader.upgradePackages(
+          [
+            {
+              name: 'lodash',
+              packageJsonPath: pkgPath,
+              dependencyType: 'dependencies',
+              upgradeType: 'range',
+              targetVersion: '^4.17.21',
+              currentVersionSpecifier: '^4.0.0',
+            },
+          ],
+          []
+        )
+      ).rejects.toThrow()
+      expect(errorSpy.mock.calls.flat().join('\n')).toContain('Failed to upgrade dependencies')
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

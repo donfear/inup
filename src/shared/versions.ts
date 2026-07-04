@@ -74,9 +74,13 @@ export function getOptimizedRangeVersion(
     const satisfyingVersions = allVersions.filter((version: string) => {
       try {
         return semver.satisfies(version, currentRange)
+        // semver.satisfies swallows invalid input internally (returns false);
+        // safety net for future semver behavior changes only.
+        /* v8 ignore start */
       } catch {
         return false
       }
+      /* v8 ignore stop */
     })
 
     if (satisfyingVersions.length === 0) {

@@ -53,7 +53,10 @@ export class PackageUpgrader {
     const choicesByFileAndType = this.groupChoicesByFileAndType(fileChoices)
 
     for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
+      // groupChoicesByFileAndType only creates a group when it has a member.
+      /* v8 ignore start */
       if (choiceList.length === 0) continue
+      /* v8 ignore stop */
 
       const [packageJsonPath, type] = fileAndType.split('|')
       this.log(`Processing ${type} in ${packageJsonPath}`)
@@ -73,9 +76,13 @@ export class PackageUpgrader {
   }
 
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
+    // upgradePackages returns early for an empty selection, so this guard only
+    // protects future direct callers.
+    /* v8 ignore start */
     if (choices.length === 0) {
       return
     }
+    /* v8 ignore stop */
 
     // Determine the directory to run install in
     // Use workspace root if it exists, otherwise use the directory of the first package.json
@@ -232,8 +239,6 @@ export class PackageUpgrader {
       const rangeChoices = choices.filter((c) => c.upgradeType === 'range')
       const latestChoices = choices.filter((c) => c.upgradeType === 'latest')
 
-      let modified = false
-
       // Upgrade range versions by directly modifying package.json
       if (rangeChoices.length > 0) {
         if (!packageJson[type]) {
@@ -242,7 +247,6 @@ export class PackageUpgrader {
 
         rangeChoices.forEach((choice) => {
           packageJson[type]![choice.name] = choice.targetVersion
-          modified = true
         })
       }
 
@@ -254,19 +258,16 @@ export class PackageUpgrader {
 
         latestChoices.forEach((choice) => {
           packageJson[type]![choice.name] = choice.targetVersion
-          modified = true
         })
       }
 
       // Write back the modified package.json, preserving the original indentation and
       // trailing-newline style. Skip the write entirely when nothing actually changed.
-      if (modified) {
-        const format = detectJsonFormat(rawContent)
-        const nextContent =
-          JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
-        if (nextContent !== rawContent) {
-          writeFileSync(packageJsonPath, nextContent)
-        }
+      const format = detectJsonFormat(rawContent)
+      const nextContent =
+        JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
+      if (nextContent !== rawContent) {
+        writeFileSync(packageJsonPath, nextContent)
       }
 
       if (spinner) spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })

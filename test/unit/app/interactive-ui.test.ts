@@ -252,4 +252,73 @@ describe('InteractiveUI.confirmUpgrade', () => {
       startSpy.mockRestore()
     }
   })
+
+  it('resolves false when the line-prompt fallback itself fails', async () => {
+    const startSpy = vi.spyOn(TerminalInput, 'startKeypressSession').mockImplementation(() => {
+      throw new Error('no tty')
+    })
+    const promptSpy = vi
+      .spyOn(TerminalInput, 'promptForConfirmation')
+      .mockRejectedValue(new Error('stdin closed'))
+
+    try {
+      await expect(new InteractiveUI(npmInfo).confirmUpgrade([])).resolves.toBe(false)
+    } finally {
+      promptSpy.mockRestore()
+      startSpy.mockRestore()
+    }
+  })
+})
+
+describe('InteractiveUI refresh plumbing', () => {
+  it('stores the refresh hook handed out by the session (one-shot select)', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    const refresh = vi.fn()
+    sessionMock.mockImplementation(
+      async (states, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
+        onRefreshViewReady?.(refresh)
+        return states
+      }
+    )
+
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    // The stored hook is what the audit refresh path calls.
+    const enqueueSpy = vi
+      .spyOn(
+        (ui as unknown as { vulnerabilityAuditController: { enqueueStates: unknown } })
+          .vulnerabilityAuditController,
+        'enqueueStates' as never
+      )
+      .mockImplementation(((_states: unknown, onUpdate?: () => void) => {
+        onUpdate?.()
+      }) as never)
+
+    ui.enqueueSecurityAudit([makeSelectionState({ name: 'audited' })])
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('stores the refresh hook in the progressive flow too', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    const refresh = vi.fn()
+    sessionMock.mockImplementation(
+      async (states, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
+        onRefreshViewReady?.(refresh)
+        return states
+      }
+    )
+
+    const states = [makeSelectionState({ selectedOption: 'range' })]
+    await ui.selectPackagesToUpgradeProgressive(states, {
+      discovered: 1,
+      resolved: 1,
+      total: 1,
+      failed: 0,
+      isLoading: true,
+    })
+
+    expect(sessionMock).toHaveBeenCalledTimes(1)
+  })
 })

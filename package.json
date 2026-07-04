@@ -18,9 +18,10 @@
     "demo:setup": "cd docs/demo-project && pnpm install",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
-    "docs:keys": "UPDATE_README=1 vitest run keymap-readme"
+    "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
+    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme"
   },
   "author": "Donfear",
   "keywords": [

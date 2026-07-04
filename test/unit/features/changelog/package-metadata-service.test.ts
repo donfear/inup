@@ -71,6 +71,40 @@ describe('PackageMetadataService', () => {
     expect(service.getCached('demo')).toBeNull()
   })
 
+  it('getCached surfaces a cached null result', async () => {
+    const { service } = makeService(null)
+
+    await service.fetchPackageMetadata('gone', '1.0.0')
+
+    expect(service.getCached('gone', '1.0.0')).toBeNull()
+  })
+
+  it('leaves weekly downloads unset when stats are unavailable', async () => {
+    const client = {
+      fetchPackageManifest: vi.fn(async () => ({ description: 'demo package' })),
+      fetchDownloadStats: vi.fn(async () => null),
+    } as unknown as NpmRegistryClient
+    const service = new PackageMetadataService(client)
+
+    const metadata = await service.fetchPackageMetadata('demo', '1.0.0')
+
+    expect(metadata?.weeklyDownloads).toBeUndefined()
+  })
+
+  it('drops an author object that has no name field', async () => {
+    // The `?? rawData.author` fallback keeps the raw object, which the final
+    // string check then discards — the author must come out undefined.
+    const client = {
+      fetchPackageManifest: vi.fn(async () => ({ author: { email: 'dev@example.com' } })),
+      fetchDownloadStats: vi.fn(async () => null),
+    } as unknown as NpmRegistryClient
+    const service = new PackageMetadataService(client)
+
+    const metadata = await service.fetchPackageMetadata('demo', '1.0.0')
+
+    expect(metadata?.author).toBeUndefined()
+  })
+
   it('caches metadata provided directly and derives the release URL', async () => {
     const { service } = makeService()
 

@@ -94,4 +94,37 @@ describe('auditVulnerabilities', () => {
     const result = await auditVulnerabilities([pkg])
     expect(result.size).toBe(0)
   })
+
+  it('audits duplicate package names once and skips advisory-free entries', async () => {
+    const duplicate = { ...pkg, packageJsonPath: '/repo/packages/b/package.json' }
+    const quiet = { ...pkg, name: 'left-pad' }
+    mocks.fetchVulnerabilities.mockResolvedValue(
+      new Map([
+        [
+          'axios',
+          {
+            packageName: 'axios',
+            highestSeverity: 'high',
+            vulnerabilities: [
+              { id: 1, title: 'A', severity: 'high', url: 'u1', vulnerable_versions: '<1.0.0' },
+            ],
+          },
+        ],
+        // An entry with no vulnerabilities must be skipped, not summarized.
+        [
+          'left-pad',
+          { packageName: 'left-pad', highestSeverity: 'low', vulnerabilities: [] },
+        ],
+      ])
+    )
+
+    const result = await auditVulnerabilities([pkg, duplicate, quiet])
+
+    // One version map entry per unique name; both axios manifests summarized.
+    const sent = mocks.fetchVulnerabilities.mock.calls[0][0] as Map<string, string>
+    expect(Array.from(sent.keys())).toEqual(['axios', 'left-pad'])
+    expect(result.has(pkg)).toBe(true)
+    expect(result.has(duplicate)).toBe(true)
+    expect(result.has(quiet)).toBe(false)
+  })
 })
