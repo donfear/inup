@@ -78,12 +78,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           # The Marketplace listing is bound to whichever release published it — one-time manual
-          # setup via the UI (Marketplace publishing can't be toggled through the API). Once that
-          # release exists for the floating tag, we just repoint it at each new commit so
-          # `donfear/inup@v1` in Marketplace always resolves to the latest v1.x.y.
+          # setup via the UI (Marketplace publishing can't be toggled through the API). Actions/
+          # Marketplace resolve `donfear/inup@v1` via the *git tag* (already force-moved above),
+          # not this release's target_commitish, so we only need to keep the notes current here.
+          #
+          # NB: `gh release edit --target` on this release reliably 500s (GitHub rejects
+          # target_commitish changes on a Marketplace-bound release) — don't pass --target.
           if gh release view "$MAJOR" >/dev/null 2>&1; then
             gh release edit "$MAJOR" \
-              --target "$(git rev-parse "$NEW_VERSION")" \
               --notes "Tracks the latest \`$MAJOR.x.y\` release for Marketplace users pinned to \`@$MAJOR\`. See [$NEW_VERSION]($(gh release view "$NEW_VERSION" --json url --jq .url)) for what's new."
           else
             echo "No existing '$MAJOR' release found — publish one manually once via the GitHub UI with 'Publish to Marketplace' checked, then this step will keep it in sync on future releases."
