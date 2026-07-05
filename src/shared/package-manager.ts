@@ -1,5 +1,5 @@
-import { existsSync, statSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import chalk from 'chalk'
 
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
@@ -55,19 +55,20 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   },
 }
 
+// biome-ignore lint/complexity/noStaticOnlyClass: intentional namespace-style API used throughout the codebase
 export class PackageManagerDetector {
   /**
    * Detect package manager from packageManager field or lock files
    */
   static detect(cwd: string = process.cwd()): PackageManagerInfo {
     // 1. Check packageManager field in package.json
-    const fromPackageJson = this.detectFromPackageJson(cwd)
+    const fromPackageJson = PackageManagerDetector.detectFromPackageJson(cwd)
     if (fromPackageJson) {
       return fromPackageJson
     }
 
     // 2. Check for lock files
-    const fromLockFile = this.detectFromLockFiles(cwd)
+    const fromLockFile = PackageManagerDetector.detectFromLockFiles(cwd)
     if (fromLockFile) {
       return fromLockFile
     }
@@ -102,7 +103,7 @@ export class PackageManagerDetector {
           return PACKAGE_MANAGERS[pmName]
         }
       }
-    } catch (error) {
+    } catch {
       // Invalid package.json, continue to lock file detection
     }
 
@@ -193,7 +194,7 @@ export class PackageManagerDetector {
                 return currentDir
               }
             }
-          } catch (error) {
+          } catch {
             // Invalid package.json, continue searching
           }
         }
@@ -209,6 +210,6 @@ export class PackageManagerDetector {
    * Check if directory is in a workspace
    */
   static isInWorkspace(cwd: string, packageManager: PackageManager): boolean {
-    return this.findWorkspaceRoot(cwd, packageManager) !== null
+    return PackageManagerDetector.findWorkspaceRoot(cwd, packageManager) !== null
   }
 }

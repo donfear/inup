@@ -1,12 +1,12 @@
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../../../shared/types'
-import { ModalSection } from '../types'
+import type { PackageSelectionState } from '../../../../shared/types'
 import { getThemeColor } from '../../themes-colors'
+import type { ModalSection } from '../types'
 import {
-  sanitizeMarkdownText,
+  isLowSignalTrailerLine,
   linkifyMarkdownText,
   pushWrappedLines,
-  isLowSignalTrailerLine,
+  sanitizeMarkdownText,
 } from './text'
 
 function formatReleaseNotesMarkdown(
@@ -152,7 +152,7 @@ export function buildReleaseNotesSections(
     return sections
   }
 
-  if (!loaded || !loaded.has(currentVersion)) {
+  if (!loaded?.has(currentVersion)) {
     sections.push({
       key: 'release-pending',
       rows: [chalk.gray(`Press ←/→ to load release notes for v${currentVersion}`)],

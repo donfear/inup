@@ -1,7 +1,7 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
 
 /**
  * End-to-end safety contract for `--apply`: the set inup *writes* must equal the set it *reports*,
@@ -63,7 +63,7 @@ function cliOptions(overrides: Record<string, unknown>) {
 }
 
 function writeJson(path: string, value: unknown) {
-  writeFileSync(path, JSON.stringify(value, null, 2) + '\n')
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)
 }
 
 describe('--apply respects .inuprc (config-filtered == reported == written)', () => {

@@ -1,6 +1,12 @@
-import { existsSync, readdirSync, statSync, realpathSync } from 'fs'
-import { promises as fsPromises } from 'fs'
-import { join, relative } from 'path'
+import {
+  existsSync,
+  promises as fsPromises,
+  readdirSync,
+  realpathSync,
+  type Stats,
+  statSync,
+} from 'node:fs'
+import { join, relative } from 'node:path'
 
 /**
  * Normalize a relative path to forward slashes before matching `.inuprc` exclude patterns.
@@ -183,7 +189,7 @@ export function findAllPackageJsonFiles(
           continue
         }
 
-        let stat
+        let stat: Stats
         try {
           stat = statSync(fullPath)
         } catch {
@@ -304,7 +310,7 @@ export async function findAllPackageJsonFilesAsync(
         continue
       }
 
-      let stat
+      let stat: Stats
       try {
         stat = await fsPromises.stat(fullPath)
       } catch {
@@ -322,9 +328,9 @@ export async function findAllPackageJsonFilesAsync(
   }
 
   function pump(): void {
-    while (activeTasks < concurrency && pending.length > 0 && !failedError) {
-      // Non-null: pending.length > 0 was just checked and nothing runs in between.
-      const next = pending.shift()!
+    while (activeTasks < concurrency && !failedError) {
+      const next = pending.shift()
+      if (!next) break
 
       activeTasks++
       void processDirectory(next.dir, next.depth)

@@ -1,5 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, readFileSync } from 'fs'
 import { loadInupLocalEnv } from '../../../src/shared/local-env'
 
 // findEnvFile walks up from the module's own directory, so real files cannot

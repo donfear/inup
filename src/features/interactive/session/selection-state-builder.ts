@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import {
+import type {
   PackageInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
@@ -35,13 +35,14 @@ export function deduplicatePackages(
 
   for (const pkg of packages) {
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
-    if (!uniquePackages.has(key)) {
+    const existing = uniquePackages.get(key)
+    if (existing) {
+      existing.packageJsonPaths.add(pkg.packageJsonPath)
+    } else {
       uniquePackages.set(key, {
         pkg,
         packageJsonPaths: new Set([pkg.packageJsonPath]),
       })
-    } else {
-      uniquePackages.get(key)!.packageJsonPaths.add(pkg.packageJsonPath)
     }
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { detectJsonFormat } from '../../../../src/shared/fs/io'
 
 describe('detectJsonFormat', () => {
@@ -40,9 +40,9 @@ describe('detectJsonFormat', () => {
 
 describe('collectAllDependenciesAsync', () => {
   it('collects dependencies from every type and skips malformed files', async () => {
-    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('fs')
-    const { tmpdir } = await import('os')
-    const { join } = await import('path')
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
     const { collectAllDependenciesAsync } = await import('../../../../src/shared/fs/io')
 
     const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))

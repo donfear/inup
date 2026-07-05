@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { PACKAGE_NAME } from './package-meta'
 
 /**
@@ -50,7 +50,7 @@ const CONFIG_FILES = [
 export function loadProjectConfig(cwd: string): InupProjectConfig {
   let currentDir = cwd
 
-  while (currentDir !== '/') {
+  while (true) {
     for (const configFile of CONFIG_FILES) {
       const configPath = join(currentDir, configFile)
       if (existsSync(configPath)) {
@@ -65,12 +65,11 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
       }
     }
 
-    // Move to parent directory. The self-parent check only trips on Windows
-    // drive roots ('C:\'); on POSIX the loop condition exits at '/' first.
+    // Move to parent directory. join(root, '..') === root at the filesystem
+    // root on every platform ('/' on POSIX, 'C:\' on Windows), so this is the
+    // single, cross-platform loop terminator.
     const parentDir = join(currentDir, '..')
-    /* v8 ignore start */
     if (parentDir === currentDir) break
-    /* v8 ignore stop */
     currentDir = parentDir
   }
 

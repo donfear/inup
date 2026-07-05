@@ -1,16 +1,24 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync, chmodSync, symlinkSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
 import {
-  findPackageJson,
-  readPackageJson,
-  readPackageJsonAsync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
   collectAllDependencies,
   collectAllDependenciesAsync,
   findAllPackageJsonFiles,
   findAllPackageJsonFilesAsync,
+  findPackageJson,
   findWorkspaceRoot,
+  readPackageJson,
+  readPackageJsonAsync,
 } from '../../../../src/shared/fs'
 
 describe('filesystem utils', () => {

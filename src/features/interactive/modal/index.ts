@@ -1,5 +1,5 @@
-export * from './types'
 export * from './layout'
 export * from './package-info'
 export * from './package-info-sections'
 export * from './theme-selector'
+export * from './types'

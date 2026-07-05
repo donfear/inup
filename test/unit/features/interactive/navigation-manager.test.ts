@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { NavigationManager } from '../../../../src/features/interactive/state/navigation-manager'
-import { RenderableItem } from '../../../../src/shared/types'
+import type { RenderableItem } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 // [header, pkg0, pkg1, spacer, header, pkg2] — two sections, three packages.

@@ -1,8 +1,8 @@
 import * as semver from 'semver'
 import type { PackageInfo, VulnerabilitySeverity } from '../../shared/types'
-import { fetchVulnerabilities, VulnerabilityInfo } from './vulnerability-checker'
 import { toComparableVersion } from '../../shared/versions'
 import type { HeadlessAdvisory, HeadlessVulnerability } from './types'
+import { fetchVulnerabilities, type VulnerabilityInfo } from './vulnerability-checker'
 
 /**
  * Audit the outdated packages' currently-installed versions (one bulk request, matching the
@@ -67,14 +67,8 @@ function summarizeVulnerability(
 export function upgradeClears(target: string, vulnerableVersions: string): boolean {
   const comparable = toComparableVersion(target)
   if (!comparable) return false
+  // validRange rejects unparseable ranges above and comparable is a concrete
+  // version, so satisfies() has valid inputs and never throws here.
   if (semver.validRange(vulnerableVersions) === null) return false
-  try {
-    return !semver.satisfies(comparable, vulnerableVersions, { includePrerelease: true })
-    // validRange above already rejected unparseable ranges and satisfies
-    // swallows the rest internally; this is a safety net for semver changes.
-    /* v8 ignore start */
-  } catch {
-    return false
-  }
-  /* v8 ignore stop */
+  return !semver.satisfies(comparable, vulnerableVersions, { includePrerelease: true })
 }

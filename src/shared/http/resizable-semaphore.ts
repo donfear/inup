@@ -65,8 +65,9 @@ export class ResizableSemaphore {
    * each as it is admitted so the count stays authoritative and synchronous.
    */
   private drainWaiters(): void {
-    while (this.inFlight < this.limit && this.waiters.length > 0) {
-      const next = this.waiters.shift()!
+    while (this.inFlight < this.limit) {
+      const next = this.waiters.shift()
+      if (!next) break
       this.inFlight++
       next()
     }

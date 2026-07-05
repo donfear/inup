@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createPendingSelectionStates,
   createSelectionStates,
@@ -6,7 +6,7 @@ import {
   deduplicatePackages,
   selectionKey,
 } from '../../../../src/features/interactive/session/selection-state-builder'
-import { PackageSelectionState } from '../../../../src/shared/types'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 import { makePackageInfo } from '../../../fixtures/package-info-factory'
 
 const noSummary = () => undefined

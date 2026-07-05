@@ -82,7 +82,7 @@ describe('GitHubClient.fetchReleaseByTag', () => {
     await client.fetchReleaseByTag(REPO_URL, 'v1.0.0', signal)
 
     const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
-    expect(headers['authorization']).toBeUndefined()
+    expect(headers.authorization).toBeUndefined()
   })
 
   it('falls back to GH_TOKEN when GITHUB_TOKEN is unset', async () => {
@@ -113,7 +113,7 @@ describe('GitHubClient.fetchReleaseByTag', () => {
     expect(body).toBe('notes')
     expect(fetchMock).toHaveBeenCalledTimes(2)
     const retryHeaders = (fetchMock.mock.calls[1][1] as { headers: Record<string, string> }).headers
-    expect(retryHeaders['authorization']).toBeUndefined()
+    expect(retryHeaders.authorization).toBeUndefined()
     expect(retryHeaders['user-agent']).toBeDefined()
   })
 

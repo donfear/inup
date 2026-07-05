@@ -1,12 +1,12 @@
-import {
+import type {
   PackageSelectionState,
   PersistedFilters,
   RenderableItem,
   VulnerabilityDisplayOptions,
 } from '../../../shared/types'
-import { NavigationManager } from './navigation-manager'
-import { ModalManager, InfoModalTab } from './modal-manager'
 import { FilterManager } from './filter-manager'
+import { type InfoModalTab, ModalManager } from './modal-manager'
+import { NavigationManager } from './navigation-manager'
 import { ThemeManager } from './theme-manager'
 
 export interface DisplayState {
@@ -160,7 +160,7 @@ export class StateManager {
 
     const currentRow = this.navigationManager.getCurrentRow()
     const currentState = states[currentRow]
-    if (!currentState || currentState.loadState !== 'ready') return
+    if (currentState?.loadState !== 'ready') return
 
     if (direction === 'left') {
       // Move selection left with wraparound: latest -> range -> none -> latest
@@ -238,7 +238,7 @@ export class StateManager {
   toggleSelection(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     const currentState = states[this.navigationManager.getCurrentRow()]
-    if (!currentState || currentState.loadState !== 'ready') return
+    if (currentState?.loadState !== 'ready') return
 
     if (currentState.selectedOption !== 'none') {
       currentState.selectedOption = 'none'

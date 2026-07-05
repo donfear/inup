@@ -1,5 +1,5 @@
 import { NPM_REGISTRY_URL } from '../../../shared/config/constants'
-import { registryTargetFor, RegistryTarget } from '../../../shared/registry/registry-config'
+import { type RegistryTarget, registryTargetFor } from '../../../shared/registry/registry-config'
 
 const PUBLIC_REGISTRY_ORIGIN = new URL(NPM_REGISTRY_URL).origin
 

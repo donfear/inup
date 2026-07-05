@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
 import { renderReadmeKeyTable } from '../../../../src/features/interactive/keymap'
 
 const README_PATH = join(process.cwd(), 'README.md')
@@ -32,8 +32,7 @@ describe('readme keymap', () => {
       if (start === -1 || end === -1) {
         throw new Error('KEYS markers not found in README.md')
       }
-      const updated =
-        readme.slice(0, start + START.length) + '\n' + expected + '\n' + readme.slice(end)
+      const updated = `${readme.slice(0, start + START.length)}\n${expected}\n${readme.slice(end)}`
       writeFileSync(README_PATH, updated, 'utf-8')
     }
 

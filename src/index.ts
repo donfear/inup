@@ -5,7 +5,7 @@
 export { UpgradeRunner } from './app/upgrade-runner'
 export type {
   PackageInfo,
-  UpgradeOptions,
   PackageManager,
   PackageManagerInfo,
+  UpgradeOptions,
 } from './shared/types'

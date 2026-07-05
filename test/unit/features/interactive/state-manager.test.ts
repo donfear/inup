@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { StateManager } from '../../../../src/features/interactive/state'
-import { PackageSelectionState, RenderableItem } from '../../../../src/shared/types'
+import type { PackageSelectionState, RenderableItem } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 // StateManager owns a ThemeManager, which persists through the configManager
@@ -49,9 +49,7 @@ describe('StateManager.toggleSelection', () => {
 
   it('resetForResize falls back to renderable items, then the visible row count', () => {
     const sm = new StateManager(0, 24)
-    sm.setRenderableItems([
-      { type: 'package', state: ready(), originalIndex: 0 } as RenderableItem,
-    ])
+    sm.setRenderableItems([{ type: 'package', state: ready(), originalIndex: 0 } as RenderableItem])
     sm.resetForResize(0)
     expect(sm.getUIState().scrollOffset).toBe(0)
 

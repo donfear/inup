@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { normalizeDeprecatedMessage, extractEnginesNode } from '../../../src/shared/manifest'
+import { describe, expect, it } from 'vitest'
+import { extractEnginesNode, normalizeDeprecatedMessage } from '../../../src/shared/manifest'
 
 describe('normalizeDeprecatedMessage', () => {
   it('returns the message for a string deprecation', () => {

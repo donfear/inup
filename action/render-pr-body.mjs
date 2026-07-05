@@ -202,7 +202,7 @@ export function main({
 } = {}) {
   try {
     const report = readInput(argv, stdin)
-    stdout.write(render(report) + '\n')
+    stdout.write(`${render(report)}\n`)
   } catch (err) {
     stderr.write(`render-pr-body: ${err}\n`)
     // Fall back to a minimal body so the Action can still open a PR.

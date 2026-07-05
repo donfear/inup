@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Key } from 'node:readline'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TerminalInput } from '../../../../src/shared/terminal/terminal-input'
-import { installFakeStdin, type FakeStdin } from '../../../helpers/fake-stdin'
+import { type FakeStdin, installFakeStdin } from '../../../helpers/fake-stdin'
 import { captureStdout, type TerminalCapture } from '../../../helpers/terminal-capture'
 
 let fake: FakeStdin

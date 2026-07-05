@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import { buildReleaseNotesSections } from '../../../../src/features/interactive/modal/package-info-sections/release-notes'
 import {
   buildPackageInfoSections,
   buildUsedBySections,
 } from '../../../../src/features/interactive/modal/package-info-sections/sections'
-import { buildReleaseNotesSections } from '../../../../src/features/interactive/modal/package-info-sections/release-notes'
 import {
   formatTerminalLink,
   getRepositoryBaseUrl,

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal ${...} strings exercise npm's env-var expansion in .npmrc auth tokens
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   clearRegistryTargetCache,
   registryTargetFor,

@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import { normalizeDeprecatedMessage, extractEnginesNode } from './manifest'
+import { extractEnginesNode, normalizeDeprecatedMessage } from './manifest'
 
 export function extractMajorVersion(version: string | undefined): string | null {
   if (!version) return null
@@ -37,7 +37,8 @@ export function parseVersions(raw: string): ParsedVersions {
   // Surface health signals for the latest version straight from the abbreviated
   // packument we already fetched — no extra request. Both fields are optional.
   const latestManifest = versions[latestVersion] as
-    { deprecated?: unknown; engines?: unknown } | undefined
+    | { deprecated?: unknown; engines?: unknown }
+    | undefined
   const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 
@@ -70,18 +71,11 @@ export function getOptimizedRangeVersion(
   latestVersion: string
 ): string {
   try {
-    // Find the highest version that satisfies the current range
-    const satisfyingVersions = allVersions.filter((version: string) => {
-      try {
-        return semver.satisfies(version, currentRange)
-        // semver.satisfies swallows invalid input internally (returns false);
-        // safety net for future semver behavior changes only.
-        /* v8 ignore start */
-      } catch {
-        return false
-      }
-      /* v8 ignore stop */
-    })
+    // Find the highest version that satisfies the current range. satisfies()
+    // returns false (never throws) for invalid input, so no guard is needed.
+    const satisfyingVersions = allVersions.filter((version: string) =>
+      semver.satisfies(version, currentRange)
+    )
 
     if (satisfyingVersions.length === 0) {
       return latestVersion

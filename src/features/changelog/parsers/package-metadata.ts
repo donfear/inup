@@ -1,5 +1,5 @@
+import type { PackageManifestInput, PackageMetadata } from '../types'
 import { extractRepositoryUrl } from './repository-ref'
-import { PackageManifestInput, PackageMetadata } from '../types'
 
 export function mapPackageManifestToMetadata(
   packageName: string,

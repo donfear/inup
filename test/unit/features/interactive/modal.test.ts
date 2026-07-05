@@ -1,8 +1,8 @@
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { renderPackageInfoModal } from '../../../../src/features/interactive/modal'
-import { PackageSelectionState } from '../../../../src/shared/types'
-import { join } from 'node:path'
 import { getVisualLength, stripAnsi } from '../../../../src/shared/terminal'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState: PackageSelectionState = {

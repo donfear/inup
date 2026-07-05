@@ -1,6 +1,6 @@
 import type { PackageInfo } from '../../shared/types'
-import { HEADLESS_SCHEMA_VERSION, HeadlessReport, HeadlessReportEntry } from './types'
-import { HeadlessVulnerability } from '../audit'
+import type { HeadlessVulnerability } from '../audit'
+import { HEADLESS_SCHEMA_VERSION, type HeadlessReport, type HeadlessReportEntry } from './types'
 
 type VulnerabilityMap = Map<PackageInfo, HeadlessVulnerability>
 

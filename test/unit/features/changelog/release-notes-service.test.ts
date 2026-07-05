@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ReleaseNotesService } from '../../../../src/features/changelog/services/release-notes-service'
-import type { PackageMetadataService } from '../../../../src/features/changelog/services/package-metadata-service'
 import type { GitHubClient } from '../../../../src/features/changelog/clients/github-client'
+import type { PackageMetadataService } from '../../../../src/features/changelog/services/package-metadata-service'
+import { ReleaseNotesService } from '../../../../src/features/changelog/services/release-notes-service'
 import type { GitHubRelease } from '../../../../src/features/changelog/types'
 
 const GITHUB_REPO = 'https://github.com/octo/demo'

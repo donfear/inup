@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FilterManager } from '../../../../src/features/interactive/state/filter-manager'
-import { PackageSelectionState } from '../../../../src/shared/types'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 
 const baseState: PackageSelectionState = {
   name: 'demo-pkg',
@@ -54,7 +54,9 @@ describe('FilterManager text and type filtering', () => {
     const fm = new FilterManager()
     ;(
       ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
-    ).forEach((t) => fm.toggleDependencyType(t))
+    ).forEach((t) => {
+      fm.toggleDependencyType(t)
+    })
     expect(
       fm.getFilteredStates([
         { ...baseState, name: 'a', type: 'dependencies' },
@@ -79,7 +81,9 @@ describe('FilterManager text and type filtering', () => {
     const fm = new FilterManager()
     ;(
       ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
-    ).forEach((t) => fm.toggleDependencyType(t))
+    ).forEach((t) => {
+      fm.toggleDependencyType(t)
+    })
     expect(fm.getActiveFilterLabel()).toBe('None')
   })
 
@@ -210,8 +214,9 @@ describe('FilterManager persistence', () => {
 
 describe('FilterManager direct accessors', () => {
   it('reports the filter mode and query', async () => {
-    const { FilterManager } =
-      await import('../../../../src/features/interactive/state/filter-manager')
+    const { FilterManager } = await import(
+      '../../../../src/features/interactive/state/filter-manager'
+    )
     const manager = new FilterManager()
 
     expect(manager.isFilterMode()).toBe(false)
@@ -225,8 +230,9 @@ describe('FilterManager direct accessors', () => {
   })
 
   it('filters optional dependencies when toggled off', async () => {
-    const { FilterManager } =
-      await import('../../../../src/features/interactive/state/filter-manager')
+    const { FilterManager } = await import(
+      '../../../../src/features/interactive/state/filter-manager'
+    )
     const { makeSelectionState } = await import('../../../fixtures/selection-state-factory')
     const manager = new FilterManager()
     const states = [

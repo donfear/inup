@@ -1,8 +1,8 @@
 import chalk from 'chalk'
-import { getModalWidth, renderModalRow, renderModalSeparator } from '../modal'
 import { getHelpGroups } from '../keymap'
-import { getThemeColor } from '../themes-colors'
 import type { ModalRenderResult } from '../modal'
+import { getModalWidth, renderModalRow, renderModalSeparator } from '../modal'
+import { getThemeColor } from '../themes-colors'
 
 const KEY_COLUMN_WIDTH = 9
 
@@ -52,7 +52,7 @@ export function renderHelpModal(
   const topPadding = Math.max(0, Math.floor((terminalHeight - fixedModalHeight) / 2))
   for (let i = 0; i < topPadding; i++) lines.push('')
 
-  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╭${'─'.repeat(modalWidth - 2)}╮`))
 
   for (const row of pinnedRows) {
     lines.push(renderModalRow(padding, modalWidth, row))
@@ -77,7 +77,7 @@ export function renderHelpModal(
 
   if (footer) lines.push(renderModalRow(padding, modalWidth, footer))
 
-  lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╰${'─'.repeat(modalWidth - 2)}╯`))
 
   return {
     lines,

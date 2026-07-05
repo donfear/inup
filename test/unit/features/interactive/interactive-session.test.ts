@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runInteractiveSession } from '../../../../src/features/interactive/session/interactive-session'
-import { UIRenderer } from '../../../../src/features/interactive/renderer'
-import { themeNames } from '../../../../src/features/interactive/themes'
-import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
 import type { VulnerabilityAuditController } from '../../../../src/features/audit'
-import { CursorUtils, TerminalInput } from '../../../../src/shared/terminal'
+import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
+import { UIRenderer } from '../../../../src/features/interactive/renderer'
+import { runInteractiveSession } from '../../../../src/features/interactive/session/interactive-session'
+import { themeNames } from '../../../../src/features/interactive/themes'
 import { configManager } from '../../../../src/shared/config/user-config'
-import {
+import { CursorUtils, TerminalInput } from '../../../../src/shared/terminal'
+import { stripAnsi } from '../../../../src/shared/terminal/text'
+import type {
   PackageManagerInfo,
   PackageSelectionState,
   VulnerabilityDisplayOptions,
 } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
-import { installFakeStdin, type FakeStdin } from '../../../helpers/fake-stdin'
+import { type FakeStdin, installFakeStdin } from '../../../helpers/fake-stdin'
 import { captureStdout, type TerminalCapture } from '../../../helpers/terminal-capture'
-import { stripAnsi } from '../../../../src/shared/terminal/text'
 
 // The session reads and persists view filters and themes through the
 // configManager singleton — it must be mocked or tests would write the

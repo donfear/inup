@@ -1,5 +1,10 @@
 export type PerformancePhase =
-  'firstBatch' | 'allLoaded' | 'discovery' | 'depCollection' | 'filter' | 'registryFetch'
+  | 'firstBatch'
+  | 'allLoaded'
+  | 'discovery'
+  | 'depCollection'
+  | 'filter'
+  | 'registryFetch'
 
 export interface BatchTiming {
   index: number

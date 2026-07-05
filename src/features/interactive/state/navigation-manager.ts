@@ -1,4 +1,4 @@
-import { RenderableItem } from '../../../shared/types'
+import type { RenderableItem } from '../../../shared/types'
 
 export interface NavigationState {
   currentRow: number // Index into states array (package index)

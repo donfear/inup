@@ -1,4 +1,4 @@
-import { PackageManifestInput, PackageMetadata } from '../types'
+import type { PackageManifestInput, PackageMetadata } from '../types'
 import { PackageMetadataService } from './package-metadata-service'
 import { ReleaseNotesService } from './release-notes-service'
 

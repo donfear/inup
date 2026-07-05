@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import {
+import type {
   DependencyType,
   VulnerabilityDisplayOptions,
   VulnerabilitySummary,
@@ -15,8 +15,6 @@ export function getVulnerabilitySeverityColor(
       return chalk.red
     case 'moderate':
       return chalk.yellow
-    case 'low':
-    case 'info':
     default:
       return chalk.gray
   }

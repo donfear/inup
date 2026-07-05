@@ -1,2 +1,2 @@
-export * from './types'
 export * from './services/changelog-service'
+export * from './types'

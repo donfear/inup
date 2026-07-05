@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChangelogFetcher } from '../../../../src/features/changelog'
 
@@ -133,9 +133,11 @@ describe('ChangelogFetcher', () => {
 
     it('dedupes concurrent requests while metadata is in flight', async () => {
       let resolveRegistry:
-        ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void) | undefined
+        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
+        | undefined
       let resolveDownloads:
-        ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void) | undefined
+        | ((value: { ok: boolean; json: () => Promise<Record<string, unknown>> }) => void)
+        | undefined
 
       fetchMock
         .mockImplementationOnce(
@@ -447,7 +449,7 @@ describe('ChangelogFetcher', () => {
       const controller = new AbortController()
       fetchMock.mockImplementation(
         (_url: string, options?: { signal?: AbortSignal }) =>
-          new Promise((resolve, reject) => {
+          new Promise((_resolve, reject) => {
             const signal = options?.signal
             if (signal?.aborted) {
               reject(new DOMException('The operation was aborted.', 'AbortError'))

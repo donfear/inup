@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { Pool } from 'undici'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Keep retry classification real, but make backoff instant so retry-exhaustion
 // paths don't actually sleep during tests.
@@ -21,16 +21,16 @@ vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal
   registryTargetFor: registryTargetMock,
 }))
 
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
+import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
+import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
 import {
   clearPackageCache,
   fetchPackageVersions,
 } from '../../../../src/shared/registry/npm-registry'
-import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { gzipSync, brotliCompressSync, deflateSync } from 'node:zlib'
 
 type MockResponse = {
   statusCode: number
@@ -116,7 +116,7 @@ describe('npm-registry', () => {
     await fetchPackageVersions(['demo-pkg'])
 
     const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
-    expect(opts.headers['authorization']).toBeUndefined()
+    expect(opts.headers.authorization).toBeUndefined()
   })
 
   it('routes scoped packages to their npmrc registry with its authorization header', async () => {
@@ -134,7 +134,7 @@ describe('npm-registry', () => {
       headers: Record<string, string>
     }
     expect(opts.path).toBe('/npm/@myco/private-pkg')
-    expect(opts.headers['authorization']).toBe('Bearer sekret')
+    expect(opts.headers.authorization).toBe('Bearer sekret')
     expect(result.get('@myco/private-pkg')?.latestVersion).toBe('1.1.0')
   })
 

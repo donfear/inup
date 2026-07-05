@@ -1,7 +1,7 @@
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, readFileSync, rmSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
 
 // The logger writes to os.tmpdir()/inup — the same directory a real inup run
 // uses. Point tmpdir() at an isolated per-process root so the tests below can

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { VulnerabilityAuditController } from '../../../../src/features/audit'
+import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
+import type { InputAction } from '../../../../src/features/interactive/input-handler'
 import {
+  type DispatchContext,
   dispatchAction,
-  DispatchContext,
 } from '../../../../src/features/interactive/session/action-dispatcher'
 import { StateManager } from '../../../../src/features/interactive/state'
-import { themeNames, defaultTheme } from '../../../../src/features/interactive/themes'
-import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
-import type { VulnerabilityAuditController } from '../../../../src/features/audit'
-import type { InputAction } from '../../../../src/features/interactive/input-handler'
-import { PackageSelectionState } from '../../../../src/shared/types'
+import { defaultTheme, themeNames } from '../../../../src/features/interactive/themes'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 // StateManager owns a ThemeManager, which persists through the configManager
@@ -584,7 +584,9 @@ describe('dispatchAction edge paths', () => {
 
     setResolved(true)
     const rendersBefore = render.mock.calls.length
-    callbacks.forEach((onLoaded) => onLoaded())
+    callbacks.forEach((onLoaded) => {
+      onLoaded()
+    })
     expect(render.mock.calls.length).toBe(rendersBefore)
   })
 

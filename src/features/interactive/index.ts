@@ -1,12 +1,12 @@
-export { InputHandler, ConfirmationInputHandler, type InputAction } from './input-handler'
+export { PackageInfoModalController } from './controllers'
+export { ConfirmationInputHandler, type InputAction, InputHandler } from './input-handler'
+export { renderReadmeKeyTable } from './keymap'
 export { UIRenderer } from './renderer'
-export { StateManager } from './state'
 export {
-  runInteractiveSession,
-  createSelectionStates,
   createPendingSelectionStates,
+  createSelectionStates,
   createUpgradeChoices,
+  runInteractiveSession,
   selectionKey,
 } from './session'
-export { PackageInfoModalController } from './controllers'
-export { renderReadmeKeyTable } from './keymap'
+export { StateManager } from './state'

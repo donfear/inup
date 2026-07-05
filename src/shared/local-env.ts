@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from 'fs'
-import { join, dirname, parse } from 'path'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, parse } from 'node:path'
 
 /**
  * Loads a gitignored `.env.local` from the inup repo itself (NOT the cwd), so

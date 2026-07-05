@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { renderHelpModal } from '../../../../../src/features/interactive/renderer/help-modal'
 import { getHelpGroups } from '../../../../../src/features/interactive/keymap'
+import { renderHelpModal } from '../../../../../src/features/interactive/renderer/help-modal'
 import { stripAnsi } from '../../../../../src/shared/terminal/text'
 
 const plain = (lines: string[]) => lines.map(stripAnsi).join('\n')

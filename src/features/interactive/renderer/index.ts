@@ -1,15 +1,17 @@
-import {
+import type {
   AuditProgress,
+  PackageInfo,
   PackageLoadProgress,
-  PackageSelectionState,
-  RenderableItem,
   PackageManagerInfo,
+  PackageSelectionState,
+  PackageUpgradeChoice,
+  RenderableItem,
 } from '../../../shared/types'
-import * as PackageList from './package-list'
-import * as Confirmation from './confirmation'
+import type { InfoModalTab, ModalRenderResult } from '../modal'
 import * as Modal from '../modal'
-import { InfoModalTab, ModalRenderResult } from '../modal'
-import { PackageListRenderOptions } from './package-list'
+import * as Confirmation from './confirmation'
+import type { PackageListRenderOptions } from './package-list'
+import * as PackageList from './package-list'
 
 /**
  * Main UI renderer class that composes all rendering parts
@@ -61,11 +63,11 @@ export class UIRenderer {
     )
   }
 
-  renderPackagesTable(packages: any[]): string {
+  renderPackagesTable(packages: PackageInfo[]): string {
     return PackageList.renderPackagesTable(packages)
   }
 
-  renderConfirmation(choices: any[]): string {
+  renderConfirmation(choices: PackageUpgradeChoice[]): string {
     return Confirmation.renderConfirmation(choices)
   }
 
@@ -103,6 +105,6 @@ export class UIRenderer {
   }
 }
 
+export * from './confirmation'
 // Re-export all functions for direct use if needed
 export * from './package-list'
-export * from './confirmation'

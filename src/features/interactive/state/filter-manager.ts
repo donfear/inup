@@ -1,4 +1,4 @@
-import {
+import type {
   PackageSelectionState,
   PersistedFilters,
   VulnerabilityDisplayOptions,
@@ -112,7 +112,7 @@ export class FilterManager {
 
     if (activeTypes.length === 0) return 'None'
     const label = activeTypes.join(', ')
-    return this.state.showOnlyVulnerable ? label + ' (vulnerable only)' : label
+    return this.state.showOnlyVulnerable ? `${label} (vulnerable only)` : label
   }
 
   getFilteredStates(

@@ -1,5 +1,5 @@
-import { PackageSelectionState } from '../../../shared/types'
 import { checkNodeEngineCompatibility } from '../../../shared/engines'
+import type { PackageSelectionState } from '../../../shared/types'
 import { getThemeColor } from '../themes-colors'
 
 export type HealthState = Pick<PackageSelectionState, 'deprecated' | 'enginesNode'>

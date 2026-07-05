@@ -1,4 +1,3 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   chmodSync,
   existsSync,
@@ -7,9 +6,10 @@ import {
   readFileSync,
   rmSync,
   writeFileSync,
-} from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // spawnSync runs the real package-manager install; individual tests override it
 // to simulate spawn errors, signals, and exit codes without shelling out.
@@ -21,7 +21,11 @@ vi.mock('child_process', async (importOriginal) => {
 })
 
 import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
-import { PackageInfo, PackageManagerInfo, PackageUpgradeChoice } from '../../../../src/shared/types'
+import type {
+  PackageInfo,
+  PackageManagerInfo,
+  PackageUpgradeChoice,
+} from '../../../../src/shared/types'
 
 const makePackageManager = (overrides: Partial<PackageManagerInfo> = {}): PackageManagerInfo => ({
   name: 'npm',
@@ -81,7 +85,7 @@ describe('PackageUpgrader', () => {
 
   it('creates a missing dep section rather than crashing', async () => {
     const pkgPath = join(testDir, 'package.json')
-    writeFileSync(pkgPath, JSON.stringify({ name: 'fixture' }, null, 2) + '\n')
+    writeFileSync(pkgPath, `${JSON.stringify({ name: 'fixture' }, null, 2)}\n`)
 
     const upgrader = new PackageUpgrader(makePackageManager())
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -108,7 +112,7 @@ describe('PackageUpgrader', () => {
     const pkgPath = join(testDir, 'package.json')
     writeFileSync(
       pkgPath,
-      JSON.stringify(
+      `${JSON.stringify(
         {
           name: 'fixture',
           dependencies: { lodash: '^4.0.0' },
@@ -116,7 +120,7 @@ describe('PackageUpgrader', () => {
         },
         null,
         2
-      ) + '\n'
+      )}\n`
     )
 
     const upgrader = new PackageUpgrader(makePackageManager())
@@ -155,7 +159,7 @@ describe('PackageUpgrader', () => {
 
     writeFileSync(
       packageJsonPath,
-      JSON.stringify(
+      `${JSON.stringify(
         {
           name: 'fixture',
           dependencies: {
@@ -170,7 +174,7 @@ describe('PackageUpgrader', () => {
         },
         null,
         2
-      ) + '\n'
+      )}\n`
     )
 
     const packageManager: PackageManagerInfo = {
@@ -411,7 +415,7 @@ catalogs:
       writeFileSync(yamlPath, WORKSPACE_YAML)
       writeFileSync(
         pkgPath,
-        JSON.stringify({ name: 'fixture', dependencies: { zod: '^3.0.0' } }, null, 2) + '\n'
+        `${JSON.stringify({ name: 'fixture', dependencies: { zod: '^3.0.0' } }, null, 2)}\n`
       )
 
       const upgrader = new PackageUpgrader(makePackageManager())
@@ -451,7 +455,7 @@ catalogs:
 
   it('creates a missing dep section for range upgrades too', async () => {
     const pkgPath = join(testDir, 'package.json')
-    writeFileSync(pkgPath, JSON.stringify({ name: 'fixture' }, null, 2) + '\n')
+    writeFileSync(pkgPath, `${JSON.stringify({ name: 'fixture' }, null, 2)}\n`)
 
     const upgrader = new PackageUpgrader(makePackageManager())
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -579,7 +583,7 @@ catalogs:
       const pkgPath = join(dir, 'package.json')
       writeFileSync(
         pkgPath,
-        JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.0.0' } }, null, 2) + '\n'
+        `${JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.0.0' } }, null, 2)}\n`
       )
       return pkgPath
     }
@@ -708,9 +712,7 @@ catalogs:
             []
           )
         ).rejects.toThrow()
-        expect(errorSpy.mock.calls.flat().join('\n')).toContain(
-          'Failed to upgrade catalog entries'
-        )
+        expect(errorSpy.mock.calls.flat().join('\n')).toContain('Failed to upgrade catalog entries')
       } finally {
         chmodSync(workspacePath, 0o644)
         errorSpy.mockRestore()
@@ -720,8 +722,7 @@ catalogs:
 
   it('skips the file write when the dependency is already at the target version', async () => {
     const pkgPath = join(testDir, 'package.json')
-    const original =
-      JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.17.21' } }, null, 2) + '\n'
+    const original = `${JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.17.21' } }, null, 2)}\n`
     writeFileSync(pkgPath, original)
     const upgrader = new PackageUpgrader(makePackageManager())
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})

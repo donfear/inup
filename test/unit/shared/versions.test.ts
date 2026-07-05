@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   applyVersionPrefix,
   extractMajorVersion,
-  isVersionOutdated,
-  getOptimizedRangeVersion,
   findClosestMinorVersion,
+  getOptimizedRangeVersion,
+  isVersionOutdated,
   parseVersions,
   toComparableVersion,
   versionIdentity,
