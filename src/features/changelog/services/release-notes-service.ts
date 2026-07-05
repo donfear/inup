@@ -2,7 +2,7 @@ import * as semver from 'semver'
 import { GitHubClient } from '../clients/github-client'
 import { extractVersionSection, normalizeReleaseTag } from '../parsers/changelog-parser'
 import { extractReleaseNotesFromHtml } from '../parsers/github-release-html-parser'
-import { PackageMetadataService } from './package-metadata-service'
+import type { PackageMetadataService } from './package-metadata-service'
 
 const RELEASE_NOTES_FETCH_TIMEOUT_MS = 5000
 

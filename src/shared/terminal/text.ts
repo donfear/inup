@@ -1,7 +1,7 @@
+import cliTruncate from 'cli-truncate'
 import stringWidth from 'string-width'
 import stripAnsiPackaged from 'strip-ansi'
 import wrapAnsi from 'wrap-ansi'
-import cliTruncate from 'cli-truncate'
 
 // Thin wrappers over the battle-tested terminal-string stack (string-width,
 // strip-ansi, wrap-ansi, cli-truncate). The previous hand-rolled versions

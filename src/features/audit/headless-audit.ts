@@ -1,8 +1,8 @@
 import * as semver from 'semver'
 import type { PackageInfo, VulnerabilitySeverity } from '../../shared/types'
-import { fetchVulnerabilities, VulnerabilityInfo } from './vulnerability-checker'
 import { toComparableVersion } from '../../shared/versions'
 import type { HeadlessAdvisory, HeadlessVulnerability } from './types'
+import { fetchVulnerabilities, type VulnerabilityInfo } from './vulnerability-checker'
 
 /**
  * Audit the outdated packages' currently-installed versions (one bulk request, matching the

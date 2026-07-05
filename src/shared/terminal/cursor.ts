@@ -88,6 +88,6 @@ export const ConsoleUtils = {
    */
   clearProgress(): void {
     if (!process.stderr.isTTY) return
-    process.stderr.write('\r' + ' '.repeat(ConsoleUtils.LINE_WIDTH) + '\r')
+    process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r`)
   },
 }

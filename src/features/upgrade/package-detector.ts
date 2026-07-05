@@ -1,6 +1,17 @@
 import chalk from 'chalk'
 import * as semver from 'semver'
+import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
+import { debugLog } from '../../shared/debug-logger'
 import {
+  collectAllDependenciesAsync,
+  findAllPackageJsonFilesAsync,
+  findPackageJson,
+  readPackageJson,
+} from '../../shared/fs'
+import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
+import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
+import { ConsoleUtils } from '../../shared/terminal'
+import type {
   DependencyEntry,
   PackageInfo,
   PackageLoadProgress,
@@ -9,18 +20,7 @@ import {
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
 } from '../../shared/types'
-import {
-  findPackageJson,
-  readPackageJson,
-  findAllPackageJsonFilesAsync,
-  collectAllDependenciesAsync,
-} from '../../shared/fs'
 import { findClosestMinorVersion } from '../../shared/versions'
-import { PnpmCatalogs, isCatalogReference } from '../../shared/pnpm-catalogs'
-import { fetchPackageVersions, PackageVersionData } from '../../shared/registry/npm-registry'
-import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
-import { ConsoleUtils } from '../../shared/terminal'
-import { debugLog } from '../../shared/debug-logger'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
 
 interface PreparedDependencies {
@@ -478,7 +478,7 @@ export class PackageDetector {
             this.maxDepth,
             (currentDir: string, foundCount: number) => {
               const truncatedDir =
-                currentDir.length > 50 ? '...' + currentDir.slice(-47) : currentDir
+                currentDir.length > 50 ? `...${currentDir.slice(-47)}` : currentDir
               this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
             },
             {

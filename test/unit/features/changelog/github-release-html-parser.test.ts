@@ -22,7 +22,9 @@ describe('extractReleaseNotesFromHtml', () => {
 
   it('returns null when the markdown container tag never opens', () => {
     expect(
-      extractReleaseNotesFromHtml('<div data-test-selector="body-content"><div class="markdown-body')
+      extractReleaseNotesFromHtml(
+        '<div data-test-selector="body-content"><div class="markdown-body'
+      )
     ).toBeNull()
   })
 

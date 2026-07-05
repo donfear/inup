@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveUI } from '../../../src/app/interactive-ui'
 import { runInteractiveSession } from '../../../src/features/interactive'
 import { TerminalInput } from '../../../src/shared/terminal'
-import {
+import type {
   PackageManagerInfo,
   PackageSelectionState,
   StreamOutdatedPackagesBatchItem,
 } from '../../../src/shared/types'
 import { makePackageInfo } from '../../fixtures/package-info-factory'
 import { makeSelectionState } from '../../fixtures/selection-state-factory'
-import { installFakeStdin, type FakeStdin } from '../../helpers/fake-stdin'
+import { type FakeStdin, installFakeStdin } from '../../helpers/fake-stdin'
 import { captureStdout, type TerminalCapture } from '../../helpers/terminal-capture'
 
 // Replace only the interactive session — the state builders and controllers

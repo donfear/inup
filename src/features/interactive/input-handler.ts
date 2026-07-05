@@ -1,8 +1,8 @@
-import { Key } from 'node:readline'
-import { PackageSelectionState } from '../../shared/types'
-import { StateManager } from './state'
+import type { Key } from 'node:readline'
 import { CursorUtils } from '../../shared/terminal'
+import type { PackageSelectionState } from '../../shared/types'
 import { findBinding } from './keymap'
+import type { StateManager } from './state'
 
 export type InputAction =
   | { type: 'navigate_up' }
@@ -71,7 +71,7 @@ export class InputHandler {
       return
     }
 
-    if (key && key.ctrl && key.name === 'c') {
+    if (key?.ctrl && key.name === 'c') {
       this.onCancel()
       process.exit(0)
     }
@@ -271,7 +271,7 @@ export class InputHandler {
 
     // Normal mode (not in filter mode). Keys resolve through the keymap so that
     // dispatch, the help overlay, the footer, and the README share one source.
-    if (!key || !key.name) {
+    if (!key?.name) {
       return
     }
 
@@ -329,7 +329,7 @@ export class ConfirmationInputHandler {
       return
     }
 
-    if (key && key.ctrl && key.name === 'c') {
+    if (key?.ctrl && key.name === 'c') {
       // onConfirm runs the normal cleanup path (cursor show, raw-mode off, listener
       // removal). The 'exit' listener registered by confirmUpgrade is a final backstop.
       this.onConfirm(false)

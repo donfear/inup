@@ -1,21 +1,21 @@
 import path from 'node:path'
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../../../shared/types'
-import { InfoModalTab, ModalSection } from '../types'
-import { getThemeColor } from '../../themes-colors'
+import { checkNodeEngineCompatibility } from '../../../../shared/engines'
+import { getVisualLength, truncatePlainText, wrapPlainText } from '../../../../shared/terminal'
+import type { PackageSelectionState } from '../../../../shared/types'
 import {
   getVulnerabilityLinkLabel,
   getVulnerabilitySeverityColor,
   selectRepresentativeAdvisory,
 } from '../../../audit'
-import { getVisualLength, truncatePlainText, wrapPlainText } from '../../../../shared/terminal'
-import { checkNodeEngineCompatibility } from '../../../../shared/engines'
+import { getThemeColor } from '../../themes-colors'
+import type { InfoModalTab, ModalSection } from '../types'
 import { buildReleaseNotesSections } from './release-notes'
 
 function formatNumber(num: number | undefined): string {
   if (!num) return 'N/A'
-  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`
   return num.toString()
 }
 

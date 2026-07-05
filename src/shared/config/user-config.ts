@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import envPaths from 'env-paths'
-import { PACKAGE_NAME } from './package-meta'
 import type { PersistedFilters } from '../types'
+import { PACKAGE_NAME } from './package-meta'
 
 interface ConfigFile {
   theme?: string

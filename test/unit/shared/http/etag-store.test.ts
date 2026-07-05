@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  etagCacheDir,
   readEtag,
-  writeEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
-  etagCacheDir,
+  writeEtag,
 } from '../../../../src/shared/http/etag-store'
 
 const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }

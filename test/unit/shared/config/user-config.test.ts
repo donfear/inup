@@ -1,7 +1,7 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'fs'
-import { tmpdir } from 'os'
-import { join } from 'path'
 import type { PersistedFilters } from '../../../../src/shared/types'
 
 // Redirect the env-paths config directory into a per-test temp dir so the
@@ -85,8 +85,9 @@ describe('ConfigManager', () => {
     writeFileSync(blocker, 'not a directory')
     pathsMock.configDir = join(blocker, 'nested')
     vi.resetModules()
-    const { configManager: blockedManager } =
-      await import('../../../../src/shared/config/user-config')
+    const { configManager: blockedManager } = await import(
+      '../../../../src/shared/config/user-config'
+    )
 
     expect(() => blockedManager.setTheme('dracula')).not.toThrow()
     expect(error).toHaveBeenCalledWith('Error writing config:', expect.anything())

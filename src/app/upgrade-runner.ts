@@ -1,24 +1,23 @@
 import chalk from 'chalk'
-import { PackageDetector } from '../features/upgrade'
-import { InteractiveUI } from './interactive-ui'
-import { PackageUpgrader } from '../features/upgrade'
-import {
-  PackageInfo,
-  PackageLoadProgress,
-  PackageSelectionState,
-  PackageUpgradeChoice,
-  UpgradeOptions,
-  PackageManagerInfo,
-} from '../shared/types'
-import { PackageManagerDetector } from '../shared/package-manager'
-import { ConsoleUtils } from '../shared/terminal'
-import { selectionKey } from '../features/interactive'
 import {
   getPerformanceTracker,
   isPerfLoggingEnabled,
   perfEnv,
   writePerfLog,
 } from '../features/debug'
+import { selectionKey } from '../features/interactive'
+import { PackageDetector, PackageUpgrader } from '../features/upgrade'
+import { PackageManagerDetector } from '../shared/package-manager'
+import { ConsoleUtils } from '../shared/terminal'
+import type {
+  PackageInfo,
+  PackageLoadProgress,
+  PackageManagerInfo,
+  PackageSelectionState,
+  PackageUpgradeChoice,
+  UpgradeOptions,
+} from '../shared/types'
+import { InteractiveUI } from './interactive-ui'
 
 /**
  * Main orchestrator for the inup upgrade process
@@ -238,7 +237,7 @@ export class UpgradeRunner {
     const packageJsonPaths = new Set(selectedChoices.map((c) => c.packageJsonPath))
     const uniquePackages = new Set(selectedChoices.map((c) => c.name))
 
-    console.log('\n' + chalk.bold('📋 Upgrade Summary'))
+    console.log(`\n${chalk.bold('📋 Upgrade Summary')}`)
     console.log(chalk.gray('─'.repeat(50)))
     console.log(`${chalk.cyan(uniquePackages.size.toString())} package(s) will be upgraded`)
     console.log(

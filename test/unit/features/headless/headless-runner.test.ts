@@ -299,10 +299,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('skips packages whose target version is empty', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([
-        { ...OUTDATED, rangeVersion: '' },
-        UP_TO_DATE,
-      ])
+      mocks.getOutdatedPackages.mockResolvedValue([{ ...OUTDATED, rangeVersion: '' }, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
@@ -338,9 +335,9 @@ describe('HeadlessRunner.run', () => {
     logSpy.mockRestore()
   })
   it('writes a perf log when INUP_PERF is enabled', async () => {
-    const { mkdtempSync, readdirSync, rmSync } = await import('fs')
-    const { tmpdir } = await import('os')
-    const { join } = await import('path')
+    const { mkdtempSync, readdirSync, rmSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
     const perfDir = mkdtempSync(join(tmpdir(), 'inup-headless-perf-'))
     vi.stubEnv('INUP_PERF', '1')
     vi.stubEnv('INUP_PERF_DIR', perfDir)

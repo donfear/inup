@@ -1,12 +1,12 @@
 import chalk from 'chalk'
+import type { PerformanceSnapshot } from '../../debug'
 import {
-  ModalSection,
-  ModalRenderResult,
   getModalWidth,
+  type ModalRenderResult,
+  type ModalSection,
   renderModalRow,
   renderModalSeparator,
 } from '../modal'
-import { PerformanceSnapshot } from '../../debug'
 
 function formatMs(value: number | undefined | null): string {
   if (value === undefined || value === null) return chalk.gray('—')
@@ -149,7 +149,7 @@ export function renderPerformanceModal(
     lines.push('')
   }
 
-  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╭${'─'.repeat(modalWidth - 2)}╮`))
 
   for (const section of pinned) {
     for (const row of section.rows) {
@@ -182,7 +182,7 @@ export function renderPerformanceModal(
     lines.push(renderModalRow(padding, modalWidth, footer))
   }
 
-  lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╰${'─'.repeat(modalWidth - 2)}╯`))
 
   return {
     lines,

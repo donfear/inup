@@ -1,5 +1,5 @@
-import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'fs'
-import { basename, isAbsolute, join, resolve } from 'path'
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import { DEFAULT_TUNING } from '../../shared/http/adaptive-controller'
 import type { PerformanceSnapshot } from './types'
 
@@ -150,16 +150,15 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
 /** Append a single line to a NDJSON index for ultra-cheap scanning, best-effort. */
 function appendPerfIndex(dir: string, record: PerfRunRecord): void {
   try {
-    const line =
-      JSON.stringify({
-        timestamp: record.timestamp,
-        wallMs: record.wallMs,
-        adaptive: record.config.adaptive,
-        mode: record.config.mode,
-        uniquePackages: record.snapshot.counts.uniquePackages,
-        registryFetch: record.snapshot.phases.registryFetch,
-        controlTicks: record.snapshot.controlTicks.length,
-      }) + '\n'
+    const line = `${JSON.stringify({
+      timestamp: record.timestamp,
+      wallMs: record.wallMs,
+      adaptive: record.config.adaptive,
+      mode: record.config.mode,
+      uniquePackages: record.snapshot.counts.uniquePackages,
+      registryFetch: record.snapshot.phases.registryFetch,
+      controlTicks: record.snapshot.controlTicks.length,
+    })}\n`
     appendFileSync(join(dir, 'index.ndjson'), line)
   } catch {
     /* best-effort */

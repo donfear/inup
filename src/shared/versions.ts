@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import { normalizeDeprecatedMessage, extractEnginesNode } from './manifest'
+import { extractEnginesNode, normalizeDeprecatedMessage } from './manifest'
 
 export function extractMajorVersion(version: string | undefined): string | null {
   if (!version) return null
@@ -37,7 +37,8 @@ export function parseVersions(raw: string): ParsedVersions {
   // Surface health signals for the latest version straight from the abbreviated
   // packument we already fetched — no extra request. Both fields are optional.
   const latestManifest = versions[latestVersion] as
-    { deprecated?: unknown; engines?: unknown } | undefined
+    | { deprecated?: unknown; engines?: unknown }
+    | undefined
   const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 

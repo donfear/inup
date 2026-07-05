@@ -14,7 +14,7 @@ const actionModuleUrl = pathToFileURL(join(process.cwd(), 'action/render-pr-body
 
 async function renderPrBody(report: object): Promise<string> {
   const { render } = await import(actionModuleUrl)
-  return render(report) + '\n'
+  return `${render(report)}\n`
 }
 
 function writeTempFile(content: string): { dir: string; path: string } {

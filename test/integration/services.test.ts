@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { ChangelogFetcher } from '../../src/features/changelog'
-import { fetchPackageVersions } from '../../src/shared/registry/npm-registry'
 import { PACKAGE_NAME } from '../../src/shared/config/constants'
+import { fetchPackageVersions } from '../../src/shared/registry/npm-registry'
 
 describe('Services Integration Tests', () => {
   describe(`ChangelogFetcher with ${PACKAGE_NAME}`, () => {

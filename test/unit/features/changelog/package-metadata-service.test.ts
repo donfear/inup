@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { PackageMetadataService } from '../../../../src/features/changelog/services/package-metadata-service'
 import type { NpmRegistryClient } from '../../../../src/features/changelog/clients/npm-registry-client'
+import { PackageMetadataService } from '../../../../src/features/changelog/services/package-metadata-service'
 
 function makeService(
   manifest: Record<string, unknown> | null | Error = {

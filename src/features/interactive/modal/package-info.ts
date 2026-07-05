@@ -1,16 +1,16 @@
 import chalk from 'chalk'
-import { PackageSelectionState } from '../../../shared/types'
+import type { PackageSelectionState } from '../../../shared/types'
 import {
-  getModalWidth,
   fitModalSections,
   getModalFrameHeight,
   getModalSectionRowCount,
+  getModalWidth,
   renderModalFrame,
   renderModalRow,
   renderModalSeparator,
 } from './layout'
 import { buildPackageInfoSections } from './package-info-sections'
-import { InfoModalTab, ModalSection } from './types'
+import type { InfoModalTab, ModalSection } from './types'
 
 export interface ModalRenderResult {
   lines: string[]
@@ -156,7 +156,7 @@ export function renderPackageInfoModal(
     lines.push('')
   }
 
-  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╭${'─'.repeat(modalWidth - 2)}╮`))
 
   fittedPinned.forEach((section, sectionIndex) => {
     if (sectionIndex > 0) {
@@ -200,7 +200,7 @@ export function renderPackageInfoModal(
     lines.push(renderModalRow(padding, modalWidth, resolvedFooterStatus))
   }
 
-  lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╰${'─'.repeat(modalWidth - 2)}╯`))
 
   return {
     lines,

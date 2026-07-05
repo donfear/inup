@@ -1,6 +1,6 @@
 import chalk from 'chalk'
-import { ModalSection } from './types'
 import { getVisualLength } from '../../../shared/terminal'
+import type { ModalSection } from './types'
 
 export interface RenderModalOptions {
   terminalWidth: number
@@ -29,7 +29,7 @@ export function renderModalRow(padding: number, modalWidth: number, text: string
 }
 
 export function renderModalSeparator(padding: number, modalWidth: number): string {
-  return ' '.repeat(padding) + chalk.gray('├' + '─'.repeat(modalWidth - 2) + '┤')
+  return ' '.repeat(padding) + chalk.gray(`├${'─'.repeat(modalWidth - 2)}┤`)
 }
 
 export function fitModalSections(
@@ -87,7 +87,7 @@ export function renderModalFrame(sections: ModalSection[], options: RenderModalO
     lines.push('')
   }
 
-  lines.push(' '.repeat(padding) + chalk.gray('╭' + '─'.repeat(modalWidth - 2) + '╮'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╭${'─'.repeat(modalWidth - 2)}╮`))
 
   sections.forEach((section, index) => {
     if (index > 0) {
@@ -99,7 +99,7 @@ export function renderModalFrame(sections: ModalSection[], options: RenderModalO
     })
   })
 
-  lines.push(' '.repeat(padding) + chalk.gray('╰' + '─'.repeat(modalWidth - 2) + '╯'))
+  lines.push(' '.repeat(padding) + chalk.gray(`╰${'─'.repeat(modalWidth - 2)}╯`))
 
   return lines
 }

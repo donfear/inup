@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import {
+import type {
   PackageInfo,
   PackageSelectionState,
   PackageUpgradeChoice,

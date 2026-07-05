@@ -1,17 +1,17 @@
 import chalk from 'chalk'
-import { PackageDetector, PackageUpgrader } from '../upgrade'
-import { PackageManagerDetector } from '../../shared/package-manager'
-import { applyVersionPrefix } from '../../shared/versions'
-import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
-import { auditVulnerabilities } from '../audit'
-import { buildHeadlessReport, renderPlainReport } from './report'
-import { ApplyTarget, HeadlessOptions } from './types'
 import {
   getPerformanceTracker,
   isPerfLoggingEnabled,
   perfEnv,
   writePerfLog,
 } from '../../features/debug'
+import { PackageManagerDetector } from '../../shared/package-manager'
+import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
+import { applyVersionPrefix } from '../../shared/versions'
+import { auditVulnerabilities } from '../audit'
+import { PackageDetector, PackageUpgrader } from '../upgrade'
+import { buildHeadlessReport, renderPlainReport } from './report'
+import type { ApplyTarget, HeadlessOptions } from './types'
 
 /**
  * Non-interactive entry point. Resolves the outdated list without rendering the TUI, then either

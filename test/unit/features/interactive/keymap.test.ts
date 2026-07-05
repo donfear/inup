@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  KEY_BINDINGS,
-  KEY_GROUPS,
   findBinding,
   getFooterHints,
   getHelpGroups,
+  KEY_BINDINGS,
+  KEY_GROUPS,
   renderReadmeKeyTable,
 } from '../../../../src/features/interactive/keymap'
 

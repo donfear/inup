@@ -29,7 +29,7 @@ export function linkifyContributorMentions(text: string): string {
 
 export function linkifyRepositoryReferences(text: string, repositoryUrl?: string): string {
   const repoBaseUrl = getRepositoryBaseUrl(repositoryUrl)
-  if (!repoBaseUrl || !repoBaseUrl.includes('github.com')) {
+  if (!repoBaseUrl?.includes('github.com')) {
     return text
   }
 

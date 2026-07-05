@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { HeadlessVulnerability } from '../../../../src/features/audit'
 import { buildHeadlessReport, renderPlainReport } from '../../../../src/features/headless/report'
 import { HEADLESS_SCHEMA_VERSION } from '../../../../src/features/headless/types'
-import type { HeadlessVulnerability } from '../../../../src/features/audit'
 import type { PackageInfo } from '../../../../src/shared/types'
 import { makePackageInfo } from '../../../fixtures/package-info-factory'
 

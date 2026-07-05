@@ -1,13 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Key } from 'node:readline'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ConfirmationInputHandler,
-  InputHandler,
   type InputAction,
+  InputHandler,
 } from '../../../../src/features/interactive/input-handler'
 import type { StateManager } from '../../../../src/features/interactive/state'
 import { CursorUtils } from '../../../../src/shared/terminal'
-import { PackageSelectionState } from '../../../../src/shared/types'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseUiState = {

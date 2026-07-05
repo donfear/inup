@@ -1,4 +1,5 @@
-import { InfoModalTab } from '../modal/types'
+import type { InfoModalTab } from '../modal/types'
+
 export type { InfoModalTab }
 
 export interface ModalState {

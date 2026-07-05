@@ -111,7 +111,7 @@ describe('NpmRegistryClient.fetchDownloadStats', () => {
     await client.fetchDownloadStats('demo')
 
     const headers = (fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers
-    expect(headers['authorization']).toBeUndefined()
+    expect(headers.authorization).toBeUndefined()
   })
 
   it('returns null for unknown packages and network errors', async () => {

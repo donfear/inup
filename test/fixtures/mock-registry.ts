@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import { PackageVersionData } from '../../src/shared/registry/npm-registry'
+import type { PackageVersionData } from '../../src/shared/registry/npm-registry'
 
 interface MockRegistryOptions {
   packageData?: Map<string, PackageVersionData>

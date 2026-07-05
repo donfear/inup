@@ -16,7 +16,7 @@ vi.mock('../../../../src/features/changelog', async (importOriginal) => ({
 }))
 
 import { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
-import { PackageSelectionState } from '../../../../src/shared/types'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState = makeSelectionState({

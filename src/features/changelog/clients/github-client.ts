@@ -1,6 +1,6 @@
-import { GitHubRelease } from '../types'
-import { parseGitHubRepo } from '../parsers/repository-ref'
 import { PACKAGE_NAME } from '../../../shared/config'
+import { parseGitHubRepo } from '../parsers/repository-ref'
+import type { GitHubRelease } from '../types'
 
 const GITHUB_RELEASES_PAGE_LIMIT = 3
 
@@ -17,7 +17,7 @@ function githubApiHeaders(): Record<string, string> {
   }
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN
   if (token) {
-    headers['authorization'] = `Bearer ${token}`
+    headers.authorization = `Bearer ${token}`
   }
   return headers
 }
@@ -31,7 +31,7 @@ function githubApiHeaders(): Record<string, string> {
 async function fetchGitHubApi(url: string, signal: AbortSignal): Promise<Response> {
   const headers = githubApiHeaders()
   const response = await fetch(url, { method: 'GET', headers, signal })
-  if (response.status === 401 && headers['authorization']) {
+  if (response.status === 401 && headers.authorization) {
     const { authorization: _rejected, ...anonymousHeaders } = headers
     return fetch(url, { method: 'GET', headers: anonymousHeaders, signal })
   }

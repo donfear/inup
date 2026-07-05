@@ -1,7 +1,7 @@
 import chalk from 'chalk'
-import { themes, themeNames } from '../themes'
-import { ModalSection } from './types'
+import { themeNames, themes } from '../themes'
 import { renderModalFrame } from './layout'
+import type { ModalSection } from './types'
 
 export function renderThemeSelectorModal(
   currentTheme: string,

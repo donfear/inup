@@ -111,10 +111,7 @@ describe('auditVulnerabilities', () => {
           },
         ],
         // An entry with no vulnerabilities must be skipped, not summarized.
-        [
-          'left-pad',
-          { packageName: 'left-pad', highestSeverity: 'low', vulnerabilities: [] },
-        ],
+        ['left-pad', { packageName: 'left-pad', highestSeverity: 'low', vulnerabilities: [] }],
       ])
     )
 

@@ -8,7 +8,7 @@ import {
 } from '../../../../src/features/interactive/renderer/package-list'
 import { VersionUtils } from '../../../../src/features/interactive/renderer/version-format'
 import { stripAnsi } from '../../../../src/shared/terminal/text'
-import { PackageManagerInfo, RenderableItem } from '../../../../src/shared/types'
+import type { PackageManagerInfo, RenderableItem } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState = makeSelectionState({ name: 'demo-pkg' })

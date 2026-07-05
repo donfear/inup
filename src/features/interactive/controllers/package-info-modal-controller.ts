@@ -1,6 +1,6 @@
 import * as semver from 'semver'
+import type { PackageSelectionState, StateUpdate } from '../../../shared/types'
 import { changelogFetcher } from '../../changelog'
-import { PackageSelectionState, StateUpdate } from '../../../shared/types'
 
 const RELEASE_NOTES_LOAD_DEBOUNCE_MS = 120
 

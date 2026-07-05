@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  ThemeManager,
   getCurrentThemeName,
   getThemeColors,
+  ThemeManager,
 } from '../../../../src/features/interactive/state/theme-manager'
-import { themes, themeNames, defaultTheme } from '../../../../src/features/interactive/themes'
+import { defaultTheme, themeNames, themes } from '../../../../src/features/interactive/themes'
 import { configManager } from '../../../../src/shared/config/user-config'
 
 // ThemeManager persists through the configManager singleton, which writes the

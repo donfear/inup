@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
 import { extractRepositoryUrl } from '../../../src/features/changelog/parsers/repository-ref'
 
 const README_PATH = join(process.cwd(), 'README.md')

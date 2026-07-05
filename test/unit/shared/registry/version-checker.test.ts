@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { NPM_REGISTRY_URL, PACKAGE_NAME } from '../../../../src/shared/config/constants'
 import {
   checkForUpdate,
   checkForUpdateAsync,
 } from '../../../../src/shared/registry/version-checker'
-import { NPM_REGISTRY_URL, PACKAGE_NAME } from '../../../../src/shared/config/constants'
 
 // The registry request is mocked so this suite is deterministic and offline-safe.
 const fetchMock = vi.fn()

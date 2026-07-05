@@ -1,13 +1,13 @@
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
-import { tmpdir } from 'os'
-import { join, resolve } from 'path'
 import {
   getPerfDir,
   isPerfLoggingEnabled,
+  type PerfRunConfig,
   perfEnv,
   writePerfLog,
-  type PerfRunConfig,
 } from '../../../../src/features/debug'
 import { makeSnapshot } from '../../../fixtures/performance-snapshot-factory'
 

@@ -1,18 +1,17 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander'
+import { resolve } from 'node:path'
 import chalk from 'chalk'
-import { resolve } from 'path'
-import { UpgradeRunner } from './index'
+import { Command } from 'commander'
 import { HeadlessRunner } from './features/headless'
-import { checkForUpdateAsync } from './shared/registry/version-checker'
+import { UpgradeRunner } from './index'
 import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './shared/config'
-import { PackageManager, UpgradeOptions } from './shared/types'
 import { enableDebugLogging } from './shared/debug-logger'
-import { applyColorSetting } from './shared/terminal'
-import { loadInupLocalEnv } from './shared/local-env'
 import { getGitWorkingTreeState } from './shared/git'
-import { TerminalInput } from './shared/terminal'
+import { loadInupLocalEnv } from './shared/local-env'
+import { checkForUpdateAsync } from './shared/registry/version-checker'
+import { applyColorSetting, TerminalInput } from './shared/terminal'
+import type { PackageManager, UpgradeOptions } from './shared/types'
 
 // Load developer-only toggles from <inup-repo>/.env.local before anything reads
 // env. Best-effort, gitignored, never overrides real env. Lets perf/debug be
@@ -168,13 +167,13 @@ export async function runCli(options: CliOptions): Promise<void> {
       chalk.green(updateCheck.latestVersion)
 
     const line2Plain = ` Run: ${updateCheck.updateCommand}`
-    const line2 = ' ' + chalk.gray('Run: ') + chalk.cyan(updateCheck.updateCommand)
+    const line2 = ` ${chalk.gray('Run: ')}${chalk.cyan(updateCheck.updateCommand)}`
 
     console.log('')
-    console.log(border('┌' + '─'.repeat(innerWidth) + '┐'))
+    console.log(border(`┌${'─'.repeat(innerWidth)}┐`))
     console.log(border('│') + line1 + padTo(line1Plain.length) + border('│'))
     console.log(border('│') + line2 + padTo(line2Plain.length) + border('│'))
-    console.log(border('└' + '─'.repeat(innerWidth) + '┘'))
+    console.log(border(`└${'─'.repeat(innerWidth)}┘`))
     console.log('')
   }
 }

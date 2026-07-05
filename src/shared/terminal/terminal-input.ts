@@ -1,5 +1,5 @@
+import type { Key } from 'node:readline'
 import * as readline from 'node:readline'
-import { Key } from 'node:readline'
 
 const ESCAPE_CODE_TIMEOUT_MS = 25
 

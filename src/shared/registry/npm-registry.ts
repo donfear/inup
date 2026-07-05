@@ -1,29 +1,30 @@
-import { Pool } from 'undici'
-import { gunzip, inflate, brotliDecompress } from 'node:zlib'
 import { promisify } from 'node:util'
+import { brotliDecompress, gunzip, inflate } from 'node:zlib'
+import { Pool } from 'undici'
 
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
+
 import { POOL_CONNECTIONS } from '../config'
-import { registryTargetFor, RegistryTarget } from './registry-config'
-import { parseVersions } from '../versions'
-import {
-  sleep,
-  isRetryableStatus,
-  isCongestionStatus,
-  isTransientNetworkError,
-  parseRetryAfterMs,
-} from '../http/retry'
+import { AdaptiveController, type ControlTick } from '../http/adaptive-controller'
+import { readEtag, writeEtag } from '../http/etag-store'
 import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
-import { AdaptiveController, ControlTick } from '../http/adaptive-controller'
-import { readEtag, writeEtag } from '../http/etag-store'
 import {
+  isCongestionStatus,
+  isRetryableStatus,
+  isTransientNetworkError,
+  parseRetryAfterMs,
+  sleep,
+} from '../http/retry'
+import type {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
   RegistryBatchProgressItem,
 } from '../types'
+import { parseVersions } from '../versions'
+import { type RegistryTarget, registryTargetFor } from './registry-config'
 
 export interface PackageVersionData {
   latestVersion: string
@@ -126,7 +127,7 @@ async function attemptRegistryFetch(
       'accept-encoding': 'gzip, deflate, br',
     }
     if (target.authHeader) {
-      requestHeaders['authorization'] = target.authHeader
+      requestHeaders.authorization = target.authHeader
     }
     if (cached) {
       requestHeaders['if-none-match'] = cached.etag
@@ -179,7 +180,7 @@ async function attemptRegistryFetch(
     const data = parseVersions(decoded.toString('utf8'))
 
     // Persist the ETag for next run's conditional request.
-    const etagHeader = headers['etag']
+    const etagHeader = headers.etag
     const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader
     if (etag) {
       writeEtag(cacheKey, etag.toString(), data)

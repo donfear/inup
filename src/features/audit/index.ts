@@ -1,11 +1,5 @@
-export * from './types'
-export {
-  fetchVulnerabilities,
-  type VulnerabilityInfo,
-  type PackageVulnerabilities,
-} from './vulnerability-checker'
-export { BackgroundAuditTracker, type AuditPackageInput, type AuditBatch } from './background-audit'
-export { VulnerabilityAuditController } from './vulnerability-audit-controller'
+export { type AuditBatch, type AuditPackageInput, BackgroundAuditTracker } from './background-audit'
+export { auditVulnerabilities, upgradeClears } from './headless-audit'
 export {
   createVulnerabilitySummary,
   getVulnerabilityBadge,
@@ -15,4 +9,10 @@ export {
   selectRepresentativeAdvisory,
   shouldDisplayVulnerabilityForDependency,
 } from './presenter'
-export { auditVulnerabilities, upgradeClears } from './headless-audit'
+export * from './types'
+export { VulnerabilityAuditController } from './vulnerability-audit-controller'
+export {
+  fetchVulnerabilities,
+  type PackageVulnerabilities,
+  type VulnerabilityInfo,
+} from './vulnerability-checker'
