@@ -176,18 +176,16 @@ export function getThemeBgColor(): string {
 /**
  * Convert hex color to RGB
  */
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  // Malformed input falls back to black — a safe default for a color parser.
   return result
     ? {
         r: parseInt(result[1], 16),
         g: parseInt(result[2], 16),
         b: parseInt(result[3], 16),
       }
-    : // Unreachable with the theme definitions in this file (all valid hex);
-      // black is the safe answer if a malformed value ever slips in.
-      /* v8 ignore next */
-      { r: 0, g: 0, b: 0 }
+    : { r: 0, g: 0, b: 0 }
 }
 
 /**

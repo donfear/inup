@@ -8,6 +8,7 @@ import {
   getTerminalResetCode,
   getThemeBgColor,
   getThemeColor,
+  hexToRgb,
   type ThemeColorKey,
   themeColors,
 } from '../../../../src/features/interactive/themes-colors'
@@ -74,6 +75,18 @@ describe('terminal background escapes respect color level', () => {
 
     expect(getThemeBgColor()).toBe('#1e1f26')
     expect(getTerminalBgColorCode()).toBe('\x1b[48;2;30;31;38m')
+  })
+})
+
+describe('hexToRgb', () => {
+  it('parses a 6-digit hex color with and without the leading #', () => {
+    expect(hexToRgb('#1e1f26')).toEqual({ r: 30, g: 31, b: 38 })
+    expect(hexToRgb('1e1f26')).toEqual({ r: 30, g: 31, b: 38 })
+  })
+
+  it('falls back to black for malformed input', () => {
+    expect(hexToRgb('not-a-color')).toEqual({ r: 0, g: 0, b: 0 })
+    expect(hexToRgb('#fff')).toEqual({ r: 0, g: 0, b: 0 })
   })
 })
 
