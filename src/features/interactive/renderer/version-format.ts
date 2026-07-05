@@ -1,8 +1,8 @@
 import chalk from 'chalk'
-import { stripAnsi, getVisualLength } from '../../../shared/terminal/text'
+import { getVisualLength, stripAnsi } from '../../../shared/terminal/text'
 import { applyVersionPrefix } from '../../../shared/versions'
 
-export { stripAnsi, getVisualLength, applyVersionPrefix }
+export { applyVersionPrefix, getVisualLength, stripAnsi }
 
 export function truncateMiddle(str: string, maxLength: number): string {
   const visualLength = getVisualLength(str)
@@ -32,8 +32,8 @@ export function formatVersionDiff(
     return chalk.white(target)
   }
 
-  const currentParts = current.split('.').map((part) => parseInt(part) || 0)
-  const targetParts = target.split('.').map((part) => parseInt(part) || 0)
+  const currentParts = current.split('.').map((part) => parseInt(part, 10) || 0)
+  const targetParts = target.split('.').map((part) => parseInt(part, 10) || 0)
 
   let firstDiffSegment = -1
   const maxLength = Math.max(currentParts.length, targetParts.length)

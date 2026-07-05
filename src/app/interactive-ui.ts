@@ -1,24 +1,25 @@
-import { Key } from 'node:readline'
+import type { Key } from 'node:readline'
+import { VulnerabilityAuditController } from '../features/audit'
 import {
-  PackageLoadProgress,
+  ConfirmationInputHandler,
+  createPendingSelectionStates,
+  createSelectionStates,
+  createUpgradeChoices,
+  PackageInfoModalController,
+  runInteractiveSession,
+  selectionKey,
+  UIRenderer,
+} from '../features/interactive'
+import { CursorUtils, TerminalInput } from '../shared/terminal'
+import type {
   PackageInfo,
-  PackageUpgradeChoice,
-  PackageSelectionState,
+  PackageLoadProgress,
   PackageManagerInfo,
+  PackageSelectionState,
+  PackageUpgradeChoice,
   StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from '../shared/types'
-import { UIRenderer, ConfirmationInputHandler } from '../features/interactive'
-import { CursorUtils, TerminalInput } from '../shared/terminal'
-import { PackageInfoModalController } from '../features/interactive'
-import { VulnerabilityAuditController } from '../features/audit'
-import {
-  createSelectionStates,
-  createPendingSelectionStates,
-  createUpgradeChoices,
-  runInteractiveSession,
-  selectionKey,
-} from '../features/interactive'
 
 interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean
@@ -217,7 +218,7 @@ export class InteractiveUI {
           CursorUtils.show()
         }
         CursorUtils.hide()
-      } catch (error) {
+      } catch {
         process.off('exit', confirmEmergencyCleanup)
         TerminalInput.promptForConfirmation('Proceed with upgrade? [Y/n] ')
           .then(resolve)

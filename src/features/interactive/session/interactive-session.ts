@@ -1,24 +1,24 @@
+import type { Key } from 'node:readline'
 import chalk from 'chalk'
-import { Key } from 'node:readline'
-import {
-  PackageSelectionState,
-  PackageManagerInfo,
+import { configManager } from '../../../shared/config/user-config'
+import { ConsoleUtils, CursorUtils, TerminalInput } from '../../../shared/terminal'
+import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../../shared/terminal/cursor'
+import type {
   PackageLoadProgress,
+  PackageManagerInfo,
+  PackageSelectionState,
   VulnerabilityDisplayOptions,
 } from '../../../shared/types'
-import { StateManager } from '../state'
-import { UIRenderer } from '../renderer'
-import { InputHandler } from '../input-handler'
-import { CursorUtils, ConsoleUtils, TerminalInput } from '../../../shared/terminal'
-import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../../shared/terminal/cursor'
-import { PackageListRenderOptions } from '../renderer/package-list'
-import { getTerminalBgColorCode, getTerminalResetCode, coloredInupLogo } from '../themes-colors'
+import type { VulnerabilityAuditController } from '../../audit'
 import { getPerformanceTracker } from '../../debug'
-import { renderPerformanceModal } from '../renderer/performance-modal'
-import { PackageInfoModalController } from '../controllers'
-import { VulnerabilityAuditController } from '../../audit'
+import type { PackageInfoModalController } from '../controllers'
+import { InputHandler } from '../input-handler'
+import type { UIRenderer } from '../renderer'
 import { renderHelpModal } from '../renderer/help-modal'
-import { configManager } from '../../../shared/config/user-config'
+import type { PackageListRenderOptions } from '../renderer/package-list'
+import { renderPerformanceModal } from '../renderer/performance-modal'
+import { StateManager } from '../state'
+import { coloredInupLogo, getTerminalBgColorCode, getTerminalResetCode } from '../themes-colors'
 import { dispatchAction } from './action-dispatcher'
 
 function getTerminalHeight(): number {
@@ -76,6 +76,7 @@ export async function runInteractiveSession(
       ownsAlternateScreen = false
     }
 
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matches ANSI escape sequences by design
     const resetAnsiPattern = /\x1b\[(?:0|49)m/g
     const packageListRenderOptions: PackageListRenderOptions = {
       showPeerDependencyVulnerabilities: options.showPeerDependencyVulnerabilities,
@@ -96,9 +97,9 @@ export async function runInteractiveSession(
     }
 
     const buildModalHeaderLines = (shortcutLabel: string): string[] => [
-      '  ' + chalk.bold('🚀 ') + coloredInupLogo(),
+      `  ${chalk.bold('🚀 ')}${coloredInupLogo()}`,
       '',
-      '  ' + shortcutLabel,
+      `  ${shortcutLabel}`,
       '',
     ]
 
@@ -442,7 +443,7 @@ export async function runInteractiveSession(
       vulnerabilityAuditController.enqueueStates(states, () => {
         if (!isResolved) renderInterface()
       })
-    } catch (error) {
+    } catch {
       onRefreshViewReady?.(undefined)
       process.off('exit', emergencyCleanup)
       releaseInteractiveScreen()

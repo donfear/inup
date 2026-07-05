@@ -1,17 +1,17 @@
+import { type StdioOptions, spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { dirname } from 'path'
-import { spawnSync, type StdioOptions } from 'child_process'
-import {
-  PackageInfo,
-  PackageUpgradeChoice,
-  PackageManagerInfo,
-  DependencyType,
-} from '../../shared/types'
 import { executeCommand } from '../../shared/exec'
 import { detectJsonFormat, findWorkspaceRoot, readPackageJson } from '../../shared/fs'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
+import type {
+  DependencyType,
+  PackageInfo,
+  PackageManagerInfo,
+  PackageUpgradeChoice,
+} from '../../shared/types'
 
 export interface PackageUpgraderOptions {
   /**
@@ -94,7 +94,7 @@ export class PackageUpgrader {
     // Check if package manager is installed
     try {
       executeCommand(`${this.packageManager.name} --version`, installDir)
-    } catch (error) {
+    } catch {
       this.log(
         chalk.yellow(
           `\n⚠️  ${this.packageManager.displayName} is detected but not installed on your system.\n` +

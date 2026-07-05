@@ -53,7 +53,7 @@ export async function checkForUpdate(
       isOutdated,
       updateCommand,
     }
-  } catch (error) {
+  } catch {
     // Silently fail - don't interrupt the user experience
     return null
   }

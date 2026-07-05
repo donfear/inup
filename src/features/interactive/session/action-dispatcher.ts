@@ -1,8 +1,8 @@
-import { PackageSelectionState, VulnerabilityDisplayOptions } from '../../../shared/types'
-import { StateManager } from '../state'
-import { InputAction } from '../input-handler'
-import { PackageInfoModalController } from '../controllers'
-import { VulnerabilityAuditController } from '../../audit'
+import type { PackageSelectionState, VulnerabilityDisplayOptions } from '../../../shared/types'
+import type { VulnerabilityAuditController } from '../../audit'
+import type { PackageInfoModalController } from '../controllers'
+import type { InputAction } from '../input-handler'
+import type { StateManager } from '../state'
 import { themeNames, themes } from '../themes'
 
 const INTERACTIVE_ACTIONS = new Set([
@@ -132,7 +132,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
                 stateManager.getInfoModalSessionId() === modalSessionId &&
                 packageInfoModalController.getVersionCount(currentState) > 0
               ) {
-                packageInfoModalController.loadVersionAtIndex(currentState, 0, () => {
+                void packageInfoModalController.loadVersionAtIndex(currentState, 0, () => {
                   if (!isResolved()) renderInterface()
                 })
               }
@@ -185,7 +185,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
         if (newIndex >= 0) {
           stateManager.resetInfoModalScroll()
           if (!packageInfoModalController.isVersionLoaded(currentState, newIndex)) {
-            packageInfoModalController.loadVersionAtIndex(currentState, newIndex, () => {
+            void packageInfoModalController.loadVersionAtIndex(currentState, newIndex, () => {
               if (!isResolved()) renderInterface()
             })
           }
