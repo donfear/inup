@@ -165,7 +165,7 @@ export class PackageUpgrader {
         writeCatalogUpdates(
           workspaceFilePath,
           fileChoices.map((choice) => ({
-            catalog: choice.catalog!,
+            catalog: choice.catalog ?? 'default',
             name: choice.name,
             range: choice.targetVersion,
           }))
@@ -241,23 +241,19 @@ export class PackageUpgrader {
 
       // Upgrade range versions by directly modifying package.json
       if (rangeChoices.length > 0) {
-        if (!packageJson[type]) {
-          packageJson[type] = {}
-        }
-
+        const section = packageJson[type] ?? {}
+        packageJson[type] = section
         rangeChoices.forEach((choice) => {
-          packageJson[type]![choice.name] = choice.targetVersion
+          section[choice.name] = choice.targetVersion
         })
       }
 
       // Upgrade to latest versions by directly modifying package.json
       if (latestChoices.length > 0) {
-        if (!packageJson[type]) {
-          packageJson[type] = {}
-        }
-
+        const section = packageJson[type] ?? {}
+        packageJson[type] = section
         latestChoices.forEach((choice) => {
-          packageJson[type]![choice.name] = choice.targetVersion
+          section[choice.name] = choice.targetVersion
         })
       }
 

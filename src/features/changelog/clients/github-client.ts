@@ -108,8 +108,9 @@ export class GitHubClient {
     if (!repo) return null
 
     const cacheKey = `${repo.owner}/${repo.repo}`
-    if (this.releasesCache.has(cacheKey)) {
-      return this.releasesCache.get(cacheKey)!
+    const cached = this.releasesCache.get(cacheKey)
+    if (cached !== undefined) {
+      return cached
     }
 
     const releases: GitHubRelease[] = []
@@ -148,8 +149,9 @@ export class GitHubClient {
     if (!repo) return null
 
     const cacheKey = `${repo.owner}/${repo.repo}`
-    if (this.rawChangelogCache.has(cacheKey)) {
-      return this.rawChangelogCache.get(cacheKey)!
+    const cached = this.rawChangelogCache.get(cacheKey)
+    if (cached !== undefined) {
+      return cached
     }
 
     const branches = ['main', 'master']

@@ -151,11 +151,10 @@ export class UpgradeRunner {
         // Validate selected choices before confirmation
         this.validateSelectedChoices(selectedChoices, latestPackages)
 
-        // Store current selections for potential return to selection
-        previousSelections = new Map()
-        // Convert selectedChoices back to selection state format
-        // Group by package name and version specifier
-        const choiceMap = new Map<string, 'range' | 'latest'>()
+        // Store current selections (keyed by package name and version specifier)
+        // in the format expected by selectPackagesToUpgrade, for potential
+        // return to selection.
+        const nextSelections = new Map<string, 'none' | 'range' | 'latest'>()
         selectedChoices.forEach((choice) => {
           const key = selectionKey(
             choice.name,
@@ -163,12 +162,9 @@ export class UpgradeRunner {
             choice.dependencyType,
             choice.catalog
           )
-          choiceMap.set(key, choice.upgradeType as 'range' | 'latest')
+          nextSelections.set(key, choice.upgradeType)
         })
-        // Convert to the format expected by selectPackagesToUpgrade
-        choiceMap.forEach((upgradeType, key) => {
-          previousSelections!.set(key, upgradeType)
-        })
+        previousSelections = nextSelections
 
         // Confirm upgrade
         shouldProceed = await this.ui.confirmUpgrade(selectedChoices)

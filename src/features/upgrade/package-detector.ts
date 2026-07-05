@@ -270,8 +270,8 @@ export class PackageDetector {
       }
 
       if (isCatalogReference(rawDep.version)) {
-        const resolution = catalogs?.resolve(rawDep.name, rawDep.version) ?? null
-        if (!resolution) {
+        const resolution = catalogs ? catalogs.resolve(rawDep.name, rawDep.version) : null
+        if (!catalogs || !resolution) {
           debugLog.warn(
             'PackageDetector',
             `skipping unresolvable catalog ref: ${rawDep.name}@${rawDep.version}`
@@ -283,8 +283,10 @@ export class PackageDetector {
         if (existing) {
           // Same catalog entry, another referencing package: remember who uses
           // it (for the info modal's Used-by tab) but keep the single entry.
-          if (!existing.catalogReferencedBy!.includes(rawDep.packageJsonPath)) {
-            existing.catalogReferencedBy!.push(rawDep.packageJsonPath)
+          const referencedBy = existing.catalogReferencedBy ?? []
+          existing.catalogReferencedBy = referencedBy
+          if (!referencedBy.includes(rawDep.packageJsonPath)) {
+            referencedBy.push(rawDep.packageJsonPath)
           }
           continue
         }
@@ -292,9 +294,9 @@ export class PackageDetector {
           name: rawDep.name,
           version: resolution.range,
           type: rawDep.type as DependencyEntry['type'],
-          packageJsonPath: catalogs!.path,
+          packageJsonPath: catalogs.path,
           catalog: resolution.catalog,
-          catalogEntries: catalogs!.entriesOf(resolution.catalog),
+          catalogEntries: catalogs.entriesOf(resolution.catalog),
           catalogReferencedBy: [rawDep.packageJsonPath],
         }
         seenCatalogEntries.set(catalogKey, dep)

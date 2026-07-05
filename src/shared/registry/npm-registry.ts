@@ -310,8 +310,9 @@ export async function fetchPackageVersions(
   const pendingEmissions = new Map<number, RegistryBatchProgressItem[]>()
   let nextEmitIndex = 0
   const flushPending = () => {
-    while (pendingEmissions.has(nextEmitIndex)) {
-      const ready = pendingEmissions.get(nextEmitIndex)!
+    while (true) {
+      const ready = pendingEmissions.get(nextEmitIndex)
+      if (!ready) break
       pendingEmissions.delete(nextEmitIndex)
       options.onBatchReady?.(ready)
       nextEmitIndex++

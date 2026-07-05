@@ -28,8 +28,9 @@ export class ReleaseNotesService {
   ): Promise<string | null> {
     const cacheKey = `release-notes:${packageName}@${version}`
 
-    if (this.releaseNotesCache.has(cacheKey)) {
-      return this.releaseNotesCache.get(cacheKey)!
+    const cached = this.releaseNotesCache.get(cacheKey)
+    if (cached !== undefined) {
+      return cached
     }
 
     const inFlight = this.releaseNotesInFlight.get(cacheKey)

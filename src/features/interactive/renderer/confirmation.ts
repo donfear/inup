@@ -12,10 +12,12 @@ export function renderConfirmation(choices: PackageUpgradeChoice[]): string {
   // Group choices by package name to show unique packages
   const packagesByName = new Map<string, PackageUpgradeChoice[]>()
   choices.forEach((choice) => {
-    if (!packagesByName.has(choice.name)) {
-      packagesByName.set(choice.name, [])
+    const group = packagesByName.get(choice.name)
+    if (group) {
+      group.push(choice)
+    } else {
+      packagesByName.set(choice.name, [choice])
     }
-    packagesByName.get(choice.name)!.push(choice)
   })
 
   let output = chalk.bold(`\n🚀 Ready to upgrade ${packagesByName.size} package(s):\n`)
