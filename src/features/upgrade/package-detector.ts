@@ -259,7 +259,13 @@ export class PackageDetector {
     // pnpm-workspace.yaml. Each catalog entry becomes ONE upgradable dependency
     // sourced from that file, no matter how many workspace packages reference it.
     const catalogs = PnpmCatalogs.load(this.cwd)
-    const seenCatalogEntries = new Map<string, DependencyEntry>()
+    // Entries here always carry catalogReferencedBy (set on first-seen below),
+    // so require it in the value type — that lets re-references push onto the
+    // array without an optional-fallback branch.
+    const seenCatalogEntries = new Map<
+      string,
+      DependencyEntry & { catalogReferencedBy: string[] }
+    >()
 
     for (const rawDep of allDepsRaw) {
       let dep: DependencyEntry = {
@@ -270,12 +276,10 @@ export class PackageDetector {
       }
 
       if (isCatalogReference(rawDep.version)) {
-        // A catalog reference can only exist once pnpm-workspace.yaml has been
-        // loaded, so `catalogs` is always present on this path; the null arm
-        // only satisfies the optional-load type.
-        const resolution = catalogs
-          ? catalogs.resolve(rawDep.name, rawDep.version)
-          : /* v8 ignore next */ null
+        // A catalog ref resolves its range from pnpm-workspace.yaml. If that
+        // file was absent (catalogs === null) or the entry is missing, we can't
+        // resolve a range — warn and skip.
+        const resolution = catalogs?.resolve(rawDep.name, rawDep.version)
         if (!catalogs || !resolution) {
           debugLog.warn(
             'PackageDetector',
@@ -288,18 +292,12 @@ export class PackageDetector {
         if (existing) {
           // Same catalog entry, another referencing package: remember who uses
           // it (for the info modal's Used-by tab) but keep the single entry.
-          // The first-seen entry is always created with catalogReferencedBy
-          // set (below), so the ':[]' arm is a type-level safety net only.
-          const referencedBy = existing.catalogReferencedBy
-            ? existing.catalogReferencedBy
-            : /* v8 ignore next */ []
-          existing.catalogReferencedBy = referencedBy
-          if (!referencedBy.includes(rawDep.packageJsonPath)) {
-            referencedBy.push(rawDep.packageJsonPath)
+          if (!existing.catalogReferencedBy.includes(rawDep.packageJsonPath)) {
+            existing.catalogReferencedBy.push(rawDep.packageJsonPath)
           }
           continue
         }
-        dep = {
+        const catalogEntry: DependencyEntry & { catalogReferencedBy: string[] } = {
           name: rawDep.name,
           version: resolution.range,
           type: rawDep.type as DependencyEntry['type'],
@@ -308,7 +306,8 @@ export class PackageDetector {
           catalogEntries: catalogs.entriesOf(resolution.catalog),
           catalogReferencedBy: [rawDep.packageJsonPath],
         }
-        seenCatalogEntries.set(catalogKey, dep)
+        seenCatalogEntries.set(catalogKey, catalogEntry)
+        dep = catalogEntry
       }
 
       if (this.isWorkspaceReference(dep.version)) {

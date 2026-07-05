@@ -13,6 +13,9 @@ import type {
   PackageUpgradeChoice,
 } from '../../shared/types'
 
+/** A choice known to target a pnpm catalog entry (its `catalog` is always set). */
+type CatalogUpgradeChoice = PackageUpgradeChoice & { catalog: string }
+
 export interface PackageUpgraderOptions {
   /**
    * Keep stdout clean: route this class's own progress logs to stderr, and send the install
@@ -45,19 +48,19 @@ export class PackageUpgrader {
     }
 
     // Catalog entries live in pnpm-workspace.yaml, not a package.json — they
-    // take the YAML write path below.
-    const catalogChoices = choices.filter((choice) => choice.catalog)
-    const fileChoices = choices.filter((choice) => !choice.catalog)
+    // take the YAML write path below. The type predicate narrows the catalog
+    // group so downstream code sees `catalog` as a required string.
+    const catalogChoices = choices.filter(
+      (choice): choice is CatalogUpgradeChoice => choice.catalog !== undefined
+    )
+    const fileChoices = choices.filter((choice) => choice.catalog === undefined)
 
     // Group choices by package.json path and dependency type
     const choicesByFileAndType = this.groupChoicesByFileAndType(fileChoices)
 
     for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
-      // groupChoicesByFileAndType only creates a group when it has a member.
-      /* v8 ignore start */
-      if (choiceList.length === 0) continue
-      /* v8 ignore stop */
-
+      // groupChoicesByFileAndType only creates a group once it has a member,
+      // so choiceList is always non-empty here.
       const [packageJsonPath, type] = fileAndType.split('|')
       this.log(`Processing ${type} in ${packageJsonPath}`)
       await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as DependencyType)
@@ -76,13 +79,8 @@ export class PackageUpgrader {
   }
 
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
-    // upgradePackages returns early for an empty selection, so this guard only
-    // protects future direct callers.
-    /* v8 ignore start */
-    if (choices.length === 0) {
-      return
-    }
-    /* v8 ignore stop */
+    // The sole caller (upgradePackages) returns early on an empty selection,
+    // so choices is always non-empty here.
 
     // Determine the directory to run install in
     // Use workspace root if it exists, otherwise use the directory of the first package.json
@@ -140,8 +138,8 @@ export class PackageUpgrader {
    * Apply catalog upgrades by rewriting the referenced ranges inside
    * pnpm-workspace.yaml (comment- and format-preserving). One write per file.
    */
-  private async upgradeCatalogChoices(choices: PackageUpgradeChoice[]): Promise<void> {
-    const choicesByFile = new Map<string, PackageUpgradeChoice[]>()
+  private async upgradeCatalogChoices(choices: CatalogUpgradeChoice[]): Promise<void> {
+    const choicesByFile = new Map<string, CatalogUpgradeChoice[]>()
     choices.forEach((choice) => {
       const group = choicesByFile.get(choice.packageJsonPath) ?? []
       group.push(choice)
@@ -164,11 +162,8 @@ export class PackageUpgrader {
       try {
         writeCatalogUpdates(
           workspaceFilePath,
-          // Catalog choices routed here always carry a catalog name; the
-          // '?? default' fallback is a type-level safety net only.
           fileChoices.map((choice) => ({
-            /* v8 ignore next */
-            catalog: choice.catalog ?? 'default',
+            catalog: choice.catalog,
             name: choice.name,
             range: choice.targetVersion,
           }))
