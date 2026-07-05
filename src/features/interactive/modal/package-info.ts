@@ -77,27 +77,20 @@ export function renderPackageInfoModal(
   const fixedModalHeight = maxHeight
   const padding = Math.floor((terminalWidth - modalWidth) / 2)
 
-  // Every section built by buildPackageInfoSections declares a behavior; the
-  // '?? pinned' fallbacks are type-level safety nets for hand-built sections.
-  const pinnedSections = allSections.filter(
-    /* v8 ignore next */
-    (section) => (section.behavior ?? 'pinned') === 'pinned'
-  )
-  const bodySections = allSections.filter(
-    /* v8 ignore next */
-    (section) => (section.behavior ?? 'pinned') !== 'pinned'
-  )
+  // Every section built by buildPackageInfoSections declares a behavior, so we
+  // partition directly: 'pinned' stays fixed, everything else scrolls.
+  const pinnedSections = allSections.filter((section) => section.behavior === 'pinned')
+  const bodySections = allSections.filter((section) => section.behavior !== 'pinned')
   const minBodyRows = 3
-  // Reaching this point requires a 'body' section (hasScrollableBody above),
-  // so bodySections is never empty here; the ':0' arms are unreachable.
-  const reservedBodyRows = minBodyRows + (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0)
+  // hasScrollableBody guaranteed a 'body' section above, so bodySections is
+  // non-empty and always reserves its separator row.
+  const reservedBodyRows = minBodyRows + 1
   const maxPinnedHeight = Math.max(6, fixedModalHeight - reservedBodyRows)
   const fittedPinned = fitModalSections(pinnedSections, maxPinnedHeight, trimOrder)
   const pinnedRowCount = getModalSectionRowCount(fittedPinned)
-  const availableForBody = Math.max(
-    minBodyRows,
-    fixedModalHeight - 2 - pinnedRowCount - (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0)
-  )
+  // bodySections is non-empty here (see reservedBodyRows), so its separator
+  // row is always subtracted.
+  const availableForBody = Math.max(minBodyRows, fixedModalHeight - 2 - pinnedRowCount - 1)
 
   const bodyRows: Array<{ row: string; sectionIndex: number }> = []
   bodySections.forEach((section, index) => {
@@ -182,10 +175,8 @@ export function renderPackageInfoModal(
   }
 
   const usedContentRows =
-    pinnedRowCount +
-    (bodySections.length > 0 ? 1 : /* v8 ignore next */ 0) +
-    renderedScrollRows +
-    (resolvedFooterStatus ? 1 : 0)
+    // bodySections is non-empty on this path, so its separator row always counts.
+    pinnedRowCount + 1 + renderedScrollRows + (resolvedFooterStatus ? 1 : 0)
   const totalContentSlots = fixedModalHeight - 2
   // The scroll path is only entered when content overflows the frame, so the
   // window is always full and there are never filler rows to add.
