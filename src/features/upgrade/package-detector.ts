@@ -270,7 +270,12 @@ export class PackageDetector {
       }
 
       if (isCatalogReference(rawDep.version)) {
-        const resolution = catalogs ? catalogs.resolve(rawDep.name, rawDep.version) : null
+        // A catalog reference can only exist once pnpm-workspace.yaml has been
+        // loaded, so `catalogs` is always present on this path; the null arm
+        // only satisfies the optional-load type.
+        const resolution = catalogs
+          ? catalogs.resolve(rawDep.name, rawDep.version)
+          : /* v8 ignore next */ null
         if (!catalogs || !resolution) {
           debugLog.warn(
             'PackageDetector',
@@ -283,7 +288,11 @@ export class PackageDetector {
         if (existing) {
           // Same catalog entry, another referencing package: remember who uses
           // it (for the info modal's Used-by tab) but keep the single entry.
-          const referencedBy = existing.catalogReferencedBy ?? []
+          // The first-seen entry is always created with catalogReferencedBy
+          // set (below), so the ':[]' arm is a type-level safety net only.
+          const referencedBy = existing.catalogReferencedBy
+            ? existing.catalogReferencedBy
+            : /* v8 ignore next */ []
           existing.catalogReferencedBy = referencedBy
           if (!referencedBy.includes(rawDep.packageJsonPath)) {
             referencedBy.push(rawDep.packageJsonPath)

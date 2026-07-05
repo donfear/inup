@@ -164,7 +164,10 @@ export class PackageUpgrader {
       try {
         writeCatalogUpdates(
           workspaceFilePath,
+          // Catalog choices routed here always carry a catalog name; the
+          // '?? default' fallback is a type-level safety net only.
           fileChoices.map((choice) => ({
+            /* v8 ignore next */
             catalog: choice.catalog ?? 'default',
             name: choice.name,
             range: choice.targetVersion,
