@@ -33,6 +33,10 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "suspicious": {
+        "noImportCycles": "error",
+        "noTsIgnore": "error"
+      },
       "nursery": {
         "noFloatingPromises": "error"
       }
