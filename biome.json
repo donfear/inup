@@ -33,9 +33,6 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "style": {
-        "noNonNullAssertion": "off"
-      },
       "nursery": {
         "noFloatingPromises": "error"
       }
@@ -46,6 +43,9 @@
       "includes": ["test/**"],
       "linter": {
         "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          },
           "suspicious": {
             "noExplicitAny": "off"
           }
