@@ -12,8 +12,8 @@
     "start": "node dist/cli.js",
     "prepare": "npm run build",
     "link": "pnpm build && pnpm add -g .",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
+    "check": "biome check --write .",
+    "check:ci": "biome ci .",
     "demo:record": "bash docs/demo/record-demo.sh",
     "demo:setup": "cd docs/demo-project && pnpm install",
     "test": "vitest run",
@@ -60,11 +60,11 @@
     "README.md"
   ],
   "devDependencies": {
+    "@biomejs/biome": "2.5.2",
     "@types/node": "^25.9.4",
     "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "^4.1.9",
     "dependency-cruiser": "^18.0.0",
-    "prettier": "^3.9.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   },
