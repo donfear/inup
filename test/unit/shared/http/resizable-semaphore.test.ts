@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { ResizableSemaphore } from '../../../../src/shared/http/resizable-semaphore'
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve))
@@ -45,8 +45,8 @@ describe('ResizableSemaphore', () => {
     await sem.acquire()
 
     const woken: number[] = []
-    sem.acquire().then(() => woken.push(1))
-    sem.acquire().then(() => woken.push(2))
+    void sem.acquire().then(() => woken.push(1))
+    void sem.acquire().then(() => woken.push(2))
     await tick()
     expect(woken).toEqual([]) // both queued behind the single slot
 
@@ -65,7 +65,7 @@ describe('ResizableSemaphore', () => {
     expect(sem.getInFlight()).toBe(4)
 
     let admitted = false
-    sem.acquire().then(() => {
+    void sem.acquire().then(() => {
       admitted = true
     })
 
@@ -94,7 +94,7 @@ describe('ResizableSemaphore', () => {
     const order: number[] = []
     for (let i = 0; i < 3; i++) {
       const id = i
-      sem.acquire().then(() => order.push(id))
+      void sem.acquire().then(() => order.push(id))
     }
 
     sem.setLimit(1)

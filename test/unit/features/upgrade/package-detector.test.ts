@@ -78,8 +78,8 @@ vi.mock('../../../../src/shared/terminal', () => ({
 }))
 
 import { PackageDetector } from '../../../../src/features/upgrade/package-detector'
-import { ConsoleUtils } from '../../../../src/shared/terminal'
 import { debugLog } from '../../../../src/shared/debug-logger'
+import { ConsoleUtils } from '../../../../src/shared/terminal'
 
 describe('PackageDetector streaming', () => {
   beforeEach(() => {
@@ -408,7 +408,9 @@ describe('PackageDetector edge paths', () => {
 
   beforeEach(() => {
     mocks.isPerfLoggingEnabled.mockReturnValue(false)
-    Object.values(mocks.performanceTracker).forEach((fn) => fn.mockClear())
+    Object.values(mocks.performanceTracker).forEach((fn) => {
+      fn.mockClear()
+    })
     vi.mocked(debugLog.info).mockClear()
     vi.mocked(debugLog.warn).mockClear()
     vi.mocked(debugLog.error).mockClear()
@@ -694,7 +696,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('truncates long directory names in scan progress', async () => {
-    const longDir = '/repo/' + 'deeply-nested/'.repeat(6)
+    const longDir = `/repo/${'deeply-nested/'.repeat(6)}`
     mocks.findAllPackageJsonFilesAsync.mockImplementation(
       async (
         _cwd: string,
@@ -712,7 +714,7 @@ describe('PackageDetector edge paths', () => {
 
     const progressCalls = vi.mocked(ConsoleUtils.showProgress).mock.calls.flat()
     const truncated = progressCalls.find((msg) => String(msg).includes('(found 3)'))
-    expect(truncated).toContain('...' + longDir.slice(-47))
+    expect(truncated).toContain(`...${longDir.slice(-47)}`)
   })
 
   it('warns about package.json-bearing directories the default skip list pruned', async () => {

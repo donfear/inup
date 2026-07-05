@@ -1,7 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   AdaptiveController,
-  ControlTick,
+  type ControlTick,
   DEFAULT_TUNING,
 } from '../../../../src/shared/http/adaptive-controller'
 
@@ -90,7 +90,6 @@ describe('AdaptiveController', () => {
 
   it('hard-decreases immediately on congestion (429/503), independent of ticks', () => {
     const c = new AdaptiveController(20, undefined, tuning)
-    const start = c.getLimit() // 20
     const immediate = c.record('congested')
     // 20 * 0.5 = 10, applied immediately (not waiting for a tick)
     expect(immediate).toBe(10)

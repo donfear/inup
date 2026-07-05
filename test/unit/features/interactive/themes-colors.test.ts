@@ -1,16 +1,16 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
 import chalk from 'chalk'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ThemeManager } from '../../../../src/features/interactive/state/theme-manager'
+import { themeNames } from '../../../../src/features/interactive/themes'
 import {
   coloredInupLogo,
   getTerminalBgColorCode,
   getTerminalResetCode,
   getThemeBgColor,
   getThemeColor,
-  themeColors,
   type ThemeColorKey,
+  themeColors,
 } from '../../../../src/features/interactive/themes-colors'
-import { ThemeManager } from '../../../../src/features/interactive/state/theme-manager'
-import { themeNames } from '../../../../src/features/interactive/themes'
 import { stripAnsi } from '../../../../src/shared/terminal/text'
 
 // Switching themes goes through ThemeManager, which persists via the
@@ -62,6 +62,7 @@ describe('terminal background escapes respect color level', () => {
 
   it('emits background/reset escapes when color is enabled', () => {
     chalk.level = 3
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: matches an ANSI escape sequence by design
     expect(getTerminalBgColorCode()).toMatch(/^\x1b\[48;2;\d+;\d+;\d+m$/)
     expect(getTerminalResetCode()).toBe('\x1b[0m')
   })
