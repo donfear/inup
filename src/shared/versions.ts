@@ -71,18 +71,11 @@ export function getOptimizedRangeVersion(
   latestVersion: string
 ): string {
   try {
-    // Find the highest version that satisfies the current range
-    const satisfyingVersions = allVersions.filter((version: string) => {
-      try {
-        return semver.satisfies(version, currentRange)
-        // semver.satisfies swallows invalid input internally (returns false);
-        // safety net for future semver behavior changes only.
-        /* v8 ignore start */
-      } catch {
-        return false
-      }
-      /* v8 ignore stop */
-    })
+    // Find the highest version that satisfies the current range. satisfies()
+    // returns false (never throws) for invalid input, so no guard is needed.
+    const satisfyingVersions = allVersions.filter((version: string) =>
+      semver.satisfies(version, currentRange)
+    )
 
     if (satisfyingVersions.length === 0) {
       return latestVersion
