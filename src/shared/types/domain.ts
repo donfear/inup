@@ -40,7 +40,10 @@ export interface PackageInfo {
 }
 
 export type DependencyType =
-  'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  | 'dependencies'
+  | 'devDependencies'
+  | 'optionalDependencies'
+  | 'peerDependencies'
 
 export interface DependencyEntry {
   name: string
@@ -112,5 +115,5 @@ export interface PackageJson {
   peerDependencies?: Record<string, string>
   packageManager?: string
   workspaces?: string[] | { packages: string[] }
-  [key: string]: any
+  [key: string]: unknown
 }

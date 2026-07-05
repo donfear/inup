@@ -1,15 +1,16 @@
 import chalk from 'chalk'
+import type { PackageUpgradeChoice } from '../../../shared/types'
 
 /**
  * Render confirmation screen
  */
-export function renderConfirmation(choices: any[]): string {
+export function renderConfirmation(choices: PackageUpgradeChoice[]): string {
   if (choices.length === 0) {
     return chalk.yellow('No packages selected for upgrade.')
   }
 
   // Group choices by package name to show unique packages
-  const packagesByName = new Map<string, any[]>()
+  const packagesByName = new Map<string, PackageUpgradeChoice[]>()
   choices.forEach((choice) => {
     if (!packagesByName.has(choice.name)) {
       packagesByName.set(choice.name, [])

@@ -1,6 +1,6 @@
 import chalk from 'chalk'
-import { getCurrentThemeName } from './state/theme-manager'
 import { PACKAGE_NAME } from '../../shared/config'
+import { getCurrentThemeName } from './state/theme-manager'
 
 // Centralized theme color definitions - single source of truth
 const themeColorDefinitions = {
@@ -121,7 +121,7 @@ function applyColor(color: string, text: string): string {
   if (color.startsWith('#')) {
     return chalk.hex(color)(text)
   }
-  return (chalk as any)[color](text)
+  return (chalk as unknown as Record<string, (text: string) => string>)[color](text)
 }
 
 const themeColorSchemes: Record<

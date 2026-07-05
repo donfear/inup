@@ -1,13 +1,13 @@
 import chalk from 'chalk'
-import {
+import type {
   PackageInfo,
   PackageSelectionState,
   VulnerabilityDisplayOptions,
 } from '../../../../shared/types'
-import { VersionUtils } from '../version-format'
-import { getThemeColor } from '../../themes-colors'
 import { getVulnerabilityBadge, shouldDisplayVulnerabilityForDependency } from '../../../audit'
 import { getHealthBadge } from '../../presenters/health'
+import { getThemeColor } from '../../themes-colors'
+import { VersionUtils } from '../version-format'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions
 
@@ -24,7 +24,6 @@ function getTypeBadge(type: PackageInfo['type']): string {
       return getThemeColor('textSecondary')('[P]')
     case 'optionalDependencies':
       return getThemeColor('textSecondary')('[O]')
-    case 'dependencies':
     default:
       return ''
   }
@@ -44,7 +43,7 @@ export function renderPackageLine(
 ): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
-  let packageName
+  let packageName: string
   if (state.name.startsWith('@')) {
     const parts = state.name.split('/')
     if (parts.length >= 2) {
@@ -54,9 +53,9 @@ export function renderPackageLine(
       if (isCurrentRow) {
         packageName =
           chalk.bold(getThemeColor('packageAuthor')(author)) +
-          getThemeColor('packageName')('/' + packagePart)
+          getThemeColor('packageName')(`/${packagePart}`)
       } else {
-        packageName = chalk.bold.white(author) + chalk.white('/' + packagePart)
+        packageName = chalk.bold.white(author) + chalk.white(`/${packagePart}`)
       }
     } else {
       packageName = isCurrentRow
@@ -172,7 +171,7 @@ export function renderPackageLine(
   const currentPaddingText = shouldShowDashes(currentPadding)
     ? dashColor('-').repeat(currentPadding)
     : ' '.repeat(currentPadding)
-  const currentWithPadding = currentSection + ' ' + currentPaddingText
+  const currentWithPadding = `${currentSection} ${currentPaddingText}`
 
   let rangeSection = ''
   if (isPending || isFailed || state.hasRangeUpdate) {
@@ -182,7 +181,7 @@ export function renderPackageLine(
     const rangePaddingText = shouldShowDashes(rangePadding)
       ? dashColor('-').repeat(rangePadding)
       : ' '.repeat(rangePadding)
-    rangeSection += ' ' + rangePaddingText
+    rangeSection += ` ${rangePaddingText}`
   } else {
     rangeSection = ' '.repeat(rangeColumnWidth)
   }
@@ -195,7 +194,7 @@ export function renderPackageLine(
     const latestPaddingText = shouldShowDashes(latestPadding)
       ? dashColor('-').repeat(latestPadding)
       : ' '.repeat(latestPadding)
-    latestSection += ' ' + latestPaddingText
+    latestSection += ` ${latestPaddingText}`
   } else {
     latestSection = ' '.repeat(latestColumnWidth)
   }
@@ -209,7 +208,7 @@ export function renderSectionHeader(
 ): string {
   const colorFn =
     sectionType === 'main' ? chalk.cyan : sectionType === 'peer' ? chalk.magenta : chalk.yellow
-  return '  ' + colorFn.bold(title)
+  return `  ${colorFn.bold(title)}`
 }
 
 export function renderSpacer(): string {

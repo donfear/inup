@@ -1,21 +1,23 @@
 import chalk from 'chalk'
-import {
+import { PACKAGE_NAME } from '../../../../shared/config'
+import type {
   AuditProgress,
+  PackageInfo,
   PackageLoadProgress,
+  PackageManagerInfo,
   PackageSelectionState,
   RenderableItem,
 } from '../../../../shared/types'
+import { getFooterHints } from '../../keymap'
+import { coloredInupLogo, getThemeColor } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
-import { getThemeColor, coloredInupLogo } from '../../themes-colors'
-import { PACKAGE_NAME } from '../../../../shared/config'
 import {
+  type PackageListRenderOptions,
   padLineToWidth,
   renderPackageLine,
   renderSectionHeader,
   renderSpacer,
-  PackageListRenderOptions,
 } from './rows'
-import { getFooterHints } from '../../keymap'
 
 export function renderInterface(
   states: PackageSelectionState[],
@@ -25,7 +27,7 @@ export function renderInterface(
   _forceFullRender: boolean,
   renderableItems?: RenderableItem[],
   activeFilterLabel?: string,
-  packageManager?: any,
+  packageManager?: PackageManagerInfo,
   filterMode?: boolean,
   filterQuery?: string,
   totalPackagesBeforeFilter?: number,
@@ -60,7 +62,7 @@ export function renderInterface(
     const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
     output.push(fullHeaderLine + ' '.repeat(headerPadding))
   } else {
-    const headerLine = '  ' + chalk.bold.blue('🚀 ') + coloredInupLogo()
+    const headerLine = `  ${chalk.bold.blue('🚀 ')}${coloredInupLogo()}`
 
     const fullHeaderLine = activeFilterLabel
       ? headerLine +
@@ -92,10 +94,10 @@ export function renderInterface(
     const hintLine = getFooterHints()
       .map(
         ({ keyLabel, label }) =>
-          chalk.bold.white(keyLabel + ' ') + getThemeColor('textSecondary')(label)
+          chalk.bold.white(`${keyLabel} `) + getThemeColor('textSecondary')(label)
       )
       .join('  ')
-    output.push('  ' + hintLine)
+    output.push(`  ${hintLine}`)
   }
 
   const totalPackages = states.length
@@ -142,7 +144,7 @@ export function renderInterface(
             `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
           )
         : getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`)
-    statusLine = matchCount + '  ' + chalk.bold.white('Esc ') + chalk.gray('Clear filter')
+    statusLine = `${matchCount}  ${chalk.bold.white('Esc ')}${chalk.gray('Clear filter')}`
   } else {
     if (totalVisualItems > maxVisibleItems) {
       statusLine =
@@ -165,13 +167,13 @@ export function renderInterface(
     const auditLabel = auditProgress.isRunning
       ? `Audit ${auditProgress.completed}/${auditProgress.total}`
       : `Audit ${auditProgress.total}/${auditProgress.total}`
-    statusLine += '  ' + getThemeColor('textSecondary')(auditLabel)
+    statusLine += `  ${getThemeColor('textSecondary')(auditLabel)}`
   }
 
   // A one-shot notice (e.g. "nothing selected") replaces the status line for a
   // single render so the layout height stays constant.
   const statusContent = notice ? getThemeColor('warning')(notice) : statusLine
-  const statusLineFull = '  ' + statusContent
+  const statusLineFull = `  ${statusContent}`
   const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
   output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
@@ -219,7 +221,7 @@ export function renderInterface(
   return output.map((line) => padLineToWidth(line, terminalWidth))
 }
 
-export function renderPackagesTable(packages: any[]): string {
+export function renderPackagesTable(packages: PackageInfo[]): string {
   if (packages.length === 0) {
     return chalk.green('✅ All packages are up to date!')
   }
