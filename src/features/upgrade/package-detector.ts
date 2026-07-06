@@ -310,11 +310,11 @@ export class PackageDetector {
         dep = catalogEntry
       }
 
-      if (this.isWorkspaceReference(dep.version)) {
+      if (this.isNonRegistrySpecifier(dep.version)) {
         const key = `${dep.name}@${dep.version}`
         if (!seenWorkspaceRefs.has(key)) {
           seenWorkspaceRefs.add(key)
-          debugLog.info('PackageDetector', `skipping workspace ref: ${key}`)
+          debugLog.info('PackageDetector', `skipping non-registry specifier: ${key}`)
         }
         continue
       }
@@ -538,7 +538,13 @@ export class PackageDetector {
     )
   }
 
-  private isWorkspaceReference(version: string): boolean {
+  /**
+   * Specifiers that don't point at a plain registry range, so there is nothing to resolve or
+   * upgrade: workspace/file/link refs, git hosts and URLs, tarball URLs, and `npm:` aliases.
+   * An `npm:` alias in particular must never be looked up under its alias name — the packument
+   * for that name is a different (or nonexistent) package.
+   */
+  private isNonRegistrySpecifier(version: string): boolean {
     return (
       version.includes('workspace:') ||
       version === '*' ||
@@ -546,7 +552,12 @@ export class PackageDetector {
       version.startsWith('link:') ||
       version.startsWith('github:') ||
       version.startsWith('gitlab:') ||
-      version.startsWith('bitbucket:')
+      version.startsWith('bitbucket:') ||
+      version.startsWith('npm:') ||
+      version.startsWith('git:') ||
+      version.startsWith('git+') ||
+      version.startsWith('http:') ||
+      version.startsWith('https:')
     )
   }
 
