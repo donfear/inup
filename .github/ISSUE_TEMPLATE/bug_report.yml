@@ -1,0 +1,53 @@
+name: Bug report
+description: Something inup did wrong — misdetection, bad write, crash, rendering glitch
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: inup version
+      description: Output of `inup --version` (or the Action's `inup-version` input).
+      placeholder: 1.6.7
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How were you running inup?
+      options:
+        - Interactive TUI
+        - --json / --check (read-only headless)
+        - --apply (headless write)
+        - GitHub Action
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, package manager + version, monorepo or single package.
+      placeholder: macOS 15 / Node 24 / pnpm 11 workspace with catalogs
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: >
+        If inup wrote something wrong, include the relevant package.json (or
+        pnpm-workspace.yaml) snippet before and after.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Smallest setup that triggers it — a package.json snippet is often enough.
+  - type: textarea
+    id: debug-log
+    attributes:
+      label: Debug log
+      description: >
+        Re-run with `--debug` and attach the relevant part of
+        /tmp/inup-debug-YYYY-MM-DD.log. Redact registry URLs/tokens if you use a
+        private registry.
