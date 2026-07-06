@@ -29,6 +29,7 @@ export const iconNames = {
   rss: 'lucide:rss',
   sun: 'lucide:sun',
   moon: 'lucide:moon',
+  copy: 'lucide:copy',
 } as const;
 
 export type IconName = keyof typeof iconNames;

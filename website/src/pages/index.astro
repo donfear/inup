@@ -105,11 +105,16 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
       </p>
 
       <div class="flex flex-wrap items-center justify-center gap-3">
-        <p
-          class="m-0 inline-flex h-12 items-center gap-3 rounded-xl bg-terminal px-5 font-mono text-base text-terminal-foreground shadow-md"
+        <button
+          type="button"
+          data-copy-install
+          class="inline-flex h-12 cursor-pointer items-center gap-3 rounded-xl bg-terminal px-5 font-mono text-base text-terminal-foreground shadow-md transition-shadow hover:shadow-lg"
+          aria-label="Copy 'npx inup' to the clipboard"
         >
-          <span class="select-none text-term-green">$</span> npx inup
-        </p>
+          <span class="select-none text-term-green" aria-hidden="true">$</span> npx inup
+          <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={14} /></span>
+          <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={14} /></span>
+        </button>
         <a
           href={`${base}/docs/getting-started/`}
           class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
@@ -286,11 +291,16 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
           changelogs from GitHub. {site.license} licensed —{' '}
           <a href={site.repoUrl} class="link">read the source</a>.
         </p>
-        <p
-          class="m-0 inline-flex items-center gap-3 rounded-xl bg-terminal px-6 py-4 font-mono text-lg text-terminal-foreground"
+        <button
+          type="button"
+          data-copy-install
+          class="inline-flex cursor-pointer items-center gap-3 rounded-xl bg-terminal px-6 py-4 font-mono text-lg text-terminal-foreground shadow-md transition-shadow hover:shadow-lg"
+          aria-label="Copy 'npx inup' to the clipboard"
         >
-          <span class="select-none text-term-green">$</span> npx inup
-        </p>
+          <span class="select-none text-term-green" aria-hidden="true">$</span> npx inup
+          <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={15} /></span>
+          <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={15} /></span>
+        </button>
       </div>
     </section>
   </div>
@@ -306,5 +316,18 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
       video.removeAttribute('autoplay');
       video.controls = true;
     }
+  }
+
+  // The install command copies itself.
+  for (const chip of document.querySelectorAll('[data-copy-install]')) {
+    chip.addEventListener('click', async () => {
+      await navigator.clipboard.writeText('npx inup');
+      chip.querySelector('.copy-hint')?.classList.add('hidden');
+      chip.querySelector('.copied-hint')?.classList.remove('hidden');
+      setTimeout(() => {
+        chip.querySelector('.copy-hint')?.classList.remove('hidden');
+        chip.querySelector('.copied-hint')?.classList.add('hidden');
+      }, 1500);
+    });
   }
 </script>
