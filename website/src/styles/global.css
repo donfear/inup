@@ -22,9 +22,9 @@
   --primary-foreground: #ffffff;
 
   /* Brand gradient stops, sampled from the logo: teal → green.
-     One shade deeper than the logo on light so small brand-colored
-     text clears WCAG AA (≥4.5:1 on white). */
-  --brand: #15803d;
+     Deepened on light so small brand-colored text clears WCAG AA even
+     on brand-tinted surfaces (pill chips sit on bg-brand/5 ≈ #edf3f2). */
+  --brand: #15703a;
   --brand-2: #0f766e;
   --success: #15803d;
   --warning: #9a6700;

@@ -33,7 +33,13 @@ const headingAnchorsPlugin = {
 export default defineConfig({
   site: 'https://donfear.github.io',
   base: '/inup',
-  integrations: [sitemap(), icon()],
+  integrations: [
+    sitemap({
+      // The /docs/ redirect page is noindex; keep it out of the sitemap.
+      filter: (page) => !page.endsWith('/docs/'),
+    }),
+    icon(),
+  ],
 
   fonts: [
     {
@@ -70,7 +76,9 @@ export default defineConfig({
     shikiConfig: {
       themes: {
         light: 'github-light',
-        dark: 'github-dark',
+        // -default variant: its comment color clears WCAG AA contrast,
+        // plain github-dark's #6A737D does not.
+        dark: 'github-dark-default',
       },
     },
     processor: satteri({

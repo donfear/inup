@@ -1,8 +1,11 @@
 ---
 import { marked } from 'marked';
 import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
 import { stats } from '../lib/stats';
 import { site } from '../data/site';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const dateFmt = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -50,6 +53,14 @@ const latestTag = releases.find((r) => !r.prerelease)?.tag;
         Every release, straight from{' '}
         <a href={site.releasesUrl} class="link">GitHub Releases</a>.
         Install any version with <code>npx inup@version</code>.
+      </p>
+      <p class="m-0 mt-4">
+        <a
+          href={`${base}/rss.xml`}
+          class="inline-flex items-center gap-1.5 text-sm text-muted-foreground no-underline transition-colors hover:text-brand"
+        >
+          <Icon name="rss" size={14} /> Subscribe via RSS
+        </a>
       </p>
     </section>
 

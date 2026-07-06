@@ -16,6 +16,8 @@
 
 **inup** is an interactive CLI for upgrading outdated npm dependencies — npm, yarn, pnpm, and bun all supported. It auto-detects your package manager, works in monorepos and workspaces, and requires zero configuration.
 
+**[Documentation, comparisons & changelog →](https://donfear.github.io/inup/)**
+
 ![Interactive Upgrade Demo](docs/demo/interactive-upgrade.gif)
 
 ## Table of Contents

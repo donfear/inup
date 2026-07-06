@@ -19,7 +19,7 @@ const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
   <table class="w-full min-w-[560px] border-collapse text-sm">
     <thead>
       <tr class="bg-muted/50">
-        <th scope="col" class="border-b border-border"></th>
+        <th scope="col" class="border-b border-border"><span class="sr-only">Feature</span></th>
         {columns.map((c) => (
           <th
             scope="col"

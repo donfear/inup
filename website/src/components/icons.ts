@@ -26,6 +26,7 @@ export const iconNames = {
   zap: 'lucide:zap',
   scale: 'lucide:scale',
   github: 'simple-icons:github',
+  rss: 'lucide:rss',
 } as const;
 
 export type IconName = keyof typeof iconNames;
