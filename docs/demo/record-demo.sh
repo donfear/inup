@@ -47,4 +47,12 @@ trap cleanup EXIT
 echo "Recording with vhs..."
 vhs "$TAPE_FILE"
 
-echo "Demo recorded: docs/demo/interactive-upgrade.gif"
+# The website hero plays the mp4 variant (5x smaller than the gif);
+# keep it in sync with every re-recording.
+echo "Converting to mp4 for the website..."
+ffmpeg -y -i "$REPO_ROOT/docs/demo/interactive-upgrade.gif" \
+    -movflags faststart -pix_fmt yuv420p \
+    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" -crf 28 -an \
+    "$REPO_ROOT/docs/demo/interactive-upgrade.mp4"
+
+echo "Demo recorded: docs/demo/interactive-upgrade.gif (+ .mp4)"

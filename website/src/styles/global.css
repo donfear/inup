@@ -11,17 +11,21 @@
 :root {
   color-scheme: light dark;
 
-  --background: #fafafa;
+  --background: #f8f9fb;
   --surface: #ffffff;
   --foreground: #0b1220;
-  --muted: #f1f3f5;
+  --muted: #eef1f4;
   --muted-foreground: #5b6472;
-  --border: #e4e6ea;
+  --border: #e5e8ee;
 
   --primary: #0b1220;
   --primary-foreground: #ffffff;
 
-  --brand: #16a34a;
+  /* Brand gradient stops, sampled from the logo: teal → green.
+     One shade deeper than the logo on light so small brand-colored
+     text clears WCAG AA (≥4.5:1 on white). */
+  --brand: #15803d;
+  --brand-2: #0f766e;
   --success: #15803d;
   --warning: #9a6700;
   --danger: #cf222e;
@@ -39,10 +43,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0b1120;
-    --surface: #101a2c;
+    --background: #0a0f1e;
+    --surface: #101a2e;
     --foreground: #e6eaf2;
-    --muted: #16203a;
+    --muted: #17223c;
     --muted-foreground: #98a2b3;
     --border: #223049;
 
@@ -50,6 +54,7 @@
     --primary-foreground: #0b1120;
 
     --brand: #4ade80;
+    --brand-2: #2dd4bf;
     --success: #4ade80;
     --warning: #d29922;
     --danger: #f87171;
@@ -70,6 +75,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
@@ -99,6 +105,34 @@
     font-family: var(--font-sans, ui-sans-serif);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    isolation: isolate;
+  }
+
+  /* Ambient brand glow — the logo's halo, carried across the site.
+     Fixed so every page shares the same quiet atmosphere. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        1000px 480px at 78% -120px,
+        color-mix(in srgb, var(--brand) 8%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        700px 380px at 12% -80px,
+        color-mix(in srgb, var(--brand-2) 6%, transparent),
+        transparent 70%
+      );
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 
   ::selection {

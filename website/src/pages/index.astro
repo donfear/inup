@@ -3,9 +3,11 @@ import ComparisonTable from '../components/ComparisonTable.astro';
 import Icon from '../components/Icon.astro';
 import Stats from '../components/Stats.astro';
 import Base from '../layouts/Base.astro';
-// The real recording from the repo (also embedded in the README) — imported
-// from docs/demo/ so re-recording the demo updates the site automatically.
-import demoGif from '../../../docs/demo/interactive-upgrade.gif';
+// The real recording from the repo (the README embeds the gif variant) —
+// imported from docs/demo/ so re-recording the demo updates the site
+// automatically. record-demo.sh emits the mp4 alongside the gif.
+import demoVideo from '../../../docs/demo/interactive-upgrade.mp4';
+import demoPoster from '../assets/demo-poster.webp';
 import { site } from '../data/site';
 import { stats } from '../lib/stats';
 import type { IconName } from '../components/icons';
@@ -75,13 +77,24 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
   <div class="mx-auto max-w-6xl px-6">
     <!-- Hero -->
     <section class="pt-16 pb-12 sm:pt-24">
-      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
-        interactive dependency upgrader
+      <p class="m-0 mb-6">
+        <a
+          href={`${base}/changelog/`}
+          class="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/5 py-1 pr-3.5 pl-2.5 font-mono text-xs text-brand no-underline transition-colors hover:border-brand/50"
+        >
+          <span class="relative flex size-2">
+            <span class="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60 motion-reduce:hidden"></span>
+            <span class="relative inline-flex size-2 rounded-full bg-brand"></span>
+          </span>
+          v{stats.version} · interactive dependency upgrader
+        </a>
       </p>
       <h1
         class="m-0 mb-5 max-w-[21ch] text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl lg:leading-[1.06]"
       >
-        The <code class="font-mono tracking-tighter">upgrade-interactive</code> npm never shipped.
+        The <code
+          class="bg-gradient-to-r from-brand-2 to-brand bg-clip-text font-mono tracking-tighter text-transparent"
+        >upgrade-interactive</code> npm never shipped.
       </h1>
       <p class="m-0 mb-8 max-w-[52ch] text-lg text-muted-foreground">
         yarn, pnpm, bun and deno each bundle one — npm doesn't. inup is one
@@ -98,9 +111,9 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
         </p>
         <a
           href={`${base}/docs/getting-started/`}
-          class="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface px-5 py-3.5 text-sm font-medium no-underline transition-colors hover:border-muted-foreground"
+          class="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface px-5 py-3.5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
         >
-          Read the docs <Icon name="arrow-up-right" size={15} />
+          Read the docs <Icon name="arrow-up-right" size={15} class="text-brand" />
         </a>
       </div>
       <p class="mt-4 mb-0 font-mono text-xs text-muted-foreground">
@@ -108,16 +121,22 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
       </p>
 
       <figure class="m-0 mt-12">
-        <img
-          src={demoGif.src}
-          width={demoGif.width}
-          height={demoGif.height}
-          alt="Recording of inup's interactive picker: browsing outdated packages across workspaces, selecting upgrades, and applying them"
-          class="w-full rounded-xl border border-terminal-border bg-terminal shadow-[0_24px_48px_-24px_var(--terminal)]"
-          loading="eager"
-          decoding="async"
-        />
-        <figcaption class="mt-3 text-center font-mono text-xs text-muted-foreground">
+        <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
+          <video
+            autoplay
+            loop
+            muted
+            playsinline
+            poster={demoPoster.src}
+            width={1240}
+            height={510}
+            aria-label="Recording of inup's interactive picker: browsing outdated packages across workspaces, selecting upgrades, and applying them"
+            class="w-full rounded-2xl bg-terminal shadow-[0_32px_64px_-32px_color-mix(in_srgb,var(--brand)_45%,var(--terminal))]"
+          >
+            <source src={demoVideo} type="video/mp4" />
+          </video>
+        </div>
+        <figcaption class="mt-4 text-center font-mono text-xs text-muted-foreground">
           real session, recorded with vhs — not a mockup
         </figcaption>
       </figure>
@@ -132,7 +151,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     </section>
 
     <!-- Features -->
-    <section id="features" class="border-t border-border py-16">
+    <section id="features" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
       <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
         The picker knows more than <code class="font-mono">outdated</code> does
       </h2>
@@ -142,9 +161,13 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
       </p>
       <ul class="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
         {features.map((f) => (
-          <li class="rounded-xl border border-border bg-surface p-6">
-            <div class="flex items-center justify-between">
-              <Icon name={f.icon} size={22} class="text-brand" />
+          <li
+            class="rounded-2xl border border-border bg-surface p-6 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-lg hover:shadow-brand/5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+          >
+            <div class="flex items-start justify-between">
+              <span class="flex size-10 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
+                <Icon name={f.icon} size={20} />
+              </span>
               <span class="flex gap-1">
                 {f.keys.map((k) => <span class="keycap">{k}</span>)}
               </span>
@@ -157,7 +180,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     </section>
 
     <!-- Monorepo -->
-    <section id="monorepo" class="border-t border-border py-16">
+    <section id="monorepo" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
           <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
@@ -188,7 +211,7 @@ catalog:
     </section>
 
     <!-- CI -->
-    <section id="ci" class="border-t border-border py-16">
+    <section id="ci" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
           <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
@@ -225,7 +248,7 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Compare -->
-    <section id="compare" class="border-t border-border py-16">
+    <section id="compare" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
       <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">How inup compares</h2>
       <p class="m-0 mb-8 max-w-[66ch] text-muted-foreground">
         Honest marks — including the rows where the others win. Verified
@@ -244,8 +267,10 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Privacy + CTA -->
-    <section id="privacy" class="border-t border-border py-16">
-      <div class="rounded-2xl border border-border bg-surface p-8 text-center sm:p-12">
+    <section id="privacy" class="border-t border-border py-16 scroll-mt-16">
+      <div
+        class="rounded-3xl border border-brand/20 bg-surface bg-gradient-to-b from-brand/8 via-transparent to-transparent p-8 text-center sm:p-14"
+      >
         <p class="m-0 mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
           <Icon name="lock" size={15} class="text-brand" /> no telemetry
         </p>

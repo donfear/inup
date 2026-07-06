@@ -15,16 +15,16 @@ const rows = rowsFor(columns).filter((r) => !homepageOnly || r.homepage);
 const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
 ---
 
-<div class="overflow-x-auto rounded-xl border border-border bg-surface">
+<div class="overflow-x-auto rounded-2xl border border-border bg-surface shadow-xs">
   <table class="w-full min-w-[560px] border-collapse text-sm">
     <thead>
-      <tr>
+      <tr class="bg-muted/50">
         <th scope="col" class="border-b border-border"></th>
         {columns.map((c) => (
           <th
             scope="col"
             class={`whitespace-nowrap border-b border-border px-4 py-3 text-center font-mono text-xs ${
-              c === 'inup' ? 'font-bold text-foreground' : 'font-medium text-muted-foreground'
+              c === 'inup' ? 'font-bold text-brand' : 'font-medium text-muted-foreground'
             }`}
           >{label(c)}</th>
         ))}
