@@ -171,6 +171,41 @@
 }
 
 @layer components {
+  /* Content section: generous rhythm, hairline that fades at the edges
+     instead of a full-width stripe. */
+  .section {
+    position: relative;
+    padding-block: 5rem;
+  }
+
+  .section::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--border) 12%,
+      var(--border) 88%,
+      transparent
+    );
+  }
+
+  /* Section eyebrow — one consistent voice for every section label. */
+  .eyebrow {
+    margin: 0 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-foreground);
+  }
+
   /* Keyboard keycap — used in feature cards and the shortcuts table. */
   .keycap {
     display: inline-flex;

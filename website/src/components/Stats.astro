@@ -10,21 +10,15 @@ import Icon from './Icon.astro';
 import type { IconName } from './icons';
 
 interface Props {
-  version?: string;
   monthlyDownloads?: number | null;
   stars?: number | null;
 }
 
-const {
-  version = site.lastKnownVersion,
-  monthlyDownloads = null,
-  stars = null,
-} = Astro.props;
+const { monthlyDownloads = null, stars = null } = Astro.props;
 
 const fmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 
 const items: Array<{ icon: IconName; text: string; href?: string } | null> = [
-  { icon: 'package', text: `v${version}`, href: site.npmUrl },
   monthlyDownloads
     ? { icon: 'download', text: `${fmt.format(monthlyDownloads)}/month`, href: site.npmUrl }
     : null,

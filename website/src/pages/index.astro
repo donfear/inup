@@ -76,8 +76,8 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
 >
   <div class="mx-auto max-w-6xl px-6">
     <!-- Hero -->
-    <section class="pt-16 pb-12 sm:pt-24">
-      <p class="m-0 mb-6">
+    <section class="pt-16 pb-14 text-center sm:pt-24">
+      <p class="m-0 mb-7 flex justify-center">
         <a
           href={`${base}/changelog/`}
           class="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/5 py-1 pr-3.5 pl-2.5 font-mono text-xs text-brand no-underline transition-colors hover:border-brand/50"
@@ -90,37 +90,37 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
         </a>
       </p>
       <h1
-        class="m-0 mb-5 max-w-[21ch] text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl lg:leading-[1.06]"
+        class="mx-auto m-0 mb-6 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl lg:leading-[1.08]"
       >
         The <code
-          class="bg-gradient-to-r from-brand-2 to-brand bg-clip-text font-mono tracking-tighter text-transparent"
+          class="bg-gradient-to-r from-brand-2 to-brand bg-clip-text font-mono tracking-tighter text-transparent sm:whitespace-nowrap"
         >upgrade-interactive</code> npm never shipped.
       </h1>
-      <p class="m-0 mb-8 max-w-[52ch] text-lg text-muted-foreground">
+      <p class="mx-auto m-0 mb-9 max-w-[54ch] text-lg text-pretty text-muted-foreground">
         yarn, pnpm, bun and deno each bundle one — npm doesn't. inup is one
         command that works with <strong class="text-foreground">all of them</strong>:
         pick upgrades in an interactive terminal UI, see vulnerabilities and
         changelogs before you commit to anything. Zero config, monorepo-ready.
       </p>
 
-      <div class="flex flex-wrap items-center gap-4">
+      <div class="flex flex-wrap items-center justify-center gap-3">
         <p
-          class="m-0 inline-flex items-center gap-3 rounded-xl bg-terminal px-5 py-3.5 font-mono text-[1.05rem] text-terminal-foreground"
+          class="m-0 inline-flex h-12 items-center gap-3 rounded-xl bg-terminal px-5 font-mono text-base text-terminal-foreground shadow-md"
         >
           <span class="select-none text-term-green">$</span> npx inup
         </p>
         <a
           href={`${base}/docs/getting-started/`}
-          class="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface px-5 py-3.5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
+          class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
         >
           Read the docs <Icon name="arrow-up-right" size={15} class="text-brand" />
         </a>
       </div>
-      <p class="mt-4 mb-0 font-mono text-xs text-muted-foreground">
+      <p class="mt-5 mb-0 font-mono text-xs text-muted-foreground">
         or install: npm i -g inup · pnpm add -g inup · yarn global add inup · bun add -g inup
       </p>
 
-      <figure class="m-0 mt-12">
+      <figure class="mx-auto m-0 mt-14 max-w-5xl">
         <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
           <video
             autoplay
@@ -141,17 +141,16 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
         </figcaption>
       </figure>
 
-      <div class="mt-8">
-        <Stats
-          version={stats.version}
-          monthlyDownloads={stats.monthlyDownloads}
-          stars={stats.stars}
-        />
+      <div class="mt-9 flex justify-center">
+        <Stats monthlyDownloads={stats.monthlyDownloads} stars={stats.stars} />
       </div>
     </section>
 
     <!-- Features -->
-    <section id="features" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
+    <section id="features" class="section scroll-mt-16">
+      <p class="eyebrow">
+        <Icon name="terminal" size={15} class="text-brand" /> the picker
+      </p>
       <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
         The picker knows more than <code class="font-mono">outdated</code> does
       </h2>
@@ -180,10 +179,10 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     </section>
 
     <!-- Monorepo -->
-    <section id="monorepo" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
+    <section id="monorepo" class="section scroll-mt-16">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
-          <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+          <p class="eyebrow">
             <Icon name="git-branch" size={15} class="text-brand" /> monorepos
           </p>
           <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
@@ -211,10 +210,10 @@ catalog:
     </section>
 
     <!-- CI -->
-    <section id="ci" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
+    <section id="ci" class="section scroll-mt-16">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
-          <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+          <p class="eyebrow">
             <Icon name="workflow" size={15} class="text-brand" /> automation
           </p>
           <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
@@ -248,7 +247,10 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Compare -->
-    <section id="compare" class="border-t border-border py-16 scroll-mt-16 sm:py-20">
+    <section id="compare" class="section scroll-mt-16">
+      <p class="eyebrow">
+        <Icon name="scale" size={15} class="text-brand" /> comparison
+      </p>
       <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">How inup compares</h2>
       <p class="m-0 mb-8 max-w-[66ch] text-muted-foreground">
         Honest marks — including the rows where the others win. Verified
@@ -267,11 +269,11 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Privacy + CTA -->
-    <section id="privacy" class="border-t border-border py-16 scroll-mt-16">
+    <section id="privacy" class="section scroll-mt-16">
       <div
         class="rounded-3xl border border-brand/20 bg-surface bg-gradient-to-b from-brand/8 via-transparent to-transparent p-8 text-center sm:p-14"
       >
-        <p class="m-0 mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+        <p class="eyebrow justify-center">
           <Icon name="lock" size={15} class="text-brand" /> no telemetry
         </p>
         <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
