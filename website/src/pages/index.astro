@@ -295,3 +295,16 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
   </div>
 </Base>
+
+<script>
+  // The hero recording autoplays; honor reduced-motion by pausing it
+  // and surfacing controls so it can still be played deliberately.
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const video = document.querySelector<HTMLVideoElement>('video[autoplay]');
+    if (video) {
+      video.pause();
+      video.removeAttribute('autoplay');
+      video.controls = true;
+    }
+  }
+</script>

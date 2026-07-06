@@ -13,6 +13,7 @@ export interface DocsNavItem {
 export async function getDocsNav(base: string): Promise<DocsNavItem[]> {
   const entries = await getCollection('docs');
   return [
+    { href: `${base}/docs/`, title: 'Overview', order: 0 },
     ...entries.map((e) => ({
       href: `${base}/docs/${e.id}/`,
       title: e.data.title,

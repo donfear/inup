@@ -1,24 +1,74 @@
 ---
-/**
- * /docs → /docs/getting-started. Hand-rolled because Astro's `redirects`
- * config does not prefix the GitHub Pages base path in the emitted
- * meta-refresh URL.
- */
+import { getCollection } from 'astro:content';
+import DocsSidebar from '../../components/DocsSidebar.astro';
+import Icon from '../../components/Icon.astro';
+import Base from '../../layouts/Base.astro';
+import { site } from '../../data/site';
+import type { IconName } from '../../components/icons';
+
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-const target = `${base}/docs/getting-started/`;
-const canonical = new URL(target, Astro.site);
+
+const icons: Record<string, IconName> = {
+  'getting-started': 'zap',
+  cli: 'terminal',
+  configuration: 'sliders',
+  ci: 'workflow',
+  'github-action': 'github',
+};
+
+const entries = await getCollection('docs');
+const pages = [
+  ...entries.map((e) => ({
+    href: `${base}/docs/${e.id}/`,
+    title: e.data.title,
+    description: e.data.description,
+    order: e.data.order,
+    icon: icons[e.id] ?? ('book-open' as IconName),
+  })),
+  {
+    href: `${base}/docs/keyboard-shortcuts/`,
+    title: 'Keyboard shortcuts',
+    description: "Every key binding in inup's interactive picker — always current, generated from the same source as the tool's help screen.",
+    order: 30,
+    icon: 'keyboard' as IconName,
+  },
+].sort((a, b) => a.order - b.order);
 ---
 
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>inup docs</title>
-    <meta http-equiv="refresh" content={`0;url=${target}`} />
-    <link rel="canonical" href={canonical} />
-    <meta name="robots" content="noindex" />
-  </head>
-  <body>
-    <a href={target}>Continue to the inup documentation</a>
-  </body>
-</html>
+<Base
+  title="Documentation — inup"
+  description="Everything about inup: getting started, the CLI reference, keyboard shortcuts, .inuprc configuration, CI & scripting, and the GitHub Action."
+>
+  <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-12 lg:grid-cols-[220px_1fr]">
+    <DocsSidebar />
+    <div class="min-w-0">
+      <h1 class="m-0 mb-3 text-3xl font-bold tracking-tight">Documentation</h1>
+      <p class="m-0 mb-8 max-w-[60ch] text-muted-foreground">
+        Everything you need to run inup — from <code>npx inup</code> to a
+        scheduled GitHub Action maintaining one rolling upgrade PR. Prefer
+        reading in your terminal? The full docs are also served as{' '}
+        <a class="link" href={`${base}/llms-full.txt`}>plain text</a>.
+      </p>
+      <ul class="m-0 grid list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2">
+        {pages.map((p) => (
+          <li>
+            <a
+              href={p.href}
+              class="flex h-full flex-col rounded-2xl border border-border bg-surface p-5 no-underline shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-lg hover:shadow-brand/5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            >
+              <span class="mb-3 flex size-9 items-center justify-center rounded-lg bg-brand/10 text-brand ring-1 ring-brand/15">
+                <Icon name={p.icon} size={18} />
+              </span>
+              <span class="mb-1 font-semibold">{p.title}</span>
+              <span class="text-sm leading-relaxed text-muted-foreground">{p.description}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+      <p class="mt-8 text-sm text-muted-foreground">
+        Can't find something? <a class="link" href={site.issuesUrl}>Open an issue</a> — or press
+        <span class="keycap mx-1">?</span> inside inup for help in the terminal.
+      </p>
+    </div>
+  </div>
+</Base>

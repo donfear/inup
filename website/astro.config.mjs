@@ -33,13 +33,7 @@ const headingAnchorsPlugin = {
 export default defineConfig({
   site: 'https://donfear.github.io',
   base: '/inup',
-  integrations: [
-    sitemap({
-      // The /docs/ redirect page is noindex; keep it out of the sitemap.
-      filter: (page) => !page.endsWith('/docs/'),
-    }),
-    icon(),
-  ],
+  integrations: [sitemap(), icon()],
 
   fonts: [
     {
