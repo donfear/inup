@@ -557,7 +557,7 @@ describe('PackageDetector edge paths', () => {
       expect(packages[0].catalogReferencedBy).toEqual(['/repo/packages/a/package.json'])
       const wsLogs = vi
         .mocked(debugLog.info)
-        .mock.calls.filter((call) => String(call[1]).includes('skipping workspace ref'))
+        .mock.calls.filter((call) => String(call[1]).includes('skipping non-registry specifier'))
       expect(wsLogs).toHaveLength(1)
       const ignoreLogs = vi
         .mocked(debugLog.info)
@@ -566,6 +566,40 @@ describe('PackageDetector edge paths', () => {
     } finally {
       vi.mocked(isPackageIgnored).mockImplementation(() => false)
     }
+  })
+
+  it('skips npm: aliases and git/tarball URL specifiers', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      // An alias must never be looked up under its alias name — 'my-fork' is not
+      // the packument that 'npm:real-pkg@^1.0.0' points at.
+      dep('my-fork', 'npm:real-pkg@^1.0.0'),
+      dep('from-git', 'git+https://github.com/user/repo.git'),
+      dep('from-git-proto', 'git://github.com/user/repo.git'),
+      dep('tarball', 'https://example.com/pkg-1.0.0.tgz'),
+      dep('insecure-tarball', 'http://example.com/pkg-1.0.0.tgz'),
+      dep('zod', '^3.0.0'),
+    ])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        expect(packageNames).toEqual(['zod'])
+        options.onBatchReady([
+          {
+            packageName: 'zod',
+            data: { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] },
+            completed: 1,
+            total: 1,
+            batchIndex: 0,
+            itemIndex: 0,
+          },
+        ])
+        return new Map([['zod', { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] }]])
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
   })
 
   it('sorts scoped packages before unscoped ones', async () => {
