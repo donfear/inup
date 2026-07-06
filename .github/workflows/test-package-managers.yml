@@ -125,10 +125,12 @@ jobs:
         run: |
           cd ../test-yarn-project
           npm pkg set 'dependencies.semver=~7.5.0'
-          yarn install
+          # Corepack resolves to Yarn Berry, which defaults to immutable installs in CI —
+          # the setup install must opt out to record the newly pinned dep.
+          yarn install --no-immutable
           node ../inup/dist/cli.js --apply --target minor --ignore inup
           node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
-          yarn install --frozen-lockfile
+          yarn install --immutable
         shell: bash
 
   test-pnpm:
@@ -193,7 +195,9 @@ jobs:
         run: |
           cd ../test-pnpm-project
           npm pkg set 'dependencies.semver=~7.5.0'
-          pnpm install
+          # pnpm defaults to --frozen-lockfile under CI=true; the setup install must
+          # opt out to record the newly pinned dep.
+          pnpm install --no-frozen-lockfile
           node ../inup/dist/cli.js --apply --target minor --ignore inup
           node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
           pnpm install --frozen-lockfile
