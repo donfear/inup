@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="https://donfear.github.io/inup/"><img src="docs/brand/inup-logo.webp" alt="inup logo" width="170"></a>
+</p>
+
 # inup — Interactive Dependency Upgrader
 
 [![npm version](https://img.shields.io/npm/v/inup?logo=npm&logoColor=%23CB3837&style=for-the-badge&color=crimson)](https://www.npmjs.com/package/inup)

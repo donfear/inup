@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import { Font } from 'astro:assets';
 import Icon from '../components/Icon.astro';
+import logoMark from '../assets/logo-mark.webp';
 import { site } from '../data/site';
 import { stats } from '../lib/stats';
 
@@ -42,7 +43,7 @@ const nav = [
     <meta name="description" content={description} />
     <meta name="keywords" content={site.keywords.join(', ')} />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="icon" type="image/png" href={`${base}/favicon.png`} />
     <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
     <link rel="manifest" href={`${base}/manifest.webmanifest`} />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
@@ -71,10 +72,10 @@ const nav = [
     >
       <div class="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3.5">
         <a
-          class="flex items-center gap-0.5 font-mono text-[1.05rem] font-bold no-underline"
+          class="flex items-center gap-2 font-mono text-[1.05rem] font-bold no-underline"
           href={`${base}/`}
         >
-          <span class="text-brand">↑</span> inup
+          <img src={logoMark.src} width="24" height="24" alt="" class="size-6" /> inup
         </a>
         <nav class="ml-auto flex items-center gap-5 text-sm" aria-label="Site">
           {nav.map((item) => (
@@ -108,8 +109,8 @@ const nav = [
     <footer class="border-t border-border py-12">
       <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 sm:grid-cols-[1fr_auto_auto]">
         <div class="max-w-xs">
-          <p class="m-0 flex items-center gap-0.5 font-mono font-bold">
-            <span class="text-brand">↑</span> inup
+          <p class="m-0 flex items-center gap-2 font-mono font-bold">
+            <img src={logoMark.src} width="20" height="20" alt="" class="size-5" /> inup
           </p>
           <p class="mt-2 mb-0 text-sm text-muted-foreground">
             {site.tagline}. {site.license} licensed. No telemetry.
