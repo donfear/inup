@@ -51,11 +51,27 @@ const OUTDATED = {
   currentVersion: '^0.27.0',
   rangeVersion: '0.27.2',
   latestVersion: '1.16.1',
+  allVersions: ['0.27.0', '0.27.1', '0.27.2', '1.0.0', '1.16.1'],
   type: 'dependencies',
   packageJsonPath: '/repo/package.json',
   isOutdated: true,
   hasRangeUpdate: true,
   hasMajorUpdate: true,
+}
+
+// The in-range bump crosses a minor boundary (no newer patch in 2.0.x). `--target patch` must
+// skip this package; `--target minor` takes it.
+const MINOR_ONLY = {
+  name: 'lodash-ish',
+  currentVersion: '~2.0.0',
+  rangeVersion: '2.3.0',
+  latestVersion: '2.3.0',
+  allVersions: ['2.0.0', '2.1.0', '2.3.0'],
+  type: 'dependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: true,
+  hasMajorUpdate: false,
 }
 
 const UP_TO_DATE = {
@@ -219,6 +235,45 @@ describe('HeadlessRunner.run', () => {
         dependencyType: 'dependencies',
         packageJsonPath: '/repo/package.json',
       })
+      logSpy.mockRestore()
+    })
+
+    it('target=patch bumps only within the current major.minor line', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MINOR_ONLY, MAJOR_ONLY, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      // axios has newer 0.27.x patches; lodash-ish only has minor bumps and chalk only a major —
+      // both must be skipped even though they have in-range updates.
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({
+        name: 'axios',
+        upgradeType: 'range',
+        targetVersion: '^0.27.2',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('target=patch skips packages without version-list data', async () => {
+      const { allVersions: _omitted, ...withoutVersions } = OUTDATED
+      mocks.getOutdatedPackages.mockResolvedValue([withoutVersions])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
+    it('target=latest skips packages whose latest version is empty', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([{ ...OUTDATED, latestVersion: '' }])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
       logSpy.mockRestore()
     })
 

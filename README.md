@@ -68,7 +68,7 @@ inup [options]
 --json                        Print a machine-readable JSON report and exit (read-only)
 -c, --check                   Exit non-zero if updates exist, without writing (for CI)
 --apply                       Non-interactively write upgrades + install (for CI/automation)
---target <level>              With --apply: how far to bump — minor (default) | patch | latest
+--target <level>              With --apply: minor (default, in-range) | patch (same major.minor) | latest
 --debug                       Write verbose debug logs
 ```
 
@@ -94,7 +94,8 @@ inup --apply --target latest # include major bumps; --json to also emit the repo
 
 Unlike `--json` and `--check`, **`--apply` writes**: it bumps `package.json` and runs your package
 manager's install to update the lockfile. By default (`--target minor`) it only applies **in-range**
-updates and leaves majors for you to review; `--target latest` includes majors. It honors `.inuprc`
+updates and leaves majors for you to review; `--target patch` stays within the current
+`major.minor` line (patch bumps only); `--target latest` includes majors. It honors `.inuprc`
 (`ignore`, `exclude`, `scanDirs`) exactly as the report does — a package the config excludes is
 never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 

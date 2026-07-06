@@ -104,7 +104,6 @@ export function findClosestMinorVersion(
 
     const installedMajor = semver.major(coercedInstalled)
     const installedMinor = semver.minor(coercedInstalled)
-    const installedPatch = semver.patch(coercedInstalled)
 
     let bestMinorVersion: string | null = null
     let bestMinorValue = -1
@@ -127,28 +126,48 @@ export function findClosestMinorVersion(
       return bestMinorVersion
     }
 
-    // Fallback: find highest patch version in same major.minor that's higher than installed
-    let bestPatchVersion: string | null = null
-    for (const version of allVersions) {
-      try {
-        const major = semver.major(version)
-        const minor = semver.minor(version)
-        const patch = semver.patch(version)
-        // Same major and minor, but higher patch
-        if (major === installedMajor && minor === installedMinor && patch > installedPatch) {
-          if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
-            bestPatchVersion = version
-          }
-        }
-      } catch {
-        // Skip invalid versions
-      }
-    }
-
-    return bestPatchVersion
+    // Fallback: highest patch version in the same major.minor that's higher than installed
+    return findHighestPatchVersion(installedVersion, allVersions)
   } catch {
     return null
   }
+}
+
+/**
+ * Find the highest patch version in the installed version's own major.minor line.
+ * This is the `--target patch` policy: never crosses a minor (or major) boundary.
+ */
+export function findHighestPatchVersion(
+  installedVersion: string,
+  allVersions: string[]
+): string | null {
+  const coercedInstalled = semver.coerce(installedVersion)
+  if (!coercedInstalled) {
+    return null
+  }
+
+  const installedMajor = semver.major(coercedInstalled)
+  const installedMinor = semver.minor(coercedInstalled)
+  const installedPatch = semver.patch(coercedInstalled)
+
+  let bestPatchVersion: string | null = null
+  for (const version of allVersions) {
+    try {
+      const major = semver.major(version)
+      const minor = semver.minor(version)
+      const patch = semver.patch(version)
+      // Same major and minor, but higher patch
+      if (major === installedMajor && minor === installedMinor && patch > installedPatch) {
+        if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
+          bestPatchVersion = version
+        }
+      }
+    } catch {
+      // Skip invalid versions
+    }
+  }
+
+  return bestPatchVersion
 }
 
 /** Re-apply the original specifier's range prefix (^, ~, >=, …) to a new version. */

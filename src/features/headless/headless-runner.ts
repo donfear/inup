@@ -7,7 +7,7 @@ import {
 } from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
-import { applyVersionPrefix } from '../../shared/versions'
+import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import { auditVulnerabilities } from '../audit'
 import { PackageDetector, PackageUpgrader } from '../upgrade'
 import { buildHeadlessReport, renderPlainReport } from './report'
@@ -113,8 +113,10 @@ export class HeadlessRunner {
    * Build `PackageUpgradeChoice[]` from the outdated set per the version policy. Mirrors
    * `createUpgradeChoices` in the TUI: preserves the original range prefix (^/~) unless --save-exact.
    *
-   * - minor/patch: take the in-range target (`rangeVersion`); skip packages whose only update is a
+   * - minor: take the in-range target (`rangeVersion`); skip packages whose only update is a
    *   major (no in-range bump). Uses upgradeType 'range'.
+   * - patch: take the highest patch in the current major.minor line; skip packages whose only
+   *   update crosses a minor (or major) boundary. Uses upgradeType 'range'.
    * - latest: take `latestVersion`; uses upgradeType 'latest' (majors included).
    */
   private buildChoices(outdated: PackageInfo[], target: ApplyTarget): PackageUpgradeChoice[] {
@@ -122,12 +124,7 @@ export class HeadlessRunner {
     const choices: PackageUpgradeChoice[] = []
 
     for (const pkg of outdated) {
-      const useLatest = target === 'latest'
-
-      // minor/patch only act on packages with an in-range bump; major-only updates are skipped.
-      if (!useLatest && !pkg.hasRangeUpdate) continue
-
-      const targetVersion = useLatest ? pkg.latestVersion : pkg.rangeVersion
+      const targetVersion = this.resolveTargetVersion(pkg, target)
       if (!targetVersion) continue
 
       const targetVersionWithPrefix = saveExact
@@ -138,7 +135,7 @@ export class HeadlessRunner {
         name: pkg.name,
         packageJsonPath: pkg.packageJsonPath,
         dependencyType: pkg.type,
-        upgradeType: useLatest ? 'latest' : 'range',
+        upgradeType: target === 'latest' ? 'latest' : 'range',
         targetVersion: targetVersionWithPrefix,
         currentVersionSpecifier: pkg.currentVersion,
         catalog: pkg.catalog,
@@ -146,6 +143,21 @@ export class HeadlessRunner {
     }
 
     return choices
+  }
+
+  /** Resolve the version a package should be bumped to under the given policy, or null to skip. */
+  private resolveTargetVersion(pkg: PackageInfo, target: ApplyTarget): string | null {
+    if (target === 'latest') {
+      return pkg.latestVersion || null
+    }
+    if (target === 'patch') {
+      // Strictly patch-level: computed from the full version list, not `rangeVersion` (which may
+      // be a minor bump). Null when the only updates cross a minor boundary.
+      return findHighestPatchVersion(pkg.currentVersion, pkg.allVersions ?? [])
+    }
+    // minor: in-range bump only; major-only updates are skipped.
+    if (!pkg.hasRangeUpdate) return null
+    return pkg.rangeVersion || null
   }
 
   /** Resolve the package manager the same way the interactive runner does. */
