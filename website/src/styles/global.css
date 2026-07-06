@@ -206,6 +206,19 @@
     color: var(--muted-foreground);
   }
 
+  /* Inline text link — quiet underline that warms to brand on hover. */
+  .link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 150ms;
+  }
+
+  .link:hover {
+    text-decoration-color: var(--brand);
+  }
+
   /* Keyboard keycap — used in feature cards and the shortcuts table. */
   .keycap {
     display: inline-flex;
@@ -316,6 +329,7 @@
   }
 
   .prose pre {
+    position: relative;
     border: 1px solid var(--terminal-border);
     border-radius: 0.75rem;
     padding: 1rem 1.25rem;
@@ -323,6 +337,55 @@
     font-size: 0.85rem;
     line-height: 1.7;
     margin: 1.25rem 0;
+  }
+
+  /* Copy button on docs code blocks (injected by DocsLayout's script;
+     hidden until the block is hovered or the button is focused). */
+  .copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.25rem 0.6rem;
+    font-family: var(--font-sans, ui-sans-serif);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--terminal-foreground);
+    background: color-mix(in srgb, var(--terminal-foreground) 12%, transparent);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.4rem;
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 150ms,
+      background 150ms;
+  }
+
+  .prose pre:hover .copy-btn,
+  .copy-btn:focus-visible {
+    opacity: 1;
+  }
+
+  .copy-btn:hover {
+    background: color-mix(in srgb, var(--terminal-foreground) 20%, transparent);
+  }
+
+  /* Heading anchors in rendered markdown (rehype-autolink-headings). */
+  .prose .heading-anchor {
+    margin-left: 0.4ch;
+    color: var(--muted-foreground);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+
+  .prose h2:hover .heading-anchor,
+  .prose h3:hover .heading-anchor,
+  .prose .heading-anchor:focus-visible {
+    opacity: 1;
+  }
+
+  .prose .heading-anchor:hover {
+    color: var(--brand);
   }
 
   .prose pre code {

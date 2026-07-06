@@ -10,13 +10,32 @@ const dateFmt = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
+/**
+ * GitHub release bodies reference PRs, users and compare views by bare
+ * URL; compact them into readable links before rendering.
+ */
+function compactGitHubLinks(md: string): string {
+  return md
+    .replace(
+      /by @([\w-]+) in (https:\/\/github\.com\/[\w./-]+\/pull\/(\d+))/g,
+      'by [@$1](https://github.com/$1) in [#$3]($2)',
+    )
+    .replace(/(?<!\()\bhttps:\/\/github\.com\/[\w./-]+\/pull\/(\d+)\b(?!\))/g, '[#$1]($&)')
+    .replace(
+      /\*\*Full Changelog\*\*: (https:\/\/github\.com\/[\w./-]+\/compare\/([\w./-]+))/g,
+      '**Full changelog**: [`$2`]($1)',
+    );
+}
+
 const releases = await Promise.all(
   stats.releases.map(async (r) => ({
     ...r,
-    html: r.body ? await marked.parse(r.body) : '',
+    html: r.body ? await marked.parse(compactGitHubLinks(r.body)) : '',
     date: dateFmt.format(new Date(r.publishedAt)),
   })),
 );
+
+const latestTag = releases.find((r) => !r.prerelease)?.tag;
 ---
 
 <Base
@@ -25,13 +44,11 @@ const releases = await Promise.all(
 >
   <div class="mx-auto max-w-3xl px-6">
     <section class="pt-14 pb-10 sm:pt-20">
-      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
-        changelog
-      </p>
+      <p class="eyebrow">changelog</p>
       <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">Releases</h1>
       <p class="m-0 max-w-[60ch] text-lg text-muted-foreground">
         Every release, straight from{' '}
-        <a href={site.releasesUrl} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">GitHub Releases</a>.
+        <a href={site.releasesUrl} class="link">GitHub Releases</a>.
         Install any version with <code>npx inup@version</code>.
       </p>
     </section>
@@ -39,19 +56,24 @@ const releases = await Promise.all(
     {releases.length === 0 ? (
       <p class="mb-24 rounded-xl border border-border bg-surface p-6 text-muted-foreground">
         Release notes are published on GitHub — see{' '}
-        <a href={site.releasesUrl} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">the releases page</a>.
+        <a href={site.releasesUrl} class="link">the releases page</a>.
       </p>
     ) : (
-      <div class="mb-24 space-y-0">
+      <div class="mb-24">
         {releases.map((r) => (
-          <article class="grid grid-cols-1 gap-2 border-t border-border py-8 sm:grid-cols-[9rem_1fr] sm:gap-8">
+          <article class="section grid grid-cols-1 gap-2 py-8 sm:grid-cols-[9rem_1fr] sm:gap-8">
             <div>
               <h2 class="m-0 font-mono text-lg font-bold">
-                <a href={r.url} class="no-underline hover:text-brand">{r.tag}</a>
+                <a href={r.url} class="no-underline transition-colors hover:text-brand">{r.tag}</a>
               </h2>
               <p class="m-0 mt-1 text-sm text-muted-foreground">{r.date}</p>
+              {r.tag === latestTag && (
+                <p class="m-0 mt-2 inline-block rounded-md border border-brand/30 bg-brand/5 px-2 py-0.5 font-mono text-xs text-brand">
+                  latest
+                </p>
+              )}
               {r.prerelease && (
-                <p class="m-0 mt-2 inline-block rounded-md border border-warning/40 px-2 py-0.5 text-xs text-warning">
+                <p class="m-0 mt-2 inline-block rounded-md border border-warning/40 px-2 py-0.5 font-mono text-xs text-warning">
                   pre-release
                 </p>
               )}
@@ -62,7 +84,7 @@ const releases = await Promise.all(
                 <Fragment set:html={r.html} />
               ) : (
                 <p class="text-muted-foreground">
-                  See the <a href={r.url}>release on GitHub</a>.
+                  See the <a href={r.url} class="link">release on GitHub</a>.
                 </p>
               )}
             </div>
@@ -72,3 +94,14 @@ const releases = await Promise.all(
     )}
   </div>
 </Base>
+
+<style>
+  /* Release-note headings ("What's Changed") read as list headers here,
+     not as document sections — drop the prose h2 divider treatment. */
+  .prose :global(h2) {
+    border-top: none;
+    padding-top: 0;
+    margin-top: 1rem;
+    font-size: 1.05rem;
+  }
+</style>

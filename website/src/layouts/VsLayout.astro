@@ -65,6 +65,20 @@ const jsonLd: Array<Record<string, unknown>> = [
       <slot name="verdict" />
     </div>
 
+    {faq.length > 0 && (
+      <section class="mb-12">
+        <h2 class="m-0 mb-2 text-xl font-bold tracking-tight">Frequently asked questions</h2>
+        <div class="divide-y divide-border">
+          {faq.map(({ q, a }) => (
+            <div class="py-4">
+              <h3 class="m-0 mb-1.5 text-[0.95rem] font-semibold">{q}</h3>
+              <p class="m-0 text-sm leading-relaxed text-muted-foreground">{a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
     <p class="prose mb-16 text-sm text-muted-foreground">
       <slot name="footnote" />
     </p>

@@ -27,11 +27,22 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 // Must be absolute and include the GitHub Pages base path.
 const ogImageUrl = ogImage ?? new URL(`${base}/og.png`, Astro.site).href;
 
+const path = Astro.url.pathname;
 const nav = [
-  { href: `${base}/docs/getting-started/`, label: 'Docs', class: '' },
-  { href: `${base}/#compare`, label: 'Compare', class: 'hidden md:inline' },
-  { href: `${base}/changelog/`, label: 'Changelog', class: 'hidden sm:inline' },
-  { href: site.npmUrl, label: 'npm', class: 'hidden md:inline' },
+  {
+    href: `${base}/docs/getting-started/`,
+    label: 'Docs',
+    class: '',
+    active: path.startsWith(`${base}/docs/`),
+  },
+  { href: `${base}/#compare`, label: 'Compare', class: 'hidden md:inline', active: false },
+  {
+    href: `${base}/changelog/`,
+    label: 'Changelog',
+    class: 'hidden sm:inline',
+    active: path.startsWith(`${base}/changelog`),
+  },
+  { href: site.npmUrl, label: 'npm', class: 'hidden md:inline', active: false },
 ];
 ---
 
@@ -67,6 +78,10 @@ const nav = [
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>
   <body>
+    <a
+      href="#main"
+      class="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+    >Skip to content</a>
     <header
       class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md"
     >
@@ -81,7 +96,10 @@ const nav = [
           {nav.map((item) => (
             <a
               href={item.href}
-              class={`text-muted-foreground no-underline transition-colors hover:text-foreground ${item.class}`}
+              aria-current={item.active ? 'page' : undefined}
+              class={`no-underline transition-colors hover:text-foreground ${
+                item.active ? 'font-medium text-foreground' : 'text-muted-foreground'
+              } ${item.class}`}
             >{item.label}</a>
           ))}
           <a
@@ -102,7 +120,7 @@ const nav = [
       </div>
     </header>
 
-    <main>
+    <main id="main">
       <slot />
     </main>
 

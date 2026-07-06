@@ -23,6 +23,7 @@
   "description": "Landing page for inup — https://github.com/donfear/inup",
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
+    "@astrojs/markdown-satteri": "^0.3.3",
     "marked": "^18.0.5",
     "typescript": "^6.0.3"
   }

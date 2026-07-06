@@ -94,6 +94,9 @@ importers:
       '@astrojs/check':
         specifier: ^0.9.9
         version: 0.9.9(prettier@3.9.4)(typescript@6.0.3)
+      '@astrojs/markdown-satteri':
+        specifier: ^0.3.3
+        version: 0.3.3
       marked:
         specifier: ^18.0.5
         version: 18.0.5

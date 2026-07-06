@@ -1,6 +1,8 @@
 ---
 import DocsSidebar from '../components/DocsSidebar.astro';
+import Icon from '../components/Icon.astro';
 import Base from './Base.astro';
+import { getDocsNav } from '../lib/docs-nav';
 import { site } from '../data/site';
 
 interface Props {
@@ -12,6 +14,12 @@ interface Props {
 const { title, description, updated } = Astro.props;
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+const nav = await getDocsNav(base);
+const current = Astro.url.pathname.replace(/\/?$/, '/');
+const index = nav.findIndex((item) => item.href === current);
+const prev = index > 0 ? nav[index - 1] : undefined;
+const next = index >= 0 && index < nav.length - 1 ? nav[index + 1] : undefined;
 
 const jsonLd = [
   {
@@ -51,11 +59,62 @@ const jsonLd = [
     <article class="prose min-w-0">
       <h1>{title}</h1>
       <slot />
+
+      <nav aria-label="Docs pages" class="mt-12 grid grid-cols-1 gap-3 border-t border-border pt-6 sm:grid-cols-2">
+        {prev ? (
+          <a
+            href={prev.href}
+            class="group flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3 no-underline shadow-xs transition-all hover:border-brand/40"
+          >
+            <Icon name="arrow-left-right" size={14} class="shrink-0 text-muted-foreground" />
+            <span class="min-w-0">
+              <span class="block text-xs text-muted-foreground">Previous</span>
+              <span class="block truncate text-sm font-medium group-hover:text-brand">{prev.title}</span>
+            </span>
+          </a>
+        ) : (
+          <span></span>
+        )}
+        {next && (
+          <a
+            href={next.href}
+            class="group flex items-center justify-end gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-right no-underline shadow-xs transition-all hover:border-brand/40 sm:col-start-2"
+          >
+            <span class="min-w-0">
+              <span class="block text-xs text-muted-foreground">Next</span>
+              <span class="block truncate text-sm font-medium group-hover:text-brand">{next.title}</span>
+            </span>
+            <Icon name="arrow-up-right" size={14} class="shrink-0 text-muted-foreground" />
+          </a>
+        )}
+      </nav>
+
       {updated && (
-        <p class="mt-10 border-t border-border pt-4 text-sm text-muted-foreground">
-          Last updated {updated.toISOString().slice(0, 10)} · <a href={`${site.repoUrl}/blob/main/README.md`}>Source on GitHub</a>
+        <p class="mt-6 text-sm text-muted-foreground">
+          Last updated {updated.toISOString().slice(0, 10)} ·{' '}
+          <a class="link" href={`${site.repoUrl}/blob/main/README.md`}>Source on GitHub</a>
         </p>
       )}
     </article>
   </div>
 </Base>
+
+<script>
+  // Copy buttons on code blocks — progressive enhancement, no framework.
+  for (const pre of document.querySelectorAll<HTMLPreElement>('.prose pre')) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-btn';
+    button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy code to clipboard');
+    button.addEventListener('click', async () => {
+      const code = pre.querySelector('code')?.innerText ?? pre.innerText;
+      await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+      button.textContent = 'Copied';
+      setTimeout(() => {
+        button.textContent = 'Copy';
+      }, 1500);
+    });
+    pre.appendChild(button);
+  }
+</script>

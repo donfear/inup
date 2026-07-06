@@ -1,19 +1,8 @@
 ---
-import { getCollection } from 'astro:content';
+import { getDocsNav } from '../lib/docs-nav';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-
-const entries = await getCollection('docs');
-const nav = [
-  ...entries.map((e) => ({
-    href: `${base}/docs/${e.id}/`,
-    title: e.data.title,
-    order: e.data.order,
-  })),
-  // Code-driven page (rendered from README data, not markdown).
-  { href: `${base}/docs/keyboard-shortcuts/`, title: 'Keyboard shortcuts', order: 30 },
-].sort((a, b) => a.order - b.order);
-
+const nav = await getDocsNav(base);
 const current = Astro.url.pathname.replace(/\/?$/, '/');
 ---
 

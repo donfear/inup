@@ -1,8 +1,31 @@
+import { satteri, satteriHeadingIdsPlugin } from '@astrojs/markdown-satteri';
 import sitemap from '@astrojs/sitemap';
 import icon from 'astro-icon';
 import { defineConfig, fontProviders } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
+
+/** Append a "#" anchor link to docs headings (Sätteri hast plugin). */
+const headingAnchorsPlugin = {
+  name: 'heading-anchors',
+  element: {
+    filter: ['h2', 'h3'],
+    visit(node, ctx) {
+      const id = node.properties?.id;
+      if (!id) return;
+      ctx.appendChild(node, {
+        type: 'element',
+        tagName: 'a',
+        properties: {
+          href: `#${id}`,
+          className: ['heading-anchor'],
+          ariaLabel: 'Link to this section',
+        },
+        children: [{ type: 'text', value: '#' }],
+      });
+    },
+  },
+};
 
 // GitHub Pages project site: https://donfear.github.io/inup
 // If a custom domain is added later, change `site`, drop `base`, and update
@@ -50,6 +73,9 @@ export default defineConfig({
         dark: 'github-dark',
       },
     },
+    processor: satteri({
+      hastPlugins: [satteriHeadingIdsPlugin(), headingAnchorsPlugin],
+    }),
   },
 
   vite: {
