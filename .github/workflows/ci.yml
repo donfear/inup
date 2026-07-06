@@ -33,6 +33,9 @@ jobs:
       - name: Check architecture boundaries
         run: pnpm lint:deps
 
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Run tests with coverage
         run: pnpm test:coverage
 

@@ -14,6 +14,7 @@
     "link": "pnpm build && pnpm add -g .",
     "check": "biome check --write .",
     "check:ci": "biome ci .",
+    "typecheck": "tsc --noEmit",
     "demo:record": "bash docs/demo/record-demo.sh",
     "demo:setup": "cd docs/demo-project && pnpm install",
     "test": "vitest run",

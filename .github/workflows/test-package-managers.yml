@@ -53,6 +53,18 @@ jobs:
           node ../inup/dist/cli.js --help
         shell: bash
 
+      # A real end-to-end upgrade, not just --help: pin an old range, let inup rewrite
+      # package.json and run the install, then prove the lockfile matches the new manifest.
+      - name: Test real upgrade with npm (--apply)
+        run: |
+          cd ../test-npm-project
+          npm pkg set 'dependencies.semver=~7.5.0'
+          npm install --silent
+          node ../inup/dist/cli.js --apply --target minor --ignore inup
+          node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
+          npm ci --silent
+        shell: bash
+
   test-yarn:
     name: Test with Yarn (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -107,6 +119,16 @@ jobs:
         run: |
           cd ../test-yarn-project
           node ../inup/dist/cli.js --help
+        shell: bash
+
+      - name: Test real upgrade with Yarn (--apply)
+        run: |
+          cd ../test-yarn-project
+          npm pkg set 'dependencies.semver=~7.5.0'
+          yarn install
+          node ../inup/dist/cli.js --apply --target minor --ignore inup
+          node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
+          yarn install --frozen-lockfile
         shell: bash
 
   test-pnpm:
@@ -165,6 +187,16 @@ jobs:
         run: |
           cd ../test-pnpm-project
           node ../inup/dist/cli.js --help
+        shell: bash
+
+      - name: Test real upgrade with pnpm (--apply)
+        run: |
+          cd ../test-pnpm-project
+          npm pkg set 'dependencies.semver=~7.5.0'
+          pnpm install
+          node ../inup/dist/cli.js --apply --target minor --ignore inup
+          node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
+          pnpm install --frozen-lockfile
         shell: bash
 
   test-bun:
@@ -231,6 +263,18 @@ jobs:
         run: |
           cd ../test-bun-project
           node ../inup/dist/cli.js --help
+        shell: bash
+
+      - name: Test real upgrade with Bun (--apply)
+        run: |
+          cd ../test-bun-project
+          # Replace the fake binary lockfile from the detection test with a real install.
+          rm -f bun.lockb
+          npm pkg set 'dependencies.semver=~7.5.0'
+          bun install
+          node ../inup/dist/cli.js --apply --target minor --ignore inup
+          node -e 'const v = require("./package.json").dependencies.semver; if (v === "~7.5.0" || !v.startsWith("~7.")) { console.error("semver not upgraded, range is: " + v); process.exit(1); } console.log("semver upgraded to " + v);'
+          bun install --frozen-lockfile
         shell: bash
 
   test-workspaces:
