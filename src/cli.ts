@@ -203,7 +203,7 @@ program
   )
   .option(
     '--target <level>',
-    'with --apply: how far to bump — minor | patch | latest (default: minor, in-range only)',
+    'with --apply: how far to bump — minor (in-range) | patch (same major.minor only) | latest (default: minor)',
     'minor'
   )
   .action(runCli)

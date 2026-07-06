@@ -3,6 +3,7 @@ import {
   applyVersionPrefix,
   extractMajorVersion,
   findClosestMinorVersion,
+  findHighestPatchVersion,
   getOptimizedRangeVersion,
   isVersionOutdated,
   parseVersions,
@@ -183,6 +184,37 @@ describe('version utils', () => {
 
     it('should not return a lower version when already on latest within major', () => {
       expect(findClosestMinorVersion('1.2.5', ['1.0.0', '1.2.3', '2.0.0'])).toBeNull()
+    })
+  })
+
+  describe('findHighestPatchVersion()', () => {
+    it('returns the highest patch in the same major.minor line', () => {
+      expect(findHighestPatchVersion('1.0.0', ['1.0.1', '1.0.2', '1.0.3', '2.0.0'])).toBe('1.0.3')
+    })
+
+    it('is order-independent when versions arrive descending', () => {
+      expect(findHighestPatchVersion('1.0.0', ['1.0.3', '1.0.1', '1.0.2'])).toBe('1.0.3')
+    })
+
+    it('never crosses a minor or major boundary', () => {
+      // Only minor/major updates exist — a patch policy must not take them.
+      expect(findHighestPatchVersion('1.0.2', ['1.0.0', '1.1.0', '1.2.5', '2.0.0'])).toBeNull()
+    })
+
+    it('handles range prefixes on the installed version', () => {
+      expect(findHighestPatchVersion('^1.0.0', ['1.0.1', '1.1.0'])).toBe('1.0.1')
+    })
+
+    it('returns null for an uncoercible installed version', () => {
+      expect(findHighestPatchVersion('invalid', ['1.0.1'])).toBeNull()
+    })
+
+    it('skips invalid versions in the array', () => {
+      expect(findHighestPatchVersion('1.0.0', ['not-a-version', '1.0.2'])).toBe('1.0.2')
+    })
+
+    it('returns null for an empty array', () => {
+      expect(findHighestPatchVersion('1.0.0', [])).toBeNull()
     })
   })
 })
