@@ -1,0 +1,51 @@
+---
+import { competitors, rowsFor, type ColumnId } from '../data/comparison';
+import Mark from './Mark.astro';
+
+interface Props {
+  /** Columns to render, in order. 'inup' is highlighted. */
+  columns: ColumnId[];
+  /** Restrict to the curated homepage subset of rows. */
+  homepageOnly?: boolean;
+}
+
+const { columns, homepageOnly = false } = Astro.props;
+const rows = rowsFor(columns).filter((r) => !homepageOnly || r.homepage);
+
+const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
+---
+
+<div class="overflow-x-auto rounded-xl border border-border bg-surface">
+  <table class="w-full min-w-[560px] border-collapse text-sm">
+    <thead>
+      <tr>
+        <th scope="col" class="border-b border-border"></th>
+        {columns.map((c) => (
+          <th
+            scope="col"
+            class={`whitespace-nowrap border-b border-border px-4 py-3 text-center font-mono text-xs ${
+              c === 'inup' ? 'font-bold text-foreground' : 'font-medium text-muted-foreground'
+            }`}
+          >{label(c)}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {rows.map((r, i) => (
+        <tr>
+          <th
+            scope="row"
+            class={`px-4 py-2.5 text-left font-medium ${i === rows.length - 1 ? '' : 'border-b border-border'}`}
+          >{r.feature}</th>
+          {columns.map((c) => (
+            <td
+              class={`px-4 py-2.5 text-center ${i === rows.length - 1 ? '' : 'border-b border-border'} ${
+                c === 'inup' ? 'bg-brand/5' : ''
+              }`}
+            ><Mark v={r.support[c]!} /></td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>

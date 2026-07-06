@@ -1,0 +1,24 @@
+---
+/**
+ * /docs → /docs/getting-started. Hand-rolled because Astro's `redirects`
+ * config does not prefix the GitHub Pages base path in the emitted
+ * meta-refresh URL.
+ */
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const target = `${base}/docs/getting-started/`;
+const canonical = new URL(target, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>inup docs</title>
+    <meta http-equiv="refresh" content={`0;url=${target}`} />
+    <link rel="canonical" href={canonical} />
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <a href={target}>Continue to the inup documentation</a>
+  </body>
+</html>

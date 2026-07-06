@@ -1,15 +1,37 @@
 ---
 import '../styles/global.css';
+import { Font } from 'astro:assets';
+import Icon from '../components/Icon.astro';
+import { site } from '../data/site';
+import { stats } from '../lib/stats';
+
+const starCount =
+  stats.stars !== null
+    ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
+        stats.stars,
+      )
+    : null;
 
 interface Props {
   title: string;
   description: string;
-  jsonLd?: Record<string, unknown>;
+  jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
+  /** Absolute URL override for the social preview image. */
+  ogImage?: string;
 }
 
-const { title, description, jsonLd } = Astro.props;
+const { title, description, jsonLd, ogImage } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+// Must be absolute and include the GitHub Pages base path.
+const ogImageUrl = ogImage ?? new URL(`${base}/og.png`, Astro.site).href;
+
+const nav = [
+  { href: `${base}/docs/getting-started/`, label: 'Docs', class: '' },
+  { href: `${base}/#compare`, label: 'Compare', class: 'hidden md:inline' },
+  { href: `${base}/changelog/`, label: 'Changelog', class: 'hidden sm:inline' },
+  { href: site.npmUrl, label: 'npm', class: 'hidden md:inline' },
+];
 ---
 
 <html lang="en">
@@ -18,28 +40,63 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="keywords" content={site.keywords.join(', ')} />
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/svg+xml" href={`${base}/favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
+    <link rel="manifest" href={`${base}/manifest.webmanifest`} />
     <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1120" />
+    <Font cssVariable="--font-inter" preload />
+    <Font cssVariable="--font-jetbrains-mono" preload />
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
-    <meta property="og:site_name" content="inup" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="inup — interactive dependency upgrader for npm, yarn, pnpm & bun" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </head>
   <body>
-    <header class="site-header">
-      <div class="wrap">
-        <a class="brand" href={`${base}/`}><span class="caret">↑</span> inup</a>
-        <nav class="site-nav" aria-label="Site">
-          <a href={`${base}/#compare`}>Compare</a>
-          <a href="https://github.com/donfear/inup#options">Docs</a>
-          <a href="https://www.npmjs.com/package/inup">npm</a>
-          <a href="https://github.com/donfear/inup">GitHub</a>
+    <header
+      class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md"
+    >
+      <div class="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3.5">
+        <a
+          class="flex items-center gap-0.5 font-mono text-[1.05rem] font-bold no-underline"
+          href={`${base}/`}
+        >
+          <span class="text-brand">↑</span> inup
+        </a>
+        <nav class="ml-auto flex items-center gap-5 text-sm" aria-label="Site">
+          {nav.map((item) => (
+            <a
+              href={item.href}
+              class={`text-muted-foreground no-underline transition-colors hover:text-foreground ${item.class}`}
+            >{item.label}</a>
+          ))}
+          <a
+            href={site.repoUrl}
+            class="flex items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground"
+          >
+            <Icon name="github" size={15} />
+            <span class="hidden sm:inline">{starCount ? 'Star' : 'GitHub'}</span>
+            <span class="sr-only">inup on GitHub</span>
+            {starCount && (
+              <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                <Icon name="star" size={11} class="text-warning" />
+                {starCount}
+              </span>
+            )}
+          </a>
         </nav>
       </div>
     </header>
@@ -48,16 +105,32 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
       <slot />
     </main>
 
-    <footer class="site-footer">
-      <div class="wrap">
-        <p>
-          inup — interactive dependency upgrader for npm, yarn, pnpm &amp; bun.
-          MIT licensed. No telemetry.
-        </p>
-        <nav aria-label="Comparisons">
-          <a href={`${base}/vs/npm-check-updates/`}>vs npm-check-updates</a>
-          <a href={`${base}/vs/taze/`}>vs taze</a>
-          <a href={`${base}/vs/npm-check/`}>vs npm-check</a>
+    <footer class="border-t border-border py-12">
+      <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 sm:grid-cols-[1fr_auto_auto]">
+        <div class="max-w-xs">
+          <p class="m-0 flex items-center gap-0.5 font-mono font-bold">
+            <span class="text-brand">↑</span> inup
+          </p>
+          <p class="mt-2 mb-0 text-sm text-muted-foreground">
+            {site.tagline}. {site.license} licensed. No telemetry.
+          </p>
+        </div>
+        <nav aria-label="Documentation" class="text-sm">
+          <p class="m-0 mb-2 font-semibold">Docs</p>
+          <ul class="m-0 list-none space-y-1.5 p-0 text-muted-foreground">
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/getting-started/`}>Getting started</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/cli/`}>CLI reference</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/github-action/`}>GitHub Action</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/changelog/`}>Changelog</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Comparisons" class="text-sm">
+          <p class="m-0 mb-2 font-semibold">Compare</p>
+          <ul class="m-0 list-none space-y-1.5 p-0 text-muted-foreground">
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/npm-check-updates/`}>vs npm-check-updates</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/taze/`}>vs taze</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/npm-check/`}>vs npm-check</a></li>
+          </ul>
         </nav>
       </div>
     </footer>

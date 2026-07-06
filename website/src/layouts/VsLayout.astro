@@ -1,0 +1,70 @@
+---
+import ComparisonTable from '../components/ComparisonTable.astro';
+import Base from './Base.astro';
+import type { ColumnId } from '../data/comparison';
+
+interface Props {
+  title: string;
+  description: string;
+  heading: string;
+  columns: ColumnId[];
+  /** Real questions and answers; rendered as FAQPage structured data. */
+  faq?: Array<{ q: string; a: string }>;
+}
+
+const { title, description, heading, columns, faq = [] } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+const jsonLd: Array<Record<string, unknown>> = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'inup', item: new URL(`${base}/`, Astro.site).href },
+      { '@type': 'ListItem', position: 2, name: heading, item: canonical },
+    ],
+  },
+  ...(faq.length > 0
+    ? [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: faq.map(({ q, a }) => ({
+            '@type': 'Question',
+            name: q,
+            acceptedAnswer: { '@type': 'Answer', text: a },
+          })),
+        },
+      ]
+    : []),
+];
+---
+
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-3xl px-6">
+    <section class="pt-14 pb-8 sm:pt-20">
+      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
+        comparison · verified 2026-07-06
+      </p>
+      <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">{heading}</h1>
+      <div class="prose text-lg text-muted-foreground">
+        <slot name="lede" />
+      </div>
+    </section>
+
+    <ComparisonTable columns={columns} />
+
+    <div class="prose py-10">
+      <slot />
+    </div>
+
+    <div class="mb-10 rounded-xl border-l-[3px] border-brand bg-surface px-6 py-5 shadow-sm">
+      <slot name="verdict" />
+    </div>
+
+    <p class="prose mb-16 text-sm text-muted-foreground">
+      <slot name="footnote" />
+    </p>
+  </div>
+</Base>

@@ -1,0 +1,14 @@
+{
+  "name": "inup — interactive dependency upgrader",
+  "short_name": "inup",
+  "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready.",
+  "start_url": "/inup/",
+  "scope": "/inup/",
+  "display": "browser",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "icons": [
+    { "src": "/inup/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/inup/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

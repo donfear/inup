@@ -1,36 +1,69 @@
 ---
-import Mark from '../components/Mark.astro';
+import ComparisonTable from '../components/ComparisonTable.astro';
+import Icon from '../components/Icon.astro';
+import Stats from '../components/Stats.astro';
 import Base from '../layouts/Base.astro';
+// The real recording from the repo (also embedded in the README) — imported
+// from docs/demo/ so re-recording the demo updates the site automatically.
+import demoGif from '../../../docs/demo/interactive-upgrade.gif';
+import { site } from '../data/site';
+import { stats } from '../lib/stats';
+import type { IconName } from '../components/icons';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
-  name: 'inup',
+  name: site.name,
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'macOS, Linux, Windows',
   description:
     'Interactive dependency upgrader for npm, yarn, pnpm and bun. Zero-config, monorepo-ready, with vulnerability audit and changelogs in the terminal.',
-  url: 'https://donfear.github.io/inup/',
-  downloadUrl: 'https://www.npmjs.com/package/inup',
+  url: new URL(`${base}/`, Astro.site).href,
+  downloadUrl: site.npmUrl,
+  softwareVersion: stats.version,
   license: 'https://opensource.org/license/mit',
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
-// Compact honest comparison; the full sourced analysis lives in the repo at
-// docs/COMPETITORS.md (data verified 2026-07-06).
-type V = 'yes' | 'no' | 'na';
-const rows: Array<{ f: string; inup: V; ncu: V; taze: V; builtin: V }> = [
-  { f: 'One tool for npm, yarn, pnpm & bun', inup: 'yes', ncu: 'yes', taze: 'yes', builtin: 'no' },
-  { f: 'Monorepos & workspaces', inup: 'yes', ncu: 'yes', taze: 'yes', builtin: 'yes' },
-  { f: 'Vulnerability audit in the picker', inup: 'yes', ncu: 'no', taze: 'no', builtin: 'no' },
-  { f: 'Changelogs in the terminal', inup: 'yes', ncu: 'no', taze: 'no', builtin: 'no' },
-  { f: 'Search & dep-type toggles in the UI', inup: 'yes', ncu: 'no', taze: 'no', builtin: 'no' },
-  { f: 'pnpm catalogs, comments preserved', inup: 'yes', ncu: 'no', taze: 'yes', builtin: 'no' },
-  { f: 'CI gate + JSON report', inup: 'yes', ncu: 'yes', taze: 'no', builtin: 'no' },
-  { f: 'Doctor mode (test each upgrade)', inup: 'no', ncu: 'yes', taze: 'no', builtin: 'no' },
-  { f: 'Per-package upgrade rules', inup: 'no', ncu: 'yes', taze: 'yes', builtin: 'no' },
+const features: Array<{ icon: IconName; keys: string[]; title: string; body: string }> = [
+  {
+    icon: 'shield-check',
+    keys: ['s'],
+    title: 'Audit before you upgrade',
+    body: 'Known vulnerabilities appear next to each package, cross-referenced against the upgrade target — so you know whether the bump actually fixes the advisory.',
+  },
+  {
+    icon: 'book-open',
+    keys: ['i'],
+    title: 'Changelogs in the terminal',
+    body: 'Read release notes inline before selecting a major. No browser tab, no guessing what changed.',
+  },
+  {
+    icon: 'search',
+    keys: ['/'],
+    title: 'Search the picker',
+    body: 'Filter hundreds of workspace dependencies as you type. Esc clears.',
+  },
+  {
+    icon: 'sliders',
+    keys: ['d', 'p', 'o'],
+    title: 'Live dependency-type toggles',
+    body: 'Show or hide dev, peer and optional dependencies on the fly — instead of restarting with different flags.',
+  },
+  {
+    icon: 'list-checks',
+    keys: ['m', 'l'],
+    title: 'Bulk select, precisely',
+    body: 'Select every safe in-range update with one key, or everything including majors — then deselect the risky ones.',
+  },
+  {
+    icon: 'arrow-left-right',
+    keys: ['←', '→'],
+    title: 'Range or latest, per package',
+    body: 'Cycle each package between no upgrade, the in-range bump and the latest major. Mixed strategies in one pass.',
+  },
 ];
 ---
 
@@ -39,229 +72,198 @@ const rows: Array<{ f: string; inup: V; ncu: V; taze: V; builtin: V }> = [
   description="The upgrade-interactive npm never shipped. inup upgrades outdated dependencies from an interactive terminal UI — with vulnerability audit, changelogs, monorepo and pnpm catalog support. Run npx inup."
   jsonLd={jsonLd}
 >
-  <div class="wrap">
-    <section class="hero" style="border-top: none">
-      <p class="eyebrow">interactive dependency upgrader</p>
-      <h1>The <code>upgrade-interactive</code> npm never shipped.</h1>
-      <p class="lede">
-        yarn, pnpm, bun and deno each bundle one — npm doesn't. inup is one
-        command that works with <strong>all of them</strong>: pick upgrades in
-        an interactive terminal UI, see vulnerabilities and changelogs before
-        you commit to anything. Zero config, monorepo-ready.
+  <div class="mx-auto max-w-6xl px-6">
+    <!-- Hero -->
+    <section class="pt-16 pb-12 sm:pt-24">
+      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
+        interactive dependency upgrader
       </p>
-      <p class="run"><span class="prompt">$</span> npx inup</p>
-      <p class="pm-list">
-        or install: npm i -g inup · pnpm add -g inup · yarn global add inup ·
-        bun add -g inup
+      <h1
+        class="m-0 mb-5 max-w-[21ch] text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl lg:leading-[1.06]"
+      >
+        The <code class="font-mono tracking-tighter">upgrade-interactive</code> npm never shipped.
+      </h1>
+      <p class="m-0 mb-8 max-w-[52ch] text-lg text-muted-foreground">
+        yarn, pnpm, bun and deno each bundle one — npm doesn't. inup is one
+        command that works with <strong class="text-foreground">all of them</strong>:
+        pick upgrades in an interactive terminal UI, see vulnerabilities and
+        changelogs before you commit to anything. Zero config, monorepo-ready.
       </p>
 
-      <figure class="terminal" aria-label="inup interactive picker, recreated in HTML">
-        <div class="terminal-bar">
-          <span class="dots"><i></i><i></i><i></i></span>
-          <span>inup — 18 packages · pnpm · 3 workspaces</span>
-        </div>
-        <div class="terminal-body">
-          <div class="trow head">
-            <span></span><span>package</span><span>upgrade</span><span>type</span>
-          </div>
-          <div class="trow">
-            <span class="pick">◉</span><span>eslint</span>
-            <span class="diff">^9.28.0 <span class="arrow">→</span> <span class="to-minor">^9.30.1</span></span>
-            <span class="type">dev</span>
-          </div>
-          <div class="trow cursor">
-            <span class="pick">◉</span><span>react</span>
-            <span class="diff">^18.2.0 <span class="arrow">→</span> <span class="to-major">19.2.0</span> <span class="to-major">major</span></span>
-            <span class="type">catalog</span>
-          </div>
-          <div class="trow">
-            <span class="pick">◉</span><span>undici</span>
-            <span class="diff">^7.10.0 <span class="arrow">→</span> <span class="to-minor">^7.11.0</span> <span class="vuln">▲ fixes CVE</span></span>
-            <span class="type">prod</span>
-          </div>
-          <div class="trow">
-            <span>○</span><span>vite</span>
-            <span class="diff">^6.3.0 <span class="arrow">→</span> <span class="to-minor">^6.3.5</span></span>
-            <span class="type">dev</span>
-          </div>
-          <div class="trow">
-            <span>○</span><span>typescript</span>
-            <span class="diff">~5.8.2 <span class="arrow">→</span> <span class="to-minor">~5.8.3</span></span>
-            <span class="type">dev</span>
-          </div>
-          <div class="trow">
-            <span></span><span class="cursor-block" aria-hidden="true"></span><span></span><span></span>
-          </div>
-          <div class="term-keys">
-            <b>↑↓</b> move · <b>space</b> select · <b>m</b> minor · <b>l</b> latest ·
-            <b>/</b> search · <b>s</b> audit · <b>i</b> changelog · <b>enter</b> upgrade
-          </div>
-        </div>
+      <div class="flex flex-wrap items-center gap-4">
+        <p
+          class="m-0 inline-flex items-center gap-3 rounded-xl bg-terminal px-5 py-3.5 font-mono text-[1.05rem] text-terminal-foreground"
+        >
+          <span class="select-none text-term-green">$</span> npx inup
+        </p>
+        <a
+          href={`${base}/docs/getting-started/`}
+          class="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface px-5 py-3.5 text-sm font-medium no-underline transition-colors hover:border-muted-foreground"
+        >
+          Read the docs <Icon name="arrow-up-right" size={15} />
+        </a>
+      </div>
+      <p class="mt-4 mb-0 font-mono text-xs text-muted-foreground">
+        or install: npm i -g inup · pnpm add -g inup · yarn global add inup · bun add -g inup
+      </p>
+
+      <figure class="m-0 mt-12">
+        <img
+          src={demoGif.src}
+          width={demoGif.width}
+          height={demoGif.height}
+          alt="Recording of inup's interactive picker: browsing outdated packages across workspaces, selecting upgrades, and applying them"
+          class="w-full rounded-xl border border-terminal-border bg-terminal shadow-[0_24px_48px_-24px_var(--terminal)]"
+          loading="eager"
+          decoding="async"
+        />
+        <figcaption class="mt-3 text-center font-mono text-xs text-muted-foreground">
+          real session, recorded with vhs — not a mockup
+        </figcaption>
       </figure>
+
+      <div class="mt-8">
+        <Stats
+          version={stats.version}
+          monthlyDownloads={stats.monthlyDownloads}
+          stars={stats.stars}
+        />
+      </div>
     </section>
 
-    <section id="features">
-      <h2>The picker knows more than <code>outdated</code> does</h2>
-      <p class="section-lede">
+    <!-- Features -->
+    <section id="features" class="border-t border-border py-16">
+      <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
+        The picker knows more than <code class="font-mono">outdated</code> does
+      </h2>
+      <p class="m-0 mb-10 max-w-[66ch] text-muted-foreground">
         Every feature is a keystroke away — no flags to remember, no re-runs.
         Dev, peer and optional dependencies load automatically.
       </p>
-      <ul class="features">
-        <li class="feature">
-          <span class="keycap">s</span>
-          <h3>Audit before you upgrade</h3>
-          <p>
-            Known vulnerabilities appear next to each package, cross-referenced
-            against the upgrade target — so you know whether the bump actually
-            fixes the advisory.
-          </p>
-        </li>
-        <li class="feature">
-          <span class="keycap">i</span>
-          <h3>Changelogs in the terminal</h3>
-          <p>
-            Read release notes inline before selecting a major. No browser
-            tab, no guessing what changed.
-          </p>
-        </li>
-        <li class="feature">
-          <span class="keycap">/</span>
-          <h3>Search the picker</h3>
-          <p>
-            Filter hundreds of workspace dependencies as you type. Esc clears.
-          </p>
-        </li>
-        <li class="feature">
-          <span class="keycap">d</span><span class="keycap">p</span><span class="keycap">o</span>
-          <h3>Live dependency-type toggles</h3>
-          <p>
-            Show or hide dev, peer and optional dependencies on the fly —
-            instead of restarting with different flags.
-          </p>
-        </li>
-        <li class="feature">
-          <span class="keycap">m</span><span class="keycap">l</span>
-          <h3>Bulk select, precisely</h3>
-          <p>
-            Select every safe in-range update with one key, or everything
-            including majors — then deselect the risky ones.
-          </p>
-        </li>
-        <li class="feature">
-          <span class="keycap">←</span><span class="keycap">→</span>
-          <h3>Range or latest, per package</h3>
-          <p>
-            Cycle each package between no upgrade, the in-range bump and the
-            latest major. Mixed strategies in one pass.
-          </p>
-        </li>
+      <ul class="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((f) => (
+          <li class="rounded-xl border border-border bg-surface p-6">
+            <div class="flex items-center justify-between">
+              <Icon name={f.icon} size={22} class="text-brand" />
+              <span class="flex gap-1">
+                {f.keys.map((k) => <span class="keycap">{k}</span>)}
+              </span>
+            </div>
+            <h3 class="mt-4 mb-1.5 text-base font-semibold">{f.title}</h3>
+            <p class="m-0 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
+          </li>
+        ))}
       </ul>
     </section>
 
-    <section id="monorepo">
-      <div class="cols">
+    <!-- Monorepo -->
+    <section id="monorepo" class="border-t border-border py-16">
+      <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
-          <h2>Monorepos and pnpm catalogs, without ceremony</h2>
-          <p class="section-lede" style="margin-bottom: 1rem">
+          <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            <Icon name="git-branch" size={15} class="text-brand" /> monorepos
+          </p>
+          <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
+            Monorepos and pnpm catalogs, without ceremony
+          </h2>
+          <p class="m-0 mb-4 text-muted-foreground">
             inup discovers every workspace in one pass. Dependencies declared
             as <code>catalog:</code> are resolved from
             <code>pnpm-workspace.yaml</code> and upgraded right there — with
             the file's comments and formatting preserved, not rewritten.
           </p>
-          <p class="section-lede" style="margin-bottom: 0">
-            Private registries work exactly like npm's own resolution:
-            scoped registries and credentials from your project, user and
-            global <code>.npmrc</code>, including <code>$&lbrace;ENV_VAR&rbrace;</code>
-            expansion.
+          <p class="m-0 text-muted-foreground">
+            Private registries work exactly like npm's own resolution: scoped
+            registries and credentials from your project, user and global
+            <code>.npmrc</code>, including <code>$&lbrace;ENV_VAR&rbrace;</code> expansion.
           </p>
         </div>
-        <pre class="codeblock"><code><span class="c"># pnpm-workspace.yaml — comments survive the upgrade</span>
+        <pre
+          class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># pnpm-workspace.yaml — comments survive the upgrade</span>
 catalog:
-  <span class="c"># pinned for the design system</span>
-  react: <span class="g">^18.3.1</span>
-  vue: <span class="g">^3.5.13</span></code></pre>
+  <span class="text-terminal-muted"># pinned for the design system</span>
+  react: <span class="text-term-green">^18.3.1</span>
+  vue: <span class="text-term-green">^3.5.13</span></code></pre>
       </div>
     </section>
 
-    <section id="ci">
-      <div class="cols">
+    <!-- CI -->
+    <section id="ci" class="border-t border-border py-16">
+      <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
-          <h2>Headless in CI, by default</h2>
-          <p class="section-lede" style="margin-bottom: 1rem">
+          <p class="m-0 mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+            <Icon name="workflow" size={15} class="text-brand" /> automation
+          </p>
+          <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
+            Headless in CI, by default
+          </h2>
+          <p class="m-0 mb-4 text-muted-foreground">
             When stdout isn't a TTY or <code>$CI</code> is set, inup never
             opens the UI — it reports. <code>--check</code> and
             <code>--json</code> are guaranteed read-only, and JSON output
             carries a <code>schemaVersion</code> so scripts and agents can pin
             to a known shape.
           </p>
-          <p class="section-lede" style="margin-bottom: 0">
-            The <a href="https://github.com/donfear/inup#github-action--one-rolling-upgrade-pr">GitHub
-            Action</a> runs inup on a schedule and maintains one rolling pull
-            request with safe upgrades applied — re-runs update the same PR.
+          <p class="m-0 text-muted-foreground">
+            The <a
+              href={`${base}/docs/github-action/`}
+              class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand"
+            >GitHub Action</a> runs inup on a schedule and maintains one rolling
+            pull request with safe upgrades applied — re-runs update the same PR.
           </p>
         </div>
-        <pre class="codeblock"><code><span class="c"># gate the build on outdated deps</span>
+        <pre
+          class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># gate the build on outdated deps</span>
 inup --check
 
-<span class="c"># structured report for dashboards & bots</span>
+<span class="text-terminal-muted"># structured report for dashboards & bots</span>
 inup --json | jq '.summary'
 
-<span class="c"># apply safe in-range bumps + install</span>
-inup --apply <span class="a">--target minor</span></code></pre>
+<span class="text-terminal-muted"># apply safe in-range bumps + install</span>
+inup --apply <span class="text-term-amber">--target minor</span></code></pre>
       </div>
     </section>
 
-    <section id="compare">
-      <h2>How inup compares</h2>
-      <p class="section-lede">
+    <!-- Compare -->
+    <section id="compare" class="border-t border-border py-16">
+      <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">How inup compares</h2>
+      <p class="m-0 mb-8 max-w-[66ch] text-muted-foreground">
         Honest marks — including the rows where the others win. Verified
-        against each tool's documentation on 2026-07-06; the fully sourced
-        analysis is in
-        <a href="https://github.com/donfear/inup/blob/main/docs/COMPETITORS.md">docs/COMPETITORS.md</a>.
+        against each tool's documentation on 2026-07-06.
       </p>
-      <div class="table-scroll">
-        <table class="compare">
-          <thead>
-            <tr>
-              <th scope="col"></th>
-              <th scope="col" class="you">inup</th>
-              <th scope="col">ncu</th>
-              <th scope="col">taze</th>
-              <th scope="col">PM built-ins</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr>
-                <th scope="row">{r.f}</th>
-                <td><Mark v={r.inup} /></td>
-                <td><Mark v={r.ncu} /></td>
-                <td><Mark v={r.taze} /></td>
-                <td><Mark v={r.builtin} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">
-        “PM built-ins” = <code>yarn upgrade-interactive</code>,
+      <ComparisonTable columns={['inup', 'ncu', 'taze', 'builtin']} homepageOnly />
+      <p class="mt-4 mb-0 max-w-[66ch] text-sm text-muted-foreground">
+        "PM built-ins" = <code>yarn upgrade-interactive</code>,
         <code>pnpm update -i</code>, <code>bun update -i</code>,
         <code>deno outdated -i</code> — each works with its own package manager
-        only. Detailed head-to-heads:
-        <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a>,
-        <a href={`${base}/vs/taze/`}>inup vs taze</a>,
-        <a href={`${base}/vs/npm-check/`}>inup vs npm-check</a>.
+        only. Detailed head-to-heads:{' '}
+        <a href={`${base}/vs/npm-check-updates/`} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">inup vs npm-check-updates</a>,{' '}
+        <a href={`${base}/vs/taze/`} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">inup vs taze</a>,{' '}
+        <a href={`${base}/vs/npm-check/`} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">inup vs npm-check</a>.
       </p>
     </section>
 
-    <section id="privacy">
-      <h2>No telemetry</h2>
-      <p class="section-lede" style="margin-bottom: 0">
-        No tracking, no data collection. Package metadata comes straight from
-        the npm registry, download counts from the npm downloads API, and
-        changelogs from GitHub. MIT licensed —
-        <a href="https://github.com/donfear/inup">read the source</a>.
-      </p>
+    <!-- Privacy + CTA -->
+    <section id="privacy" class="border-t border-border py-16">
+      <div class="rounded-2xl border border-border bg-surface p-8 text-center sm:p-12">
+        <p class="m-0 mb-3 inline-flex items-center gap-2 font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground">
+          <Icon name="lock" size={15} class="text-brand" /> no telemetry
+        </p>
+        <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
+          Try it on your messiest repo
+        </h2>
+        <p class="mx-auto mt-0 mb-8 max-w-[52ch] text-muted-foreground">
+          No tracking, no data collection. Package metadata comes straight from
+          the npm registry, download counts from the npm downloads API, and
+          changelogs from GitHub. {site.license} licensed —
+          <a href={site.repoUrl} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">read the source</a>.
+        </p>
+        <p
+          class="m-0 inline-flex items-center gap-3 rounded-xl bg-terminal px-6 py-4 font-mono text-lg text-terminal-foreground"
+        >
+          <span class="select-none text-term-green">$</span> npx inup
+        </p>
+      </div>
     </section>
   </div>
 </Base>

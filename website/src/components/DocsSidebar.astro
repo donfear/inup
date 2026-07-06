@@ -1,0 +1,39 @@
+---
+import { getCollection } from 'astro:content';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+const entries = await getCollection('docs');
+const nav = [
+  ...entries.map((e) => ({
+    href: `${base}/docs/${e.id}/`,
+    title: e.data.title,
+    order: e.data.order,
+  })),
+  // Code-driven page (rendered from README data, not markdown).
+  { href: `${base}/docs/keyboard-shortcuts/`, title: 'Keyboard shortcuts', order: 30 },
+].sort((a, b) => a.order - b.order);
+
+const current = Astro.url.pathname.replace(/\/?$/, '/');
+---
+
+<nav aria-label="Documentation" class="lg:sticky lg:top-20">
+  <p class="m-0 mb-3 hidden font-mono text-xs uppercase tracking-[0.08em] text-muted-foreground lg:block">
+    Documentation
+  </p>
+  <ul class="m-0 flex list-none gap-1 overflow-x-auto p-0 text-sm lg:flex-col">
+    {nav.map((item) => (
+      <li>
+        <a
+          href={item.href}
+          aria-current={current === item.href ? 'page' : undefined}
+          class={`block whitespace-nowrap rounded-lg px-3 py-1.5 no-underline transition-colors ${
+            current === item.href
+              ? 'bg-muted font-medium text-foreground'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >{item.title}</a>
+      </li>
+    ))}
+  </ul>
+</nav>

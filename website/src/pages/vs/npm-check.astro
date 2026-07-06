@@ -1,102 +1,77 @@
 ---
-import Mark from '../../components/Mark.astro';
-import Base from '../../layouts/Base.astro';
+import VsLayout from '../../layouts/VsLayout.astro';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-
-type V = 'yes' | 'no' | 'na';
-const rows: Array<{ f: string; inup: V; nc: V }> = [
-  { f: 'Interactive upgrade UI', inup: 'yes', nc: 'yes' },
-  { f: 'Actively maintained (2026)', inup: 'yes', nc: 'no' },
-  { f: 'yarn, pnpm & bun support', inup: 'yes', nc: 'no' },
-  { f: 'Monorepos & workspaces', inup: 'yes', nc: 'no' },
-  { f: 'Vulnerability audit in the picker', inup: 'yes', nc: 'no' },
-  { f: 'Changelogs in the terminal', inup: 'yes', nc: 'no' },
-  { f: 'CI gate + JSON report', inup: 'yes', nc: 'no' },
-  { f: 'Finds unused dependencies', inup: 'no', nc: 'yes' },
-  { f: 'Checks globally installed packages', inup: 'no', nc: 'yes' },
-];
 ---
 
-<Base
+<VsLayout
   title="inup vs npm-check — a maintained alternative"
   description="npm-check hasn't been published since July 2022. inup is an actively maintained interactive upgrader with monorepo, yarn/pnpm/bun and security audit support — here's what migrating looks like."
+  heading="inup vs npm-check"
+  columns={['inup', 'npm-check']}
+  faq={[
+    {
+      q: 'Is npm-check still maintained?',
+      a: 'Its last release was July 2022. It still works for simple npm projects, but it has no workspace/monorepo support, no yarn/pnpm/bun support, and no development since.',
+    },
+    {
+      q: 'What replaces npm-check’s unused-dependency detection?',
+      a: 'inup does not detect unused dependencies. Pair it with knip, which finds unused dependencies, exports and files far more thoroughly than npm-check’s depcheck integration ever did.',
+    },
+    {
+      q: 'What do I gain by moving from npm-check to inup?',
+      a: 'Workspaces and monorepos, pnpm catalogs, yarn/pnpm/bun support, a security audit in the picker, changelogs in the terminal, and headless CI modes with a versioned JSON report.',
+    },
+  ]}
 >
-  <div class="wrap prose">
-    <section class="hero" style="border-top: none; padding-bottom: 1rem">
-      <p class="eyebrow">comparison · verified 2026-07-06</p>
-      <h1>inup vs npm-check</h1>
-      <p class="lede">
-        <a href="https://github.com/dylang/npm-check">npm-check</a> pioneered
-        the friendly interactive updater — and it still works, which is why
-        hundreds of thousands of people still download it monthly. But its
-        last release was <strong>July 2022</strong>: no workspaces, no
-        yarn/pnpm/bun, and no development since.
-      </p>
-    </section>
+  <p slot="lede">
+    <a href="https://github.com/dylang/npm-check">npm-check</a> pioneered
+    the friendly interactive updater — and it still works, which is why
+    hundreds of thousands of people still download it monthly. But its
+    last release was <strong>July 2022</strong>: no workspaces, no
+    yarn/pnpm/bun, and no development since.
+  </p>
 
-    <div class="table-scroll">
-      <table class="compare">
-        <thead>
-          <tr>
-            <th scope="col"></th>
-            <th scope="col" class="you">inup</th>
-            <th scope="col">npm-check</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr>
-              <th scope="row">{r.f}</th>
-              <td><Mark v={r.inup} /></td>
-              <td><Mark v={r.nc} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+  <h2>What you gain by moving</h2>
+  <ul>
+    <li>
+      <strong>A maintained tool.</strong> npm-check's dependency stack is
+      four years old; inup ships actively against today's registry
+      behaviour, package managers and Node versions.
+    </li>
+    <li>
+      <strong>Everything after 2022:</strong> workspaces and monorepos, pnpm
+      catalogs, yarn/pnpm/bun support, a security audit in the picker,
+      changelogs in the terminal, and headless CI modes.
+    </li>
+  </ul>
 
-    <h2>What you gain by moving</h2>
-    <ul>
-      <li>
-        <strong>A maintained tool.</strong> npm-check's dependency stack is
-        four years old; inup ships actively against today's registry
-        behaviour, package managers and Node versions.
-      </li>
-      <li>
-        <strong>Everything after 2022:</strong> workspaces and monorepos, pnpm
-        catalogs, yarn/pnpm/bun support, a security audit in the picker,
-        changelogs in the terminal, and headless CI modes.
-      </li>
-    </ul>
+  <h2>What you'd genuinely miss</h2>
+  <ul>
+    <li>
+      <strong>Unused-dependency detection.</strong> npm-check tells you when
+      a dependency isn't imported anywhere (via depcheck). inup doesn't do
+      this — pair it with
+      <a href="https://github.com/webpro-nl/knip">knip</a>, which does it
+      far more thoroughly than npm-check ever did.
+    </li>
+    <li>
+      <strong>Global package checks</strong> (<code>npm-check -g</code>).
+    </li>
+  </ul>
 
-    <h2>What you'd genuinely miss</h2>
-    <ul>
-      <li>
-        <strong>Unused-dependency detection.</strong> npm-check tells you when
-        a dependency isn't imported anywhere (via depcheck). inup doesn't do
-        this — pair it with
-        <a href="https://github.com/webpro-nl/knip">knip</a>, which does it
-        far more thoroughly than npm-check ever did.
-      </li>
-      <li>
-        <strong>Global package checks</strong> (<code>npm-check -g</code>).
-      </li>
-    </ul>
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> npm-check earned its popularity, but
+    it stopped moving in 2022. For interactive upgrades, inup is the
+    maintained successor; for npm-check's unused-deps feature, knip is the
+    better modern answer.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
 
-    <div class="verdict">
-      <p><strong>Honest verdict:</strong> npm-check earned its popularity, but
-      it stopped moving in 2022. For interactive upgrades, inup is the
-      maintained successor; for npm-check's unused-deps feature, knip is the
-      better modern answer.</p>
-      <p>Try it in any project: <code>npx inup</code></p>
-    </div>
-
-    <p class="footnote">
-      Sources: npm registry publish history, npm-check README, inup source.
-      Fully sourced analysis in
-      <a href="https://github.com/donfear/inup/blob/main/docs/COMPETITORS.md">docs/COMPETITORS.md</a>.
-      Also see <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a>.
-    </p>
-  </div>
-</Base>
+  <Fragment slot="footnote">
+    Sources: npm registry publish history, npm-check README, inup source.
+    Verified 2026-07-06. Also see
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a> and
+    <a href={`${base}/vs/taze/`}>inup vs taze</a>.
+  </Fragment>
+</VsLayout>

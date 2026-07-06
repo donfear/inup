@@ -12,8 +12,18 @@
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.3",
-    "astro": "^7.0.6"
+    "@iconify-json/lucide": "^1.2.116",
+    "@iconify-json/simple-icons": "^1.2.89",
+    "@tailwindcss/vite": "^4.3.2",
+    "astro": "^7.0.6",
+    "astro-icon": "^1.1.5",
+    "tailwindcss": "^4.3.2"
   },
   "private": true,
-  "description": "Landing page for inup — https://github.com/donfear/inup"
+  "description": "Landing page for inup — https://github.com/donfear/inup",
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "marked": "^18.0.5",
+    "typescript": "^6.0.3"
+  }
 }

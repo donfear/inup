@@ -1,546 +1,283 @@
+@import 'tailwindcss';
+
 /* ————————————————————————————————————————————————
-   inup site — tokens
-   Page is documentation paper; the only dark objects
-   are terminal windows. Accent colors are inup's own
-   semver semantics: green = in-range, amber = major,
-   red = vulnerable.
+   inup design tokens.
+   Concept: the tool's own semver semantics are the brand —
+   green = safe upgrade, amber = major, red = vulnerable —
+   on a crisp neutral canvas. The terminal is always dark;
+   the page follows the visitor's color scheme automatically.
+   All colors live here; markup and components use tokens only.
    ———————————————————————————————————————————————— */
 :root {
-  --paper: #f6f6f2;
-  --paper-raised: #ffffff;
-  --ink: #1a222e;
-  --muted: #5c6672;
-  --line: #e2e2d9;
+  color-scheme: light dark;
 
-  --term-bg: #101725;
-  --term-edge: #263349;
-  --term-text: #c9d4e3;
-  --term-dim: #6b7893;
+  --background: #fafafa;
+  --surface: #ffffff;
+  --foreground: #0b1220;
+  --muted: #f1f3f5;
+  --muted-foreground: #5b6472;
+  --border: #e4e6ea;
 
-  --green: #1f883d;
-  --green-dark: #3fb950;
-  --amber: #9a6700;
-  --amber-dark: #d29922;
-  --red: #cf222e;
-  --red-dark: #f85149;
+  --primary: #0b1220;
+  --primary-foreground: #ffffff;
 
-  --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo,
-    Consolas, monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+  --brand: #16a34a;
+  --success: #15803d;
+  --warning: #9a6700;
+  --danger: #cf222e;
 
-  --measure: 66ch;
-  --page: 1080px;
-  --radius: 10px;
+  /* Terminal palette — identical in both schemes; the terminal is
+     always a dark object. */
+  --terminal: #0d1524;
+  --terminal-border: #263349;
+  --terminal-foreground: #c9d4e3;
+  --terminal-muted: #7e8ba6; /* ≥4.5:1 on --terminal for WCAG AA */
+  --term-green: #3fb950;
+  --term-amber: #d29922;
+  --term-red: #f85149;
 }
 
-* {
-  box-sizing: border-box;
-}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0b1120;
+    --surface: #101a2c;
+    --foreground: #e6eaf2;
+    --muted: #16203a;
+    --muted-foreground: #98a2b3;
+    --border: #223049;
 
-html {
-  scroll-behavior: smooth;
-}
+    --primary: #e6eaf2;
+    --primary-foreground: #0b1120;
 
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: var(--sans);
-  font-size: 17px;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
+    --brand: #4ade80;
+    --success: #4ade80;
+    --warning: #d29922;
+    --danger: #f87171;
 
-a {
-  color: inherit;
-  text-decoration-color: color-mix(in srgb, var(--ink) 35%, transparent);
-  text-underline-offset: 3px;
-}
-
-a:hover {
-  text-decoration-color: var(--green);
-}
-
-code {
-  font-family: var(--mono);
-  font-size: 0.88em;
-  background: color-mix(in srgb, var(--ink) 7%, transparent);
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
-}
-
-pre code {
-  background: none;
-  padding: 0;
-  font-size: inherit;
-}
-
-:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-  border-radius: 3px;
-}
-
-.wrap {
-  max-width: var(--page);
-  margin: 0 auto;
-  padding: 0 24px;
-}
-
-/* ——— header ——— */
-.site-header {
-  border-bottom: 1px solid var(--line);
-}
-
-.site-header .wrap {
-  display: flex;
-  align-items: baseline;
-  gap: 1.5rem;
-  padding-top: 14px;
-  padding-bottom: 14px;
-}
-
-.brand {
-  font-family: var(--mono);
-  font-weight: 700;
-  font-size: 1.05rem;
-  text-decoration: none;
-}
-
-.brand .caret {
-  color: var(--green);
-}
-
-.site-nav {
-  margin-left: auto;
-  display: flex;
-  gap: 1.1rem;
-  font-size: 0.92rem;
-}
-
-.site-nav a {
-  text-decoration: none;
-  color: var(--muted);
-}
-
-.site-nav a:hover {
-  color: var(--ink);
-}
-
-/* ——— hero ——— */
-.hero {
-  padding: 4.5rem 0 3rem;
-}
-
-.eyebrow {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 0 0 1rem;
-}
-
-h1 {
-  font-size: clamp(2rem, 5.4vw, 3.4rem);
-  line-height: 1.06;
-  letter-spacing: -0.025em;
-  font-weight: 750;
-  margin: 0 0 1.1rem;
-  max-width: 21ch;
-}
-
-h1 code {
-  background: none;
-  padding: 0;
-  font-size: 0.94em;
-  letter-spacing: -0.04em;
-}
-
-.lede {
-  font-size: 1.15rem;
-  color: var(--muted);
-  max-width: 52ch;
-  margin: 0 0 2rem;
-}
-
-.lede strong {
-  color: var(--ink);
-}
-
-/* run command */
-.run {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.9rem;
-  font-family: var(--mono);
-  font-size: 1.05rem;
-  background: var(--term-bg);
-  color: var(--term-text);
-  border-radius: var(--radius);
-  padding: 0.85rem 1.25rem;
-}
-
-.run .prompt {
-  color: var(--green-dark);
-  user-select: none;
-}
-
-.pm-list {
-  margin: 0.9rem 0 0;
-  font-family: var(--mono);
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-
-/* ——— terminal window ——— */
-.terminal {
-  background: var(--term-bg);
-  border: 1px solid var(--term-edge);
-  border-radius: 12px;
-  box-shadow: 0 24px 48px -24px rgba(16, 23, 37, 0.45);
-  overflow: hidden;
-  margin: 3rem 0 0;
-}
-
-.terminal-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--term-edge);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--term-dim);
-}
-
-.terminal-bar .dots {
-  display: flex;
-  gap: 6px;
-  margin-right: 0.4rem;
-}
-
-.terminal-bar .dots i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--term-edge);
-}
-
-.terminal-body {
-  padding: 1rem 0 0.75rem;
-  font-family: var(--mono);
-  font-size: 0.86rem;
-  line-height: 1.75;
-  color: var(--term-text);
-  overflow-x: auto;
-}
-
-.trow {
-  display: grid;
-  grid-template-columns: 2ch 16ch 1fr 11ch;
-  gap: 1.5ch;
-  padding: 0 1.25rem;
-  white-space: nowrap;
-  min-width: 640px;
-}
-
-.trow.head,
-.trow .type {
-  color: var(--term-dim);
-}
-
-.trow.cursor {
-  background: color-mix(in srgb, var(--term-text) 9%, transparent);
-}
-
-.trow .pick {
-  color: var(--green-dark);
-}
-
-.diff .arrow {
-  color: var(--term-dim);
-}
-
-.diff .to-minor {
-  color: var(--green-dark);
-}
-
-.diff .to-major {
-  color: var(--amber-dark);
-}
-
-.vuln {
-  color: var(--red-dark);
-}
-
-.term-keys {
-  margin-top: 0.8rem;
-  padding: 0.55rem 1.25rem 0.3rem;
-  border-top: 1px solid var(--term-edge);
-  color: var(--term-dim);
-  font-size: 0.76rem;
-  white-space: nowrap;
-  overflow-x: auto;
-}
-
-.term-keys b {
-  color: var(--term-text);
-  font-weight: 600;
-}
-
-.cursor-block {
-  display: inline-block;
-  width: 0.6em;
-  height: 1.1em;
-  vertical-align: -0.18em;
-  background: var(--green-dark);
-}
-
-/* hero entrance — one orchestrated moment */
-@media (prefers-reduced-motion: no-preference) {
-  .terminal .trow,
-  .terminal .term-keys {
-    animation: rise 0.45s ease-out backwards;
-  }
-
-  .terminal .trow:nth-child(2) { animation-delay: 0.08s; }
-  .terminal .trow:nth-child(3) { animation-delay: 0.16s; }
-  .terminal .trow:nth-child(4) { animation-delay: 0.24s; }
-  .terminal .trow:nth-child(5) { animation-delay: 0.32s; }
-  .terminal .trow:nth-child(6) { animation-delay: 0.4s; }
-  .terminal .trow:nth-child(7) { animation-delay: 0.48s; }
-  .terminal .term-keys { animation-delay: 0.6s; }
-
-  .cursor-block {
-    animation: blink 1.1s steps(1) infinite;
-  }
-
-  @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(6px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-    }
-  }
-
-  @keyframes blink {
-    50% {
-      opacity: 0;
-    }
+    --terminal: #0d1524;
+    --terminal-border: #2c3b55;
   }
 }
 
-/* ——— sections ——— */
-section {
-  padding: 3.5rem 0;
-  border-top: 1px solid var(--line);
+@theme inline {
+  --color-*: initial;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-terminal: var(--terminal);
+  --color-terminal-border: var(--terminal-border);
+  --color-terminal-foreground: var(--terminal-foreground);
+  --color-terminal-muted: var(--terminal-muted);
+  --color-term-green: var(--term-green);
+  --color-term-amber: var(--term-amber);
+  --color-term-red: var(--term-red);
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
 }
 
-h2 {
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  margin: 0 0 0.6rem;
-}
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
 
-.section-lede {
-  color: var(--muted);
-  max-width: var(--measure);
-  margin: 0 0 2rem;
-}
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans, ui-sans-serif);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-/* keycap feature grid */
-.features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 25%, transparent);
+  }
 
-.feature {
-  background: var(--paper-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1.15rem 1.25rem;
-}
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
 
-.keycap {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  font-weight: 600;
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 6px;
-  background: var(--paper);
-  padding: 0.1rem 0.5rem;
-  margin-right: 0.3rem;
-}
+  /* Inline code on prose surfaces (not inside pre). */
+  code {
+    font-family: var(--font-mono, ui-monospace);
+  }
 
-.feature h3 {
-  font-size: 1.02rem;
-  margin: 0.7rem 0 0.3rem;
-}
+  :not(pre) > code {
+    font-size: 0.875em;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.1em 0.35em;
+  }
 
-.feature p {
-  margin: 0;
-  font-size: 0.92rem;
-  color: var(--muted);
-}
-
-/* code blocks on paper */
-.codeblock {
-  background: var(--term-bg);
-  color: var(--term-text);
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  line-height: 1.7;
-  border-radius: var(--radius);
-  padding: 1.1rem 1.3rem;
-  overflow-x: auto;
-  margin: 1.4rem 0;
-}
-
-.codeblock .c {
-  color: var(--term-dim);
-}
-
-.codeblock .g {
-  color: var(--green-dark);
-}
-
-.codeblock .a {
-  color: var(--amber-dark);
-}
-
-/* two-column explainer */
-.cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2.5rem;
-  align-items: start;
-}
-
-@media (max-width: 800px) {
-  .cols {
-    grid-template-columns: 1fr;
+  /* Code inside headings reads as type, not as a chip. */
+  h1 code,
+  h2 code,
+  h3 code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 0.95em;
+    letter-spacing: -0.03em;
   }
 }
 
-/* ——— comparison table ——— */
-.table-scroll {
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--paper-raised);
+@layer components {
+  /* Keyboard keycap — used in feature cards and the shortcuts table. */
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--foreground);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 0.4rem;
+  }
+
+  /* Markdown prose (docs, changelog). */
+  .prose {
+    max-width: 70ch;
+    line-height: 1.7;
+  }
+
+  .prose h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 1rem;
+  }
+
+  .prose h2 {
+    font-size: 1.4rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    margin: 2.25rem 0 0.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .prose h3 {
+    font-size: 1.1rem;
+    font-weight: 650;
+    margin: 1.75rem 0 0.5rem;
+  }
+
+  .prose p,
+  .prose ul,
+  .prose ol {
+    margin: 0 0 1rem;
+    color: var(--foreground);
+  }
+
+  .prose ul {
+    list-style: disc;
+    padding-left: 1.4rem;
+  }
+
+  .prose ol {
+    list-style: decimal;
+    padding-left: 1.4rem;
+  }
+
+  .prose li {
+    margin: 0.35rem 0;
+  }
+
+  .prose a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    text-underline-offset: 3px;
+  }
+
+  .prose a:hover {
+    text-decoration-color: var(--brand);
+  }
+
+  .prose blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1rem;
+    color: var(--muted-foreground);
+    margin: 1.25rem 0;
+  }
+
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 1.25rem 0;
+  }
+
+  .prose th,
+  .prose td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .prose thead th {
+    font-weight: 600;
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .prose pre {
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    margin: 1.25rem 0;
+  }
+
+  .prose pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .prose img {
+    max-width: 100%;
+    border-radius: 0.75rem;
+  }
 }
 
-table.compare {
-  border-collapse: collapse;
-  width: 100%;
-  min-width: 560px;
-  font-size: 0.92rem;
-}
-
-table.compare th,
-table.compare td {
-  padding: 0.6rem 0.9rem;
-  border-bottom: 1px solid var(--line);
-  text-align: center;
-  white-space: nowrap;
-}
-
-table.compare tr:last-child th,
-table.compare tr:last-child td {
-  border-bottom: none;
-}
-
-table.compare th[scope="row"] {
-  text-align: left;
-  font-weight: 500;
-  white-space: normal;
-}
-
-table.compare thead th {
-  font-family: var(--mono);
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-table.compare thead th.you {
-  color: var(--ink);
-}
-
-.mark-yes {
-  color: var(--green);
-  font-weight: 700;
-}
-
-.mark-no {
-  color: color-mix(in srgb, var(--red) 72%, var(--muted));
-}
-
-.mark-na {
-  color: var(--muted);
-}
-
-.footnote {
-  font-size: 0.82rem;
-  color: var(--muted);
-  margin-top: 0.9rem;
-  max-width: var(--measure);
-}
-
-/* vs pages */
-.prose {
-  max-width: var(--measure);
-}
-
-.prose h2 {
-  margin-top: 2.6rem;
-}
-
-.prose ul {
-  padding-left: 1.2rem;
-}
-
-.verdict {
-  border-left: 3px solid var(--green);
-  background: var(--paper-raised);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  padding: 1rem 1.3rem;
-  margin: 2rem 0;
-}
-
-.verdict p {
-  margin: 0.3rem 0;
-}
-
-/* ——— footer ——— */
-.site-footer {
-  border-top: 1px solid var(--line);
-  padding: 2.5rem 0 3.5rem;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-.site-footer .wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.5rem;
-  justify-content: space-between;
-}
-
-.site-footer nav {
-  display: flex;
-  gap: 1.2rem;
-  flex-wrap: wrap;
+/* Shiki dual themes: activate the dark palette when the visitor
+   prefers dark (Astro emits both as CSS variables). */
+@media (prefers-color-scheme: dark) {
+  .astro-code,
+  .astro-code span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+  }
 }

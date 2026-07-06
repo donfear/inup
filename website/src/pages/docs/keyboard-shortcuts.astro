@@ -1,0 +1,66 @@
+---
+/**
+ * Rendered from the README's KEYS marker table at build time, so this page
+ * can never drift from the tool's actual key bindings.
+ */
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import { keys } from '../../lib/readme';
+
+const groups = [
+  { heading: 'Navigation', match: /^(↑|↓|g$|G$)/ },
+  { heading: 'Selecting upgrades', match: /^(←|→|Space|m$|l$|u$|Enter)/ },
+  { heading: 'Filtering & search', match: /^(\/|d$|p$|o$|Esc|v$)/ },
+  { heading: 'Insight & tools', match: /^(s$|i$|t$|\?|!)/ },
+];
+
+const grouped = groups.map((g) => ({
+  heading: g.heading,
+  rows: keys.filter((k) => g.match.test(k.keys)),
+}));
+
+// Loud drift alarm: every README binding must land in exactly one group.
+const groupedCount = grouped.reduce((n, g) => n + g.rows.length, 0);
+if (groupedCount !== keys.length) {
+  throw new Error(
+    `keyboard-shortcuts: ${keys.length} bindings in README but ${groupedCount} grouped — update the groups`,
+  );
+}
+---
+
+<DocsLayout
+  title="Keyboard shortcuts"
+  description="Every key binding in inup's interactive picker — navigation, selection, search, dependency-type toggles, vulnerability audit and changelogs."
+  updated={new Date()}
+>
+  <p>
+    Everything in the picker is a keystroke away. Press <span class="keycap">?</span> inside inup
+    to see this list in the terminal. This page is generated from the same source as the tool's
+    help screen, so it is always current.
+  </p>
+
+  {grouped.map((group) => (
+    <>
+      <h2>{group.heading}</h2>
+      <table>
+        <thead>
+          <tr>
+            <th class="w-36">Key</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.rows.map((row) => (
+            <tr>
+              <td>
+                <span class="flex flex-wrap gap-1">
+                  {row.keys.split(' / ').map((k) => <span class="keycap">{k}</span>)}
+                </span>
+              </td>
+              <td>{row.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  ))}
+</DocsLayout>

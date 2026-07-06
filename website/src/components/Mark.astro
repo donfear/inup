@@ -1,11 +1,20 @@
 ---
+import Icon from './Icon.astro';
+
 interface Props {
   v: 'yes' | 'no' | 'na';
 }
 
 const { v } = Astro.props;
 const label = { yes: 'Yes', no: 'No', na: 'Not applicable' }[v];
-const glyph = { yes: '✓', no: '✗', na: '—' }[v];
+const name = { yes: 'check', no: 'x', na: 'minus' }[v] as 'check' | 'x' | 'minus';
+const color = {
+  yes: 'text-success',
+  no: 'text-muted-foreground opacity-60',
+  na: 'text-muted-foreground',
+}[v];
 ---
 
-<span class={`mark-${v}`} role="img" aria-label={label}>{glyph}</span>
+<span class={`inline-flex items-center justify-center ${color}`}>
+  <Icon name={name} size={16} label={label} />
+</span>

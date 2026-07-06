@@ -6,6 +6,13 @@ on:
     paths:
       - 'website/**'
       - '.github/workflows/website.yml'
+      # The site renders content parsed from these at build time.
+      - 'README.md'
+      - 'action.yml'
+  schedule:
+    # Weekly rebuild so npm/GitHub stats and the changelog stay fresh.
+    # Off-the-hour minute to dodge GitHub's cron congestion.
+    - cron: '17 6 * * 1'
   workflow_dispatch: {}
 
 permissions:
@@ -26,6 +33,9 @@ jobs:
         uses: withastro/action@v6
         with:
           path: ./website
+        env:
+          # Authenticated GitHub API calls for stars/releases at build time.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
     needs: build

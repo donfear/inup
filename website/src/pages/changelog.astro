@@ -1,0 +1,74 @@
+---
+import { marked } from 'marked';
+import Base from '../layouts/Base.astro';
+import { stats } from '../lib/stats';
+import { site } from '../data/site';
+
+const dateFmt = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const releases = await Promise.all(
+  stats.releases.map(async (r) => ({
+    ...r,
+    html: r.body ? await marked.parse(r.body) : '',
+    date: dateFmt.format(new Date(r.publishedAt)),
+  })),
+);
+---
+
+<Base
+  title="Changelog — inup releases"
+  description="What changed in every inup release — new features, fixes and upgrade notes, straight from GitHub Releases."
+>
+  <div class="mx-auto max-w-3xl px-6">
+    <section class="pt-14 pb-10 sm:pt-20">
+      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
+        changelog
+      </p>
+      <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">Releases</h1>
+      <p class="m-0 max-w-[60ch] text-lg text-muted-foreground">
+        Every release, straight from{' '}
+        <a href={site.releasesUrl} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">GitHub Releases</a>.
+        Install any version with <code>npx inup@version</code>.
+      </p>
+    </section>
+
+    {releases.length === 0 ? (
+      <p class="mb-24 rounded-xl border border-border bg-surface p-6 text-muted-foreground">
+        Release notes are published on GitHub — see
+        <a href={site.releasesUrl} class="underline decoration-muted-foreground/40 underline-offset-3 hover:decoration-brand">the releases page</a>.
+      </p>
+    ) : (
+      <div class="mb-24 space-y-0">
+        {releases.map((r) => (
+          <article class="grid grid-cols-1 gap-2 border-t border-border py-8 sm:grid-cols-[9rem_1fr] sm:gap-8">
+            <div>
+              <h2 class="m-0 font-mono text-lg font-bold">
+                <a href={r.url} class="no-underline hover:text-brand">{r.tag}</a>
+              </h2>
+              <p class="m-0 mt-1 text-sm text-muted-foreground">{r.date}</p>
+              {r.prerelease && (
+                <p class="m-0 mt-2 inline-block rounded-md border border-warning/40 px-2 py-0.5 text-xs text-warning">
+                  pre-release
+                </p>
+              )}
+            </div>
+            <div class="prose min-w-0 text-[0.95rem]">
+              {r.name !== r.tag && <h3 class="mt-0">{r.name}</h3>}
+              {r.html ? (
+                <Fragment set:html={r.html} />
+              ) : (
+                <p class="text-muted-foreground">
+                  See the <a href={r.url}>release on GitHub</a>.
+                </p>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+  </div>
+</Base>
