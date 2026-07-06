@@ -74,6 +74,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
   description="The upgrade-interactive npm never shipped. inup upgrades outdated dependencies from an interactive terminal UI — with vulnerability audit, changelogs, monorepo and pnpm catalog support. Run npx inup."
   jsonLd={jsonLd}
 >
+  <link slot="head" rel="preload" as="image" href={demoPoster.src} />
   <div class="mx-auto max-w-6xl px-6">
     <!-- Hero -->
     <section class="pt-16 pb-14 text-center sm:pt-24">

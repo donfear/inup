@@ -50,6 +50,15 @@ const nav = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      // Apply the persisted theme override before first paint.
+      (() => {
+        const theme = localStorage.getItem('theme');
+        if (theme === 'light' || theme === 'dark') {
+          document.documentElement.dataset.theme = theme;
+        }
+      })();
+    </script>
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta name="keywords" content={site.keywords.join(', ')} />
@@ -82,6 +91,7 @@ const nav = [
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+    <slot name="head" />
   </head>
   <body>
     <a
@@ -108,6 +118,15 @@ const nav = [
               } ${item.class}`}
             >{item.label}</a>
           ))}
+          <button
+            id="theme-toggle"
+            type="button"
+            aria-label="Toggle color theme"
+            class="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+          >
+            <Icon name="moon" size={15} class="theme-icon-moon" />
+            <Icon name="sun" size={15} class="theme-icon-sun" />
+          </button>
           <a
             href={site.repoUrl}
             class="flex items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground"
@@ -168,5 +187,16 @@ const nav = [
         </nav>
       </div>
     </footer>
+    <script>
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const root = document.documentElement;
+        const isDark = root.dataset.theme
+          ? root.dataset.theme === 'dark'
+          : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const next = isDark ? 'light' : 'dark';
+        root.dataset.theme = next;
+        localStorage.setItem('theme', next);
+      });
+    </script>
   </body>
 </html>

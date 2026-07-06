@@ -19,7 +19,8 @@ const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
   <table class="w-full min-w-[560px] border-collapse text-sm">
     <thead>
       <tr class="bg-muted/50">
-        <th scope="col" class="border-b border-border"><span class="sr-only">Feature</span></th>
+        <th scope="col" class="sticky left-0 z-10 border-b border-border bg-surface"
+        ><span class="sr-only">Feature</span></th>
         {columns.map((c) => (
           <th
             scope="col"
@@ -35,7 +36,7 @@ const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
         <tr class="transition-colors hover:bg-muted/40">
           <th
             scope="row"
-            class={`px-4 py-2.5 text-left font-medium ${i === rows.length - 1 ? '' : 'border-b border-border'}`}
+            class={`sticky left-0 z-10 bg-surface px-4 py-2.5 text-left font-medium ${i === rows.length - 1 ? '' : 'border-b border-border'}`}
           >{r.feature}</th>
           {columns.map((c) => (
             <td

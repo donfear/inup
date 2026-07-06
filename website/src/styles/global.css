@@ -8,32 +8,34 @@
    the page follows the visitor's color scheme automatically.
    All colors live here; markup and components use tokens only.
    ———————————————————————————————————————————————— */
+/* Every token is a light-dark() pair resolved by the effective color
+   scheme: the OS preference by default, or the visitor's explicit
+   choice via the header toggle (data-theme on <html>, persisted in
+   localStorage). Light values run one shade deeper than the logo so
+   small brand-colored text clears WCAG AA even on tinted surfaces. */
 :root {
   color-scheme: light dark;
 
-  --background: #f8f9fb;
-  --surface: #ffffff;
-  --foreground: #0b1220;
-  --muted: #eef1f4;
-  --muted-foreground: #5b6472;
-  --border: #e5e8ee;
+  --background: light-dark(#f8f9fb, #0a0f1e);
+  --surface: light-dark(#ffffff, #101a2e);
+  --foreground: light-dark(#0b1220, #e6eaf2);
+  --muted: light-dark(#eef1f4, #17223c);
+  --muted-foreground: light-dark(#5b6472, #98a2b3);
+  --border: light-dark(#e5e8ee, #223049);
 
-  --primary: #0b1220;
-  --primary-foreground: #ffffff;
+  --primary: light-dark(#0b1220, #e6eaf2);
+  --primary-foreground: light-dark(#ffffff, #0b1120);
 
-  /* Brand gradient stops, sampled from the logo: teal → green.
-     Deepened on light so small brand-colored text clears WCAG AA even
-     on brand-tinted surfaces (pill chips sit on bg-brand/5 ≈ #edf3f2). */
-  --brand: #15703a;
-  --brand-2: #0f766e;
-  --success: #15803d;
-  --warning: #9a6700;
-  --danger: #cf222e;
+  /* Brand gradient stops, sampled from the logo: teal → green. */
+  --brand: light-dark(#15703a, #4ade80);
+  --brand-2: light-dark(#0f766e, #2dd4bf);
+  --success: light-dark(#15803d, #4ade80);
+  --warning: light-dark(#9a6700, #d29922);
+  --danger: light-dark(#cf222e, #f87171);
 
-  /* Terminal palette — identical in both schemes; the terminal is
-     always a dark object. */
+  /* Terminal palette — the terminal is always a dark object. */
   --terminal: #0d1524;
-  --terminal-border: #263349;
+  --terminal-border: light-dark(#263349, #2c3b55);
   --terminal-foreground: #c9d4e3;
   --terminal-muted: #7e8ba6; /* ≥4.5:1 on --terminal for WCAG AA */
   --term-green: #3fb950;
@@ -41,27 +43,12 @@
   --term-red: #f85149;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0f1e;
-    --surface: #101a2e;
-    --foreground: #e6eaf2;
-    --muted: #17223c;
-    --muted-foreground: #98a2b3;
-    --border: #223049;
+:root[data-theme='light'] {
+  color-scheme: light;
+}
 
-    --primary: #e6eaf2;
-    --primary-foreground: #0b1120;
-
-    --brand: #4ade80;
-    --brand-2: #2dd4bf;
-    --success: #4ade80;
-    --warning: #d29922;
-    --danger: #f87171;
-
-    --terminal: #0d1524;
-    --terminal-border: #2c3b55;
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -401,15 +388,49 @@
   }
 }
 
-/* Shiki dual themes: activate the dark palette when the visitor
-   prefers dark (Astro emits both as CSS variables). */
+/* Shiki dual themes: activate the dark palette when the effective
+   scheme is dark — OS preference unless the toggle overrides it.
+   (Astro emits both themes as CSS variables.) */
 @media (prefers-color-scheme: dark) {
-  .astro-code,
-  .astro-code span {
+  :root:not([data-theme='light']) .astro-code,
+  :root:not([data-theme='light']) .astro-code span {
     color: var(--shiki-dark) !important;
     background-color: var(--shiki-dark-bg) !important;
     font-style: var(--shiki-dark-font-style) !important;
     font-weight: var(--shiki-dark-font-weight) !important;
     text-decoration: var(--shiki-dark-text-decoration) !important;
   }
+}
+
+:root[data-theme='dark'] .astro-code,
+:root[data-theme='dark'] .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* Theme toggle icons: show the theme you'd switch to —
+   moon in light mode, sun in dark. */
+.theme-icon-sun {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .theme-icon-moon {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .theme-icon-sun {
+    display: inline;
+  }
+}
+
+:root[data-theme='dark'] .theme-icon-moon {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-sun {
+  display: inline;
 }
