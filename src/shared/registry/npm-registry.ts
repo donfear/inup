@@ -31,6 +31,8 @@ export interface PackageVersionData {
   allVersions: string[]
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
+  /** ISO publish time per version; only present when the full packument was fetched. */
+  publishTimes?: Record<string, string>
 }
 
 const inFlightLookups = new InflightMap<PackageVersionData>()
@@ -80,10 +82,13 @@ const DEFAULT_FIXED_CONCURRENCY = 10
 async function getFreshPackageData(
   packageName: string,
   currentVersion: string | undefined,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver
 ): Promise<PackageVersionData> {
-  const cacheKey = `${packageName}@${currentVersion ?? ''}`
-  return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName, onAttempt))
+  const cacheKey = `${packageName}@${currentVersion ?? ''}${fullMetadata ? '#full' : ''}`
+  return inFlightLookups.dedupe(cacheKey, () =>
+    fetchPackageFromRegistry(packageName, fullMetadata, onAttempt)
+  )
 }
 
 const encodeRegistryPath = (packageName: string, pathPrefix: string): string => {
@@ -112,18 +117,23 @@ export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 
 async function attemptRegistryFetch(
   target: RegistryTarget,
-  path: string
+  path: string,
+  fullMetadata: boolean
 ): Promise<RegistryAttemptOutcome> {
   const startedAt = Date.now()
   // Conditional request: if we have a stored ETag for this packument, ask the
   // registry to validate it. Unchanged → 304 (no body) and we reuse stored data.
   // This still hits the registry every run, so data is never served stale.
   // Keys are origin-qualified so two registries can never collide on a path.
-  const cacheKey = `${target.origin}${path}`
+  // Full-packument responses parse to richer data (publish times), so they get
+  // their own cache entry — a 304 must never revive an abbreviated-format body.
+  const cacheKey = `${target.origin}${path}${fullMetadata ? '#full' : ''}`
   const cached = readEtag(cacheKey)
   try {
     const requestHeaders: Record<string, string> = {
-      accept: 'application/vnd.npm.install-v1+json',
+      // The abbreviated install-v1 format is much smaller but has no `time` field;
+      // release-age policies need publish times, hence the full packument.
+      accept: fullMetadata ? 'application/json' : 'application/vnd.npm.install-v1+json',
       'accept-encoding': 'gzip, deflate, br',
     }
     if (target.authHeader) {
@@ -204,11 +214,12 @@ async function attemptRegistryFetch(
 async function fetchFromRegistryWithRetries(
   target: RegistryTarget,
   path: string,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver
 ): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
-    const outcome = await attemptRegistryFetch(target, path)
+    const outcome = await attemptRegistryFetch(target, path, fullMetadata)
     onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
@@ -229,13 +240,14 @@ async function fetchFromRegistryWithRetries(
 
 async function fetchPackageFromRegistry(
   packageName: string,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver
 ): Promise<PackageVersionData> {
   // Scoped packages may live on a different registry (with credentials) than
   // unscoped ones — resolved from the npm config chain, memoized per scope.
   const target = registryTargetFor(packageName)
   const path = encodeRegistryPath(packageName, target.pathPrefix)
-  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt)
+  const outcome = await fetchFromRegistryWithRetries(target, path, fullMetadata, onAttempt)
 
   if (outcome.kind === 'success') {
     return outcome.data
@@ -279,6 +291,11 @@ export async function fetchPackageVersions(
     onControlTick?: (tick: ControlTick) => void
     /** Per-package successful round-trip latency, for perf diagnostics. */
     onPackageTiming?: (name: string, latencyMs: number) => void
+    /**
+     * Fetch the FULL packument instead of the abbreviated install-v1 format. Larger payloads,
+     * but includes per-version publish times — required by release-age policies. Default: false.
+     */
+    fullMetadata?: boolean
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
@@ -377,6 +394,7 @@ export async function fetchPackageVersions(
       const data = await getFreshPackageData(
         packageName,
         options.currentVersions?.get(packageName),
+        options.fullMetadata ?? false,
         observerFor(packageName)
       )
       packageData.set(packageName, data)

@@ -25,6 +25,20 @@ export interface InupProjectConfig {
   scanDirs?: string[]
 
   /**
+   * Release-age cooldown in MINUTES (matching pnpm's setting of the same name): versions
+   * published more recently than this are not offered as upgrade targets. A supply-chain
+   * guard against freshly compromised releases. 0 or absent disables the policy.
+   * Example: 10080 = 7 days.
+   */
+  minimumReleaseAge?: number
+
+  /**
+   * Packages exempt from `minimumReleaseAge`. Supports exact names and the same glob
+   * patterns as `ignore` (e.g. "@myco/*").
+   */
+  minimumReleaseAgeExclude?: string[]
+
+  /**
    * Show vulnerability badges for peerDependencies in the package list.
    * Defaults to false so peer dependency risk stays hidden unless explicitly enabled.
    */
@@ -97,6 +111,19 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   if (config.scanDirs) {
     if (Array.isArray(config.scanDirs)) {
       normalized.scanDirs = config.scanDirs.filter((item) => typeof item === 'string')
+    }
+  }
+
+  // JSON.parse can only yield finite numbers, so type + sign checks are sufficient.
+  if (typeof config.minimumReleaseAge === 'number' && config.minimumReleaseAge >= 0) {
+    normalized.minimumReleaseAge = config.minimumReleaseAge
+  }
+
+  if (config.minimumReleaseAgeExclude) {
+    if (Array.isArray(config.minimumReleaseAgeExclude)) {
+      normalized.minimumReleaseAgeExclude = config.minimumReleaseAgeExclude.filter(
+        (item) => typeof item === 'string'
+      )
     }
   }
 

@@ -25,14 +25,36 @@ export interface ParsedVersions {
   allVersions: string[]
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
+  /**
+   * ISO publish timestamp per version, from the packument's `time` field. Only present when the
+   * FULL packument was fetched (the abbreviated install-v1 format has no `time`), i.e. when a
+   * release-age policy is active. Restricted to the versions in `allVersions`.
+   */
+  publishTimes?: Record<string, string>
 }
 
 export function parseVersions(raw: string): ParsedVersions {
-  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
+  const data = JSON.parse(raw) as {
+    versions?: Record<string, unknown>
+    time?: Record<string, string>
+  }
   const versions = data.versions || {}
   const allVersions = Object.keys(versions).filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
   const sortedVersions = allVersions.sort(semver.rcompare)
   const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
+
+  // Publish times exist only in the full packument; keep just the entries for versions we track
+  // (`time` also carries 'created'/'modified' and prerelease keys).
+  let publishTimes: Record<string, string> | undefined
+  if (data.time) {
+    publishTimes = {}
+    for (const version of allVersions) {
+      const publishedAt = data.time[version]
+      if (typeof publishedAt === 'string') {
+        publishTimes[version] = publishedAt
+      }
+    }
+  }
 
   // Surface health signals for the latest version straight from the abbreviated
   // packument we already fetched — no extra request. Both fields are optional.
@@ -42,7 +64,33 @@ export function parseVersions(raw: string): ParsedVersions {
   const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 
-  return { latestVersion, allVersions, deprecated, enginesNode }
+  return { latestVersion, allVersions, deprecated, enginesNode, publishTimes }
+}
+
+/**
+ * Drop versions published more recently than the cooldown window (`minimumReleaseAge`, minutes).
+ *
+ * This is a supply-chain guard: freshly published versions are the ones most likely to be a
+ * compromised release that hasn't been caught yet. Versions without a (parsable) publish
+ * timestamp are kept — the policy only acts on positive evidence, so registries that don't
+ * expose `time` degrade to a no-op rather than hiding everything.
+ */
+export function filterVersionsByReleaseAge(
+  allVersions: string[],
+  publishTimes: Record<string, string> | undefined,
+  minimumReleaseAgeMinutes: number,
+  now: number = Date.now()
+): string[] {
+  if (!publishTimes) return allVersions
+
+  const cutoff = now - minimumReleaseAgeMinutes * 60_000
+  return allVersions.filter((version) => {
+    const publishedAt = publishTimes[version]
+    if (!publishedAt) return true
+    const timestamp = Date.parse(publishedAt)
+    if (Number.isNaN(timestamp)) return true
+    return timestamp <= cutoff
+  })
 }
 
 /**

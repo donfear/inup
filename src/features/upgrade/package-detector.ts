@@ -20,7 +20,7 @@ import type {
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
 } from '../../shared/types'
-import { findClosestMinorVersion } from '../../shared/versions'
+import { filterVersionsByReleaseAge, findClosestMinorVersion } from '../../shared/versions'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
 
 interface PreparedDependencies {
@@ -37,6 +37,8 @@ export class PackageDetector {
   private scanDirs: string[]
   private ignorePackages: string[]
   private maxDepth: number
+  private minimumReleaseAge: number
+  private minimumReleaseAgeExclude: string[]
 
   private readonly batchSize = 10
   private readonly maxConcurrency = 10
@@ -49,6 +51,8 @@ export class PackageDetector {
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.adaptive = options?.adaptive ?? true
+    this.minimumReleaseAge = options?.minimumReleaseAge ?? 0
+    this.minimumReleaseAgeExclude = options?.minimumReleaseAgeExclude ?? []
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -130,6 +134,9 @@ export class PackageDetector {
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
+      // Publish times live only in the full packument; fetch it only when the
+      // release-age policy actually needs them.
+      fullMetadata: this.minimumReleaseAge > 0,
       onControlTick: (tick) => performanceTracker.recordControlTick(tick),
       onPackageTiming: isPerfLoggingEnabled()
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
@@ -392,7 +399,10 @@ export class PackageDetector {
           return this.createFailedPackageInfo(dep)
         }
 
-        const { latestVersion, allVersions } = packageData
+        const { latestVersion, allVersions, deprecated, enginesNode } = this.applyReleaseAgePolicy(
+          dep,
+          packageData
+        )
         const closestMinorVersion = findClosestMinorVersion(dep.version, allVersions)
 
         const installedClean = semver.coerce(dep.version)?.version || dep.version
@@ -433,8 +443,8 @@ export class PackageDetector {
           hasRangeUpdate,
           hasMajorUpdate,
           allVersions,
-          deprecated: packageData.deprecated,
-          enginesNode: packageData.enginesNode,
+          deprecated,
+          enginesNode,
         }
       } catch (error) {
         debugLog.error('PackageDetector', `error processing ${dep.name}`, error)
@@ -442,6 +452,62 @@ export class PackageDetector {
       }
     })
   }
+
+  /**
+   * Enforce the release-age cooldown (`minimumReleaseAge`, minutes): versions published more
+   * recently than the window are treated as if they don't exist yet, so neither the TUI nor
+   * --apply can pick them. Freshly published versions are the most likely to be a compromised
+   * release nobody has caught yet.
+   *
+   * When the true latest is gated away, the health signals tied to it (deprecation, engines)
+   * are dropped rather than misattributed to the older effective latest. If EVERY version is
+   * too young (brand-new package), the installed version becomes the effective latest — the
+   * package simply reports "nothing to upgrade to (yet)".
+   */
+  private applyReleaseAgePolicy(
+    dep: DependencyEntry,
+    packageData: PackageVersionData
+  ): PackageVersionData {
+    if (this.minimumReleaseAge <= 0) return packageData
+    if (
+      this.minimumReleaseAgeExclude.length > 0 &&
+      isPackageIgnored(dep.name, this.minimumReleaseAgeExclude)
+    ) {
+      return packageData
+    }
+
+    const eligible = filterVersionsByReleaseAge(
+      packageData.allVersions,
+      packageData.publishTimes,
+      this.minimumReleaseAge
+    )
+    if (eligible.length === packageData.allVersions.length) return packageData
+
+    const gatedCount = packageData.allVersions.length - eligible.length
+    const effectiveLatest =
+      eligible.slice().sort(semver.rcompare)[0] ??
+      (semver.coerce(dep.version)?.version || dep.version)
+    const latestUnchanged = effectiveLatest === packageData.latestVersion
+
+    const gateKey = `${dep.name}@${dep.version}`
+    if (!this.loggedReleaseAgeGates.has(gateKey)) {
+      this.loggedReleaseAgeGates.add(gateKey)
+      debugLog.info(
+        'PackageDetector',
+        `release-age gate: ${gatedCount} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min hidden (effective latest: ${effectiveLatest})`
+      )
+    }
+
+    return {
+      ...packageData,
+      latestVersion: effectiveLatest,
+      allVersions: eligible,
+      deprecated: latestUnchanged ? packageData.deprecated : undefined,
+      enginesNode: latestUnchanged ? packageData.enginesNode : undefined,
+    }
+  }
+
+  private readonly loggedReleaseAgeGates = new Set<string>()
 
   private createFailedPackageInfo(dep: DependencyEntry): PackageInfo {
     return {

@@ -119,6 +119,40 @@ describe('npm-registry', () => {
     expect(opts.headers.authorization).toBeUndefined()
   })
 
+  it('requests the abbreviated packument by default', async () => {
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+
+    await fetchPackageVersions(['demo-pkg'])
+
+    const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
+    expect(opts.headers.accept).toBe('application/vnd.npm.install-v1+json')
+  })
+
+  it('fullMetadata requests the full packument and surfaces publish times', async () => {
+    requestMock.mockResolvedValue(
+      makeOkBody({
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: {
+          created: '2020-01-01T00:00:00.000Z',
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+        },
+      })
+    )
+
+    const result = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+    const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
+    expect(opts.headers.accept).toBe('application/json')
+    expect(result.get('demo-pkg')).toMatchObject({
+      latestVersion: '1.1.0',
+      publishTimes: {
+        '1.0.0': '2020-01-01T00:00:00.000Z',
+        '1.1.0': '2024-01-02T00:00:00.000Z',
+      },
+    })
+  })
+
   it('routes scoped packages to their npmrc registry with its authorization header', async () => {
     registryTargetMock.mockReturnValueOnce({
       origin: 'https://registry.example.com',

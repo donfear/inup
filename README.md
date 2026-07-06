@@ -69,8 +69,33 @@ inup [options]
 -c, --check                   Exit non-zero if updates exist, without writing (for CI)
 --apply                       Non-interactively write upgrades + install (for CI/automation)
 --target <level>              With --apply: how far to bump — minor (default) | patch | latest
+--minimum-release-age <mins>  Only offer versions published at least this many minutes ago
 --debug                       Write verbose debug logs
 ```
+
+### Release-age cooldown (supply-chain guard)
+
+Freshly published versions are the ones most likely to be a compromised release nobody has
+caught yet. With a cooldown, inup simply doesn't offer versions younger than the window — in
+the TUI, in reports, and in `--apply`:
+
+```bash
+inup --minimum-release-age 10080   # ignore versions younger than 7 days
+```
+
+Or persist it in `.inuprc` (minutes, matching pnpm's setting of the same name), with optional
+per-package exemptions:
+
+```json
+{
+  "minimumReleaseAge": 10080,
+  "minimumReleaseAgeExclude": ["@myco/*", "internal-tool"]
+}
+```
+
+Registries that don't expose publish times are unaffected (the policy only acts on positive
+evidence). Enabling the cooldown fetches the full registry metadata instead of the abbreviated
+format, so the first run is somewhat slower; subsequent runs are cushioned by inup's ETag cache.
 
 ## CI & Scripting
 

@@ -106,6 +106,8 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
   adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
+  minimumReleaseAge?: number // Minutes a version must have been public before it's offered. 0/absent disables.
+  minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge
 }
 
 export interface PackageJson {

@@ -787,3 +787,207 @@ describe('PackageDetector edge paths', () => {
     )
   })
 })
+
+describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
+  const DAY_MS = 24 * 60 * 60_000
+  const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString()
+
+  const dep = (name: string, version: string, packageJsonPath = '/repo/package.json') => ({
+    name,
+    version,
+    type: 'dependencies',
+    packageJsonPath,
+  })
+
+  /** Route each package to its own version data through the streaming callback. */
+  const fetchWith = (dataByName: Record<string, unknown>) => {
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        options.onBatchReady(
+          packageNames.map((packageName, itemIndex) => ({
+            packageName,
+            data: dataByName[packageName],
+            completed: itemIndex + 1,
+            total: packageNames.length,
+            batchIndex: 0,
+            itemIndex,
+          }))
+        )
+        return new Map(Object.entries(dataByName))
+      }
+    )
+  }
+
+  beforeEach(() => {
+    vi.mocked(debugLog.info).mockClear()
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
+    mocks.findPackageJson.mockReturnValue('/repo/package.json')
+    mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
+    mocks.findAllPackageJsonFilesAsync.mockReset()
+    mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
+    mocks.findClosestMinorVersion.mockReset()
+    mocks.findClosestMinorVersion.mockImplementation(
+      (version: string, versions: string[]) => versions[0] ?? version
+    )
+    mocks.fetchPackageVersions.mockReset()
+  })
+
+  it('hides too-young versions, recomputes the latest, and drops its health signals', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
+    fetchWith({
+      zod: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.1.0', '1.0.0'],
+        publishTimes: {
+          '1.2.0': iso(60 * 60_000), // 1 hour old — inside the 1-day window
+          '1.1.0': iso(30 * DAY_MS),
+          '1.0.0': iso(60 * DAY_MS),
+        },
+        deprecated: 'this describes 1.2.0, not the effective latest',
+        enginesNode: '>=20',
+      },
+    })
+
+    const detector = new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 1440,
+      // Non-matching exclusions must not disable the gate.
+      minimumReleaseAgeExclude: ['some-other-pkg'],
+    })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0]).toMatchObject({
+      name: 'zod',
+      latestVersion: '1.1.0',
+      rangeVersion: '1.1.0',
+      allVersions: ['1.1.0', '1.0.0'],
+      isOutdated: true,
+      hasMajorUpdate: false,
+    })
+    // Signals described the gated 1.2.0 — they must not be misattributed to 1.1.0.
+    expect(packages[0].deprecated).toBeUndefined()
+    expect(packages[0].enginesNode).toBeUndefined()
+
+    // The policy needs publish times, which only the full packument carries.
+    const fetchOptions = mocks.fetchPackageVersions.mock.calls[0][1]
+    expect(fetchOptions.fullMetadata).toBe(true)
+  })
+
+  it('keeps the health signals when only a non-latest backport is gated', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
+    fetchWith({
+      zod: {
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0', '1.0.5', '1.0.0'],
+        publishTimes: {
+          '2.0.0': iso(30 * DAY_MS),
+          '1.0.5': iso(60 * 60_000), // young backport
+          '1.0.0': iso(60 * DAY_MS),
+        },
+        deprecated: 'legit signal for 2.0.0',
+        enginesNode: '>=18',
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      latestVersion: '2.0.0',
+      allVersions: ['2.0.0', '1.0.0'],
+      deprecated: 'legit signal for 2.0.0',
+      enginesNode: '>=18',
+    })
+  })
+
+  it('treats a package whose every version is too young as having nothing to offer', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('brand-new', '^1.0.0'),
+      // Uncoercible specifier: the fallback keeps the raw specifier as effective latest.
+      dep('tagged', 'latest'),
+    ])
+    fetchWith({
+      'brand-new': {
+        latestVersion: '1.1.0',
+        allVersions: ['1.1.0'],
+        publishTimes: { '1.1.0': iso(60_000) },
+      },
+      tagged: {
+        latestVersion: '3.0.0',
+        allVersions: ['3.0.0'],
+        publishTimes: { '3.0.0': iso(60_000) },
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
+    const packages = await detector.getOutdatedPackages()
+
+    const byName = Object.fromEntries(packages.map((pkg) => [pkg.name, pkg]))
+    expect(byName['brand-new']).toMatchObject({
+      latestVersion: '1.0.0',
+      allVersions: [],
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+    expect(byName.tagged).toMatchObject({ latestVersion: 'latest', isOutdated: false })
+  })
+
+  it('exempts packages matching minimumReleaseAgeExclude', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string) => name === 'zod')
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
+      fetchWith({
+        zod: {
+          latestVersion: '1.2.0',
+          allVersions: ['1.2.0', '1.0.0'],
+          publishTimes: { '1.2.0': iso(60_000), '1.0.0': iso(60 * DAY_MS) },
+        },
+      })
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        minimumReleaseAge: 1440,
+        minimumReleaseAgeExclude: ['zod'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      // Excluded → the young latest stays visible.
+      expect(packages[0]).toMatchObject({ latestVersion: '1.2.0' })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('is a no-op when the registry provides no publish times, and logs each gate once', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('no-times', '^1.0.0'),
+      // The same gated package referenced from two manifests logs once.
+      dep('gated', '^1.0.0', '/repo/packages/a/package.json'),
+      dep('gated', '^1.0.0', '/repo/packages/b/package.json'),
+    ])
+    fetchWith({
+      'no-times': { latestVersion: '9.9.9', allVersions: ['9.9.9', '1.0.0'] },
+      gated: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.0.0'],
+        publishTimes: { '1.2.0': iso(60_000), '1.0.0': iso(60 * DAY_MS) },
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
+    const packages = await detector.getOutdatedPackages()
+
+    const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
+    // Abbreviated-style data without times is untouched by the policy.
+    expect(byName.get('no-times')).toMatchObject({ latestVersion: '9.9.9' })
+    expect(byName.get('gated')).toMatchObject({ latestVersion: '1.0.0' })
+
+    const gateLogs = vi
+      .mocked(debugLog.info)
+      .mock.calls.filter((call) => String(call[1]).includes('release-age gate'))
+    expect(gateLogs).toHaveLength(1)
+  })
+})
