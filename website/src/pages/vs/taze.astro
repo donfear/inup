@@ -1,0 +1,109 @@
+---
+import Mark from '../../components/Mark.astro';
+import Base from '../../layouts/Base.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+type V = 'yes' | 'no' | 'na';
+const rows: Array<{ f: string; inup: V; taze: V }> = [
+  { f: 'Interactive upgrade UI', inup: 'yes', taze: 'yes' },
+  { f: 'Monorepos & workspaces', inup: 'yes', taze: 'yes' },
+  { f: 'pnpm catalogs (incl. named)', inup: 'yes', taze: 'yes' },
+  { f: 'Vulnerability audit in the picker', inup: 'yes', taze: 'no' },
+  { f: 'Changelogs in the terminal', inup: 'yes', taze: 'no' },
+  { f: 'Search & dep-type toggles in the UI', inup: 'yes', taze: 'no' },
+  { f: 'Machine-readable JSON report', inup: 'yes', taze: 'no' },
+  { f: 'GitHub Action included', inup: 'yes', taze: 'no' },
+  { f: 'Per-package upgrade rules', inup: 'no', taze: 'yes' },
+  { f: 'Config file with typed defineConfig', inup: 'no', taze: 'yes' },
+];
+---
+
+<Base
+  title="inup vs taze — an honest comparison"
+  description="taze and inup are both modern interactive dependency upgraders with monorepo and pnpm catalog support. inup adds audit and changelogs in the picker; taze has per-package update rules. Verified comparison."
+>
+  <div class="wrap prose">
+    <section class="hero" style="border-top: none; padding-bottom: 1rem">
+      <p class="eyebrow">comparison · verified 2026-07-06</p>
+      <h1>inup vs taze</h1>
+      <p class="lede">
+        <a href="https://github.com/antfu-collective/taze">taze</a> is the
+        closest tool to inup in spirit: modern, monorepo-first, and one of the
+        very few upgraders that handles pnpm catalogs properly — including
+        named catalogs. The differences are in what happens inside the
+        interactive session and around it.
+      </p>
+    </section>
+
+    <div class="table-scroll">
+      <table class="compare">
+        <thead>
+          <tr>
+            <th scope="col"></th>
+            <th scope="col" class="you">inup</th>
+            <th scope="col">taze</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr>
+              <th scope="row">{r.f}</th>
+              <td><Mark v={r.inup} /></td>
+              <td><Mark v={r.taze} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <h2>Where inup is stronger</h2>
+    <ul>
+      <li>
+        <strong>Context inside the picker.</strong> Vulnerability audit
+        (<code>s</code>) with advisories cross-referenced against upgrade
+        targets, changelogs (<code>i</code>), search (<code>/</code>), and
+        live dependency-type toggles. taze's interactive mode selects
+        versions; inup's helps you decide.
+      </li>
+      <li>
+        <strong>CI &amp; automation surface.</strong> A guaranteed-read-only
+        <code>--check</code> gate, a versioned JSON schema for scripts and
+        agents, and a GitHub Action that maintains one rolling upgrade PR.
+      </li>
+    </ul>
+
+    <h2>Where taze is stronger — use it if you need these</h2>
+    <ul>
+      <li>
+        <strong>Per-package update policy.</strong> taze's
+        <code>packageMode</code> maps exact names or regexes to
+        major/minor/patch/ignore — “majors for typescript, minors for all
+        <code>@types/*</code>”. inup's config can only ignore or exclude
+        packages.
+      </li>
+      <li>
+        <strong>Typed configuration.</strong> <code>taze.config.ts</code> with
+        <code>defineConfig</code>, shared across runs and CI.
+      </li>
+      <li>
+        <strong>A programmatic API</strong> (<code>CheckPackages()</code>).
+      </li>
+    </ul>
+
+    <div class="verdict">
+      <p><strong>Honest verdict:</strong> if you want codified per-package
+      update policy, taze wins today. If you want the richest interactive
+      session — audit, changelogs and search while you pick — inup wins.
+      Both respect your pnpm-workspace.yaml.</p>
+      <p>Try it in any project: <code>npx inup</code></p>
+    </div>
+
+    <p class="footnote">
+      Sources: taze documentation, inup source. Fully sourced analysis with
+      registry data in
+      <a href="https://github.com/donfear/inup/blob/main/docs/COMPETITORS.md">docs/COMPETITORS.md</a>.
+      Also see <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a>.
+    </p>
+  </div>
+</Base>

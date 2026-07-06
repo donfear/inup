@@ -1,0 +1,11 @@
+---
+interface Props {
+  v: 'yes' | 'no' | 'na';
+}
+
+const { v } = Astro.props;
+const label = { yes: 'Yes', no: 'No', na: 'Not applicable' }[v];
+const glyph = { yes: '✓', no: '✗', na: '—' }[v];
+---
+
+<span class={`mark-${v}`} role="img" aria-label={label}>{glyph}</span>
