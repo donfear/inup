@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyVersionPrefix,
   extractMajorVersion,
+  filterVersionsByReleaseAge,
   findClosestMinorVersion,
   getOptimizedRangeVersion,
   isVersionOutdated,
@@ -33,6 +34,74 @@ describe('version utils', () => {
       expect(result.latestVersion).toBe('1.1.0')
       expect(result.deprecated).toBeUndefined()
       expect(result.enginesNode).toBeUndefined()
+      // The abbreviated packument has no `time` field.
+      expect(result.publishTimes).toBeUndefined()
+    })
+
+    it('extracts publish times for tracked versions from a full packument', () => {
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: {
+          created: '2020-01-01T00:00:00.000Z',
+          modified: '2024-01-02T00:00:00.000Z',
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+          '2.0.0-beta.1': '2024-06-01T00:00:00.000Z',
+        },
+      })
+
+      const result = parseVersions(raw)
+      // Only entries for versions in allVersions — no created/modified/prerelease keys.
+      expect(result.publishTimes).toEqual({
+        '1.0.0': '2020-01-01T00:00:00.000Z',
+        '1.1.0': '2024-01-02T00:00:00.000Z',
+      })
+    })
+
+    it('skips versions whose time entry is missing or not a string', () => {
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: { '1.0.0': 12345 },
+      })
+
+      expect(parseVersions(raw).publishTimes).toEqual({})
+    })
+  })
+
+  describe('filterVersionsByReleaseAge()', () => {
+    const DAY_MS = 24 * 60 * 60_000
+    const now = Date.parse('2026-07-06T12:00:00.000Z')
+    const times = {
+      '1.0.0': new Date(now - 30 * DAY_MS).toISOString(),
+      '1.1.0': new Date(now - 2 * DAY_MS).toISOString(),
+      '1.2.0': new Date(now - 60 * 60_000).toISOString(), // 1 hour old
+    }
+
+    it('drops versions younger than the cooldown window', () => {
+      // 7 days in minutes: only the 30-day-old version survives.
+      expect(filterVersionsByReleaseAge(['1.0.0', '1.1.0', '1.2.0'], times, 7 * 1440, now)).toEqual(
+        ['1.0.0']
+      )
+      // 1 day in minutes: the 2-day-old version also survives.
+      expect(filterVersionsByReleaseAge(['1.0.0', '1.1.0', '1.2.0'], times, 1440, now)).toEqual([
+        '1.0.0',
+        '1.1.0',
+      ])
+    })
+
+    it('is a no-op without publish times (abbreviated packument / registry without time)', () => {
+      expect(filterVersionsByReleaseAge(['1.0.0', '1.1.0'], undefined, 1440, now)).toEqual([
+        '1.0.0',
+        '1.1.0',
+      ])
+    })
+
+    it('keeps versions with missing or unparsable timestamps', () => {
+      const partial = { '1.1.0': 'not-a-date' }
+      expect(filterVersionsByReleaseAge(['1.0.0', '1.1.0'], partial, 1440, now)).toEqual([
+        '1.0.0',
+        '1.1.0',
+      ])
     })
   })
 

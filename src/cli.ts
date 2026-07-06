@@ -33,6 +33,7 @@ export interface CliOptions {
   check?: boolean
   apply?: boolean
   target?: string
+  minimumReleaseAge?: string
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
@@ -55,6 +56,19 @@ export async function runCli(options: CliOptions): Promise<void> {
     console.error(chalk.red(`Invalid target: ${options.target}`))
     console.error(chalk.yellow('Valid options: minor, patch, latest'))
     process.exit(1)
+  }
+
+  // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc".
+  let cliMinimumReleaseAge: number | undefined
+  if (options.minimumReleaseAge !== undefined) {
+    cliMinimumReleaseAge = Number.parseInt(options.minimumReleaseAge, 10)
+    if (!Number.isInteger(cliMinimumReleaseAge) || cliMinimumReleaseAge < 0) {
+      console.error(chalk.red(`Invalid minimum release age: ${options.minimumReleaseAge}`))
+      console.error(
+        chalk.yellow('Expected a non-negative number of minutes, e.g. --minimum-release-age 10080')
+      )
+      process.exit(1)
+    }
   }
 
   // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
@@ -130,6 +144,9 @@ export async function runCli(options: CliOptions): Promise<void> {
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
+    // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
+    minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,
+    minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
     // Adaptive concurrency defaults ON; it's an internal/dev toggle with no public
     // flag. Set INUP_ADAPTIVE=0 to disable (e.g. for A/B perf comparisons).
     adaptive: process.env.INUP_ADAPTIVE !== '0',
@@ -200,6 +217,10 @@ program
   .option(
     '--apply',
     'non-interactively write upgrades to package.json and run install (honors .inuprc ignore/exclude)'
+  )
+  .option(
+    '--minimum-release-age <minutes>',
+    'only offer versions published at least this many minutes ago (supply-chain cooldown; also via .inuprc)'
   )
   .option(
     '--target <level>',

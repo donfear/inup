@@ -119,6 +119,43 @@ describe('project-config', () => {
       const config = loadProjectConfig(testDir)
       expect(config.showOptionalDependencyVulnerabilities).toBe(true)
     })
+
+    it('loads minimumReleaseAge and its exclusion list', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({
+          minimumReleaseAge: 10080,
+          minimumReleaseAgeExclude: ['@myco/*', 42, 'internal-tool', null],
+        })
+      )
+
+      const config = loadProjectConfig(testDir)
+      expect(config.minimumReleaseAge).toBe(10080)
+      // Non-string entries are filtered, like the ignore list.
+      expect(config.minimumReleaseAgeExclude).toEqual(['@myco/*', 'internal-tool'])
+    })
+
+    it('accepts minimumReleaseAge of 0 (explicitly disabled)', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ minimumReleaseAge: 0 }))
+
+      expect(loadProjectConfig(testDir).minimumReleaseAge).toBe(0)
+    })
+
+    it('drops invalid minimumReleaseAge values', () => {
+      for (const bad of [-5, '10080', null]) {
+        writeFileSync(join(testDir, '.inuprc'), `{"minimumReleaseAge": ${JSON.stringify(bad)}}`)
+        expect(loadProjectConfig(testDir).minimumReleaseAge).toBeUndefined()
+      }
+    })
+
+    it('drops a non-array minimumReleaseAgeExclude', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({ minimumReleaseAgeExclude: 'not-an-array' })
+      )
+
+      expect(loadProjectConfig(testDir).minimumReleaseAgeExclude).toBeUndefined()
+    })
   })
 
   describe('isPackageIgnored()', () => {
