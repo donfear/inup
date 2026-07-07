@@ -1,0 +1,471 @@
+@import 'tailwindcss';
+
+/* ————————————————————————————————————————————————
+   inup design tokens.
+   Concept: the tool's own semver semantics are the brand —
+   green = safe upgrade, amber = major, red = vulnerable —
+   on a crisp neutral canvas. The terminal is always dark;
+   the page follows the visitor's color scheme automatically.
+   All colors live here; markup and components use tokens only.
+   ———————————————————————————————————————————————— */
+/* Every token is a light-dark() pair resolved by the effective color
+   scheme: the OS preference by default, or the visitor's explicit
+   choice via the header toggle (data-theme on <html>, persisted in
+   localStorage). Light values run one shade deeper than the logo so
+   small brand-colored text clears WCAG AA even on tinted surfaces. */
+:root {
+  color-scheme: light dark;
+
+  --background: light-dark(#f8f9fb, #0a0f1e);
+  --surface: light-dark(#ffffff, #101a2e);
+  --foreground: light-dark(#0b1220, #e6eaf2);
+  --muted: light-dark(#eef1f4, #17223c);
+  --muted-foreground: light-dark(#5b6472, #98a2b3);
+  --border: light-dark(#e5e8ee, #223049);
+
+  --primary: light-dark(#0b1220, #e6eaf2);
+  --primary-foreground: light-dark(#ffffff, #0b1120);
+
+  /* Brand gradient stops, sampled from the logo: teal → green. */
+  --brand: light-dark(#15703a, #4ade80);
+  --brand-2: light-dark(#0f766e, #2dd4bf);
+  --success: light-dark(#15803d, #4ade80);
+  --warning: light-dark(#9a6700, #d29922);
+  --danger: light-dark(#cf222e, #f87171);
+
+  /* Terminal palette — the terminal is always a dark object. */
+  --terminal: #0d1524;
+  --terminal-border: light-dark(#263349, #2c3b55);
+  --terminal-foreground: #c9d4e3;
+  --terminal-muted: #7e8ba6; /* ≥4.5:1 on --terminal for WCAG AA */
+  --term-green: #3fb950;
+  --term-amber: #d29922;
+  --term-red: #f85149;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-terminal: var(--terminal);
+  --color-terminal-border: var(--terminal-border);
+  --color-terminal-foreground: var(--terminal-foreground);
+  --color-terminal-muted: var(--terminal-muted);
+  --color-term-green: var(--term-green);
+  --color-term-amber: var(--term-amber);
+  --color-term-red: var(--term-red);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+@layer base {
+  /* Animated anchor scrolling is motion — instant jumps under reduce. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans, ui-sans-serif);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    isolation: isolate;
+  }
+
+  /* Ambient brand glow — the logo's halo, carried across the site.
+     Fixed so every page shares the same quiet atmosphere. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(
+        1000px 480px at 78% -120px,
+        color-mix(in srgb, var(--brand) 8%, transparent),
+        transparent 70%
+      ),
+      radial-gradient(
+        700px 380px at 12% -80px,
+        color-mix(in srgb, var(--brand-2) 6%, transparent),
+        transparent 70%
+      );
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 25%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  /* Inline code on prose surfaces (not inside pre). */
+  code {
+    font-family: var(--font-mono, ui-monospace);
+  }
+
+  :not(pre) > code {
+    font-size: 0.875em;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 0.375rem;
+    padding: 0.1em 0.35em;
+  }
+
+  /* Code inside headings reads as type, not as a chip. */
+  h1 code,
+  h2 code,
+  h3 code {
+    background: transparent;
+    border: none;
+    padding: 0;
+    font-size: 0.95em;
+    letter-spacing: -0.03em;
+  }
+}
+
+@layer components {
+  /* Content section: generous rhythm. Pair with .rule-t for the divider. */
+  .section {
+    padding-block: 5rem;
+  }
+
+  /* Fading top hairline — shared by page sections and changelog rows. */
+  .rule-t {
+    position: relative;
+  }
+
+  .rule-t::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      var(--border) 12%,
+      var(--border) 88%,
+      transparent
+    );
+  }
+
+  /* Elevated card that lifts toward the brand color on hover. */
+  .card-lift {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    transition:
+      translate 200ms,
+      border-color 200ms,
+      box-shadow 200ms;
+  }
+
+  .card-lift:hover {
+    translate: 0 -2px;
+    border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+    box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--brand) 5%, transparent),
+      0 4px 6px -4px color-mix(in srgb, var(--brand) 5%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card-lift {
+      transition: none;
+    }
+
+    .card-lift:hover {
+      translate: none;
+    }
+  }
+
+  /* Section eyebrow — one consistent voice for every section label. */
+  .eyebrow {
+    margin: 0 0 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-foreground);
+  }
+
+  /* Inline text link — quiet underline that warms to brand on hover. */
+  .link {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    text-underline-offset: 3px;
+    transition: text-decoration-color 150ms;
+  }
+
+  .link:hover {
+    text-decoration-color: var(--brand);
+  }
+
+  /* Keyboard keycap — used in feature cards and the shortcuts table. */
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--foreground);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 0.4rem;
+  }
+
+  /* Markdown prose (docs, changelog). */
+  .prose {
+    max-width: 70ch;
+    line-height: 1.7;
+  }
+
+  .prose h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0 0 1rem;
+  }
+
+  .prose h2 {
+    font-size: 1.4rem;
+    font-weight: 650;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    margin: 2.25rem 0 0.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .prose h3 {
+    font-size: 1.1rem;
+    font-weight: 650;
+    margin: 1.75rem 0 0.5rem;
+  }
+
+  .prose p,
+  .prose ul,
+  .prose ol {
+    margin: 0 0 1rem;
+    color: var(--foreground);
+  }
+
+  .prose ul {
+    list-style: disc;
+    padding-left: 1.4rem;
+  }
+
+  .prose ol {
+    list-style: decimal;
+    padding-left: 1.4rem;
+  }
+
+  .prose li {
+    margin: 0.35rem 0;
+  }
+
+  .prose a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, var(--foreground) 35%, transparent);
+    text-underline-offset: 3px;
+  }
+
+  .prose a:hover {
+    text-decoration-color: var(--brand);
+  }
+
+  .prose blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1rem;
+    color: var(--muted-foreground);
+    margin: 1.25rem 0;
+  }
+
+  .prose table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    margin: 1.25rem 0;
+  }
+
+  .prose th,
+  .prose td {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .prose thead th {
+    font-weight: 600;
+    color: var(--muted-foreground);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .prose pre {
+    position: relative;
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.7;
+    margin: 1.25rem 0;
+  }
+
+  /* Copy button on docs code blocks (injected by DocsLayout's script;
+     hidden until the block is hovered or the button is focused). */
+  .copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.25rem 0.6rem;
+    font-family: var(--font-sans, ui-sans-serif);
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--terminal-foreground);
+    background: color-mix(in srgb, var(--terminal-foreground) 12%, transparent);
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.4rem;
+    cursor: pointer;
+    opacity: 0;
+    transition:
+      opacity 150ms,
+      background 150ms;
+  }
+
+  .prose pre:hover .copy-btn,
+  .copy-btn:focus-visible {
+    opacity: 1;
+  }
+
+  .copy-btn:hover {
+    background: color-mix(in srgb, var(--terminal-foreground) 20%, transparent);
+  }
+
+  /* Heading anchors in rendered markdown (rehype-autolink-headings). */
+  .prose .heading-anchor {
+    margin-left: 0.4ch;
+    color: var(--muted-foreground);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+
+  .prose h2:hover .heading-anchor,
+  .prose h3:hover .heading-anchor,
+  .prose .heading-anchor:focus-visible {
+    opacity: 1;
+  }
+
+  .prose .heading-anchor:hover {
+    color: var(--brand);
+  }
+
+  .prose pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .prose img {
+    max-width: 100%;
+    border-radius: 0.75rem;
+  }
+}
+
+/* Shiki dual themes: activate the dark palette when the effective
+   scheme is dark — OS preference unless the toggle overrides it.
+   (Astro emits both themes as CSS variables.) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .astro-code,
+  :root:not([data-theme='light']) .astro-code span {
+    color: var(--shiki-dark) !important;
+    background-color: var(--shiki-dark-bg) !important;
+    font-style: var(--shiki-dark-font-style) !important;
+    font-weight: var(--shiki-dark-font-weight) !important;
+    text-decoration: var(--shiki-dark-text-decoration) !important;
+  }
+}
+
+:root[data-theme='dark'] .astro-code,
+:root[data-theme='dark'] .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* Theme toggle icons: show the theme you'd switch to —
+   moon in light mode, sun in dark. */
+.theme-icon-sun {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .theme-icon-moon {
+    display: none;
+  }
+
+  :root:not([data-theme='light']) .theme-icon-sun {
+    display: inline;
+  }
+}
+
+:root[data-theme='dark'] .theme-icon-moon {
+  display: none;
+}
+
+:root[data-theme='dark'] .theme-icon-sun {
+  display: inline;
+}

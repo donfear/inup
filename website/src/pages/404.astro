@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+
+import { base } from '../lib/url';
+---
+
+<Base
+  title="Page not found — inup"
+  description="This page doesn't exist. Head back to inup — the interactive dependency upgrader for npm, yarn, pnpm & bun."
+>
+  <div class="mx-auto max-w-6xl px-6">
+    <section class="flex flex-col items-center py-28 text-center sm:py-36">
+      <p
+        class="m-0 inline-flex items-center gap-3 rounded-xl bg-terminal px-5 py-3.5 font-mono text-base text-terminal-foreground"
+      >
+        <span class="select-none text-term-green">$</span> inup --open /this-page
+        <span class="text-term-red">✗ 404</span>
+      </p>
+      <h1 class="m-0 mt-8 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+        This page is <span class="bg-gradient-to-r from-brand-2 to-brand bg-clip-text text-transparent">outdated</span> — it doesn't exist.
+      </h1>
+      <p class="m-0 mb-8 max-w-[44ch] text-muted-foreground">
+        The page you're looking for was moved, renamed, or never shipped.
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <a
+          href={`${base}/`}
+          class="inline-flex h-11 items-center rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground no-underline transition-opacity hover:opacity-90"
+        >Back to the homepage</a>
+        <a
+          href={`${base}/docs/getting-started/`}
+          class="inline-flex h-11 items-center rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40"
+        >Read the docs</a>
+      </div>
+    </section>
+  </div>
+</Base>

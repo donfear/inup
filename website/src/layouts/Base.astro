@@ -1,0 +1,285 @@
+---
+import '../styles/global.css';
+import { Font } from 'astro:assets';
+import Icon from '../components/Icon.astro';
+import logoMark from '../assets/logo-mark.webp';
+import { site } from '../data/site';
+import { compactNumber } from '../lib/format';
+import { stats } from '../lib/stats';
+
+// Zero is deliberately treated like unavailable (matching Stats.astro):
+// a "0 stars" badge is worse social proof than a plain GitHub link.
+const starCount = stats.stars ? compactNumber.format(stats.stars) : null;
+
+interface Props {
+  title: string;
+  description: string;
+  jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
+  /** Absolute URL override for the social preview image. */
+  ogImage?: string;
+}
+
+const { title, description, jsonLd, ogImage } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+import { base } from '../lib/url';
+// Must be absolute and include the GitHub Pages base path.
+const ogImageUrl = ogImage ?? new URL(`${base}/og.png`, Astro.site).href;
+
+const path = Astro.url.pathname;
+// One list drives both the desktop link row and the mobile burger menu.
+const nav = [
+  { href: `${base}/docs/`, label: 'Docs', active: path.startsWith(`${base}/docs`) },
+  { href: `${base}/#compare`, label: 'Compare', active: false },
+  {
+    href: `${base}/changelog/`,
+    label: 'Changelog',
+    active: path.startsWith(`${base}/changelog`),
+  },
+  { href: site.npmUrl, label: 'npm', active: false },
+];
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script is:inline>
+      // Apply the persisted theme override before first paint.
+      // localStorage can throw when storage is blocked; fall back to auto.
+      (() => {
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch {
+          /* storage unavailable — stay on the system preference */
+        }
+      })();
+    </script>
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="keywords" content={site.keywords.join(', ')} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/png" href={`${base}/favicon.png`} />
+    <link rel="apple-touch-icon" href={`${base}/apple-touch-icon.png`} />
+    <link rel="manifest" href={`${base}/manifest.webmanifest`} />
+    <link rel="sitemap" href={`${base}/sitemap-index.xml`} />
+    <link
+      rel="alternate"
+      type="application/rss+xml"
+      title="inup releases"
+      href={`${base}/rss.xml`}
+    />
+    {/* Values mirror --background in global.css; the theme-toggle script
+        overrides them when the visitor picks a theme explicitly. */}
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0f1e" />
+    <Font cssVariable="--font-inter" preload />
+    <Font cssVariable="--font-jetbrains-mono" preload />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="inup — interactive dependency upgrader for npm, yarn, pnpm & bun" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
+    <slot name="head" />
+  </head>
+  <body>
+    <a
+      href="#main"
+      class="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+    >Skip to content</a>
+    <header
+      class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md"
+    >
+      <div class="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3.5">
+        <a
+          class="flex items-center gap-2 font-mono text-[1.05rem] font-bold no-underline"
+          href={`${base}/`}
+        >
+          <img src={logoMark.src} width="24" height="24" alt="" class="size-6" /> inup
+        </a>
+        <nav class="ml-auto flex items-center gap-5 text-sm" aria-label="Site">
+          {nav.map((item) => (
+            <a
+              href={item.href}
+              aria-current={item.active ? 'page' : undefined}
+              class={`hidden no-underline transition-colors hover:text-foreground md:inline ${
+                item.active ? 'font-medium text-foreground' : 'text-muted-foreground'
+              }`}
+            >{item.label}</a>
+          ))}
+          <button
+            id="theme-toggle"
+            type="button"
+            aria-label="Toggle color theme"
+            class="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+          >
+            <Icon name="moon" size={15} class="theme-icon-moon" />
+            <Icon name="sun" size={15} class="theme-icon-sun" />
+          </button>
+          <a
+            href={site.repoUrl}
+            class="hidden items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground md:flex"
+          >
+            <Icon name="github" size={15} />
+            <span>{starCount ? 'Star' : 'GitHub'}</span>
+            <span class="sr-only">inup on GitHub</span>
+            {starCount && (
+              <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                <Icon name="star" size={11} class="text-warning" />
+                {starCount}
+              </span>
+            )}
+          </a>
+          {/* Mobile burger — a native disclosure, so it opens without JS;
+              the footer script adds Escape / outside-click / link-click
+              closing as enhancement. The panel anchors to the sticky
+              header (position: sticky establishes the containing block). */}
+          <details id="mobile-menu" class="group md:hidden">
+            <summary
+              class="flex size-8 cursor-pointer list-none items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors group-open:text-foreground hover:border-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden"
+            >
+              <span class="sr-only">Menu</span>
+              <Icon name="menu" size={15} class="group-open:hidden" />
+              <Icon name="x" size={15} class="hidden group-open:block" />
+            </summary>
+            <div
+              class="absolute inset-x-0 top-full border-b border-border bg-background/95 shadow-lg backdrop-blur-md"
+            >
+              <ul class="m-0 flex list-none flex-col gap-1 p-3">
+                {nav.map((item) => (
+                  <li>
+                    <a
+                      href={item.href}
+                      aria-current={item.active ? 'page' : undefined}
+                      class={`block rounded-lg px-3 py-2 no-underline transition-colors hover:bg-muted hover:text-foreground ${
+                        item.active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
+                      }`}
+                    >{item.label}</a>
+                  </li>
+                ))}
+                <li>
+                  <a
+                    href={site.repoUrl}
+                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Icon name="github" size={15} /> GitHub
+                    {starCount && (
+                      <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+                        <Icon name="star" size={11} class="text-warning" />
+                        {starCount}
+                      </span>
+                    )}
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </details>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <slot />
+    </main>
+
+    <footer class="border-t border-border py-12">
+      <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 sm:grid-cols-[1fr_auto_auto_auto]">
+        <div class="max-w-xs">
+          <p class="m-0 flex items-center gap-2 font-mono font-bold">
+            <img src={logoMark.src} width="20" height="20" alt="" class="size-5" /> inup
+          </p>
+          <p class="mt-2 mb-0 text-sm text-muted-foreground">
+            {site.tagline}. {site.license} licensed. No telemetry.
+          </p>
+        </div>
+        <nav aria-label="Footer documentation" class="text-sm">
+          <p class="m-0 mb-2 font-semibold">Docs</p>
+          <ul class="m-0 list-none space-y-1.5 p-0 text-muted-foreground">
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/`}>Overview</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/getting-started/`}>Getting started</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/cli/`}>CLI reference</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/docs/github-action/`}>GitHub Action</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/changelog/`}>Changelog</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Comparisons" class="text-sm">
+          <p class="m-0 mb-2 font-semibold">Compare</p>
+          <ul class="m-0 list-none space-y-1.5 p-0 text-muted-foreground">
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/npm-check-updates/`}>vs npm-check-updates</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/taze/`}>vs taze</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/vs/npm-check/`}>vs npm-check</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Project" class="text-sm">
+          <p class="m-0 mb-2 font-semibold">Project</p>
+          <ul class="m-0 list-none space-y-1.5 p-0 text-muted-foreground">
+            <li><a class="no-underline hover:text-foreground" href={site.repoUrl}>GitHub</a></li>
+            <li><a class="no-underline hover:text-foreground" href={site.npmUrl}>npm</a></li>
+            <li><a class="no-underline hover:text-foreground" href={site.issuesUrl}>Issues</a></li>
+            <li><a class="no-underline hover:text-foreground" href={site.releasesUrl}>Releases</a></li>
+            <li><a class="no-underline hover:text-foreground" href={`${base}/rss.xml`}>Releases RSS</a></li>
+          </ul>
+        </nav>
+      </div>
+    </footer>
+    <script>
+      const root = document.documentElement;
+
+      // The static theme-color metas only track the OS preference; when a
+      // theme is chosen explicitly, pin them to the page's real background
+      // so mobile browser chrome matches. Reading the computed style keeps
+      // this in lockstep with --background — no color duplicated here.
+      const syncThemeColor = () => {
+        if (!root.dataset.theme) return;
+        const background = getComputedStyle(document.body).backgroundColor;
+        for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+          meta.content = background;
+          meta.removeAttribute('media');
+        }
+      };
+      syncThemeColor();
+
+      // The burger menu opens natively (<details>); closing on Escape,
+      // on a click outside, or after following a link is the enhancement.
+      const menu = document.getElementById('mobile-menu') as HTMLDetailsElement | null;
+      if (menu) {
+        menu.addEventListener('click', (e) => {
+          if (e.target instanceof Element && e.target.closest('a')) menu.open = false;
+        });
+        document.addEventListener('click', (e) => {
+          if (menu.open && e.target instanceof Node && !menu.contains(e.target)) {
+            menu.open = false;
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') menu.open = false;
+        });
+      }
+
+      document.getElementById('theme-toggle')?.addEventListener('click', () => {
+        const isDark = root.dataset.theme
+          ? root.dataset.theme === 'dark'
+          : window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const next = isDark ? 'light' : 'dark';
+        root.dataset.theme = next;
+        syncThemeColor();
+        try {
+          localStorage.setItem('theme', next);
+        } catch {
+          /* storage unavailable — the choice still applies to this page */
+        }
+      });
+    </script>
+  </body>
+</html>

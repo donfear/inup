@@ -1,0 +1,83 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs taze — an honest comparison"
+  description="taze and inup are both modern interactive dependency upgraders with monorepo and pnpm catalog support. inup adds audit and changelogs in the picker; taze has per-package update rules. Verified comparison."
+  heading="inup vs taze"
+  columns={['inup', 'taze']}
+  faq={[
+    {
+      q: 'What is the main difference between inup and taze?',
+      a: 'Both are modern, monorepo-first interactive upgraders with pnpm catalog support. inup adds a vulnerability audit, changelog viewer and search inside the picker, plus a CI gate, JSON report and GitHub Action; taze offers per-package update rules and a typed config file.',
+    },
+    {
+      q: 'Can taze show vulnerabilities or changelogs while picking upgrades?',
+      a: 'No. taze selects versions interactively but has no built-in audit or changelog viewer. inup shows both without leaving the terminal.',
+    },
+    {
+      q: 'When should I choose taze over inup?',
+      a: 'When you want codified per-package update policy: taze.config.ts with packageMode maps package names or regexes to major/minor/patch/ignore. inup config currently supports only ignore and exclude.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/antfu-collective/taze">taze</a> is the
+    closest tool to inup in spirit: modern, monorepo-first, and one of the
+    very few upgraders that handles pnpm catalogs properly — including
+    named catalogs. The differences are in what happens inside the
+    interactive session and around it.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>Context inside the picker.</strong> Vulnerability audit
+      (<code>s</code>) with advisories cross-referenced against upgrade
+      targets, changelogs (<code>i</code>), search (<code>/</code>), and
+      live dependency-type toggles. taze's interactive mode selects
+      versions; inup's helps you decide.
+    </li>
+    <li>
+      <strong>CI &amp; automation surface.</strong> A guaranteed-read-only
+      <code>--check</code> gate, a versioned JSON schema for scripts and
+      agents, and a GitHub Action that maintains one rolling upgrade PR.
+    </li>
+  </ul>
+
+  <h2>Where taze is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>Per-package update policy.</strong> taze's
+      <code>packageMode</code> maps exact names or regexes to
+      major/minor/patch/ignore — “majors for typescript, minors for all
+      <code>@types/*</code>”. inup's config can only ignore or exclude
+      packages.
+    </li>
+    <li>
+      <strong>Typed configuration.</strong> <code>taze.config.ts</code> with
+      <code>defineConfig</code>, shared across runs and CI.
+    </li>
+    <li>
+      <strong>A programmatic API</strong> (<code>CheckPackages()</code>).
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> if you want codified per-package
+    update policy, taze wins today. If you want the richest interactive
+    session — audit, changelogs and search while you pick — inup wins.
+    Both respect your pnpm-workspace.yaml.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: taze documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a> and{' '}
+    <a href={`${base}/vs/npm-check/`}>inup vs npm-check</a>.
+  </Fragment>
+</VsLayout>

@@ -22,7 +22,10 @@
     "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
-    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme"
+    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme",
+    "site:dev": "pnpm --filter @inup/website dev",
+    "site:build": "pnpm --filter @inup/website build",
+    "site:preview": "pnpm --filter @inup/website preview"
   },
   "author": "Donfear",
   "keywords": [
@@ -48,7 +51,7 @@
     "ncu"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/donfear/inup#readme",
+  "homepage": "https://donfear.github.io/inup/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/donfear/inup.git"

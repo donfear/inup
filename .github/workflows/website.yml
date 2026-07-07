@@ -1,0 +1,78 @@
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      # The site consumes these at build time: README marker sections,
+      # package.json facts (version/description/keywords), the demo video.
+      - 'README.md'
+      - 'package.json'
+      - 'docs/demo/**'
+  # PRs run the build (typecheck + dist audits) without deploying — the
+  # root CI workflow never touches the website, so this is its only gate.
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      - 'README.md'
+      - 'package.json'
+      - 'docs/demo/**'
+  schedule:
+    # Weekly rebuild so npm/GitHub stats and the changelog stay fresh.
+    # Off-the-hour minute to dodge GitHub's cron congestion.
+    - cron: '17 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Deploys queue behind each other; PR check builds get their own group
+# per PR so they never block (or get blocked by) a deploy.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('website-pr-{0}', github.event.number) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # withastro/action detects the package manager from a lockfile inside
+      # its `path`, which a pnpm workspace does not have (the lockfile is at
+      # the repo root). Install and build explicitly, the same way the root
+      # CI does, and hand the output to the Pages actions ourselves.
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build site
+        run: pnpm site:build
+        env:
+          # Authenticated GitHub API calls for stars/releases at build time.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

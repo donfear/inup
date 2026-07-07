@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="https://donfear.github.io/inup/"><img src="docs/brand/inup-logo.webp" alt="inup logo" width="170"></a>
+</p>
+
 # inup — Interactive Dependency Upgrader
 
 [![npm version](https://img.shields.io/npm/v/inup?logo=npm&logoColor=%23CB3837&style=for-the-badge&color=crimson)](https://www.npmjs.com/package/inup)
@@ -11,6 +15,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://github.com/donfear/inup/blob/main/LICENSE)
 
 **inup** is an interactive CLI for upgrading outdated npm dependencies — npm, yarn, pnpm, and bun all supported. It auto-detects your package manager, works in monorepos and workspaces, and requires zero configuration.
+
+**[Documentation, comparisons & changelog →](https://donfear.github.io/inup/)**
 
 ![Interactive Upgrade Demo](docs/demo/interactive-upgrade.gif)
 

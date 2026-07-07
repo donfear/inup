@@ -1,0 +1,119 @@
+---
+import DocsSidebar from '../components/DocsSidebar.astro';
+import Icon from '../components/Icon.astro';
+import Base from './Base.astro';
+import { getDocsNav } from '../lib/docs-nav';
+import { breadcrumbs } from '../lib/seo';
+import { absUrl } from '../lib/url';
+import { site } from '../data/site';
+
+interface Props {
+  title: string;
+  description: string;
+  updated?: Date;
+  /** GitHub edit URL for this page's source; defaults to the README. */
+  editUrl?: string;
+}
+
+const {
+  title,
+  description,
+  updated,
+  editUrl = `${site.repoUrl}/edit/main/README.md`,
+} = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+const nav = await getDocsNav();
+const current = Astro.url.pathname.replace(/\/?$/, '/');
+const index = nav.findIndex((item) => item.href === current);
+const prev = index > 0 ? nav[index - 1] : undefined;
+const next = index >= 0 && index < nav.length - 1 ? nav[index + 1] : undefined;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: title,
+    description,
+    url: canonical,
+    ...(updated ? { dateModified: updated.toISOString().slice(0, 10) } : {}),
+    author: { '@type': 'Organization', name: site.name, url: site.repoUrl },
+  },
+  breadcrumbs([
+    { name: 'inup', item: absUrl('/', Astro.site!) },
+    { name: 'Docs', item: absUrl('/docs/', Astro.site!) },
+    { name: title, item: canonical },
+  ]),
+];
+---
+
+<Base title={`${title} — inup docs`} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-12 lg:grid-cols-[220px_1fr]">
+    <DocsSidebar nav={nav} />
+    <article class="prose min-w-0">
+      <h1>{title}</h1>
+      <slot />
+
+      <nav aria-label="Docs pages" class="mt-12 grid grid-cols-1 gap-3 border-t border-border pt-6 sm:grid-cols-2">
+        {prev ? (
+          <a
+            href={prev.href}
+            class="group flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-3 no-underline shadow-xs transition-all hover:border-brand/40"
+          >
+            <Icon name="arrow-left" size={14} class="shrink-0 text-muted-foreground" />
+            <span class="min-w-0">
+              <span class="block text-xs text-muted-foreground">Previous</span>
+              <span class="block truncate text-sm font-medium group-hover:text-brand">{prev.title}</span>
+            </span>
+          </a>
+        ) : (
+          <span></span>
+        )}
+        {next && (
+          <a
+            href={next.href}
+            class="group flex items-center justify-end gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-right no-underline shadow-xs transition-all hover:border-brand/40 sm:col-start-2"
+          >
+            <span class="min-w-0">
+              <span class="block text-xs text-muted-foreground">Next</span>
+              <span class="block truncate text-sm font-medium group-hover:text-brand">{next.title}</span>
+            </span>
+            <Icon name="arrow-right" size={14} class="shrink-0 text-muted-foreground" />
+          </a>
+        )}
+      </nav>
+
+      <p class="mt-6 text-sm text-muted-foreground">
+        {updated && <>Last updated {updated.toISOString().slice(0, 10)} ·{' '}</>}
+        <a class="link" href={editUrl}>Edit this page on GitHub</a>
+      </p>
+    </article>
+  </div>
+</Base>
+
+<script>
+  // Copy buttons on code blocks — progressive enhancement, no framework.
+  // Only offered when the Clipboard API exists (secure contexts).
+  for (const pre of navigator.clipboard
+    ? document.querySelectorAll<HTMLPreElement>('.prose pre')
+    : []) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-btn';
+    button.textContent = 'Copy';
+    button.setAttribute('aria-label', 'Copy code to clipboard');
+    button.addEventListener('click', async () => {
+      const code = pre.querySelector('code')?.innerText ?? pre.innerText;
+      try {
+        await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+      } catch {
+        return; // permission denied — leave the button as-is
+      }
+      button.textContent = 'Copied';
+      setTimeout(() => {
+        button.textContent = 'Copy';
+      }, 1500);
+    });
+    pre.appendChild(button);
+  }
+</script>

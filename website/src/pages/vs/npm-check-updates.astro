@@ -1,0 +1,94 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs npm-check-updates (ncu) — an honest comparison"
+  description="npm-check-updates is the incumbent dependency upgrader. inup adds a vulnerability audit, changelogs and search inside the interactive picker. Where each tool wins, verified against the docs."
+  heading="inup vs npm-check-updates"
+  columns={['inup', 'ncu']}
+  faq={[
+    {
+      q: 'Is inup a drop-in replacement for npm-check-updates?',
+      a: 'For interactive upgrades, yes: run npx inup where you would run ncu --interactive. For batch automation with per-package rules, doctor mode or the programmatic API, ncu remains the stronger tool.',
+    },
+    {
+      q: 'Does npm-check-updates check for vulnerabilities?',
+      a: 'No. ncu does not do vulnerability checks. inup runs an audit inside the picker and cross-references every advisory against the upgrade target, so you can see whether a bump actually fixes the advisory.',
+    },
+    {
+      q: 'Which tool handles pnpm catalogs better?',
+      a: 'Both understand catalog: entries, but ncu currently rewrites pnpm-workspace.yaml and drops comments and formatting. inup edits the version value in place and preserves the file.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/raineorshine/npm-check-updates">npm-check-updates</a>{' '}
+    (ncu) is the incumbent: over a decade old, millions of downloads a
+    month, and a huge option surface. If you're happy with it, keep it.
+    Here's where the two tools genuinely differ.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>The interactive session is the product, not a flag.</strong>{' '}
+      ncu's <code>--interactive</code> is a checkbox list bolted onto a
+      batch tool. inup's picker has search (<code>/</code>), live
+      dependency-type toggles (<code>d</code>/<code>p</code>/<code>o</code>),
+      a vulnerability audit (<code>s</code>) and changelogs (<code>i</code>)
+      without leaving the terminal.
+    </li>
+    <li>
+      <strong>Security context at decision time.</strong> inup
+      cross-references every advisory against the upgrade target, so the
+      list tells you whether the in-range bump actually escapes the
+      vulnerable range. ncu doesn't do vulnerability checks at all.
+    </li>
+    <li>
+      <strong>pnpm catalog fidelity.</strong> Both tools understand
+      <code>catalog:</code>, but ncu currently rewrites
+      <code>pnpm-workspace.yaml</code> and drops comments and formatting
+      (<a href="https://github.com/raineorshine/npm-check-updates/issues/1540">ncu#1540</a>,
+      open since September 2025). inup edits the value in place.
+    </li>
+  </ul>
+
+  <h2>Where ncu is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>Doctor mode.</strong> <code>ncu --doctor</code> applies
+      upgrades one by one, runs your tests, and identifies the exact upgrade
+      that breaks them. inup has nothing comparable.
+    </li>
+    <li>
+      <strong>Cooldown.</strong> <code>ncu --cooldown</code> skips versions
+      published fewer than N days ago — a practical defence against
+      supply-chain attacks that inup currently lacks.
+    </li>
+    <li>
+      <strong>Fine-grained policy.</strong> Per-package target functions and
+      filters let you encode rules like “majors for typescript, patches for
+      eslint”. inup's config only supports ignore and exclude.
+    </li>
+    <li>
+      <strong>A programmatic API and Deno support.</strong>
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> ncu is the safer default for batch
+    upgrades, automation scripts and policy-heavy setups. inup is the better
+    tool for the interactive session itself — reviewing, auditing and
+    reading changelogs before you commit to upgrades.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: ncu documentation and issue tracker, inup source. Verified {verifiedOn}. Also see <a href={`${base}/vs/taze/`}>inup vs taze</a> and{' '}
+    <a href={`${base}/vs/npm-check/`}>inup vs npm-check</a>.
+  </Fragment>
+</VsLayout>

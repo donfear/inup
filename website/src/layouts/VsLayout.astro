@@ -1,0 +1,83 @@
+---
+import ComparisonTable from '../components/ComparisonTable.astro';
+import Base from './Base.astro';
+import { breadcrumbs } from '../lib/seo';
+import { absUrl } from '../lib/url';
+import { verifiedOn, type ColumnId } from '../data/comparison';
+
+interface Props {
+  title: string;
+  description: string;
+  heading: string;
+  columns: ColumnId[];
+  /** Real questions and answers; rendered as FAQPage structured data. */
+  faq?: Array<{ q: string; a: string }>;
+}
+
+const { title, description, heading, columns, faq = [] } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+
+const jsonLd: Array<Record<string, unknown>> = [
+  breadcrumbs([
+    { name: 'inup', item: absUrl('/', Astro.site!) },
+    { name: heading, item: canonical },
+  ]),
+  ...(faq.length > 0
+    ? [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: faq.map(({ q, a }) => ({
+            '@type': 'Question',
+            name: q,
+            acceptedAnswer: { '@type': 'Answer', text: a },
+          })),
+        },
+      ]
+    : []),
+];
+---
+
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-3xl px-6">
+    <section class="pt-14 pb-8 sm:pt-20">
+      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
+        comparison · verified {verifiedOn}
+      </p>
+      <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">{heading}</h1>
+      <div class="prose text-lg text-muted-foreground">
+        <slot name="lede" />
+      </div>
+    </section>
+
+    <ComparisonTable columns={columns} />
+
+    <div class="prose py-10">
+      <slot />
+    </div>
+
+    <div
+      class="mb-10 rounded-2xl border border-brand/25 bg-surface bg-gradient-to-b from-brand/8 to-transparent px-6 py-5 shadow-xs"
+    >
+      <slot name="verdict" />
+    </div>
+
+    {faq.length > 0 && (
+      <section class="mb-12">
+        <h2 class="m-0 mb-2 text-xl font-bold tracking-tight">Frequently asked questions</h2>
+        <div class="divide-y divide-border">
+          {faq.map(({ q, a }) => (
+            <div class="py-4">
+              <h3 class="m-0 mb-1.5 text-[0.95rem] font-semibold">{q}</h3>
+              <p class="m-0 text-sm leading-relaxed text-muted-foreground">{a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <p class="prose mb-16 text-sm text-muted-foreground">
+      <slot name="footnote" />
+    </p>
+  </div>
+</Base>
