@@ -1,39 +1,24 @@
-/** Site-wide constants. Single source for names, URLs and metadata. */
+/**
+ * Site-wide constants. Package facts (version, description, keywords)
+ * are imported from the tool's own package.json so they can never
+ * drift from what ships to npm.
+ */
+import rootPkg from '../../../package.json';
+
+const repoUrl = rootPkg.repository.url.replace(/^git\+/, '').replace(/\.git$/, '');
+
 export const site = {
-  name: 'inup',
+  name: rootPkg.name,
   tagline: 'Interactive dependency upgrader for npm, yarn, pnpm & bun',
-  description:
-    'Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready. Upgrade-interactive for every package manager.',
-  // Mirrors the npm package keywords (root package.json).
-  keywords: [
-    'upgrade-interactive',
-    'interactive',
-    'dependency-management',
-    'outdated',
-    'upgrade',
-    'update',
-    'npm',
-    'yarn',
-    'pnpm',
-    'bun',
-    'monorepo',
-    'workspace',
-    'cli',
-    'vulnerability',
-    'audit',
-    'changelog',
-    'package-manager',
-    'dependencies',
-    'semver',
-    'ncu',
-  ],
+  description: rootPkg.description,
+  keywords: rootPkg.keywords,
   /** Fallback when the npm registry is unreachable at build time. */
-  lastKnownVersion: '1.6.7',
-  nodeRequirement: '>=22.19.0',
+  lastKnownVersion: rootPkg.version,
+  nodeRequirement: rootPkg.engines.node,
   license: 'MIT',
-  repoUrl: 'https://github.com/donfear/inup',
-  npmUrl: 'https://www.npmjs.com/package/inup',
-  issuesUrl: 'https://github.com/donfear/inup/issues',
-  releasesUrl: 'https://github.com/donfear/inup/releases',
-  actionDocsUrl: 'https://github.com/donfear/inup#github-action--one-rolling-upgrade-pr',
+  repoUrl,
+  npmUrl: `https://www.npmjs.com/package/${rootPkg.name}`,
+  issuesUrl: `${repoUrl}/issues`,
+  releasesUrl: `${repoUrl}/releases`,
+  actionDocsUrl: `${repoUrl}#github-action--one-rolling-upgrade-pr`,
 } as const;

@@ -1,7 +1,7 @@
 ---
-import { marked } from 'marked';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
+import { renderReleaseNotes } from '../lib/release-notes';
 import { stats } from '../lib/stats';
 import { site } from '../data/site';
 
@@ -13,27 +13,10 @@ const dateFmt = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
-/**
- * GitHub release bodies reference PRs, users and compare views by bare
- * URL; compact them into readable links before rendering.
- */
-function compactGitHubLinks(md: string): string {
-  return md
-    .replace(
-      /by @([\w-]+) in (https:\/\/github\.com\/[\w./-]+\/pull\/(\d+))/g,
-      'by [@$1](https://github.com/$1) in [#$3]($2)',
-    )
-    .replace(/(?<!\()\bhttps:\/\/github\.com\/[\w./-]+\/pull\/(\d+)\b(?!\))/g, '[#$1]($&)')
-    .replace(
-      /\*\*Full Changelog\*\*: (https:\/\/github\.com\/[\w./-]+\/compare\/([\w./-]+))/g,
-      '**Full changelog**: [`$2`]($1)',
-    );
-}
-
 const releases = await Promise.all(
   stats.releases.map(async (r) => ({
     ...r,
-    html: r.body ? await marked.parse(compactGitHubLinks(r.body)) : '',
+    html: r.body ? await renderReleaseNotes(r.body) : '',
     date: dateFmt.format(new Date(r.publishedAt)),
   })),
 );

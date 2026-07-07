@@ -52,10 +52,15 @@ const nav = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script is:inline>
       // Apply the persisted theme override before first paint.
+      // localStorage can throw when storage is blocked; fall back to auto.
       (() => {
-        const theme = localStorage.getItem('theme');
-        if (theme === 'light' || theme === 'dark') {
-          document.documentElement.dataset.theme = theme;
+        try {
+          const theme = localStorage.getItem('theme');
+          if (theme === 'light' || theme === 'dark') {
+            document.documentElement.dataset.theme = theme;
+          }
+        } catch {
+          /* storage unavailable — stay on the system preference */
         }
       })();
     </script>
@@ -197,7 +202,11 @@ const nav = [
           : window.matchMedia('(prefers-color-scheme: dark)').matches;
         const next = isDark ? 'light' : 'dark';
         root.dataset.theme = next;
-        localStorage.setItem('theme', next);
+        try {
+          localStorage.setItem('theme', next);
+        } catch {
+          /* storage unavailable — the choice still applies to this page */
+        }
       });
     </script>
   </body>

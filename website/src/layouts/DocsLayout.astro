@@ -108,7 +108,10 @@ const jsonLd = [
 
 <script>
   // Copy buttons on code blocks — progressive enhancement, no framework.
-  for (const pre of document.querySelectorAll<HTMLPreElement>('.prose pre')) {
+  // Only offered when the Clipboard API exists (secure contexts).
+  for (const pre of navigator.clipboard
+    ? document.querySelectorAll<HTMLPreElement>('.prose pre')
+    : []) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-btn';

@@ -318,8 +318,10 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     }
   }
 
-  // The install command copies itself.
-  for (const chip of document.querySelectorAll('[data-copy-install]')) {
+  // The install command copies itself (when the Clipboard API exists).
+  for (const chip of navigator.clipboard
+    ? document.querySelectorAll('[data-copy-install]')
+    : []) {
     chip.addEventListener('click', async () => {
       await navigator.clipboard.writeText('npx inup');
       chip.querySelector('.copy-hint')?.classList.add('hidden');

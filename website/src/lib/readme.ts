@@ -4,13 +4,25 @@
  * means real drift — we throw to fail the build loudly rather than ship
  * stale or empty content. Runs only at build time (static output).
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
-// Resolved from cwd, not import.meta.url: the bundled module lives in
-// dist/.prerender/chunks/ at build time, but builds always run with the
-// website package as the working directory.
-const readmePath = resolve(process.cwd(), '..', 'README.md');
+// Located by walking up to the workspace root, not via import.meta.url:
+// the bundled module lives in dist/.prerender/chunks/ at build time, and
+// cwd may be either the website package or the repo root.
+function findRepoRoot(from: string): string {
+  let dir = from;
+  while (!existsSync(join(dir, 'pnpm-workspace.yaml'))) {
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error(`Could not find the repo root (pnpm-workspace.yaml) above ${from}`);
+    }
+    dir = parent;
+  }
+  return dir;
+}
+
+const readmePath = join(findRepoRoot(process.cwd()), 'README.md');
 const readme = readFileSync(readmePath, 'utf8');
 
 function markerSection(name: string): string {
