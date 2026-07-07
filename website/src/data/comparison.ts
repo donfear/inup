@@ -1,10 +1,14 @@
 /**
  * Single source of truth for every comparison table on the site.
  * The index renders a column subset; each vs/ page renders a two-column
- * slice plus rows unique to that head-to-head. Data verified against each
- * tool's documentation on 2026-07-06.
+ * slice plus rows unique to that head-to-head. A missing entry means the
+ * row is not relevant to that head-to-head.
  */
-export type Support = 'yes' | 'no' | 'na';
+
+/** The date every claim in this matrix was last checked against each tool's docs. */
+export const verifiedOn = '2026-07-06';
+
+export type Support = 'yes' | 'no';
 export type CompetitorId = 'ncu' | 'taze' | 'npm-check' | 'builtin';
 export type ColumnId = 'inup' | CompetitorId;
 

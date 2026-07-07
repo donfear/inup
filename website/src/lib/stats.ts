@@ -42,21 +42,36 @@ const githubHeaders: Record<string, string> = {
   ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
 };
 
+interface GitHubRelease {
+  tag_name: string;
+  name: string | null;
+  published_at: string;
+  body: string | null;
+  html_url: string;
+  prerelease: boolean;
+  draft: boolean;
+}
+
+/** All releases, paginated — a single page of 50 would silently cap the changelog. */
+async function fetchAllReleases(): Promise<GitHubRelease[] | null> {
+  const all: GitHubRelease[] = [];
+  for (let page = 1; page <= 10; page++) {
+    const batch = await fetchJson<GitHubRelease[]>(
+      `https://api.github.com/repos/donfear/inup/releases?per_page=100&page=${page}`,
+      githubHeaders,
+    );
+    if (batch === null) return page === 1 ? null : all;
+    all.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return all;
+}
+
 const [registry, downloads, repo, releases] = await Promise.all([
   fetchJson<{ version: string }>('https://registry.npmjs.org/inup/latest'),
   fetchJson<{ downloads: number }>('https://api.npmjs.org/downloads/point/last-month/inup'),
   fetchJson<{ stargazers_count: number }>('https://api.github.com/repos/donfear/inup', githubHeaders),
-  fetchJson<
-    Array<{
-      tag_name: string;
-      name: string | null;
-      published_at: string;
-      body: string | null;
-      html_url: string;
-      prerelease: boolean;
-      draft: boolean;
-    }>
-  >('https://api.github.com/repos/donfear/inup/releases?per_page=50', githubHeaders),
+  fetchAllReleases(),
 ]);
 
 export const stats: SiteStats = {

@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { base } from '../lib/url';
 ---
 
 <Base

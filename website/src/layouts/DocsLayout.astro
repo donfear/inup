@@ -3,6 +3,8 @@ import DocsSidebar from '../components/DocsSidebar.astro';
 import Icon from '../components/Icon.astro';
 import Base from './Base.astro';
 import { getDocsNav } from '../lib/docs-nav';
+import { breadcrumbs } from '../lib/seo';
+import { absUrl } from '../lib/url';
 import { site } from '../data/site';
 
 interface Props {
@@ -17,12 +19,11 @@ const {
   title,
   description,
   updated,
-  editUrl = `${site.repoUrl}/blob/main/README.md`,
+  editUrl = `${site.repoUrl}/edit/main/README.md`,
 } = Astro.props;
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
-const nav = await getDocsNav(base);
+const nav = await getDocsNav();
 const current = Astro.url.pathname.replace(/\/?$/, '/');
 const index = nav.findIndex((item) => item.href === current);
 const prev = index > 0 ? nav[index - 1] : undefined;
@@ -38,31 +39,17 @@ const jsonLd = [
     ...(updated ? { dateModified: updated.toISOString().slice(0, 10) } : {}),
     author: { '@type': 'Organization', name: site.name, url: site.repoUrl },
   },
-  {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'inup',
-        item: new URL(`${base}/`, Astro.site).href,
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'Docs',
-        item: new URL(`${base}/docs/getting-started/`, Astro.site).href,
-      },
-      { '@type': 'ListItem', position: 3, name: title, item: canonical },
-    ],
-  },
+  breadcrumbs([
+    { name: 'inup', item: absUrl('/', Astro.site!) },
+    { name: 'Docs', item: absUrl('/docs/', Astro.site!) },
+    { name: title, item: canonical },
+  ]),
 ];
 ---
 
 <Base title={`${title} — inup docs`} description={description} jsonLd={jsonLd}>
   <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-12 lg:grid-cols-[220px_1fr]">
-    <DocsSidebar />
+    <DocsSidebar nav={nav} />
     <article class="prose min-w-0">
       <h1>{title}</h1>
       <slot />
@@ -96,12 +83,10 @@ const jsonLd = [
         )}
       </nav>
 
-      {updated && (
-        <p class="mt-6 text-sm text-muted-foreground">
-          Last updated {updated.toISOString().slice(0, 10)} ·{' '}
-          <a class="link" href={editUrl}>Edit this page on GitHub</a>
-        </p>
-      )}
+      <p class="mt-6 text-sm text-muted-foreground">
+        {updated && <>Last updated {updated.toISOString().slice(0, 10)} ·{' '}</>}
+        <a class="link" href={editUrl}>Edit this page on GitHub</a>
+      </p>
     </article>
   </div>
 </Base>
@@ -119,7 +104,11 @@ const jsonLd = [
     button.setAttribute('aria-label', 'Copy code to clipboard');
     button.addEventListener('click', async () => {
       const code = pre.querySelector('code')?.innerText ?? pre.innerText;
-      await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+      try {
+        await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+      } catch {
+        return; // permission denied — leave the button as-is
+      }
       button.textContent = 'Copied';
       setTimeout(() => {
         button.textContent = 'Copy';

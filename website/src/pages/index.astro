@@ -1,5 +1,6 @@
 ---
 import ComparisonTable from '../components/ComparisonTable.astro';
+import CopyInstall from '../components/CopyInstall.astro';
 import Icon from '../components/Icon.astro';
 import Stats from '../components/Stats.astro';
 import Base from '../layouts/Base.astro';
@@ -9,10 +10,11 @@ import Base from '../layouts/Base.astro';
 import demoVideo from '../../../docs/demo/interactive-upgrade.mp4';
 import demoPoster from '../assets/demo-poster.webp';
 import { site } from '../data/site';
+import { verifiedOn } from '../data/comparison';
 import { stats } from '../lib/stats';
 import type { IconName } from '../components/icons';
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { base } from '../lib/url';
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -105,16 +107,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
       </p>
 
       <div class="flex flex-wrap items-center justify-center gap-3">
-        <button
-          type="button"
-          data-copy-install
-          class="inline-flex h-12 cursor-pointer items-center gap-3 rounded-xl bg-terminal px-5 font-mono text-base text-terminal-foreground shadow-md transition-shadow hover:shadow-lg"
-          aria-label="Copy 'npx inup' to the clipboard"
-        >
-          <span class="select-none text-term-green" aria-hidden="true">$</span> npx inup
-          <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={14} /></span>
-          <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={14} /></span>
-        </button>
+        <CopyInstall />
         <a
           href={`${base}/docs/getting-started/`}
           class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
@@ -128,11 +121,16 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
 
       <figure class="mx-auto m-0 mt-14 max-w-5xl">
         <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
+          {/* No autoplay attribute and preload=none: the script below starts
+              playback only when the visitor does NOT prefer reduced motion,
+              so reduced-motion (and no-JS) visitors get the poster and never
+              download the video. */}
           <video
-            autoplay
+            id="demo-video"
             loop
             muted
             playsinline
+            preload="none"
             poster={demoPoster.src}
             width={1240}
             height={510}
@@ -153,7 +151,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     </section>
 
     <!-- Features -->
-    <section id="features" class="section scroll-mt-16">
+    <section id="features" class="section rule-t scroll-mt-16">
       <p class="eyebrow">
         <Icon name="terminal" size={15} class="text-brand" /> the picker
       </p>
@@ -167,7 +165,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
       <ul class="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
         {features.map((f) => (
           <li
-            class="rounded-2xl border border-border bg-surface p-6 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-lg hover:shadow-brand/5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+            class="card-lift p-6"
           >
             <div class="flex items-start justify-between">
               <span class="flex size-10 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
@@ -185,7 +183,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     </section>
 
     <!-- Monorepo -->
-    <section id="monorepo" class="section scroll-mt-16">
+    <section id="monorepo" class="section rule-t scroll-mt-16">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
           <p class="eyebrow">
@@ -216,7 +214,7 @@ catalog:
     </section>
 
     <!-- CI -->
-    <section id="ci" class="section scroll-mt-16">
+    <section id="ci" class="section rule-t scroll-mt-16">
       <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
         <div>
           <p class="eyebrow">
@@ -253,14 +251,14 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Compare -->
-    <section id="compare" class="section scroll-mt-16">
+    <section id="compare" class="section rule-t scroll-mt-16">
       <p class="eyebrow">
         <Icon name="scale" size={15} class="text-brand" /> comparison
       </p>
       <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">How inup compares</h2>
       <p class="m-0 mb-8 max-w-[66ch] text-muted-foreground">
         Honest marks — including the rows where the others win. Verified
-        against each tool's documentation on 2026-07-06.
+        against each tool's documentation on {verifiedOn}.
       </p>
       <ComparisonTable columns={['inup', 'ncu', 'taze', 'builtin']} homepageOnly />
       <p class="mt-4 mb-0 max-w-[66ch] text-sm text-muted-foreground">
@@ -275,7 +273,7 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     </section>
 
     <!-- Privacy + CTA -->
-    <section id="privacy" class="section scroll-mt-16">
+    <section id="privacy" class="section rule-t scroll-mt-16">
       <div
         class="rounded-3xl border border-brand/20 bg-surface bg-gradient-to-b from-brand/8 via-transparent to-transparent p-8 text-center sm:p-14"
       >
@@ -291,30 +289,25 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
           changelogs from GitHub. {site.license} licensed —{' '}
           <a href={site.repoUrl} class="link">read the source</a>.
         </p>
-        <button
-          type="button"
-          data-copy-install
-          class="inline-flex cursor-pointer items-center gap-3 rounded-xl bg-terminal px-6 py-4 font-mono text-lg text-terminal-foreground shadow-md transition-shadow hover:shadow-lg"
-          aria-label="Copy 'npx inup' to the clipboard"
-        >
-          <span class="select-none text-term-green" aria-hidden="true">$</span> npx inup
-          <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={15} /></span>
-          <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={15} /></span>
-        </button>
+        <CopyInstall size="lg" />
       </div>
     </section>
   </div>
 </Base>
 
 <script>
-  // The hero recording autoplays; honor reduced-motion by pausing it
-  // and surfacing controls so it can still be played deliberately.
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    const video = document.querySelector<HTMLVideoElement>('video[autoplay]');
-    if (video) {
-      video.pause();
-      video.removeAttribute('autoplay');
+  // The hero recording plays only for visitors who accept motion; the
+  // markup ships without autoplay so reduced-motion users never even
+  // download the video (see the comment on the element).
+  const video = document.getElementById('demo-video') as HTMLVideoElement | null;
+  if (video) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       video.controls = true;
+    } else {
+      video.play().catch(() => {
+        // Autoplay blocked (e.g. data saver): fall back to manual controls.
+        video.controls = true;
+      });
     }
   }
 
@@ -323,7 +316,11 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
     ? document.querySelectorAll('[data-copy-install]')
     : []) {
     chip.addEventListener('click', async () => {
-      await navigator.clipboard.writeText('npx inup');
+      try {
+        await navigator.clipboard.writeText('npx inup');
+      } catch {
+        return; // permission denied — leave the chip as-is
+      }
       chip.querySelector('.copy-hint')?.classList.add('hidden');
       chip.querySelector('.copied-hint')?.classList.remove('hidden');
       setTimeout(() => {

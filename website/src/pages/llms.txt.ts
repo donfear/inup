@@ -4,16 +4,20 @@
  * built for scripts and agents. Full docs bodies: /llms-full.txt.
  */
 import type { APIContext } from 'astro';
-import { getCollection } from 'astro:content';
+import { getDocsNav } from '../lib/docs-nav';
+import { absUrl } from '../lib/url';
 import { site } from '../data/site';
 
 export async function GET(context: APIContext) {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-  const url = (path: string) => new URL(`${base}${path}`, context.site!).href;
+  const url = (path: string) => absUrl(path, context.site!);
 
-  const docs = (await getCollection('docs')).sort((a, b) => a.data.order - b.data.order);
-  const docLinks = docs
-    .map((d) => `- [${d.data.title}](${url(`/docs/${d.id}/`)}): ${d.data.description}`)
+  // Same source as the sidebar — a retitled or reordered doc can never
+  // leave this index stale. Overview (order 0) is the HTML landing page.
+  const docLinks = (await getDocsNav())
+    .filter((item) => item.order > 0)
+    .map(
+      (item) => `- [${item.title}](${new URL(item.href, context.site!).href}): ${item.description}`,
+    )
     .join('\n');
 
   const body = `# inup
@@ -27,7 +31,6 @@ read-only CI gate; \`inup --apply\` writes safe upgrades. Node ${site.nodeRequir
 ## Docs
 
 ${docLinks}
-- [Keyboard shortcuts](${url('/docs/keyboard-shortcuts/')}): Every key binding in the interactive picker.
 
 ## Reference
 

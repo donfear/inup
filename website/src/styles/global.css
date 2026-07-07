@@ -73,7 +73,6 @@
   --color-term-green: var(--term-green);
   --color-term-amber: var(--term-amber);
   --color-term-red: var(--term-red);
-  --color-white: #ffffff;
   --color-transparent: transparent;
   --color-current: currentColor;
 
@@ -158,14 +157,17 @@
 }
 
 @layer components {
-  /* Content section: generous rhythm, hairline that fades at the edges
-     instead of a full-width stripe. */
+  /* Content section: generous rhythm. Pair with .rule-t for the divider. */
   .section {
-    position: relative;
     padding-block: 5rem;
   }
 
-  .section::before {
+  /* Fading top hairline — shared by page sections and changelog rows. */
+  .rule-t {
+    position: relative;
+  }
+
+  .rule-t::before {
     content: '';
     position: absolute;
     inset-inline: 0;
@@ -178,6 +180,36 @@
       var(--border) 88%,
       transparent
     );
+  }
+
+  /* Elevated card that lifts toward the brand color on hover. */
+  .card-lift {
+    display: block;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    transition:
+      translate 200ms,
+      border-color 200ms,
+      box-shadow 200ms;
+  }
+
+  .card-lift:hover {
+    translate: 0 -2px;
+    border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+    box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--brand) 5%, transparent),
+      0 4px 6px -4px color-mix(in srgb, var(--brand) 5%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card-lift {
+      transition: none;
+    }
+
+    .card-lift:hover {
+      translate: none;
+    }
   }
 
   /* Section eyebrow — one consistent voice for every section label. */

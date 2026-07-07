@@ -30,6 +30,15 @@ function compactGitHubLinks(md: string): string {
     );
 }
 
+// Both the changelog page and the RSS feed render every release —
+// cache per body so each one is parsed once per build.
+const cache = new Map<string, string>();
+
 export async function renderReleaseNotes(body: string): Promise<string> {
-  return String(await marked.parse(compactGitHubLinks(body)));
+  let html = cache.get(body);
+  if (html === undefined) {
+    html = String(await marked.parse(compactGitHubLinks(body)));
+    cache.set(body, html);
+  }
+  return html;
 }

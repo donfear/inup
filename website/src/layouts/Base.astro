@@ -4,14 +4,12 @@ import { Font } from 'astro:assets';
 import Icon from '../components/Icon.astro';
 import logoMark from '../assets/logo-mark.webp';
 import { site } from '../data/site';
+import { compactNumber } from '../lib/format';
 import { stats } from '../lib/stats';
 
-const starCount =
-  stats.stars !== null
-    ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(
-        stats.stars,
-      )
-    : null;
+// Zero is deliberately treated like unavailable (matching Stats.astro):
+// a "0 stars" badge is worse social proof than a plain GitHub link.
+const starCount = stats.stars ? compactNumber.format(stats.stars) : null;
 
 interface Props {
   title: string;
@@ -23,7 +21,7 @@ interface Props {
 
 const { title, description, jsonLd, ogImage } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { base } from '../lib/url';
 // Must be absolute and include the GitHub Pages base path.
 const ogImageUrl = ogImage ?? new URL(`${base}/og.png`, Astro.site).href;
 

@@ -4,6 +4,7 @@
  * repo README at build time; version/downloads/stars arrive as props when
  * live data is available and the chip is hidden otherwise.
  */
+import { compactNumber } from '../lib/format';
 import { testStats } from '../lib/readme';
 import { site } from '../data/site';
 import Icon from './Icon.astro';
@@ -16,13 +17,13 @@ interface Props {
 
 const { monthlyDownloads = null, stars = null } = Astro.props;
 
-const fmt = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 });
-
+// Truthy checks are intentional: a legitimate 0 reads as bad social
+// proof, so zero and unavailable both hide the chip (same as Base.astro).
 const items: Array<{ icon: IconName; text: string; href?: string } | null> = [
   monthlyDownloads
-    ? { icon: 'download', text: `${fmt.format(monthlyDownloads)}/month`, href: site.npmUrl }
+    ? { icon: 'download', text: `${compactNumber.format(monthlyDownloads)}/month`, href: site.npmUrl }
     : null,
-  stars ? { icon: 'star', text: `${fmt.format(stars)} stars`, href: site.repoUrl } : null,
+  stars ? { icon: 'star', text: `${compactNumber.format(stars)} stars`, href: site.repoUrl } : null,
   {
     icon: 'shield-check',
     text: `${testStats.tests.toLocaleString('en-US')} tests · ${testStats.coverage} coverage`,

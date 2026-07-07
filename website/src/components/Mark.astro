@@ -2,19 +2,13 @@
 import Icon from './Icon.astro';
 
 interface Props {
-  v: 'yes' | 'no' | 'na';
+  v: 'yes' | 'no';
 }
 
 const { v } = Astro.props;
-const label = { yes: 'Yes', no: 'No', na: 'Not applicable' }[v];
-const name = { yes: 'check', no: 'x', na: 'minus' }[v] as 'check' | 'x' | 'minus';
-const color = {
-  yes: 'text-success',
-  no: 'text-muted-foreground opacity-60',
-  na: 'text-muted-foreground',
-}[v];
+const label = v === 'yes' ? 'Yes' : 'No';
 ---
 
-<span class={`inline-flex items-center justify-center ${color}`}>
-  <Icon name={name} size={16} label={label} />
+<span class={`inline-flex items-center justify-center ${v === 'yes' ? 'text-success' : 'text-muted-foreground opacity-60'}`}>
+  <Icon name={v === 'yes' ? 'check' : 'x'} size={16} label={label} />
 </span>

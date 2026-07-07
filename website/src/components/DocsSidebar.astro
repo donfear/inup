@@ -1,8 +1,11 @@
 ---
-import { getDocsNav } from '../lib/docs-nav';
+import type { DocsNavItem } from '../lib/docs-nav';
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-const nav = await getDocsNav(base);
+interface Props {
+  nav: DocsNavItem[];
+}
+
+const { nav } = Astro.props;
 const current = Astro.url.pathname.replace(/\/?$/, '/');
 ---
 

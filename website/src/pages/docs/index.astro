@@ -1,38 +1,28 @@
 ---
-import { getCollection } from 'astro:content';
 import DocsSidebar from '../../components/DocsSidebar.astro';
 import Icon from '../../components/Icon.astro';
 import Base from '../../layouts/Base.astro';
+import { getDocsNav } from '../../lib/docs-nav';
+import { base } from '../../lib/url';
 import { site } from '../../data/site';
 import type { IconName } from '../../components/icons';
-
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 const icons: Record<string, IconName> = {
   'getting-started': 'zap',
   cli: 'terminal',
+  'keyboard-shortcuts': 'keyboard',
   configuration: 'sliders',
   ci: 'workflow',
   'github-action': 'github',
 };
 
-const entries = await getCollection('docs');
-const pages = [
-  ...entries.map((e) => ({
-    href: `${base}/docs/${e.id}/`,
-    title: e.data.title,
-    description: e.data.description,
-    order: e.data.order,
-    icon: icons[e.id] ?? ('book-open' as IconName),
-  })),
-  {
-    href: `${base}/docs/keyboard-shortcuts/`,
-    title: 'Keyboard shortcuts',
-    description: "Every key binding in inup's interactive picker — always current, generated from the same source as the tool's help screen.",
-    order: 30,
-    icon: 'keyboard' as IconName,
-  },
-].sort((a, b) => a.order - b.order);
+const nav = await getDocsNav();
+const pages = nav
+  .filter((item) => item.order > 0)
+  .map((item) => {
+    const slug = item.href.replace(/\/$/, '').split('/').pop() ?? '';
+    return { ...item, icon: icons[slug] ?? ('book-open' as IconName) };
+  });
 ---
 
 <Base
@@ -40,7 +30,7 @@ const pages = [
   description="Everything about inup: getting started, the CLI reference, keyboard shortcuts, .inuprc configuration, CI & scripting, and the GitHub Action."
 >
   <div class="mx-auto grid max-w-6xl grid-cols-1 gap-10 px-6 py-12 lg:grid-cols-[220px_1fr]">
-    <DocsSidebar />
+    <DocsSidebar nav={nav} />
     <div class="min-w-0">
       <h1 class="m-0 mb-3 text-3xl font-bold tracking-tight">Documentation</h1>
       <p class="m-0 mb-8 max-w-[60ch] text-muted-foreground">
@@ -54,7 +44,7 @@ const pages = [
           <li>
             <a
               href={p.href}
-              class="flex h-full flex-col rounded-2xl border border-border bg-surface p-5 no-underline shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/35 hover:shadow-lg hover:shadow-brand/5 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+              class="card-lift flex h-full flex-col p-5 no-underline"
             >
               <span class="mb-3 flex size-9 items-center justify-center rounded-lg bg-brand/10 text-brand ring-1 ring-brand/15">
                 <Icon name={p.icon} size={18} />

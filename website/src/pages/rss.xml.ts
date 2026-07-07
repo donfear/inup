@@ -7,10 +7,9 @@ import type { APIContext } from 'astro';
 import { renderReleaseNotes } from '../lib/release-notes';
 import { site } from '../data/site';
 import { stats } from '../lib/stats';
+import { base } from '../lib/url';
 
 export async function GET(context: APIContext) {
-  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-
   return rss({
     title: 'inup releases',
     description: `New releases of ${site.tagline.toLowerCase()}.`,

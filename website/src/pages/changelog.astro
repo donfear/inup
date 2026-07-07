@@ -5,12 +5,15 @@ import { renderReleaseNotes } from '../lib/release-notes';
 import { stats } from '../lib/stats';
 import { site } from '../data/site';
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { base } from '../lib/url';
 
+// UTC so the rendered date matches GitHub and does not depend on the
+// timezone of whichever machine happens to build the site.
 const dateFmt = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
   month: 'long',
   day: 'numeric',
+  timeZone: 'UTC',
 });
 
 const releases = await Promise.all(
@@ -21,7 +24,13 @@ const releases = await Promise.all(
   })),
 );
 
-const latestTag = releases.find((r) => !r.prerelease)?.tag;
+// npm's dist-tag is the authority on "latest" — GitHub's release order
+// is by creation date, so a backport for an older line would otherwise
+// steal the badge. Fall back to the newest stable release when the
+// registry fetch failed.
+const latestTag =
+  releases.find((r) => r.tag === `v${stats.version}`)?.tag ??
+  releases.find((r) => !r.prerelease)?.tag;
 ---
 
 <Base
@@ -55,7 +64,7 @@ const latestTag = releases.find((r) => !r.prerelease)?.tag;
     ) : (
       <div class="mb-24">
         {releases.map((r) => (
-          <article class="section grid grid-cols-1 gap-2 py-8 sm:grid-cols-[9rem_1fr] sm:gap-8">
+          <article class="rule-t grid grid-cols-1 gap-2 py-8 sm:grid-cols-[9rem_1fr] sm:gap-8">
             <div>
               <h2 class="m-0 font-mono text-lg font-bold">
                 <a href={r.url} class="no-underline transition-colors hover:text-brand">{r.tag}</a>

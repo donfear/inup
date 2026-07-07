@@ -20,5 +20,4 @@ export const site = {
   npmUrl: `https://www.npmjs.com/package/${rootPkg.name}`,
   issuesUrl: `${repoUrl}/issues`,
   releasesUrl: `${repoUrl}/releases`,
-  actionDocsUrl: `${repoUrl}#github-action--one-rolling-upgrade-pr`,
 } as const;

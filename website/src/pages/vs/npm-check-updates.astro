@@ -1,7 +1,8 @@
 ---
 import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
 
-const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+import { base } from '../../lib/url';
 ---
 
 <VsLayout
@@ -87,8 +88,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   </Fragment>
 
   <Fragment slot="footnote">
-    Sources: ncu documentation and issue tracker, inup source. Verified
-    2026-07-06. Also see <a href={`${base}/vs/taze/`}>inup vs taze</a> and{' '}
+    Sources: ncu documentation and issue tracker, inup source. Verified {verifiedOn}. Also see <a href={`${base}/vs/taze/`}>inup vs taze</a> and{' '}
     <a href={`${base}/vs/npm-check/`}>inup vs npm-check</a>.
   </Fragment>
 </VsLayout>

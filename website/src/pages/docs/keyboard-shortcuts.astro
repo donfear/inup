@@ -27,10 +27,12 @@ if (groupedCount !== keys.length) {
 }
 ---
 
+{/* No `updated` date: it would stamp the build date, asserting changes
+    that never happened. The content is always current by construction —
+    it renders from the README's KEYS markers at build time. */}
 <DocsLayout
   title="Keyboard shortcuts"
   description="Every key binding in inup's interactive picker — navigation, selection, search, dependency-type toggles, vulnerability audit and changelogs."
-  updated={new Date()}
 >
   <p>
     Everything in the picker is a keystroke away. Press <span class="keycap">?</span> inside inup

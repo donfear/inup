@@ -15,6 +15,15 @@ WRAPPER_BIN_DIR="$TEMP_DIR/.bin"
 
 echo "Recording demo with clean paths..."
 
+# Both outputs are required: the README embeds the gif and the website
+# hero plays the mp4. Fail before recording rather than after.
+for tool in vhs ffmpeg; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "error: $tool is required (brew install $tool)" >&2
+        exit 1
+    fi
+done
+
 echo "Building CLI..."
 ( cd "$REPO_ROOT" && pnpm build )
 
