@@ -67,8 +67,12 @@ export const TerminalInput = {
     return new Promise((resolve) => {
       process.stdout.write(prompt)
 
-      // Replaced synchronously below before any keypress can call finish().
-      let cleanup = /* v8 ignore next */ () => {}
+      // Replaced synchronously below before any keypress can call finish(),
+      // so the placeholder body is unreachable. (The `v8 ignore next` form
+      // is not honored by coverage-v8 here; the block form is.)
+      /* v8 ignore start */
+      let cleanup = () => {}
+      /* v8 ignore stop */
       const finish = (value: boolean) => {
         cleanup()
         process.stdout.write('\n')
