@@ -42,13 +42,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build site
-        uses: withastro/action@v6
+      # withastro/action detects the package manager from a lockfile inside
+      # its `path`, which a pnpm workspace does not have (the lockfile is at
+      # the repo root). Install and build explicitly, the same way the root
+      # CI does, and hand the output to the Pages actions ourselves.
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: ./website
+          node-version: 24
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build site
+        run: pnpm site:build
         env:
           # Authenticated GitHub API calls for stars/releases at build time.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/dist
 
   deploy:
     if: github.event_name != 'pull_request'
