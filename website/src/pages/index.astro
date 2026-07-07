@@ -1,8 +1,7 @@
 ---
-import ComparisonTable from '../components/ComparisonTable.astro';
 import CopyInstall from '../components/CopyInstall.astro';
 import Icon from '../components/Icon.astro';
-import Stats from '../components/Stats.astro';
+import Mark from '../components/Mark.astro';
 import Base from '../layouts/Base.astro';
 // The real recording from the repo (the README embeds the gif variant) —
 // imported from docs/demo/ so re-recording the demo updates the site
@@ -10,7 +9,8 @@ import Base from '../layouts/Base.astro';
 import demoVideo from '../../../docs/demo/interactive-upgrade.mp4';
 import demoPoster from '../assets/demo-poster.webp';
 import { site } from '../data/site';
-import { verifiedOn } from '../data/comparison';
+import { competitors, rowsFor, verifiedOn, type ColumnId } from '../data/comparison';
+import { testStats } from '../lib/readme';
 import { stats } from '../lib/stats';
 import type { IconName } from '../components/icons';
 
@@ -31,58 +31,72 @@ const jsonLd = {
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
-// The two flagship features (`wide`) carry a mini terminal preview and
-// span two columns; the rest stay compact. Uneven tiles read as authored.
+// Stat strip — real numbers only. Tests/coverage come from the README
+// badges (parsed at build); the last two tiles are facts, not counters.
+const strip = [
+  { count: testStats.tests, label: 'tests passing', brand: true },
+  // coverage is "100%" — split the numeral so the counter animates and
+  // the suffix stays put; a non-numeric coverage would skip the counter.
+  {
+    count: parseInt(testStats.coverage, 10),
+    suffix: testStats.coverage.replace(/[\d.]/g, ''),
+    label: 'coverage',
+    brand: true,
+  },
+  { count: 5, label: 'package managers' },
+  { text: '0', label: 'telemetry · MIT' },
+];
+
+// The two flagship features carry a mini terminal preview and span two
+// columns; the rest stay compact. Uneven tiles read as authored.
 type Feature = {
-  icon: IconName;
-  keys: string[];
+  icon?: IconName;
+  keys?: string[];
   title: string;
   body: string;
   wide?: boolean;
 };
 
-// Order is chosen for the bento rhythm: each wide flagship tile (span 2)
-// leads a row and is followed by two compact tiles, filling the 4-col grid.
 const features: Feature[] = [
   {
     icon: 'shield-check',
-    keys: ['s'],
     title: 'Audit before you upgrade',
-    body: 'Known vulnerabilities appear next to each package, cross-referenced against the upgrade target — so you know whether the bump actually fixes the advisory.',
+    body: 'Known vulnerabilities appear next to each package, cross-referenced against the bump — so you know whether it actually clears the advisory.',
     wide: true,
   },
   {
     icon: 'search',
-    keys: ['/'],
     title: 'Search the picker',
-    body: 'Filter hundreds of workspace dependencies as you type. Esc clears.',
+    body: 'Filter hundreds of workspace dependencies as you type. / to search, Esc clears.',
   },
   {
-    icon: 'sliders',
     keys: ['d', 'p', 'o'],
     title: 'Live dependency-type toggles',
     body: 'Show or hide dev, peer and optional dependencies on the fly — instead of restarting with different flags.',
   },
   {
     icon: 'book-open',
-    keys: ['i'],
     title: 'Changelogs in the terminal',
     body: 'Read release notes inline before selecting a major. No browser tab, no guessing what changed.',
     wide: true,
   },
   {
     icon: 'list-checks',
-    keys: ['m', 'l'],
     title: 'Bulk select, precisely',
     body: 'Select every safe in-range update with one key, or everything including majors — then deselect the risky ones.',
   },
   {
     icon: 'arrow-left-right',
-    keys: ['←', '→'],
     title: 'Range or latest, per package',
     body: 'Cycle each package between no upgrade, the in-range bump and the latest major. Mixed strategies in one pass.',
   },
 ];
+
+// The comparison matrix is built from the real data so it can never drift
+// from comparison.ts. The homepage shows a curated subset of four columns.
+const cmpColumns: ColumnId[] = ['inup', 'ncu', 'taze', 'builtin'];
+const cmpRows = rowsFor(cmpColumns).filter((r) => r.homepage);
+const cmpLabel = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
 ---
 
 <Base
@@ -91,246 +105,297 @@ const features: Feature[] = [
   jsonLd={jsonLd}
 >
   <link slot="head" rel="preload" as="image" href={demoPoster.src} />
-  <div class="mx-auto max-w-6xl px-6">
-    <!-- Hero -->
-    <section class="pt-16 pb-14 text-center sm:pt-24">
-      <p class="m-0 mb-7 flex justify-center">
-        <a
-          href={`${base}/changelog/`}
-          class="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/5 py-1 pr-3.5 pl-2.5 font-mono text-xs text-brand no-underline transition-colors hover:border-brand/50"
-        >
-          <span class="relative flex size-2">
-            <span class="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60 motion-reduce:hidden"></span>
-            <span class="relative inline-flex size-2 rounded-full bg-brand"></span>
-          </span>
-          v{stats.version} · interactive dependency upgrader
-        </a>
-      </p>
-      <h1
-        class="mx-auto m-0 mb-6 max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl lg:leading-[1.08]"
+
+  {/* Ambient atmosphere + reading progress. Decorative, so hidden from AT. */}
+  <div class="scroll-progress" data-progress aria-hidden="true"></div>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <!-- Hero -->
+  <header class="mx-auto max-w-3xl px-6 pt-16 pb-16 text-center sm:pt-24">
+    <p class="reveal m-0 mb-8 flex justify-center">
+      <a
+        href={`${base}/changelog/`}
+        class="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/5 py-1.5 pr-4 pl-3 font-mono text-xs text-brand no-underline transition-colors hover:border-brand/50"
       >
-        The <code
-          class="bg-gradient-to-r from-brand-2 to-brand bg-clip-text font-mono tracking-tighter text-transparent sm:whitespace-nowrap"
-        >upgrade-interactive</code> npm never shipped.
-      </h1>
-      <p class="mx-auto m-0 mb-9 max-w-[54ch] text-lg text-pretty text-muted-foreground">
-        yarn, pnpm, bun and deno each bundle one — npm doesn't. inup is one
-        command that works with <strong class="text-foreground">all of them</strong>:
-        pick upgrades in an interactive terminal UI, see vulnerabilities and
-        changelogs before you commit to anything. Zero config, monorepo-ready.
-      </p>
+        <span class="relative flex size-2">
+          <span class="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60 motion-reduce:hidden"></span>
+          <span class="relative inline-flex size-2 rounded-full bg-brand"></span>
+        </span>
+        v{stats.version} · interactive dependency upgrader
+      </a>
+    </p>
 
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <CopyInstall />
-        <a
-          href={`${base}/docs/getting-started/`}
-          class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
+    <h1
+      class="kinetic m-0 mb-6 text-4xl leading-[1.05] font-bold tracking-tight sm:text-6xl"
+    >
+      <span>The</span> <span class="hero-cmd">upgrade-interactive</span><br />
+      <span>npm</span> <span>never</span> <span>shipped.</span>
+    </h1>
+
+    <p class="reveal mx-auto m-0 mb-9 max-w-[36rem] text-lg leading-relaxed text-pretty text-muted-foreground">
+      One command for <strong class="font-normal text-foreground"
+        >npm, yarn, pnpm, bun &amp; deno</strong
+      >. Pick upgrades in an interactive terminal UI — see vulnerabilities and
+      changelogs <strong class="font-normal text-foreground">before</strong> you commit.
+      Zero config, monorepo-ready.
+    </p>
+
+    <div class="reveal flex flex-wrap items-center justify-center gap-3">
+      <CopyInstall />
+      <a
+        href={`${base}/docs/getting-started/`}
+        class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
+      >
+        Read the docs <Icon name="arrow-up-right" size={15} class="text-brand" />
+      </a>
+    </div>
+
+    <p class="reveal mt-6 mb-0 font-mono text-xs text-muted-foreground">
+      or install: npm i -g inup · pnpm add -g inup · yarn global add inup · bun add -g inup
+    </p>
+  </header>
+
+  <!-- Demo — the real recording, in place of the animated mock terminal -->
+  <section class="mx-auto max-w-5xl px-6 pb-4">
+    <figure class="reveal m-0">
+      <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
+        {/* No autoplay attribute and preload=none: the script below starts
+            playback only when the visitor does NOT prefer reduced motion,
+            so reduced-motion visitors never download the video. Controls
+            ship in the markup (and are removed before autoplay) so no-JS
+            and reduced-motion visitors can still play it on demand. */}
+        <video
+          id="demo-video"
+          controls
+          loop
+          muted
+          playsinline
+          preload="none"
+          poster={demoPoster.src}
+          width={1240}
+          height={510}
+          aria-label="Recording of inup's interactive picker: browsing outdated packages across workspaces, selecting upgrades, and applying them"
+          class="w-full rounded-2xl bg-terminal shadow-[0_40px_120px_-40px_color-mix(in_srgb,var(--brand)_35%,var(--terminal))]"
         >
-          Read the docs <Icon name="arrow-up-right" size={15} class="text-brand" />
-        </a>
+          <source src={demoVideo} type="video/mp4" />
+        </video>
       </div>
-      <p class="mt-5 mb-0 font-mono text-xs text-muted-foreground">
-        or install: npm i -g inup · pnpm add -g inup · yarn global add inup · bun add -g inup
-      </p>
+      <figcaption class="mt-4 text-center font-mono text-xs text-muted-foreground">
+        real session, recorded with vhs — not a mockup
+      </figcaption>
+    </figure>
+  </section>
 
-      <figure class="mx-auto m-0 mt-14 max-w-5xl">
-        <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
-          {/* No autoplay attribute and preload=none: the script below starts
-              playback only when the visitor does NOT prefer reduced motion,
-              so reduced-motion visitors never download the video. Controls
-              ship in the markup (and are removed before autoplay) so no-JS
-              and reduced-motion visitors can still play it on demand. */}
-          <video
-            id="demo-video"
-            controls
-            loop
-            muted
-            playsinline
-            preload="none"
-            poster={demoPoster.src}
-            width={1240}
-            height={510}
-            aria-label="Recording of inup's interactive picker: browsing outdated packages across workspaces, selecting upgrades, and applying them"
-            class="w-full rounded-2xl bg-terminal shadow-[0_32px_64px_-32px_color-mix(in_srgb,var(--brand)_45%,var(--terminal))]"
-          >
-            <source src={demoVideo} type="video/mp4" />
-          </video>
+  <!-- Stats -->
+  <section class="mx-auto max-w-4xl px-6 py-5">
+    <div class="reveal stat-strip">
+      {strip.map((s) => (
+        <div class="text-center">
+          {'text' in s ? (
+            <div class={`stat-value ${s.brand ? 'stat-brand' : ''}`}>{s.text}</div>
+          ) : (
+            <div
+              class={`stat-value ${s.brand ? 'stat-brand' : ''}`}
+              data-count={s.count}
+              data-suffix={s.suffix ?? ''}
+            >0{s.suffix ?? ''}</div>
+          )}
+          <div class="stat-label">{s.label}</div>
         </div>
-        <figcaption class="mt-4 text-center font-mono text-xs text-muted-foreground">
-          real session, recorded with vhs — not a mockup
-        </figcaption>
-      </figure>
+      ))}
+    </div>
+  </section>
 
-      <div class="mt-9 flex justify-center">
-        <Stats monthlyDownloads={stats.monthlyDownloads} stars={stats.stars} />
-      </div>
-    </section>
+  <!-- Features -->
+  <section id="features" class="mx-auto max-w-6xl px-6 pt-24 pb-10 scroll-mt-16">
+    <p class="reveal eyebrow">
+      <Icon name="terminal" size={15} class="text-brand" /> the picker
+    </p>
+    <h2 class="reveal m-0 mb-3 max-w-[48rem] text-3xl font-bold tracking-tight sm:text-4xl">
+      The picker knows more than <code class="font-mono text-muted-foreground">outdated</code> does
+    </h2>
+    <p class="reveal m-0 mb-12 max-w-[38rem] text-lg text-muted-foreground">
+      Every feature is a keystroke away — no flags to remember, no re-runs.
+    </p>
 
-    <!-- Features -->
-    <section id="features" class="section rule-t scroll-mt-16">
-      <p class="eyebrow">
-        <Icon name="terminal" size={15} class="text-brand" /> the picker
-      </p>
-      <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">
-        The picker knows more than <code class="font-mono">outdated</code> does
-      </h2>
-      <p class="m-0 mb-10 max-w-[66ch] text-muted-foreground">
-        Every feature is a keystroke away — no flags to remember, no re-runs.
-        Dev, peer and optional dependencies load automatically.
-      </p>
-      <ul class="bento m-0 list-none p-0">
-        {features.map((f) => (
-          <li class={`card-lift p-6 ${f.wide ? 'bento-wide' : ''}`}>
-            <div class="flex items-start justify-between">
-              <span class="flex size-10 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
-                <Icon name={f.icon} size={20} />
-              </span>
-              <span class="flex gap-1">
-                {f.keys.map((k) => <span class="keycap">{k}</span>)}
-              </span>
+    <ul class="bento m-0 list-none p-0">
+      {features.map((f) => (
+        <li class={`reveal feature ${f.wide ? 'bento-wide' : ''}`}>
+          {f.icon ? (
+            <span class="feature-glyph mb-4">
+              <Icon name={f.icon} size={20} />
+            </span>
+          ) : (
+            <span class="mb-4 flex gap-1.5">
+              {f.keys!.map((k) => <span class="keycap">{k}</span>)}
+            </span>
+          )}
+          <h3 class="mt-0 mb-2 text-base font-semibold">{f.title}</h3>
+          <p class="m-0 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
+          {/* Flagship tiles carry a real semver traffic-light preview:
+              the audit shows a red advisory, the changelog an amber major. */}
+          {f.icon === 'shield-check' && (
+            <div class="term-mini" aria-hidden="true">
+              <div><span class="text-term-red">●</span> ejs <span class="text-terminal-muted">3.1.5 →</span> <span class="text-term-green">3.1.10</span> <span class="text-term-red">CVE-2024-33883</span></div>
+              <div><span class="text-terminal-muted">└ fixed in 3.1.7 — this bump clears it</span></div>
             </div>
-            <h3 class="mt-4 mb-1.5 text-base font-semibold">{f.title}</h3>
-            <p class="m-0 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
-            {/* Flagship tiles carry a real semver traffic-light preview:
-                the audit shows a red advisory, the changelog an amber major. */}
-            {f.icon === 'shield-check' && (
-              <div class="term-mini" aria-hidden="true">
-                <div><span class="text-term-red">●</span> ejs <span class="text-terminal-muted">^3.1.5 →</span> <span class="text-term-amber">^3.1.10</span> <span class="text-term-red">CVE-2024-33883</span></div>
-                <div><span class="text-terminal-muted">└ fixed in 3.1.7 — this bump clears it</span></div>
-              </div>
-            )}
-            {f.icon === 'book-open' && (
-              <div class="term-mini" aria-hidden="true">
-                <div><span class="text-term-amber">●</span> express <span class="text-terminal-muted">^4.21.2 →</span> <span class="text-term-amber">^5.2.1</span></div>
-                <div><span class="text-terminal-muted">└ BREAKING: path-to-regexp 8, dropped Node 14…</span></div>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
+          )}
+          {f.icon === 'book-open' && (
+            <div class="term-mini" aria-hidden="true">
+              <div><span class="text-term-amber">●</span> express <span class="text-terminal-muted">4.21.2 →</span> <span class="text-term-amber">5.0.1</span></div>
+              <div><span class="text-terminal-muted">└ BREAKING: path-to-regexp 8 · drops Node 14</span></div>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  </section>
 
-    <!-- Monorepo -->
-    <section id="monorepo" class="section rule-t scroll-mt-16">
-      <div class="showcase">
-        <div>
-          <p class="eyebrow">
-            <Icon name="git-branch" size={15} class="text-brand" /> monorepos
-          </p>
-          <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
-            Monorepos and pnpm catalogs, without ceremony
-          </h2>
-          <p class="m-0 mb-4 text-muted-foreground">
-            inup discovers every workspace in one pass. Dependencies declared
-            as <code>catalog:</code> are resolved from
-            <code>pnpm-workspace.yaml</code> and upgraded right there — with
-            the file's comments and formatting preserved, not rewritten.
-          </p>
-          <p class="m-0 text-muted-foreground">
-            Private registries work exactly like npm's own resolution: scoped
-            registries and credentials from your project, user and global
-            <code>.npmrc</code>, including <code>$&lbrace;ENV_VAR&rbrace;</code> expansion.
-          </p>
-        </div>
-        <pre
-          class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># pnpm-workspace.yaml — comments survive the upgrade</span>
+  <!-- Monorepo -->
+  <section id="monorepo" class="mx-auto max-w-6xl px-6 py-20 scroll-mt-16">
+    <div class="showcase">
+      <div class="reveal reveal-left">
+        <p class="eyebrow">
+          <Icon name="git-branch" size={15} class="text-brand" /> monorepos
+        </p>
+        <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
+          pnpm catalogs, without ceremony
+        </h2>
+        <p class="m-0 mb-4 text-muted-foreground">
+          inup discovers every workspace in one pass. Dependencies declared as
+          <code>catalog:</code> are resolved from <code>pnpm-workspace.yaml</code>
+          and upgraded right there — comments and formatting preserved, not rewritten.
+        </p>
+        <p class="m-0 text-muted-foreground">
+          Private registries work exactly like npm's own resolution: scoped
+          registries and credentials from your project, user and global
+          <code>.npmrc</code>, including <code>$&lbrace;ENV_VAR&rbrace;</code> expansion.
+        </p>
+      </div>
+      <div class="reveal reveal-right code-panel">
+        <div class="code-panel__bar">pnpm-workspace.yaml</div>
+        <pre><code><span class="text-terminal-muted"># comments survive the upgrade</span>
 catalog:
   <span class="text-terminal-muted"># pinned for the design system</span>
-  react: <span class="text-term-green">^18.3.1</span> <span class="text-terminal-muted">→</span> <span class="text-term-amber">^19.1.0</span>
-  vue: <span class="text-term-green">^3.5.13</span></code></pre>
+  react: <span class="text-terminal-muted">"18.3.1"</span> <span class="text-term-green">→ "19.1.0"</span>
+  vue:   <span class="text-term-green">"^3.5.13"</span></code></pre>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <!-- CI — terminal on the left so the two showcase rows don't mirror. -->
-    <section id="ci" class="section rule-t scroll-mt-16">
-      <div class="showcase flip">
-        <div>
-          <p class="eyebrow">
-            <Icon name="workflow" size={15} class="text-brand" /> automation
-          </p>
-          <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
-            Headless in CI, by default
-          </h2>
-          <p class="m-0 mb-4 text-muted-foreground">
-            When stdout isn't a TTY or <code>$CI</code> is set, inup never
-            opens the UI — it reports. <code>--check</code> and
-            <code>--json</code> are guaranteed read-only, and JSON output
-            carries a <code>schemaVersion</code> so scripts and agents can pin
-            to a known shape.
-          </p>
-          <p class="m-0 text-muted-foreground">
-            The <a
-              href={`${base}/docs/github-action/`}
-              class="link"
-            >GitHub Action</a> runs inup on a schedule and maintains one rolling
-            pull request with safe upgrades applied — re-runs update the same PR.
-          </p>
-        </div>
-        <pre
-          class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># gate the build on outdated deps</span>
+  <!-- Automation — terminal on the left so the two showcase rows don't mirror. -->
+  <section id="ci" class="mx-auto max-w-6xl px-6 py-20 scroll-mt-16">
+    <div class="showcase flip">
+      <div class="reveal reveal-left code-panel">
+        <div class="code-panel__bar">ci.yaml</div>
+        <pre><code><span class="text-terminal-muted"># gate the build on outdated deps</span>
 inup --check
 <span class="text-term-red">✗ 3 packages behind · 1 advisory</span>
 
-<span class="text-terminal-muted"># structured report for dashboards & bots</span>
+<span class="text-terminal-muted"># structured report for dashboards</span>
 inup --json | jq '.summary'
 
 <span class="text-terminal-muted"># apply safe in-range bumps + install</span>
-inup --apply <span class="text-term-amber">--target minor</span></code></pre>
+inup --apply <span class="text-term-green">--target minor</span></code></pre>
       </div>
-    </section>
-
-    <!-- Compare -->
-    <section id="compare" class="section rule-t scroll-mt-16">
-      <p class="eyebrow">
-        <Icon name="scale" size={15} class="text-brand" /> comparison
-      </p>
-      <h2 class="m-0 mb-3 text-2xl font-bold tracking-tight sm:text-3xl">How inup compares</h2>
-      <p class="m-0 mb-8 max-w-[66ch] text-muted-foreground">
-        Honest marks — including the rows where the others win. Verified
-        against each tool's documentation on {verifiedOn}.
-      </p>
-      <ComparisonTable columns={['inup', 'ncu', 'taze', 'builtin']} homepageOnly />
-      <p class="mt-4 mb-0 max-w-[66ch] text-sm text-muted-foreground">
-        "PM built-ins" = <code>yarn upgrade-interactive</code>,
-        <code>pnpm update -i</code>, <code>bun update -i</code>,
-        <code>deno outdated -i</code> — each works with its own package manager
-        only. Detailed head-to-heads:{' '}
-        <a href={`${base}/vs/npm-check-updates/`} class="link">inup vs npm-check-updates</a>,{' '}
-        <a href={`${base}/vs/taze/`} class="link">inup vs taze</a>,{' '}
-        <a href={`${base}/vs/npm-check/`} class="link">inup vs npm-check</a>.
-      </p>
-    </section>
-
-    <!-- Privacy + CTA -->
-    <section id="privacy" class="section rule-t scroll-mt-16">
-      <div
-        class="rounded-3xl border border-brand/20 bg-surface bg-gradient-to-b from-brand/8 via-transparent to-transparent p-8 text-center sm:p-14"
-      >
-        <p class="eyebrow justify-center">
-          <Icon name="lock" size={15} class="text-brand" /> no telemetry
+      <div class="reveal reveal-right">
+        <p class="eyebrow">
+          <Icon name="workflow" size={15} class="text-brand" /> automation
         </p>
         <h2 class="m-0 mb-4 text-2xl font-bold tracking-tight sm:text-3xl">
-          Try it on your messiest repo
+          Headless in CI, by default
         </h2>
-        <p class="mx-auto mt-0 mb-8 max-w-[52ch] text-muted-foreground">
-          No tracking, no data collection. Package metadata comes straight from
-          the npm registry, download counts from the npm downloads API, and
-          changelogs from GitHub. {site.license} licensed —{' '}
-          <a href={site.repoUrl} class="link">read the source</a>.
+        <p class="m-0 mb-4 text-muted-foreground">
+          When stdout isn't a TTY or <code>$CI</code> is set, inup never opens
+          the UI — it reports. <code>--check</code> and <code>--json</code> are
+          read-only, and JSON output carries a <code>schemaVersion</code> so
+          agents can pin to a known shape.
         </p>
-        <CopyInstall size="lg" />
+        <p class="m-0 text-muted-foreground">
+          The <a href={`${base}/docs/github-action/`} class="link">GitHub Action</a>{' '}
+          runs on a schedule and maintains one rolling PR with safe upgrades
+          applied — re-runs update the same PR.
+        </p>
       </div>
-    </section>
-  </div>
+    </div>
+  </section>
+
+  <!-- Compare -->
+  <section id="compare" class="mx-auto max-w-5xl px-6 py-20 scroll-mt-16">
+    <p class="reveal eyebrow">
+      <Icon name="scale" size={15} class="text-brand" /> comparison
+    </p>
+    <h2 class="reveal m-0 mb-3 text-3xl font-bold tracking-tight sm:text-4xl">
+      How inup compares
+    </h2>
+    <p class="reveal m-0 mb-10 max-w-[36rem] text-lg text-muted-foreground">
+      Honest marks — including the rows where the others win. Verified against
+      each tool's docs on {verifiedOn}.
+    </p>
+
+    <div class="reveal cmp" data-cmp>
+      <div class="cmp-head cmp-row" role="row">
+        <span></span>
+        {cmpColumns.map((c) => (
+          <span class={`text-center font-mono ${c === 'inup' ? 'text-brand' : ''}`}>{cmpLabel(c)}</span>
+        ))}
+      </div>
+      <div class="cmp-body">
+        {cmpRows.map((r) => (
+          <div class="cmp-row" data-cmp-row>
+            <span class="text-foreground">{r.feature}</span>
+            {cmpColumns.map((c) =>
+              c === 'inup' ? (
+                <span class="cmp-inup"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
+              ) : (
+                <span class="flex justify-center"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
+              ),
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <p class="mt-4 mb-0 max-w-[66ch] font-mono text-xs leading-relaxed text-muted-foreground">
+      "PM built-ins" = <code>yarn upgrade-interactive</code>,
+      <code>pnpm update -i</code>, <code>bun update -i</code>,
+      <code>deno outdated -i</code> — each works with its own package manager
+      only. Detailed head-to-heads:{' '}
+      <a href={`${base}/vs/npm-check-updates/`} class="link">inup vs npm-check-updates</a>,{' '}
+      <a href={`${base}/vs/taze/`} class="link">inup vs taze</a>,{' '}
+      <a href={`${base}/vs/npm-check/`} class="link">inup vs npm-check</a>.
+    </p>
+  </section>
+
+  <!-- Privacy + CTA -->
+  <section id="privacy" class="mx-auto max-w-4xl px-6 pt-10 pb-24 scroll-mt-16">
+    <div
+      class="reveal relative overflow-hidden rounded-3xl border border-brand/20 bg-surface bg-[radial-gradient(ellipse_80%_120%_at_50%_0%,var(--tw-gradient-stops))] from-brand/8 to-transparent to-70% p-10 text-center sm:p-16"
+    >
+      <p class="eyebrow justify-center">
+        <Icon name="lock" size={15} class="text-brand" /> no telemetry
+      </p>
+      <h2 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+        Try it on your messiest repo
+      </h2>
+      <p class="mx-auto mt-0 mb-8 max-w-[34rem] text-muted-foreground">
+        No tracking, no data collection. Metadata comes straight from the npm
+        registry and changelogs from GitHub. {site.license} licensed —{' '}
+        <a href={site.repoUrl} class="link">read the source</a>.
+      </p>
+      <CopyInstall size="lg" />
+    </div>
+  </section>
 </Base>
 
 <script>
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   // The hero recording plays only for visitors who accept motion; the
   // markup ships without autoplay so reduced-motion users never even
   // download the video (see the comment on the element).
   const video = document.getElementById('demo-video') as HTMLVideoElement | null;
-  // Reduced-motion visitors keep the markup's controls and decide themselves.
-  if (video && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (video && !prefersReduced) {
     video.controls = false;
     video.play().catch(() => {
       // Autoplay blocked (e.g. data saver): fall back to manual controls.
@@ -355,5 +420,105 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
         chip.querySelector('.copied-hint')?.classList.add('hidden');
       }, 1500);
     });
+  }
+
+  // Reveal-on-scroll for anything tagged .reveal. The base state (offset +
+  // faded) lives in CSS; adding .is-in animates it in. Observer runs once.
+  const revealObserver = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          e.target.classList.add('is-in');
+          revealObserver.unobserve(e.target);
+        }
+      }
+    },
+    { threshold: 0.12, rootMargin: '0px 0px -8% 0px' },
+  );
+  for (const el of document.querySelectorAll('.reveal')) revealObserver.observe(el);
+
+  // Kinetic hero: number each word so the CSS can stagger the blur-in, then
+  // fire once on load. (The <br> is skipped — only element spans count.)
+  const hero = document.querySelector<HTMLElement>('.kinetic');
+  if (hero) {
+    hero.querySelectorAll<HTMLElement>(':scope > span').forEach((span, i) => {
+      span.style.setProperty('--i', String(i));
+    });
+    // Next frame so the initial (hidden) state paints before the transition.
+    requestAnimationFrame(() => hero.classList.add('is-in'));
+  }
+
+  // Count-up: ease a mono figure from 0 to its target when it scrolls in.
+  // Reduced-motion visitors get the final value with no tween.
+  const countUp = (el: HTMLElement) => {
+    const target = Number(el.dataset.count);
+    const suffix = el.dataset.suffix ?? '';
+    if (prefersReduced || !Number.isFinite(target)) {
+      el.textContent = target.toLocaleString('en-US') + suffix;
+      return;
+    }
+    const duration = 1500;
+    const start = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(target * eased).toLocaleString('en-US') + suffix;
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  const countObserver = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          countUp(e.target as HTMLElement);
+          countObserver.unobserve(e.target);
+        }
+      }
+    },
+    { threshold: 0.6 },
+  );
+  for (const el of document.querySelectorAll<HTMLElement>('[data-count]')) {
+    countObserver.observe(el);
+  }
+
+  // Comparison matrix: reveal rows in sequence when the table scrolls in.
+  const cmp = document.querySelector('[data-cmp]');
+  if (cmp) {
+    const cmpObserver = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const rows = cmp.querySelectorAll('[data-cmp-row]');
+          rows.forEach((row, i) => {
+            setTimeout(() => row.classList.add('is-in'), prefersReduced ? 0 : i * 90);
+          });
+          cmpObserver.unobserve(e.target);
+        }
+      },
+      { threshold: 0.15 },
+    );
+    cmpObserver.observe(cmp);
+  }
+
+  // Reading-progress bar: width tracks scroll fraction, updated on a rAF
+  // so scroll stays cheap. Passive listeners; recomputed on resize too.
+  const bar = document.querySelector<HTMLElement>('[data-progress]');
+  if (bar) {
+    let ticking = false;
+    const update = () => {
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      const y = window.scrollY;
+      bar.style.width = (h > 0 ? (y / h) * 100 : 0) + '%';
+      ticking = false;
+    };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    update();
   }
 </script>
