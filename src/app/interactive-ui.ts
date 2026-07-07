@@ -176,10 +176,14 @@ export class InteractiveUI {
     console.log(this.renderer.renderConfirmation(choices))
 
     return new Promise((resolve) => {
-      // Replaced synchronously below before any keypress can invoke it.
-      let cleanupConfirmationSession = /* v8 ignore next */ () => {
+      // Replaced synchronously below before any keypress can invoke it, so
+      // the placeholder body is unreachable. (The `v8 ignore next` form is
+      // not honored by coverage-v8 here; the block form is.)
+      /* v8 ignore start */
+      let cleanupConfirmationSession = () => {
         CursorUtils.show()
       }
+      /* v8 ignore stop */
 
       const handleConfirm = (confirmed: boolean | null) => {
         cleanupConfirmationSession()
