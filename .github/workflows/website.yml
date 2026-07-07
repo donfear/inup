@@ -11,6 +11,15 @@ on:
       - 'README.md'
       - 'package.json'
       - 'docs/demo/**'
+  # PRs run the build (typecheck + dist audits) without deploying — the
+  # root CI workflow never touches the website, so this is its only gate.
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+      - 'README.md'
+      - 'package.json'
+      - 'docs/demo/**'
   schedule:
     # Weekly rebuild so npm/GitHub stats and the changelog stay fresh.
     # Off-the-hour minute to dodge GitHub's cron congestion.
@@ -22,9 +31,11 @@ permissions:
   pages: write
   id-token: write
 
+# Deploys queue behind each other; PR check builds get their own group
+# per PR so they never block (or get blocked by) a deploy.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('website-pr-{0}', github.event.number) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -40,6 +51,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

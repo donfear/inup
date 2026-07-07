@@ -123,10 +123,12 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
         <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
           {/* No autoplay attribute and preload=none: the script below starts
               playback only when the visitor does NOT prefer reduced motion,
-              so reduced-motion (and no-JS) visitors get the poster and never
-              download the video. */}
+              so reduced-motion visitors never download the video. Controls
+              ship in the markup (and are removed before autoplay) so no-JS
+              and reduced-motion visitors can still play it on demand. */}
           <video
             id="demo-video"
+            controls
             loop
             muted
             playsinline
@@ -300,15 +302,13 @@ inup --apply <span class="text-term-amber">--target minor</span></code></pre>
   // markup ships without autoplay so reduced-motion users never even
   // download the video (see the comment on the element).
   const video = document.getElementById('demo-video') as HTMLVideoElement | null;
-  if (video) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  // Reduced-motion visitors keep the markup's controls and decide themselves.
+  if (video && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    video.controls = false;
+    video.play().catch(() => {
+      // Autoplay blocked (e.g. data saver): fall back to manual controls.
       video.controls = true;
-    } else {
-      video.play().catch(() => {
-        // Autoplay blocked (e.g. data saver): fall back to manual controls.
-        video.controls = true;
-      });
-    }
+    });
   }
 
   // The install command copies itself (when the Clipboard API exists).

@@ -13,6 +13,8 @@ export const iconNames = {
   sliders: 'lucide:sliders-horizontal',
   'list-checks': 'lucide:list-checks',
   'arrow-left-right': 'lucide:arrow-left-right',
+  'arrow-left': 'lucide:arrow-left',
+  'arrow-right': 'lucide:arrow-right',
   'git-branch': 'lucide:git-branch',
   workflow: 'lucide:workflow',
   lock: 'lucide:lock',
@@ -27,6 +29,7 @@ export const iconNames = {
   sun: 'lucide:sun',
   moon: 'lucide:moon',
   copy: 'lucide:copy',
+  menu: 'lucide:menu',
 } as const;
 
 export type IconName = keyof typeof iconNames;

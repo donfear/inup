@@ -26,21 +26,16 @@ import { base } from '../lib/url';
 const ogImageUrl = ogImage ?? new URL(`${base}/og.png`, Astro.site).href;
 
 const path = Astro.url.pathname;
+// One list drives both the desktop link row and the mobile burger menu.
 const nav = [
-  {
-    href: `${base}/docs/`,
-    label: 'Docs',
-    class: '',
-    active: path.startsWith(`${base}/docs`),
-  },
-  { href: `${base}/#compare`, label: 'Compare', class: 'hidden md:inline', active: false },
+  { href: `${base}/docs/`, label: 'Docs', active: path.startsWith(`${base}/docs`) },
+  { href: `${base}/#compare`, label: 'Compare', active: false },
   {
     href: `${base}/changelog/`,
     label: 'Changelog',
-    class: 'hidden sm:inline',
     active: path.startsWith(`${base}/changelog`),
   },
-  { href: site.npmUrl, label: 'npm', class: 'hidden md:inline', active: false },
+  { href: site.npmUrl, label: 'npm', active: false },
 ];
 ---
 
@@ -76,8 +71,10 @@ const nav = [
       title="inup releases"
       href={`${base}/rss.xml`}
     />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fafafa" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1120" />
+    {/* Values mirror --background in global.css; the theme-toggle script
+        overrides them when the visitor picks a theme explicitly. */}
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0f1e" />
     <Font cssVariable="--font-inter" preload />
     <Font cssVariable="--font-jetbrains-mono" preload />
     <meta property="og:type" content="website" />
@@ -116,9 +113,9 @@ const nav = [
             <a
               href={item.href}
               aria-current={item.active ? 'page' : undefined}
-              class={`no-underline transition-colors hover:text-foreground ${
+              class={`hidden no-underline transition-colors hover:text-foreground md:inline ${
                 item.active ? 'font-medium text-foreground' : 'text-muted-foreground'
-              } ${item.class}`}
+              }`}
             >{item.label}</a>
           ))}
           <button
@@ -132,10 +129,10 @@ const nav = [
           </button>
           <a
             href={site.repoUrl}
-            class="flex items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground"
+            class="hidden items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground md:flex"
           >
             <Icon name="github" size={15} />
-            <span class="hidden sm:inline">{starCount ? 'Star' : 'GitHub'}</span>
+            <span>{starCount ? 'Star' : 'GitHub'}</span>
             <span class="sr-only">inup on GitHub</span>
             {starCount && (
               <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
@@ -144,6 +141,50 @@ const nav = [
               </span>
             )}
           </a>
+          {/* Mobile burger — a native disclosure, so it opens without JS;
+              the footer script adds Escape / outside-click / link-click
+              closing as enhancement. The panel anchors to the sticky
+              header (position: sticky establishes the containing block). */}
+          <details id="mobile-menu" class="group md:hidden">
+            <summary
+              class="flex size-8 cursor-pointer list-none items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors group-open:text-foreground hover:border-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden"
+            >
+              <span class="sr-only">Menu</span>
+              <Icon name="menu" size={15} class="group-open:hidden" />
+              <Icon name="x" size={15} class="hidden group-open:block" />
+            </summary>
+            <div
+              class="absolute inset-x-0 top-full border-b border-border bg-background/95 shadow-lg backdrop-blur-md"
+            >
+              <ul class="m-0 flex list-none flex-col gap-1 p-3">
+                {nav.map((item) => (
+                  <li>
+                    <a
+                      href={item.href}
+                      aria-current={item.active ? 'page' : undefined}
+                      class={`block rounded-lg px-3 py-2 no-underline transition-colors hover:bg-muted hover:text-foreground ${
+                        item.active ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
+                      }`}
+                    >{item.label}</a>
+                  </li>
+                ))}
+                <li>
+                  <a
+                    href={site.repoUrl}
+                    class="flex items-center gap-2 rounded-lg px-3 py-2 text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Icon name="github" size={15} /> GitHub
+                    {starCount && (
+                      <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+                        <Icon name="star" size={11} class="text-warning" />
+                        {starCount}
+                      </span>
+                    )}
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </details>
         </nav>
       </div>
     </header>
@@ -193,13 +234,46 @@ const nav = [
       </div>
     </footer>
     <script>
+      const root = document.documentElement;
+
+      // The static theme-color metas only track the OS preference; when a
+      // theme is chosen explicitly, pin them to the page's real background
+      // so mobile browser chrome matches. Reading the computed style keeps
+      // this in lockstep with --background — no color duplicated here.
+      const syncThemeColor = () => {
+        if (!root.dataset.theme) return;
+        const background = getComputedStyle(document.body).backgroundColor;
+        for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) {
+          meta.content = background;
+          meta.removeAttribute('media');
+        }
+      };
+      syncThemeColor();
+
+      // The burger menu opens natively (<details>); closing on Escape,
+      // on a click outside, or after following a link is the enhancement.
+      const menu = document.getElementById('mobile-menu') as HTMLDetailsElement | null;
+      if (menu) {
+        menu.addEventListener('click', (e) => {
+          if (e.target instanceof Element && e.target.closest('a')) menu.open = false;
+        });
+        document.addEventListener('click', (e) => {
+          if (menu.open && e.target instanceof Node && !menu.contains(e.target)) {
+            menu.open = false;
+          }
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') menu.open = false;
+        });
+      }
+
       document.getElementById('theme-toggle')?.addEventListener('click', () => {
-        const root = document.documentElement;
         const isDark = root.dataset.theme
           ? root.dataset.theme === 'dark'
           : window.matchMedia('(prefers-color-scheme: dark)').matches;
         const next = isDark ? 'light' : 'dark';
         root.dataset.theme = next;
+        syncThemeColor();
         try {
           localStorage.setItem('theme', next);
         } catch {

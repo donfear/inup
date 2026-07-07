@@ -81,8 +81,11 @@
 }
 
 @layer base {
-  html {
-    scroll-behavior: smooth;
+  /* Animated anchor scrolling is motion — instant jumps under reduce. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
 
   body {
