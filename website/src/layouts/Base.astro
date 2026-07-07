@@ -99,7 +99,7 @@ const nav = [
       class="sr-only z-50 rounded-lg bg-surface px-4 py-2 text-sm font-medium shadow-md focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
     >Skip to content</a>
     <header
-      class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md"
+      class="sticky top-0 z-40 border-b border-border/60 bg-background/70 backdrop-blur-xl"
     >
       <div class="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3.5">
         <a
@@ -122,20 +122,20 @@ const nav = [
             id="theme-toggle"
             type="button"
             aria-label="Toggle color theme"
-            class="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors hover:border-muted-foreground hover:text-foreground"
+            class="flex size-9 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <Icon name="moon" size={15} class="theme-icon-moon" />
-            <Icon name="sun" size={15} class="theme-icon-sun" />
+            <Icon name="moon" size={16} class="theme-icon-moon" />
+            <Icon name="sun" size={16} class="theme-icon-sun" />
           </button>
           <a
             href={site.repoUrl}
-            class="hidden items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pr-2.5 pl-3 text-sm font-medium no-underline transition-colors hover:border-muted-foreground md:flex"
+            class="hidden items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground md:flex"
           >
-            <Icon name="github" size={15} />
+            <Icon name="github" size={16} />
             <span>{starCount ? 'Star' : 'GitHub'}</span>
             <span class="sr-only">inup on GitHub</span>
             {starCount && (
-              <span class="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+              <span class="flex items-center gap-1 font-mono text-xs text-muted-foreground">
                 <Icon name="star" size={11} class="text-warning" />
                 {starCount}
               </span>
@@ -147,7 +147,7 @@ const nav = [
               header (position: sticky establishes the containing block). */}
           <details id="mobile-menu" class="group md:hidden">
             <summary
-              class="flex size-8 cursor-pointer list-none items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-colors group-open:text-foreground hover:border-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden"
+              class="flex size-9 cursor-pointer list-none items-center justify-center rounded-full text-muted-foreground transition-colors group-open:bg-muted group-open:text-foreground hover:bg-muted hover:text-foreground [&::-webkit-details-marker]:hidden"
             >
               <span class="sr-only">Menu</span>
               <Icon name="menu" size={15} class="group-open:hidden" />

@@ -215,7 +215,9 @@
     }
   }
 
-  /* Section eyebrow — one consistent voice for every section label. */
+  /* Section eyebrow — one consistent voice for every section label.
+     The leading caret reads the label as a terminal prompt: every
+     section is something you could have typed at inup. */
   .eyebrow {
     margin: 0 0 0.75rem;
     display: flex;
@@ -226,6 +228,87 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted-foreground);
+  }
+
+  .eyebrow::before {
+    content: '▸';
+    color: var(--brand);
+    font-size: 0.7em;
+    line-height: 1;
+    /* Sits tight to the icon that follows without shifting the row. */
+    margin-right: -0.15rem;
+  }
+
+  /* Center-aligned eyebrow (CTA) keeps the caret hugging the text. */
+  .eyebrow.justify-center::before {
+    order: -1;
+  }
+
+  /* Asymmetric showcase row: text and terminal in a deliberate 7/5
+     split so the two showcase sections don't render as the same block
+     twice. The .flip modifier swaps the visual order on wide screens
+     while keeping text first in the DOM (source = reading order). */
+  .showcase {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: center;
+    gap: 2.5rem;
+  }
+
+  @media (width >= 64rem) {
+    .showcase {
+      grid-template-columns: 7fr 5fr;
+      gap: 4rem;
+    }
+
+    .showcase.flip {
+      grid-template-columns: 5fr 7fr;
+    }
+
+    .showcase.flip > :first-child {
+      order: 2;
+    }
+  }
+
+  /* Bento feature grid: two flagship tiles span two columns on wide
+     screens; the rest stay compact. Uneven tiles read as authored —
+     a 3×2 of identical boxes reads as a template. */
+  .bento {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  @media (width >= 40rem) {
+    .bento {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (width >= 64rem) {
+    .bento {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .bento > .bento-wide {
+      grid-column: span 2;
+    }
+  }
+
+  /* A miniature, non-interactive terminal used inside flagship bento
+     tiles. Always dark (the terminal is a dark object) and shows the
+     real semver traffic-light: green in-range, amber major, red vuln. */
+  .term-mini {
+    margin-top: 1.25rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--terminal-border);
+    background: var(--terminal);
+    padding: 0.75rem 0.9rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.72rem;
+    line-height: 1.7;
+    color: var(--terminal-foreground);
+    overflow-x: auto;
   }
 
   /* Inline text link — quiet underline that warms to brand on hover. */

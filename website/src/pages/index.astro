@@ -31,18 +31,25 @@ const jsonLd = {
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
 };
 
-const features: Array<{ icon: IconName; keys: string[]; title: string; body: string }> = [
+// The two flagship features (`wide`) carry a mini terminal preview and
+// span two columns; the rest stay compact. Uneven tiles read as authored.
+type Feature = {
+  icon: IconName;
+  keys: string[];
+  title: string;
+  body: string;
+  wide?: boolean;
+};
+
+// Order is chosen for the bento rhythm: each wide flagship tile (span 2)
+// leads a row and is followed by two compact tiles, filling the 4-col grid.
+const features: Feature[] = [
   {
     icon: 'shield-check',
     keys: ['s'],
     title: 'Audit before you upgrade',
     body: 'Known vulnerabilities appear next to each package, cross-referenced against the upgrade target — so you know whether the bump actually fixes the advisory.',
-  },
-  {
-    icon: 'book-open',
-    keys: ['i'],
-    title: 'Changelogs in the terminal',
-    body: 'Read release notes inline before selecting a major. No browser tab, no guessing what changed.',
+    wide: true,
   },
   {
     icon: 'search',
@@ -55,6 +62,13 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
     keys: ['d', 'p', 'o'],
     title: 'Live dependency-type toggles',
     body: 'Show or hide dev, peer and optional dependencies on the fly — instead of restarting with different flags.',
+  },
+  {
+    icon: 'book-open',
+    keys: ['i'],
+    title: 'Changelogs in the terminal',
+    body: 'Read release notes inline before selecting a major. No browser tab, no guessing what changed.',
+    wide: true,
   },
   {
     icon: 'list-checks',
@@ -164,11 +178,9 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
         Every feature is a keystroke away — no flags to remember, no re-runs.
         Dev, peer and optional dependencies load automatically.
       </p>
-      <ul class="m-0 grid list-none gap-4 p-0 sm:grid-cols-2 lg:grid-cols-3">
+      <ul class="bento m-0 list-none p-0">
         {features.map((f) => (
-          <li
-            class="card-lift p-6"
-          >
+          <li class={`card-lift p-6 ${f.wide ? 'bento-wide' : ''}`}>
             <div class="flex items-start justify-between">
               <span class="flex size-10 items-center justify-center rounded-xl bg-brand/10 text-brand ring-1 ring-brand/15">
                 <Icon name={f.icon} size={20} />
@@ -179,6 +191,20 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
             </div>
             <h3 class="mt-4 mb-1.5 text-base font-semibold">{f.title}</h3>
             <p class="m-0 text-sm leading-relaxed text-muted-foreground">{f.body}</p>
+            {/* Flagship tiles carry a real semver traffic-light preview:
+                the audit shows a red advisory, the changelog an amber major. */}
+            {f.icon === 'shield-check' && (
+              <div class="term-mini" aria-hidden="true">
+                <div><span class="text-term-red">●</span> ejs <span class="text-terminal-muted">^3.1.5 →</span> <span class="text-term-amber">^3.1.10</span> <span class="text-term-red">CVE-2024-33883</span></div>
+                <div><span class="text-terminal-muted">└ fixed in 3.1.7 — this bump clears it</span></div>
+              </div>
+            )}
+            {f.icon === 'book-open' && (
+              <div class="term-mini" aria-hidden="true">
+                <div><span class="text-term-amber">●</span> express <span class="text-terminal-muted">^4.21.2 →</span> <span class="text-term-amber">^5.2.1</span></div>
+                <div><span class="text-terminal-muted">└ BREAKING: path-to-regexp 8, dropped Node 14…</span></div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -186,7 +212,7 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
 
     <!-- Monorepo -->
     <section id="monorepo" class="section rule-t scroll-mt-16">
-      <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
+      <div class="showcase">
         <div>
           <p class="eyebrow">
             <Icon name="git-branch" size={15} class="text-brand" /> monorepos
@@ -210,14 +236,14 @@ const features: Array<{ icon: IconName; keys: string[]; title: string; body: str
           class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># pnpm-workspace.yaml — comments survive the upgrade</span>
 catalog:
   <span class="text-terminal-muted"># pinned for the design system</span>
-  react: <span class="text-term-green">^18.3.1</span>
+  react: <span class="text-term-green">^18.3.1</span> <span class="text-terminal-muted">→</span> <span class="text-term-amber">^19.1.0</span>
   vue: <span class="text-term-green">^3.5.13</span></code></pre>
       </div>
     </section>
 
-    <!-- CI -->
+    <!-- CI — terminal on the left so the two showcase rows don't mirror. -->
     <section id="ci" class="section rule-t scroll-mt-16">
-      <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2">
+      <div class="showcase flip">
         <div>
           <p class="eyebrow">
             <Icon name="workflow" size={15} class="text-brand" /> automation
@@ -243,6 +269,7 @@ catalog:
         <pre
           class="m-0 overflow-x-auto rounded-xl border border-terminal-border bg-terminal p-5 font-mono text-sm leading-7 text-terminal-foreground"><code><span class="text-terminal-muted"># gate the build on outdated deps</span>
 inup --check
+<span class="text-term-red">✗ 3 packages behind · 1 advisory</span>
 
 <span class="text-terminal-muted"># structured report for dashboards & bots</span>
 inup --json | jq '.summary'
