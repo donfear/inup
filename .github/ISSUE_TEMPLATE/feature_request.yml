@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an idea or improvement for inup
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that inup doesn't support today?
+      placeholder: When upgrading a large monorepo I want to…
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How might it work? A flag, a keybinding, a new mode?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other tools or workarounds you've tried, and why they fall short.
+    validations:
+      required: false
