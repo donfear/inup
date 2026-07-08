@@ -122,12 +122,11 @@ const themeColorDefinitions = {
   },
 }
 
-// Helper to apply color - handles both hex and named colors
+// Every theme color above is a hex string (single source of truth), so this
+// only needs the hex path — chalk.hex renders it at whatever color depth the
+// terminal supports.
 function applyColor(color: string, text: string): string {
-  if (color.startsWith('#')) {
-    return chalk.hex(color)(text)
-  }
-  return (chalk as unknown as Record<string, (text: string) => string>)[color](text)
+  return chalk.hex(color)(text)
 }
 
 const themeColorSchemes: Record<
