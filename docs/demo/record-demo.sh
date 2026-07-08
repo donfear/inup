@@ -88,11 +88,16 @@ ffmpeg -y -i "$GIF" \
 # The README embeds the GIF, so keep that asset small: downscale the 2x render
 # back to 1240 wide. A dedicated palette (palettegen/paletteuse) keeps the text
 # crisp at the smaller size instead of the muddy default 256-color quantization.
+# ffmpeg cannot edit a file in place, so write to a temp GIF and move it over.
 echo "Downscaling GIF to 1240px with an optimized palette..."
 PALETTE="$TEMP_DIR/palette.png"
-ffmpeg -y -i "$GIF" -vf "scale=1240:-1:flags=lanczos,palettegen=stats_mode=diff" "$PALETTE"
+GIF_SMALL="$TEMP_DIR/interactive-upgrade-1240.gif"
+# -frames:v 1 + -update 1: the palette is a single image, not a numbered sequence.
+ffmpeg -y -i "$GIF" -frames:v 1 -update 1 \
+    -vf "scale=1240:-1:flags=lanczos,palettegen=stats_mode=diff" "$PALETTE"
 ffmpeg -y -i "$GIF" -i "$PALETTE" \
     -lavfi "scale=1240:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3" \
-    "$GIF"
+    "$GIF_SMALL"
+mv "$GIF_SMALL" "$GIF"
 
 echo "Demo recorded: docs/demo/interactive-upgrade.gif (1240px) + .mp4 (2x)"
