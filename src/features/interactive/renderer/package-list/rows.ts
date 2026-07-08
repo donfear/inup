@@ -51,11 +51,17 @@ export function renderPackageLine(
       const packagePart = parts.slice(1).join('/')
 
       if (isCurrentRow) {
+        // Accent the package, not the scope: `@tiptap/` repeats down the list
+        // and carries no signal, so it stays dim while the distinguishing name
+        // (`extension-image`) takes the theme accent, bold.
         packageName =
-          chalk.bold(getThemeColor('packageAuthor')(author)) +
-          getThemeColor('packageName')(`/${packagePart}`)
+          getThemeColor('textSecondary')(`${author}/`) +
+          chalk.bold(getThemeColor('packageName')(packagePart))
       } else {
-        packageName = chalk.bold.white(author) + chalk.white(`/${packagePart}`)
+        // Same emphasis at rest: the scope is context (dim), the package name
+        // is what you read (plain text). The current row only brightens the
+        // name to the accent — it never flips which token stands out.
+        packageName = getThemeColor('textSecondary')(`${author}/`) + chalk.white(packagePart)
       }
     } else {
       packageName = isCurrentRow

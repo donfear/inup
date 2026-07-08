@@ -215,7 +215,9 @@
     }
   }
 
-  /* Section eyebrow — one consistent voice for every section label. */
+  /* Section eyebrow — one consistent voice for every section label.
+     The leading caret reads the label as a terminal prompt: every
+     section is something you could have typed at inup. */
   .eyebrow {
     margin: 0 0 0.75rem;
     display: flex;
@@ -226,6 +228,87 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--muted-foreground);
+  }
+
+  .eyebrow::before {
+    content: '▸';
+    color: var(--brand);
+    font-size: 0.7em;
+    line-height: 1;
+    /* Sits tight to the icon that follows without shifting the row. */
+    margin-right: -0.15rem;
+  }
+
+  /* Center-aligned eyebrow (CTA) keeps the caret hugging the text. */
+  .eyebrow.justify-center::before {
+    order: -1;
+  }
+
+  /* Asymmetric showcase row: text and terminal in a deliberate 7/5
+     split so the two showcase sections don't render as the same block
+     twice. The .flip modifier swaps the visual order on wide screens
+     while keeping text first in the DOM (source = reading order). */
+  .showcase {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: center;
+    gap: 2.5rem;
+  }
+
+  @media (width >= 64rem) {
+    .showcase {
+      grid-template-columns: 7fr 5fr;
+      gap: 4rem;
+    }
+
+    .showcase.flip {
+      grid-template-columns: 5fr 7fr;
+    }
+
+    .showcase.flip > :first-child {
+      order: 2;
+    }
+  }
+
+  /* Bento feature grid: two flagship tiles span two columns on wide
+     screens; the rest stay compact. Uneven tiles read as authored —
+     a 3×2 of identical boxes reads as a template. */
+  .bento {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  @media (width >= 40rem) {
+    .bento {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (width >= 64rem) {
+    .bento {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .bento > .bento-wide {
+      grid-column: span 2;
+    }
+  }
+
+  /* A miniature, non-interactive terminal used inside flagship bento
+     tiles. Always dark (the terminal is a dark object) and shows the
+     real semver traffic-light: green in-range, amber major, red vuln. */
+  .term-mini {
+    margin-top: 1.25rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--terminal-border);
+    background: var(--terminal);
+    padding: 0.75rem 0.9rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.72rem;
+    line-height: 1.7;
+    color: var(--terminal-foreground);
+    overflow-x: auto;
   }
 
   /* Inline text link — quiet underline that warms to brand on hover. */
@@ -420,6 +503,365 @@
   .prose img {
     max-width: 100%;
     border-radius: 0.75rem;
+  }
+}
+
+/* ————————————————————————————————————————————————
+   Landing page: the imported "upgrade session" concept.
+   A quiet terminal atmosphere — a drifting dot-grid and a floating
+   brand halo — under a page that reveals as you scroll, with the
+   picker's own semver traffic-light carried through. Everything is
+   token-driven (works in light and dark) and reduced-motion-safe.
+   ———————————————————————————————————————————————— */
+@layer components {
+  /* Reading progress: a brand hairline pinned to the top of the page,
+     driven by the homepage script. Sits above the sticky header. */
+  .scroll-progress {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    z-index: 50;
+    height: 2px;
+    width: 0;
+    background: linear-gradient(90deg, var(--brand-2), var(--brand));
+    box-shadow: 0 0 12px color-mix(in srgb, var(--brand) 60%, transparent);
+    /* Width is set imperatively per frame; ease the resize on reflow only. */
+    transition: none;
+  }
+
+  /* Ambient page atmosphere. The dot-grid drifts and the halo breathes
+     under a top-anchored mask, so the texture fades into the canvas
+     rather than tiling to the footer. Fixed: every fold shares it. */
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .ambient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent) 1px,
+      transparent 1px
+    );
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 25%, transparent 70%);
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 25%, transparent 70%);
+    animation: grid-drift 9s linear infinite;
+  }
+
+  .ambient::after {
+    content: '';
+    position: absolute;
+    inset-block-start: -6%;
+    inset-inline-start: 50%;
+    width: min(1000px, 120vw);
+    aspect-ratio: 3 / 2;
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--brand) 16%, transparent),
+      transparent 62%
+    );
+    filter: blur(30px);
+    translate: -50% -50%;
+    animation: float-glow 13s ease-in-out infinite;
+  }
+
+  @keyframes grid-drift {
+    from {
+      background-position: 0 0;
+    }
+    to {
+      background-position: 0 44px;
+    }
+  }
+
+  @keyframes float-glow {
+    0%,
+    100% {
+      translate: -50% -50%;
+      scale: 1;
+    }
+    50% {
+      translate: -50% -47%;
+      scale: 1.12;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ambient::before,
+    .ambient::after {
+      animation: none;
+    }
+  }
+
+  /* Scroll reveal. The JS adds .is-in when the element enters view; before
+     that it sits offset and faded. No-JS visitors see everything (the base
+     state is applied by the script only when JS runs — see the homepage
+     script's guard), and reduced-motion collapses the travel to a fade. */
+  .reveal {
+    opacity: 0;
+    translate: 0 30px;
+    transition:
+      opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1),
+      translate 0.8s cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  .reveal.reveal-left {
+    translate: -34px 0;
+  }
+
+  .reveal.reveal-right {
+    translate: 34px 0;
+  }
+
+  .reveal.is-in {
+    opacity: 1;
+    translate: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal {
+      translate: none;
+      transition: opacity 0.5s ease;
+    }
+  }
+
+  /* Kinetic hero words: each blurs and rises into place in sequence,
+     orchestrated by the homepage script (which sets --i per word). */
+  .kinetic > span {
+    display: inline-block;
+    opacity: 0;
+    translate: 0 22px;
+    filter: blur(6px);
+    transition:
+      opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+      translate 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+      filter 0.7s ease;
+    transition-delay: calc(150ms + var(--i, 0) * 90ms);
+  }
+
+  .kinetic.is-in > span {
+    opacity: 1;
+    translate: none;
+    filter: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .kinetic > span {
+      filter: none;
+      translate: none;
+      transition: opacity 0.4s ease;
+    }
+  }
+
+  /* The upgrade-interactive lockup: the phrase npm never shipped, set in
+     mono and lit with the brand so it reads as something you'd type. */
+  .hero-cmd {
+    font-family: var(--font-mono, ui-monospace);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--brand);
+    text-shadow: 0 0 30px color-mix(in srgb, var(--brand) 35%, transparent);
+    white-space: nowrap;
+  }
+
+  /* Stat tile: one big mono figure counted up from zero, a quiet label
+     under it. Sits in a bordered strip with a top-lit surface. */
+  .stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 2rem 1.5rem;
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--foreground) 2%, transparent),
+      transparent
+    );
+  }
+
+  @media (width >= 40rem) {
+    .stat-strip {
+      grid-template-columns: repeat(4, 1fr);
+    }
+  }
+
+  .stat-value {
+    font-family: var(--font-mono, ui-monospace);
+    font-size: clamp(1.9rem, 4.5vw, 2.75rem);
+    font-weight: 700;
+    line-height: 1;
+    color: var(--foreground);
+  }
+
+  .stat-value.stat-brand {
+    color: var(--brand);
+  }
+
+  .stat-label {
+    margin-top: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--muted-foreground);
+  }
+
+  /* Feature card: same lift language as .card-lift, tuned for the port's
+     denser grid (a small brand glyph tile, optional keycap cluster). */
+  .feature {
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    transition:
+      translate 0.3s ease,
+      border-color 0.3s ease,
+      background 0.3s ease;
+  }
+
+  .feature:hover {
+    translate: 0 -6px;
+    border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+    background: color-mix(in srgb, var(--brand) 4%, var(--surface));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .feature {
+      transition: border-color 0.3s ease;
+    }
+    .feature:hover {
+      translate: none;
+    }
+  }
+
+  .feature-glyph {
+    display: flex;
+    width: 2.375rem;
+    height: 2.375rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.625rem;
+    color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 10%, transparent);
+  }
+
+  /* Code panel (window-chrome file preview) used in the showcase rows. */
+  .code-panel {
+    border: 1px solid var(--terminal-border);
+    border-radius: 0.875rem;
+    overflow: hidden;
+    background: var(--terminal);
+    box-shadow: 0 30px 90px -40px rgb(0 0 0 / 0.55);
+  }
+
+  .code-panel__bar {
+    padding: 0.7rem 1rem;
+    background: color-mix(in srgb, #000 22%, var(--terminal));
+    border-bottom: 1px solid var(--terminal-border);
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.75rem;
+    color: var(--terminal-muted);
+  }
+
+  .code-panel pre {
+    margin: 0;
+    padding: 1.25rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.8125rem;
+    line-height: 1.9;
+    color: var(--terminal-foreground);
+    overflow-x: auto;
+  }
+
+  /* Comparison matrix, rebuilt as a grid so the inup column can carry a
+     tinted spine and each mark can pop in. Rows/marks reveal via the
+     homepage script (staggered). */
+  .cmp {
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .cmp-row {
+    display: grid;
+    grid-template-columns: 1.7fr 0.8fr 0.8fr 0.8fr 0.9fr;
+    align-items: center;
+  }
+
+  .cmp-head {
+    padding: 1rem 1.25rem;
+    background: color-mix(in srgb, var(--foreground) 3%, var(--surface));
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.78rem;
+    color: var(--muted-foreground);
+  }
+
+  .cmp-body .cmp-row {
+    padding: 0.875rem 1.25rem;
+    font-size: 0.875rem;
+    border-bottom: 1px solid var(--border);
+    opacity: 0;
+    translate: 0 10px;
+    transition:
+      opacity 0.4s ease,
+      translate 0.4s ease;
+  }
+
+  .cmp-body .cmp-row:last-child {
+    border-bottom: none;
+  }
+
+  .cmp-body .cmp-row.is-in {
+    opacity: 1;
+    translate: none;
+  }
+
+  /* The inup spine: a faint brand wash running down its column. Applied to
+     the header cell and each body cell so the tint is continuous. */
+  .cmp-inup {
+    background: color-mix(in srgb, var(--brand) 6%, transparent);
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cmp-mark {
+    display: inline-flex;
+    opacity: 0;
+    scale: 0;
+    transition:
+      opacity 0.35s ease,
+      scale 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+  }
+
+  .cmp-row.is-in .cmp-mark {
+    opacity: 1;
+    scale: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cmp-body .cmp-row,
+    .cmp-mark {
+      transition: opacity 0.3s ease;
+      translate: none;
+      scale: 1;
+    }
+  }
+
+  @media (width < 48rem) {
+    .cmp {
+      overflow-x: auto;
+    }
+    .cmp-row {
+      min-width: 33rem;
+    }
   }
 }
 

@@ -4,16 +4,22 @@ import { getCurrentThemeName } from './state/theme-manager'
 
 // Centralized theme color definitions - single source of truth
 const themeColorDefinitions = {
+  // The signature inup palette: the teal→green identity from the landing
+  // page, carried into the terminal. Acid-green leads (package names, the
+  // cursor and selection dots), teal is the companion accent, and the
+  // semver traffic-light stays honest — amber for in-range, red for the
+  // latest major. Fixed hex (not named ANSI) so the look is consistent
+  // across terminals; pick a named theme to defer to your own palette.
   default: {
-    bg: '#1a1a1a',
-    primary: 'cyan',
-    secondary: 'magenta',
-    success: 'green',
-    warning: 'yellow',
-    error: 'red',
-    border: 'gray',
-    text: 'white',
-    textSecondary: 'gray',
+    bg: '#080a0f',
+    primary: '#46e58b',
+    secondary: '#2dd4bf',
+    success: '#46e58b',
+    warning: '#e0af68',
+    error: '#f0736b',
+    border: '#223049',
+    text: '#e6ebf1',
+    textSecondary: '#8a95a5',
   },
   dracula: {
     bg: '#1e1f26',
@@ -116,12 +122,11 @@ const themeColorDefinitions = {
   },
 }
 
-// Helper to apply color - handles both hex and named colors
+// Every theme color above is a hex string (single source of truth), so this
+// only needs the hex path — chalk.hex renders it at whatever color depth the
+// terminal supports.
 function applyColor(color: string, text: string): string {
-  if (color.startsWith('#')) {
-    return chalk.hex(color)(text)
-  }
-  return (chalk as unknown as Record<string, (text: string) => string>)[color](text)
+  return chalk.hex(color)(text)
 }
 
 const themeColorSchemes: Record<
