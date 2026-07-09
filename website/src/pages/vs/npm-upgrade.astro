@@ -1,0 +1,82 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs npm-upgrade — an honest comparison"
+  description="npm-upgrade is an interactive, changelog-aware npm dependency updater; inup adds vulnerability audit, monorepo, pnpm catalogs and multi-package-manager support. An honest, verified comparison."
+  heading="inup vs npm-upgrade"
+  columns={['inup', 'npm-upgrade']}
+  faq={[
+    {
+      q: 'How is inup different from npm-upgrade?',
+      a: 'Both are interactive and both can show a changelog while you upgrade. npm-upgrade is npm-only and works one package at a time. inup covers npm, yarn, pnpm and bun, handles monorepos and pnpm catalogs, adds a vulnerability audit and search in the picker, and has a headless CI/JSON mode and a GitHub Action.',
+    },
+    {
+      q: 'Does npm-upgrade work with yarn, pnpm or bun?',
+      a: 'No — npm-upgrade is npm-only. inup auto-detects and works with npm, yarn, pnpm and bun, and upgrades across every workspace in a monorepo in one pass.',
+    },
+    {
+      q: 'What does inup add that npm-upgrade does not have?',
+      a: 'A vulnerability audit cross-referenced against the upgrade, monorepo and pnpm-catalog support, search and dependency-type toggles in the picker, and a headless mode with a versioned JSON report and CI gate. npm-upgrade’s strengths are its simple one-by-one flow and a global (-g) upgrade mode.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/th0r/npm-upgrade">npm-upgrade</a> is the closest
+    tool to inup in feel: an interactive updater that can show a changelog as you
+    step through each dependency. The differences are scope — npm-upgrade is
+    npm-only and single-project, while inup spans package managers, monorepos and
+    a headless CI surface.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>More than npm.</strong> inup auto-detects npm, yarn, pnpm and bun,
+      and discovers every workspace in a monorepo — including pnpm
+      <code>catalog:</code> entries, upgraded with comments preserved.
+      npm-upgrade is npm-only, one project at a time.
+    </li>
+    <li>
+      <strong>Audit and search in the picker.</strong> A vulnerability audit
+      (<code>s</code>) cross-referenced against the bump, plus search
+      (<code>/</code>) and live dependency-type toggles. npm-upgrade shows
+      changelogs but has no audit or search.
+    </li>
+    <li>
+      <strong>Headless and CI.</strong> A read-only <code>--check</code> gate, a
+      versioned JSON report, and a GitHub Action for rolling upgrade PRs.
+    </li>
+  </ul>
+
+  <h2>Where npm-upgrade is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>A simple one-by-one flow.</strong> It walks each dependency with a
+      Yes / No / Show changelog / Ignore prompt — minimal and focused for small
+      npm projects.
+    </li>
+    <li>
+      <strong>Global packages.</strong> A <code>--global</code> mode upgrades
+      your globally installed npm packages, which inup does not do.
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> for a small npm-only
+    project and a minimal one-at-a-time flow, npm-upgrade is a fine, focused
+    choice. For anything with yarn/pnpm/bun, a monorepo, or a need for audit and
+    CI, inup does more.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: npm-upgrade documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/taze/`}>inup vs taze</a> and{' '}
+    <a href={`${base}/vs/updates/`}>inup vs updates</a>.
+  </Fragment>
+</VsLayout>

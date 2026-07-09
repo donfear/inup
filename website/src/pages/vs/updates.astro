@@ -1,0 +1,84 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs updates (silverwind) — an honest comparison"
+  description="updates is a fast, non-interactive multi-ecosystem dependency checker; inup is an interactive upgrader with audit and changelogs in the picker. An honest, verified comparison."
+  heading="inup vs updates"
+  columns={['inup', 'updates']}
+  faq={[
+    {
+      q: 'What is the difference between inup and updates?',
+      a: 'updates (by silverwind) is a fast, non-interactive checker that updates your manifest in well under a second and covers many ecosystems beyond npm (Cargo, Go, Docker, GitHub Actions, Makefiles). inup is an interactive upgrader for npm/yarn/pnpm/bun with a vulnerability audit, changelogs and search inside the picker. updates is about speed and breadth; inup is about reviewing before you commit.',
+    },
+    {
+      q: 'Does updates show vulnerabilities or changelogs?',
+      a: 'No. updates focuses purely on version checking and writing the manifest; it has no vulnerability audit or changelog viewer. inup shows both in the terminal before you select an upgrade.',
+    },
+    {
+      q: 'When should I choose updates over inup?',
+      a: 'When you want a fast, non-interactive step for CI or a script — especially in a polyglot repo where you also update Cargo, Go, Docker or GitHub Actions versions. updates also has a typed config file and a publish-age cooldown. inup is the better fit for a hands-on npm/yarn/pnpm/bun upgrade session.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/silverwind/updates">updates</a> is a fast,
+    <strong>non-interactive</strong> dependency checker — it rewrites your
+    manifest in well under a second and reaches beyond npm into Cargo, Go,
+    Docker, GitHub Actions and Makefiles. inup is <strong>interactive</strong>
+    and npm-ecosystem-focused. The split is speed-and-breadth versus
+    review-before-you-commit.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>An interactive picker with context.</strong> Vulnerability audit
+      (<code>s</code>) cross-referenced against the bump, changelogs
+      (<code>i</code>), search (<code>/</code>) and live dependency-type
+      toggles. updates writes the manifest without any of this.
+    </li>
+    <li>
+      <strong>Applies and installs.</strong> inup writes the change and runs
+      your package manager (npm/yarn/pnpm/bun), including pnpm catalogs with
+      comments preserved. updates edits the manifest and leaves the install to
+      you.
+    </li>
+  </ul>
+
+  <h2>Where updates is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>Speed and non-interactive batching.</strong> Sub-second checks
+      make it ideal for a quick CI or scripting step.
+    </li>
+    <li>
+      <strong>Beyond JavaScript.</strong> One tool also bumps Cargo, Go, Docker
+      images, GitHub Actions and Makefile tool versions.
+    </li>
+    <li>
+      <strong>Typed config and a cooldown.</strong> An <code>updates.config</code>
+      file (TS/JS) plus a publish-age cooldown to skip brand-new releases —
+      neither of which inup has today.
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> reach for updates when you
+    want a fast, non-interactive bump — especially in a polyglot repo. Reach for
+    inup when you want to sit down and review an npm/yarn/pnpm/bun upgrade with
+    audit and changelogs in front of you. They can even coexist: updates in CI,
+    inup on your machine.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: updates documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a> and{' '}
+    <a href={`${base}/vs/npm-upgrade/`}>inup vs npm-upgrade</a>.
+  </Fragment>
+</VsLayout>

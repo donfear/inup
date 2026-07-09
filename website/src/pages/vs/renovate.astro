@@ -1,0 +1,91 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs Renovate — an honest comparison"
+  description="Renovate is an always-on dependency bot that opens pull requests; inup is a local, interactive upgrader with an optional rolling-PR GitHub Action. When to pick each — an honest comparison."
+  heading="inup vs Renovate"
+  columns={['inup', 'renovate']}
+  faq={[
+    {
+      q: 'Is inup an alternative to Renovate?',
+      a: 'They solve different halves of the same problem. Renovate is an always-on bot (hosted by Mend or self-hosted) that continuously opens upgrade pull requests. inup is a local, interactive CLI you run yourself to review and apply upgrades — with an optional GitHub Action that maintains one rolling PR if you want lightweight automation without adopting a bot.',
+    },
+    {
+      q: 'Does inup need repo permissions or a hosted service like Renovate?',
+      a: 'No. inup runs entirely on your machine — nothing is installed into your repository and no third-party service sees your code. Renovate needs the Mend app (or a self-hosted Renovate service) with write access to your repo. inup’s optional Action runs inside your own GitHub Actions, not a third party.',
+    },
+    {
+      q: 'When should I choose Renovate over inup?',
+      a: 'When you want fully automated, always-on maintenance for a team: auto-merge, grouping presets, packageRules policy, a dependency dashboard, and coverage across 90+ package managers and non-JS ecosystems. inup is the better fit when you want to drive upgrades yourself — locally, interactively, with a vulnerability audit and changelogs in front of you before anything is written.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/renovatebot/renovate">Renovate</a> is an
+    always-on dependency <strong>bot</strong> — hosted by Mend or self-hosted —
+    that watches your repository and opens pull requests as updates land. inup
+    is a local, interactive <strong>CLI</strong> you run when you want to
+    upgrade. They aren't really competitors so much as two different moments in
+    the same workflow, so this comparison is about which moment you're in.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>Local and interactive.</strong> You drive the upgrade — pick
+      packages, read the changelog (<code>i</code>), run the vulnerability
+      audit (<code>s</code>), and see it all before a single line is written.
+      Renovate decides, then asks you to review a PR after the fact.
+    </li>
+    <li>
+      <strong>No bot, no service, no repo access.</strong> inup runs on your
+      machine with zero infrastructure. There's nothing to install into the
+      repo, no app to authorize, and no third-party service that sees your
+      code.
+    </li>
+    <li>
+      <strong>Automation is still there when you want it.</strong> inup ships a
+      GitHub Action that maintains one rolling upgrade PR on a schedule — a
+      lightweight middle ground if you like some automation but don't want to
+      adopt and configure a full bot.
+    </li>
+  </ul>
+
+  <h2>Where Renovate is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>Set-and-forget automation.</strong> Auto-merge, grouping presets,
+      and a scheduled cadence keep dependencies fresh with no human in the loop.
+    </li>
+    <li>
+      <strong>Policy at scale.</strong> <code>packageRules</code> encode
+      fine-grained per-package and per-group policy across an org, with shareable
+      config presets.
+    </li>
+    <li>
+      <strong>Breadth.</strong> 90+ package managers and many non-JS ecosystems
+      (Docker, GitHub Actions, Terraform, and more) — well beyond inup's
+      npm/yarn/pnpm/bun scope.
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> for hands-off, always-on
+    team maintenance across many ecosystems, Renovate is purpose-built and wins.
+    For hands-on upgrades you review locally — with audit and changelogs in front
+    of you — inup wins. If you want a little automation without running a bot,
+    inup's rolling-PR Action sits neatly in between.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: Renovate documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/dependabot/`}>inup vs Dependabot</a> and{' '}
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a>.
+  </Fragment>
+</VsLayout>
