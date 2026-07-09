@@ -60,6 +60,33 @@ if (keys.length < 10) {
   throw new Error(`README.md: KEYS table suspiciously short (${keys.length} rows)`);
 }
 
+export interface Feature {
+  title: string;
+  body: string;
+}
+
+/**
+ * Marketing feature list parsed from the FEATURES marker block.
+ * README is the single source of truth for the homepage bento cards; the
+ * homepage supplies only the icon/layout per card (by index). Bodies are
+ * kept plain (no markdown) so they render verbatim in both places.
+ */
+export const features: Feature[] = markerSection('FEATURES')
+  .split('\n')
+  .map((line) => line.trim())
+  .filter((line) => line.startsWith('- **'))
+  .map((line) => {
+    const match = line.match(/^- \*\*(.+?)\*\*\s*[—-]\s*(.+)$/);
+    if (!match) {
+      throw new Error(`README.md: unparseable FEATURES row: ${line}`);
+    }
+    return { title: match[1].trim(), body: match[2].trim() };
+  });
+
+if (features.length < 6) {
+  throw new Error(`README.md: FEATURES list suspiciously short (${features.length} rows)`);
+}
+
 /** Test count and coverage parsed from the TEST-BADGES marker section. */
 export const testStats: { tests: number; coverage: string } = (() => {
   const section = markerSection('TEST-BADGES');

@@ -10,7 +10,7 @@ import demoVideo from '../../../docs/demo/interactive-upgrade.mp4';
 import demoPoster from '../assets/demo-poster.webp';
 import { site } from '../data/site';
 import { competitors, rowsFor, verifiedOn, type ColumnId } from '../data/comparison';
-import { testStats } from '../lib/readme';
+import { testStats, features as readmeFeatures } from '../lib/readme';
 import { stats } from '../lib/stats';
 import type { IconName } from '../components/icons';
 
@@ -43,7 +43,7 @@ const strip = [
     label: 'coverage',
     brand: true,
   },
-  { count: 5, label: 'package managers' },
+  { count: 4, label: 'package managers' },
   { text: '0', label: 'telemetry · MIT' },
 ];
 
@@ -57,40 +57,28 @@ type Feature = {
   wide?: boolean;
 };
 
-const features: Feature[] = [
-  {
-    icon: 'shield-check',
-    title: 'Audit before you upgrade',
-    body: 'Known vulnerabilities appear next to each package, cross-referenced against the bump — so you know whether it actually clears the advisory.',
-    wide: true,
-  },
-  {
-    icon: 'search',
-    title: 'Search the picker',
-    body: 'Filter hundreds of workspace dependencies as you type. / to search, Esc clears.',
-  },
-  {
-    keys: ['d', 'p', 'o'],
-    title: 'Live dependency-type toggles',
-    body: 'Show or hide dev, peer and optional dependencies on the fly — instead of restarting with different flags.',
-  },
-  {
-    icon: 'book-open',
-    title: 'Changelogs in the terminal',
-    body: 'Read release notes inline before selecting a major. No browser tab, no guessing what changed.',
-    wide: true,
-  },
-  {
-    icon: 'list-checks',
-    title: 'Bulk select, precisely',
-    body: 'Select every safe in-range update with one key, or everything including majors — then deselect the risky ones.',
-  },
-  {
-    icon: 'arrow-left-right',
-    title: 'Range or latest, per package',
-    body: 'Cycle each package between no upgrade, the in-range bump and the latest major. Mixed strategies in one pass.',
-  },
+// Presentation only — glyph + layout per card, in render order. Title and
+// body come from the README FEATURES marker (the single source of truth), so
+// the homepage cards and the README can never drift. Order must match the
+// marker; the two `wide` tiles carry the mini-terminal previews below.
+const featurePresentation: Omit<Feature, 'title' | 'body'>[] = [
+  { icon: 'shield-check', wide: true },
+  { icon: 'search' },
+  { keys: ['d', 'p', 'o'] },
+  { icon: 'book-open', wide: true },
+  { icon: 'list-checks' },
+  { icon: 'arrow-left-right' },
 ];
+
+const features: Feature[] = featurePresentation.map((presentation, i) => {
+  const copy = readmeFeatures[i];
+  if (!copy) {
+    throw new Error(
+      `Homepage bento expects ${featurePresentation.length} FEATURES in README, found ${readmeFeatures.length}`,
+    );
+  }
+  return { ...presentation, title: copy.title, body: copy.body };
+});
 
 // The comparison matrix is built from the real data so it can never drift
 // from comparison.ts. The homepage shows a curated subset of four columns.
@@ -134,7 +122,7 @@ const cmpLabel = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short)
 
     <p class="reveal mx-auto m-0 mb-9 max-w-[36rem] text-lg leading-relaxed text-pretty text-muted-foreground">
       One command for <strong class="font-normal text-foreground"
-        >npm, yarn, pnpm, bun &amp; deno</strong
+        >npm, yarn, pnpm &amp; bun</strong
       >. Pick upgrades in an interactive terminal UI — see vulnerabilities and
       changelogs <strong class="font-normal text-foreground">before</strong> you commit.
       Zero config, monorepo-ready.

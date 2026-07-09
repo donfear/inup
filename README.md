@@ -50,16 +50,24 @@ Run `inup` in any project — it scans for outdated dependencies and lets you pi
 
 ## Why inup?
 
-- **All Dependencies at Once** — dev, peer, and optional dependencies load automatically. No more re-running with `--peer` or `--dev` flags.
-- **Live Toggles** — filter dependency types (`d`, `p`, `o`) on the fly without restarting.
-- **Zero Config** — auto-detects npm, yarn, pnpm, or bun from your lockfile.
-- **Monorepo & Workspaces Ready** — discovers and upgrades dependencies across every workspace in one pass.
-- **pnpm Catalogs** — dependencies declared as `catalog:` / `catalog:<name>` are resolved from `pnpm-workspace.yaml` and upgraded right there, preserving the file's comments and formatting.
-- **Private Registries** — honors your `.npmrc` (project, user, and global): scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, `${ENV_VAR}` expansion) work exactly like npm's own resolution.
-- **Vulnerability Audit** — flags known security vulnerabilities right in the package list, so you know what's risky before you upgrade.
-- **Changelog Viewer** — read release notes and changelogs inline without leaving the terminal.
-- **Built-in Search** — press `/` to filter packages instantly.
-- **Package Details** — press `i` to view package info, download stats, and more.
+The picker does more than `outdated` — every capability is a keystroke away:
+
+<!-- FEATURES:START -->
+- **Audit before you upgrade** — Known vulnerabilities appear next to each package, cross-referenced against the bump — so you know whether it actually clears the advisory.
+- **Search the picker** — Filter hundreds of workspace dependencies as you type. / to search, Esc clears.
+- **Live dependency-type toggles** — Show or hide dev, peer and optional dependencies on the fly — instead of restarting with different flags.
+- **Changelogs in the terminal** — Read release notes inline before selecting a major. No browser tab, no guessing what changed.
+- **Bulk select, precisely** — Select every safe in-range update with one key, or everything including majors — then deselect the risky ones.
+- **Range or latest, per package** — Cycle each package between no upgrade, the in-range bump and the latest major. Mixed strategies in one pass.
+<!-- FEATURES:END -->
+
+And beyond the picker:
+
+- **Zero config** — auto-detects npm, yarn, pnpm, or bun from your lockfile.
+- **Monorepo & workspaces** — discovers and upgrades dependencies across every workspace in one pass.
+- **pnpm catalogs** — dependencies declared as `catalog:` / `catalog:<name>` are resolved from `pnpm-workspace.yaml` and upgraded right there, preserving the file's comments and formatting.
+- **Private registries** — honors your `.npmrc` (project, user, and global): scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, `${ENV_VAR}` expansion), exactly like npm's own resolution.
+- **Package details on demand** — press `i` for package info, download stats, and the changelog, inline.
 
 ## Options
 
@@ -75,6 +83,8 @@ inup [options]
 -c, --check                   Exit non-zero if updates exist, without writing (for CI)
 --apply                       Non-interactively write upgrades + install (for CI/automation)
 --target <level>              With --apply: minor (default, in-range) | patch (same major.minor) | latest
+--save-exact                  Write exact versions instead of preserving the range prefix (^/~)
+--no-color                    Disable colored output (also respects NO_COLOR / FORCE_COLOR)
 --debug                       Write verbose debug logs
 ```
 
