@@ -92,6 +92,18 @@ const nav = [
     <meta name="twitter:image" content={ogImageUrl} />
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
     <slot name="head" />
+    {/* GoatCounter — cookieless, no consent banner needed. Production only so
+        `astro dev` page loads don't pollute the stats. The script URL is
+        absolute (https://) on purpose: a protocol-relative //gc.zgo.at src
+        starts with "/" and would fail the base-path dist audit. */}
+    {import.meta.env.PROD && (
+      <script
+        is:inline
+        data-goatcounter="https://donfear.goatcounter.com/count"
+        async
+        src="https://gc.zgo.at/count.js"
+      ></script>
+    )}
   </head>
   <body>
     <a
