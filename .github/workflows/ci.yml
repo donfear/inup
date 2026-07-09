@@ -6,9 +6,21 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs on the same ref (new push to a PR) so stale jobs
+# don't hog runners. Named workflow + ref keeps groups distinct across PRs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only reads the repo.
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Test
+  # Fast, single-run static checks + a package-publish sanity gate. No tests here
+  # so it fails quickly on lint/type/build errors independent of the OS matrix.
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
 
     steps:
@@ -36,13 +48,64 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Run tests with coverage
-        run: pnpm test:coverage
-
-      # Coverage output only exists after the run above, so the in-run badge
-      # check is a no-op on a fresh checkout; re-run it now that numbers exist.
-      - name: Check README test badges
-        run: pnpm vitest run badges-readme
-
       - name: Build
         run: pnpm build
+
+      # Validate the would-be published package (bin/main/files/exports resolve)
+      # against the freshly built dist before it can ever reach npm.
+      - name: Validate package (publint)
+        run: pnpm dlx publint
+
+  # Cross-OS / cross-Node test matrix. Coverage + the README badge check run on a
+  # single canonical cell (ubuntu / Node 24); every other cell runs plain tests.
+  test:
+    name: Test (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        # 24 is the release toolchain — tested on every OS (paths/shell differ per platform).
+        node: ['24']
+        # Also exercise the engines floor (undici@8 requires Node >=22.19), but only once:
+        # Node API availability is OS-independent, so a single Linux cell proves the floor
+        # without re-running it on macOS/Windows.
+        include:
+          - os: ubuntu-latest
+            node: '22.19.0'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Canonical cell: generate coverage (writes coverage/test-results.json) and
+      # verify the README test/coverage badges are in sync with it.
+      - name: Run tests with coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        run: |
+          pnpm test:coverage
+          pnpm vitest run badges-readme
+
+      - name: Run tests
+        if: matrix.os != 'ubuntu-latest' || matrix.node != '24'
+        run: pnpm test
+
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/
