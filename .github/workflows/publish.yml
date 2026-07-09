@@ -13,7 +13,8 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
+      contents: read      # checkout
+      id-token: write     # npm provenance (OIDC)
 
     steps:
       - name: Checkout repository

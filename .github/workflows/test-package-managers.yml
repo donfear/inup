@@ -8,9 +8,53 @@ on:
   # schedule:
   #   - cron: '0 8 * * 1'
 
+# Cancel superseded runs on the same ref so a new push to a PR doesn't leave the
+# (heavy) 14-cell matrix running against a stale commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
+  # Build + pack inup ONCE and share it with every matrix job below. The matrix runs
+  # `node ../inup/dist/cli.js`, which needs inup's runtime deps resolvable from
+  # ../inup/node_modules, so the bundle carries dist + node_modules + the packed .tgz.
+  # inup's deps are pure JS (no native/os-specific binaries), so this ubuntu-built
+  # node_modules is safe to reuse on macOS and Windows. Replaces ~14 redundant builds.
+  build:
+    name: Build inup (shared)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Build, pack, and bundle inup
+        # `npm install` runs the `prepare` script (tsc build); `npx tsc` is a belt-and-suspenders
+        # rebuild that also matches the previous per-job behaviour exactly.
+        run: |
+          npm install
+          npx tsc
+          npm pack
+          tar -czf inup-build.tar.gz dist node_modules inup-*.tgz
+
+      - name: Upload build bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: inup-build
+          path: inup-build.tar.gz
+          retention-days: 1
+
   test-npm:
     name: Test with npm (${{ matrix.os }})
+    needs: build
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -30,13 +74,14 @@ jobs:
         with:
           node-version: 24
 
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+      - name: Download build bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: inup-build
 
-      - name: Pack inup for testing
-        run: npm pack
+      - name: Unpack inup build
+        run: tar -xzf inup-build.tar.gz
+        shell: bash
 
       - name: Create test project with npm
         run: |
@@ -67,6 +112,7 @@ jobs:
 
   test-yarn:
     name: Test with Yarn (${{ matrix.os }})
+    needs: build
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -89,13 +135,14 @@ jobs:
       - name: Enable Corepack for Yarn
         run: corepack enable
 
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+      - name: Download build bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: inup-build
 
-      - name: Pack inup for testing
-        run: npm pack
+      - name: Unpack inup build
+        run: tar -xzf inup-build.tar.gz
+        shell: bash
 
       - name: Create test project with Yarn
         run: |
@@ -135,6 +182,7 @@ jobs:
 
   test-pnpm:
     name: Test with pnpm (${{ matrix.os }})
+    needs: build
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -149,21 +197,22 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Enable Corepack
-        run: corepack enable
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+      - name: Enable Corepack
+        run: corepack enable
 
-      - name: Pack inup for testing
-        run: npm pack
+      - name: Download build bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: inup-build
+
+      - name: Unpack inup build
+        run: tar -xzf inup-build.tar.gz
+        shell: bash
 
       - name: Create test project with pnpm
         run: |
@@ -205,6 +254,7 @@ jobs:
 
   test-bun:
     name: Test with Bun (Bun ${{ matrix.bun-version }}, ${{ matrix.os }})
+    needs: build
     runs-on: ${{ matrix.os }}
 
     strategy:
@@ -225,18 +275,19 @@ jobs:
         with:
           bun-version: ${{ matrix.bun-version }}
 
-      - name: Setup Node.js (for building)
+      - name: Setup Node.js (for running the built CLI)
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+      - name: Download build bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: inup-build
 
-      - name: Pack inup for testing
-        run: npm pack
+      - name: Unpack inup build
+        run: tar -xzf inup-build.tar.gz
+        shell: bash
 
       - name: Create test project with Bun
         run: |
@@ -245,14 +296,6 @@ jobs:
           cd test-bun-project
           bun init -y
           touch bun.lockb                     # Bun doesn't support local .tgz → we fake lockfile for detection test
-          # Optional: bun add lodash           # uncomment if you want a real dependency + lockfile
-        shell: bash
-
-      - name: Debug - List files in test project
-        run: |
-          cd ../test-bun-project
-          echo "Contents of test-bun-project:"
-          ls -la
         shell: bash
 
       - name: Verify bun.lockb exists
@@ -283,6 +326,7 @@ jobs:
 
   test-workspaces:
     name: Test Workspace Detection (${{ matrix.pm }})
+    needs: build
     runs-on: ubuntu-latest
 
     strategy:
@@ -305,13 +349,14 @@ jobs:
         with:
           node-version: 24
 
-      - name: Build inup
-        run: |
-          npm install
-          npx tsc
+      - name: Download build bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: inup-build
 
-      - name: Pack inup for testing
-        run: npm pack
+      - name: Unpack inup build
+        run: tar -xzf inup-build.tar.gz
+        shell: bash
 
       - name: Create workspace project
         run: |
