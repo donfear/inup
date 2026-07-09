@@ -1,0 +1,88 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs Dependabot — an honest comparison"
+  description="Dependabot is GitHub's built-in bot that opens dependency pull requests; inup is a local, interactive upgrader with an optional rolling-PR Action. Which to use, and why — an honest comparison."
+  heading="inup vs Dependabot"
+  columns={['inup', 'dependabot']}
+  faq={[
+    {
+      q: 'Is inup a replacement for Dependabot?',
+      a: 'Not exactly — they overlap but aim at different workflows. Dependabot is a GitHub-native bot that opens upgrade and security pull requests automatically. inup is a local, interactive CLI you run yourself, with an optional GitHub Action that keeps one rolling PR. Many teams run Dependabot for security alerts and use inup locally for hands-on upgrades.',
+    },
+    {
+      q: 'Does inup support bun like it supports npm, yarn and pnpm?',
+      a: 'Yes. inup auto-detects and works with npm, yarn, pnpm and bun. Dependabot supports npm, yarn and pnpm but does not currently support bun — so for a bun repo, inup covers a case Dependabot does not.',
+    },
+    {
+      q: 'When should I choose Dependabot over inup?',
+      a: 'When you want zero-setup, always-on automation living inside GitHub — scheduled PRs, grouped updates, and automatic security updates with no local step. inup is the better fit when you want to review upgrades yourself, locally, with a vulnerability audit and changelogs in the terminal before anything is written.',
+    },
+  ]}
+>
+  <p slot="lede">
+    <a href="https://github.com/dependabot/dependabot-core">Dependabot</a> is
+    GitHub's built-in dependency <strong>bot</strong>: it runs on GitHub's
+    servers and opens pull requests for outdated and vulnerable dependencies.
+    inup is a local, interactive <strong>CLI</strong> you run yourself. As with
+    Renovate, the honest question isn't "which is better" but "which part of the
+    workflow are you in".
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>Local and interactive.</strong> Pick packages, run the
+      vulnerability audit (<code>s</code>) and read changelogs (<code>i</code>)
+      before anything is written — instead of reviewing a PR the bot already
+      opened.
+    </li>
+    <li>
+      <strong>Runs anywhere, on any host.</strong> inup needs no GitHub, no
+      hosted service, and no repo write-access. It works the same on GitLab, a
+      private server, or your laptop offline. Dependabot is tied to GitHub.
+    </li>
+    <li>
+      <strong>bun support.</strong> inup covers npm, yarn, pnpm <em>and</em>
+      bun; Dependabot does not currently support bun.
+    </li>
+  </ul>
+
+  <h2>Where Dependabot is stronger — use it if you need these</h2>
+  <ul>
+    <li>
+      <strong>Zero-setup, GitHub-native automation.</strong> Turn it on in
+      repository settings and it opens scheduled PRs with no local step.
+    </li>
+    <li>
+      <strong>Automatic security updates.</strong> Tight integration with GitHub
+      security advisories opens fix PRs for vulnerable dependencies on its own.
+    </li>
+    <li>
+      <strong>Grouping, auto-merge, and non-JS ecosystems.</strong> Grouped
+      update PRs, auto-merge via GitHub, and coverage of 30+ ecosystems beyond
+      npm.
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> Dependabot is the easiest
+    way to get always-on, GitHub-native upgrade and security PRs. inup is the
+    better tool for reviewing and applying upgrades yourself — locally, on any
+    host, with audit and changelogs in the terminal. They pair well: let
+    Dependabot watch for security fixes while you use inup for hands-on upgrades,
+    or use inup's own Action for a rolling PR.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: Dependabot documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/renovate/`}>inup vs Renovate</a> and{' '}
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a>.
+  </Fragment>
+</VsLayout>

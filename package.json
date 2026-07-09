@@ -48,7 +48,9 @@
     "package-manager",
     "dependencies",
     "semver",
-    "ncu"
+    "ncu",
+    "renovate",
+    "dependabot"
   ],
   "license": "MIT",
   "homepage": "https://donfear.github.io/inup/",

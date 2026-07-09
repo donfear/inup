@@ -1,0 +1,84 @@
+---
+import VsLayout from '../../layouts/VsLayout.astro';
+import { verifiedOn } from '../../data/comparison';
+
+import { base } from '../../lib/url';
+---
+
+<VsLayout
+  title="inup vs package-manager built-ins (upgrade-interactive) — an honest comparison"
+  description="yarn upgrade-interactive, pnpm update -i, bun update -i and deno outdated -i each work with one package manager. inup gives you one interactive upgrader across all of them, plus audit and changelogs. An honest comparison."
+  heading="inup vs package-manager built-ins"
+  columns={['inup', 'builtin']}
+  faq={[
+    {
+      q: 'Isn’t yarn upgrade-interactive or pnpm update -i enough?',
+      a: 'They’re good, and if you only ever use one package manager they may be all you need. But each works only with its own package manager, none show vulnerabilities or changelogs in the picker, and none give you a headless JSON report. inup gives you one consistent interactive upgrader across npm, yarn, pnpm and bun with that extra context built in.',
+    },
+    {
+      q: 'Does inup replace pnpm update -i and yarn upgrade-interactive?',
+      a: 'Yes. inup auto-detects your package manager and gives the same interactive selection across all four — plus a vulnerability audit, changelogs, search, monorepo discovery and pnpm catalog support — then runs the correct install for you.',
+    },
+    {
+      q: 'npm has no interactive upgrade — does inup fill that gap?',
+      a: 'That’s exactly why inup exists. npm ships no upgrade-interactive; inup brings the yarn/pnpm-style interactive picker to npm (and to bun), with the same UI everywhere so it doesn’t matter which package manager a repo uses.',
+    },
+  ]}
+>
+  <p slot="lede">
+    Most package managers ship an interactive upgrader —
+    <code>yarn upgrade-interactive</code>, <code>pnpm update -i</code>,
+    <code>bun update -i</code>, <code>deno outdated -i</code> — but each only
+    works with <em>its own</em> package manager, and npm ships none at all. inup
+    is one interactive upgrader that works across all of them, with more context
+    in the picker.
+  </p>
+
+  <h2>Where inup is stronger</h2>
+  <ul>
+    <li>
+      <strong>One tool, every package manager.</strong> The same picker whether
+      a repo uses npm, yarn, pnpm or bun — no relearning a different command and
+      UI per project. It even fills npm's missing <code>upgrade-interactive</code>.
+    </li>
+    <li>
+      <strong>Context the built-ins don't show.</strong> A vulnerability audit
+      cross-referenced against the bump (<code>s</code>), changelogs
+      (<code>i</code>), and search (<code>/</code>) — none of the built-ins put
+      this in the picker.
+    </li>
+    <li>
+      <strong>Monorepos, catalogs, and a CI surface.</strong> Discovers every
+      workspace in one pass, upgrades pnpm <code>catalog:</code> entries with
+      comments preserved, and adds a read-only <code>--check</code> gate, a JSON
+      report, and a GitHub Action.
+    </li>
+  </ul>
+
+  <h2>Where the built-ins are stronger — use them if you need these</h2>
+  <ul>
+    <li>
+      <strong>Nothing to install.</strong> They ship with the package manager
+      you already have, so there's zero setup for a quick one-off upgrade.
+    </li>
+    <li>
+      <strong>Native by definition.</strong> Each is maintained in lockstep with
+      its own package manager's resolver and lockfile format.
+    </li>
+  </ul>
+
+  <Fragment slot="verdict">
+    <p class="m-0 mb-2"><strong>Honest verdict:</strong> if you live in a single
+    package manager and want a quick upgrade with nothing to install, the
+    built-in is fine. If you move between npm, yarn, pnpm and bun — or want a
+    vulnerability audit and changelogs while you pick — inup gives you one
+    consistent tool that does more.</p>
+    <p class="m-0">Try it in any project: <code>npx inup</code></p>
+  </Fragment>
+
+  <Fragment slot="footnote">
+    Sources: npm, yarn, pnpm and bun documentation, inup source. Verified {verifiedOn}. Also see{' '}
+    <a href={`${base}/vs/npm-check-updates/`}>inup vs npm-check-updates</a> and{' '}
+    <a href={`${base}/vs/taze/`}>inup vs taze</a>.
+  </Fragment>
+</VsLayout>
