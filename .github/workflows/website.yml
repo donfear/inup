@@ -41,7 +41,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       # withastro/action detects the package manager from a lockfile inside
       # its `path`, which a pnpm workspace does not have (the lockfile is at
       # the repo root). Install and build explicitly, the same way the root
@@ -49,7 +49,7 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: 'pnpm'
