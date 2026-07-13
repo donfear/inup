@@ -66,25 +66,25 @@
     "README.md"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
-    "@types/node": "^25.9.4",
+    "@biomejs/biome": "^2.5.3",
+    "@types/node": "^25.9.5",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@vitest/coverage-v8": "^4.1.10",
     "dependency-cruiser": "^18.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "chalk": "^5.6.2",
-    "cli-truncate": "^6.1.0",
+    "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
     "env-paths": "^4.0.0",
     "nanospinner": "^1.2.2",
     "registry-auth-token": "^5.1.1",
     "semver": "^7.8.5",
-    "string-width": "^8.2.1",
+    "string-width": "^8.2.2",
     "strip-ansi": "^7.2.0",
-    "undici": "^8.6.0",
+    "undici": "^8.7.0",
     "wrap-ansi": "^10.0.0",
     "yaml": "^2.9.0"
   },
