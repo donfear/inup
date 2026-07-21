@@ -13,7 +13,24 @@ export interface BatchTiming {
   failedCount: number
 }
 
-export type ControlTickReason = 'up' | 'soft-down' | 'hard-down' | 'hold'
+export type ControlTickReason =
+  | 'up'
+  | 'soft-down'
+  | 'hard-down'
+  | 'hold'
+  | 'double'
+  | 'revert'
+  | 'step-down'
+  | 'probe-up'
+  | 'probe-reject'
+  | 'regime-reset'
+
+export type ConcurrencyControllerState =
+  | 'validating'
+  | 'slow-start'
+  | 'climb-up'
+  | 'climb-down'
+  | 'hold'
 
 /** One adaptive-concurrency control decision (separate channel from BatchTiming). */
 export interface ControlTick {
@@ -22,6 +39,9 @@ export interface ControlTick {
   ewmaMs: number
   retries: number
   reason: ControlTickReason
+  goodputRps?: number
+  state?: ConcurrencyControllerState
+  revalidatedRatio?: number
 }
 
 export interface PerformanceCounts {

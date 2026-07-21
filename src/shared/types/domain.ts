@@ -108,6 +108,26 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
 }
 
+/**
+ * Locally persisted network shape learned by the hill-climb concurrency
+ * controller. A starting hypothesis for the next run — never a hard cap: the
+ * controller re-validates it against live latency at run start and discards it
+ * when the network regime changed (different location, VPN, tethering).
+ */
+export interface NetworkProfile {
+  schemaVersion: 1
+  /** Last stable HOLD limit the controller settled at. */
+  learnedLimit: number
+  /** Success-only single-attempt latency EWMA at the end of that run. */
+  baselineLatencyMs: number
+  /** Window goodput (completions/sec) at settle time; diagnostic only. */
+  baselineGoodputRps: number
+  /** Completions that informed the profile. */
+  sampleCount: number
+  /** ISO timestamp; profiles expire after a few days. */
+  updatedAt: string
+}
+
 export interface PackageJson {
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
