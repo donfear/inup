@@ -6,6 +6,9 @@ export interface PackageLoadProgress {
   total: number
   failed: number
   isLoading: boolean
+  /** The concurrency controller settled low / latency is high: tell the user
+   * the wait is the connection, not a hang. */
+  slowNetwork?: boolean
 }
 
 export interface AuditProgress {

@@ -9,6 +9,7 @@ import {
   findPackageJson,
   readPackageJson,
 } from '../../shared/fs'
+import type { ControlTick } from '../../shared/http/adaptive-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import { ConsoleUtils } from '../../shared/terminal'
@@ -49,6 +50,8 @@ export class PackageDetector {
   /** INUP_NET_PROFILE=0 disables learned-profile read AND write (clean A/B runs). */
   private readonly profilePersistenceEnabled: boolean
   private readonly networkProfile: NetworkProfile | null
+  /** Latest control decision of the current run, for the slow-network hint. */
+  private lastControlTick: ControlTick | null = null
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -156,7 +159,10 @@ export class PackageDetector {
       onNetworkProfile: this.profilePersistenceEnabled
         ? (profile) => configManager.setNetworkProfile(profile)
         : undefined,
-      onControlTick: (tick) => performanceTracker.recordControlTick(tick),
+      onControlTick: (tick) => {
+        this.lastControlTick = tick
+        performanceTracker.recordControlTick(tick)
+      },
       onPackageTiming: isPerfLoggingEnabled()
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
         : undefined,
@@ -498,7 +504,16 @@ export class PackageDetector {
       total,
       failed,
       isLoading,
+      slowNetwork: this.isSlowNetwork(),
     }
+  }
+
+  /** A settled-low limit or high latency EWMA reads as a slow connection. */
+  private isSlowNetwork(): boolean {
+    const tick = this.lastControlTick
+    if (!tick) return false
+    const settledLow = (tick.state === 'hold' || tick.state === 'climb-down') && tick.limit <= 6
+    return settledLow || tick.ewmaMs > 1000
   }
 
   private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {

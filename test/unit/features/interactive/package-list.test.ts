@@ -514,6 +514,30 @@ describe('renderInterface body', () => {
 
     expect(text).not.toContain('Loading packages')
   })
+
+  it('flags a slow connection on the loading line', () => {
+    const text = renderPlain([baseState], {
+      loadingProgress: {
+        discovered: 50,
+        resolved: 12,
+        total: 50,
+        failed: 0,
+        isLoading: true,
+        slowNetwork: true,
+      },
+    })
+
+    expect(text).toContain('Loading packages... (12/50 checked)')
+    expect(text).toContain('slow connection, reduced parallelism')
+  })
+
+  it('does not mention the connection when it is not slow', () => {
+    const text = renderPlain([baseState], {
+      loadingProgress: { discovered: 5, resolved: 2, total: 5, failed: 0, isLoading: true },
+    })
+
+    expect(text).not.toContain('slow connection')
+  })
 })
 
 describe('renderPackagesTable', () => {

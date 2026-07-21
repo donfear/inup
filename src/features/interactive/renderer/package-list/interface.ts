@@ -210,10 +210,12 @@ export function renderInterface(
   if (loadingProgress?.isLoading) {
     const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
     const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
+    const slowLabel = loadingProgress.slowNetwork ? ' — slow connection, reduced parallelism' : ''
     const loadingLine =
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
-      (failedLabel ? chalk.yellow(failedLabel) : '')
+      (failedLabel ? chalk.yellow(failedLabel) : '') +
+      (slowLabel ? chalk.dim(slowLabel) : '')
     const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }

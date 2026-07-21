@@ -942,4 +942,49 @@ describe('PackageDetector concurrency plumbing', () => {
       profileLearnedLimit: 6,
     })
   })
+
+  const streamWithTick = async (tick: Record<string, unknown>) => {
+    const flags: (boolean | undefined)[] = []
+    const data = { latestVersion: '2.0.0', allVersions: ['2.0.0'] }
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: Record<string, any>) => {
+        options.onControlTick(tick)
+        options.onBatchReady([
+          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
+        ])
+        return new Map([['zod', data]])
+      }
+    )
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'batch') flags.push(event.payload.progress.slowNetwork)
+    })
+    return flags
+  }
+
+  it('marks progress slowNetwork when the controller settled low', async () => {
+    const flags = await streamWithTick({
+      atMs: 1,
+      limit: 4,
+      ewmaMs: 300,
+      retries: 0,
+      reason: 'step-down',
+      state: 'hold',
+      goodputRps: 8,
+    })
+    expect(flags).toEqual([true])
+  })
+
+  it('leaves slowNetwork false on a healthy link', async () => {
+    const flags = await streamWithTick({
+      atMs: 1,
+      limit: 24,
+      ewmaMs: 40,
+      retries: 0,
+      reason: 'hold',
+      state: 'hold',
+      goodputRps: 300,
+    })
+    expect(flags).toEqual([false])
+  })
 })
