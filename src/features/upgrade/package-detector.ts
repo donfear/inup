@@ -9,7 +9,7 @@ import {
   findPackageJson,
   readPackageJson,
 } from '../../shared/fs'
-import type { ControlTick } from '../../shared/http/adaptive-controller'
+import type { ControlTick } from '../../shared/http/controller-contract'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import { ConsoleUtils } from '../../shared/terminal'
@@ -25,6 +25,12 @@ import type {
 } from '../../shared/types'
 import { findClosestMinorVersion } from '../../shared/versions'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
+
+// Slow-connection heuristic: the hill-climb controller (HILL_CLIMB_TUNING:
+// floor 3, ceil 24) settling at/below this limit in a down state, or a latency
+// EWMA above this, reads as a slow link for the loading UI.
+const SLOW_NETWORK_LIMIT_MAX = 6
+const SLOW_NETWORK_EWMA_MS = 1000
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
@@ -515,8 +521,9 @@ export class PackageDetector {
   private isSlowNetwork(): boolean {
     const tick = this.lastControlTick
     if (!tick) return false
-    const settledLow = (tick.state === 'hold' || tick.state === 'climb-down') && tick.limit <= 6
-    return settledLow || tick.ewmaMs > 1000
+    const settledLow =
+      (tick.state === 'hold' || tick.state === 'climb-down') && tick.limit <= SLOW_NETWORK_LIMIT_MAX
+    return settledLow || tick.ewmaMs > SLOW_NETWORK_EWMA_MS
   }
 
   private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {

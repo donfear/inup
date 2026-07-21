@@ -94,6 +94,32 @@ describe('HillClimbController', () => {
     })
   })
 
+  describe('tuning sanitization (experiment overrides)', () => {
+    it('rejects non-finite or non-positive knobs', () => {
+      expect(
+        () => new HillClimbController(300, { tuning: { windowCompletions: Number.NaN } })
+      ).toThrow(/windowCompletions/)
+      expect(() => new HillClimbController(300, { tuning: { floor: 0 } })).toThrow(/floor/)
+      expect(() => new HillClimbController(300, { tuning: { ewmaAlpha: -1 } })).toThrow(/ewmaAlpha/)
+    })
+
+    it('floors fractional bounds and never lets the ceiling drop below the floor', () => {
+      const c = new HillClimbController(300, { tuning: { floor: 2.9, ceil: 2.2, coldStart: 9.7 } })
+      // floor → 2, ceil → max(2, 2) = 2, so the cold start lands on 2.
+      expect(c.getLimit()).toBe(2)
+    })
+
+    it('floors a fractional window size to one completion and still ticks', () => {
+      const c = new HillClimbController(300, {
+        tuning: { windowCompletions: 0.9 },
+        startedAt: START_AT,
+      })
+      c.record('success', 100)
+      // One completion closes the window; the cold start blind-doubles 4 → 8.
+      expect(c.maybeTick(START_AT + 1000)).toBe(8)
+    })
+  })
+
   describe('slow start (cold)', () => {
     it('starts at coldStart and doubles to the ceiling while goodput keeps improving', () => {
       const h = makeController({})

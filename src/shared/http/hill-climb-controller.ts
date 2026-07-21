@@ -35,6 +35,7 @@
  */
 
 import { POOL_CONNECTIONS } from '../config/constants'
+import { clamp, Ewma, round2, roundTo } from '../math'
 import type { NetworkProfile } from '../types/domain'
 import type {
   ConcurrencyController,
@@ -43,7 +44,7 @@ import type {
   ControlTickReason,
   RequestOutcomeKind,
   RequestOutcomeMeta,
-} from './adaptive-controller'
+} from './controller-contract'
 
 export interface HillClimbTuning {
   /** Lower bound on the limit. */
@@ -121,9 +122,28 @@ const MIN_CONTROLLED_TOTAL = 30
  * poison the next run's regime check in either direction. */
 const MIN_BASELINE_SAMPLES = 4
 
-const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
-
-const round2 = (value: number): number => Math.round(value * 100) / 100
+/** Experiment/test overrides must still yield a working state machine: every
+ * knob is a positive finite number, and the count-like knobs are integers with
+ * sane lower bounds (a fractional window size or ceil < floor would wedge the
+ * controller in ways no test of the defaults ever exercises). */
+const sanitizeTuning = (t: HillClimbTuning): HillClimbTuning => {
+  for (const [key, value] of Object.entries(t)) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`HillClimbTuning.${key} must be a positive finite number, got ${value}`)
+    }
+  }
+  const floor = Math.max(1, Math.floor(t.floor))
+  return {
+    ...t,
+    floor,
+    ceil: Math.max(floor, Math.floor(t.ceil)),
+    coldStart: Math.max(1, Math.floor(t.coldStart)),
+    windowCompletions: Math.max(1, Math.floor(t.windowCompletions)),
+    holdDegradeWindows: Math.max(1, Math.floor(t.holdDegradeWindows)),
+    reprobeAfterWindows: Math.max(1, Math.floor(t.reprobeAfterWindows)),
+    validateAfterCompletions: Math.max(1, Math.floor(t.validateAfterCompletions)),
+  }
+}
 
 export interface HillClimbOptions {
   /** Persisted starting hypothesis; validated against live latency, never a cap. */
@@ -145,14 +165,11 @@ export class HillClimbController implements ConcurrencyController {
   private frozen = false
 
   // Latency EWMA over ALL successes: instrumentation only (perf modal / logs).
-  private ewmaMs = 0
-  private hasEwma = false
+  private readonly latencyEwma: Ewma
   // Latency EWMA over FULL fetches only (no 304s): feeds the regime check and
   // the persisted baseline. A 304 is fast on any link, so mixing it in would
   // let a cache-mix shift impersonate a network change.
-  private fullEwmaMs = 0
-  private hasFullEwma = false
-  private fullSamples = 0
+  private readonly fullLatencyEwma: Ewma
   private readonly profileBaselineMs: number | null = null
   private validationRemaining = 0
   private validatingWindows = 0
@@ -187,9 +204,11 @@ export class HillClimbController implements ConcurrencyController {
   private reachedHold = false
 
   constructor(packageCount: number, options: HillClimbOptions = {}) {
-    this.tuning = { ...HILL_CLIMB_TUNING, ...options.tuning }
+    this.tuning = sanitizeTuning({ ...HILL_CLIMB_TUNING, ...options.tuning })
     this.onTick = options.onTick
     const t = this.tuning
+    this.latencyEwma = new Ewma(t.ewmaAlpha)
+    this.fullLatencyEwma = new Ewma(t.ewmaAlpha)
     const profile = options.profile ?? null
     if (profile) {
       this.limit = clamp(Math.round(profile.learnedLimit), t.floor, t.ceil)
@@ -201,7 +220,9 @@ export class HillClimbController implements ConcurrencyController {
       this.phase = 'slow-start'
       this.blindDoubleArmed = true
     }
-    // Never more parallel than there is work.
+    // Never more parallel than there is work. This may land below `floor`
+    // for tiny runs; harmless today because shouldControl() gates runs < 30,
+    // but the floor invariant does NOT survive a caller that skips the gate.
     this.limit = Math.min(this.limit, Math.max(1, packageCount))
     this.windowStartedAt = options.startedAt ?? Date.now()
   }
@@ -238,9 +259,9 @@ export class HillClimbController implements ConcurrencyController {
       const revalidated = meta?.revalidated === true
       if (revalidated) this.revalidatedSinceTick++
       if (latencyMs !== undefined) {
-        this.sampleLatency(latencyMs)
+        this.latencyEwma.update(latencyMs)
         if (!revalidated) {
-          this.sampleFullLatency(latencyMs)
+          this.fullLatencyEwma.update(latencyMs)
           // Only full fetches inform the regime check: a warm-cache 304 looks
           // fast on the slowest of links.
           if (this.phase === 'validating') return this.validateProfile()
@@ -284,35 +305,14 @@ export class HillClimbController implements ConcurrencyController {
     // No trustworthy latency baseline (all-304 warm run): persist nothing —
     // better to keep last run's profile than to store one that cannot be
     // regime-checked next time.
-    if (this.fullSamples < MIN_BASELINE_SAMPLES) return null
+    if (this.fullLatencyEwma.count < MIN_BASELINE_SAMPLES) return null
     return {
       schemaVersion: 1,
       learnedLimit: this.limit,
-      baselineLatencyMs: Math.round(this.fullEwmaMs),
+      baselineLatencyMs: Math.round(this.fullLatencyEwma.value),
       baselineGoodputRps: round2(this.prevGoodput ?? 0),
       sampleCount: this.totalCompletions,
       updatedAt: new Date(now).toISOString(),
-    }
-  }
-
-  private sampleLatency(latencyMs: number): void {
-    if (!this.hasEwma) {
-      this.ewmaMs = latencyMs
-      this.hasEwma = true
-    } else {
-      const a = this.tuning.ewmaAlpha
-      this.ewmaMs = a * latencyMs + (1 - a) * this.ewmaMs
-    }
-  }
-
-  private sampleFullLatency(latencyMs: number): void {
-    this.fullSamples++
-    if (!this.hasFullEwma) {
-      this.fullEwmaMs = latencyMs
-      this.hasFullEwma = true
-    } else {
-      const a = this.tuning.ewmaAlpha
-      this.fullEwmaMs = a * latencyMs + (1 - a) * this.fullEwmaMs
     }
   }
 
@@ -336,10 +336,10 @@ export class HillClimbController implements ConcurrencyController {
     // Full-fetch latency on both sides of the comparison: the stored baseline
     // is full-fetch-only too (getSettledProfile), so a cache-mix difference
     // between the runs cannot impersonate a network change.
-    const worse = this.fullEwmaMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
+    const fullMs = this.fullLatencyEwma.value
+    const worse = fullMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
     const better =
-      baseline - this.fullEwmaMs > t.regimeBetterMinDeltaMs &&
-      this.fullEwmaMs * t.regimeWorseFactor < baseline
+      baseline - fullMs > t.regimeBetterMinDeltaMs && fullMs * t.regimeWorseFactor < baseline
     this.phase = 'slow-start'
     if (!worse && !better) {
       // Same regime: climb from the learned limit, gated from here on.
@@ -607,12 +607,12 @@ export class HillClimbController implements ConcurrencyController {
     this.onTick?.({
       atMs: now,
       limit: this.limit,
-      ewmaMs: Math.round(this.ewmaMs),
+      ewmaMs: Math.round(this.latencyEwma.value),
       retries: this.retriesSinceTick,
       reason,
       state: this.phase,
       ...(goodput !== undefined && ratio !== undefined
-        ? { goodputRps: round2(goodput), revalidatedRatio: Math.round(ratio * 1000) / 1000 }
+        ? { goodputRps: round2(goodput), revalidatedRatio: roundTo(ratio, 3) }
         : {}),
     })
   }

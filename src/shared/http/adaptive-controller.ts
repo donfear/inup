@@ -23,6 +23,23 @@
  * limit. Real congestion shows up as 429, which we handle directly.
  */
 
+import { clamp, Ewma } from '../math'
+import type {
+  ConcurrencyController,
+  ControlTick,
+  ControlTickReason,
+  RequestOutcomeKind,
+} from './controller-contract'
+
+export type {
+  ConcurrencyController,
+  ConcurrencyControllerState,
+  ControlTick,
+  ControlTickReason,
+  RequestOutcomeKind,
+  RequestOutcomeMeta,
+} from './controller-contract'
+
 export interface AdaptiveTuning {
   /** Lower bound on the limit. */
   floor: number
@@ -50,71 +67,13 @@ export const DEFAULT_TUNING: AdaptiveTuning = {
   ticksEveryCompletions: 6,
 }
 
-export type ControlTickReason =
-  | 'up'
-  | 'soft-down'
-  | 'hard-down'
-  | 'hold'
-  // Emitted by the hill-climb controller only:
-  | 'double'
-  | 'revert'
-  | 'step-down'
-  | 'probe-up'
-  | 'probe-reject'
-  | 'regime-reset'
-
-/** Hill-climb controller phase; AIMD has no phases and never sets it. */
-export type ConcurrencyControllerState =
-  | 'validating'
-  | 'slow-start'
-  | 'climb-up'
-  | 'climb-down'
-  | 'hold'
-
-export interface ControlTick {
-  atMs: number
-  limit: number
-  ewmaMs: number
-  retries: number
-  reason: ControlTickReason
-  /** Window goodput (completions/sec); hill-climb controller only. */
-  goodputRps?: number
-  /** Controller phase after the decision; hill-climb controller only. */
-  state?: ConcurrencyControllerState
-  /** Share of ETag-304 revalidations in the window (0..1); hill-climb only. */
-  revalidatedRatio?: number
-}
-
-export type RequestOutcomeKind = 'success' | 'congested' | 'retryable' | 'transient'
-
-export interface RequestOutcomeMeta {
-  /** True when the response was an ETag 304 revalidation (tiny and fast even on a slow pipe). */
-  revalidated?: boolean
-}
-
-/**
- * Contract shared by the concurrency controllers (AIMD and hill-climb): a pure
- * decision function fed per-request outcomes, returning limit changes for the
- * caller to apply to the semaphore.
- */
-export interface ConcurrencyController {
-  getLimit(): number
-  record(kind: RequestOutcomeKind, latencyMs?: number, meta?: RequestOutcomeMeta): number | null
-  maybeTick(now?: number): number | null
-  /** Stop making decisions (run tail); optional — AIMD does not need it. */
-  freeze?(): void
-}
-
-const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
-
-export class AdaptiveController {
+export class AdaptiveController implements ConcurrencyController {
   private readonly tuning: AdaptiveTuning
   private limit: number
 
   // EWMA of successful single-attempt latency. Kept for instrumentation only
   // (the perf modal / logs); it does not drive concurrency decisions.
-  private ewmaMs = 0
-  private hasEwma = false
+  private readonly latencyEwma: Ewma
 
   private completionsSinceTick = 0
   private retriesSinceTick = 0
@@ -133,6 +92,7 @@ export class AdaptiveController {
     tuning: Partial<AdaptiveTuning> = {}
   ) {
     this.tuning = { ...DEFAULT_TUNING, ...tuning }
+    this.latencyEwma = new Ewma(this.tuning.ewmaAlpha)
     // Smart start: aim at the work size, clamped to [floor, ceil].
     this.limit = clamp(
       Math.min(this.tuning.ceil, packageCount),
@@ -161,7 +121,7 @@ export class AdaptiveController {
     this.completionsSinceTick++
 
     if (kind === 'success' && latencyMs !== undefined) {
-      this.sampleLatency(latencyMs)
+      this.latencyEwma.update(latencyMs)
       return null
     }
 
@@ -184,16 +144,6 @@ export class AdaptiveController {
       return null
     }
     return this.tick(now)
-  }
-
-  private sampleLatency(latencyMs: number): void {
-    if (!this.hasEwma) {
-      this.ewmaMs = latencyMs
-      this.hasEwma = true
-    } else {
-      const a = this.tuning.ewmaAlpha
-      this.ewmaMs = a * latencyMs + (1 - a) * this.ewmaMs
-    }
   }
 
   private applyHardDecrease(): number {
@@ -238,7 +188,7 @@ export class AdaptiveController {
     this.onTick?.({
       atMs: now,
       limit: this.limit,
-      ewmaMs: Math.round(this.ewmaMs),
+      ewmaMs: Math.round(this.latencyEwma.value),
       retries: this.retriesSinceTick,
       reason,
     })

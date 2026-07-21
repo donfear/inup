@@ -7,11 +7,8 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 
 import { POOL_CONNECTIONS } from '../config'
-import {
-  AdaptiveController,
-  type ConcurrencyController,
-  type ControlTick,
-} from '../http/adaptive-controller'
+import { AdaptiveController } from '../http/adaptive-controller'
+import type { ConcurrencyController, ControlTick } from '../http/controller-contract'
 import { readEtag, writeEtag } from '../http/etag-store'
 import { HillClimbController } from '../http/hill-climb-controller'
 import { InflightMap } from '../http/inflight'
@@ -23,6 +20,7 @@ import {
   parseRetryAfterMs,
   sleep,
 } from '../http/retry'
+import { clamp } from '../math'
 import type {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -326,7 +324,9 @@ export async function fetchPackageVersions(
   }
   const initialLimit =
     pinned !== undefined
-      ? Math.max(1, Math.min(Math.floor(pinned), total))
+      ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
+        // this is the last stop before the semaphore — never exceed the pool.
+        clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
       : controller
         ? controller.getLimit()
         : adaptive
