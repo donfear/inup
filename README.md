@@ -48,6 +48,8 @@ bun add -g inup
 
 Run `inup` in any project — it scans for outdated dependencies and lets you pick what to upgrade.
 
+> Requires Node 22.19+. Yes, an upgrade tool that asks you to upgrade first — we practice what we preach.
+
 ## Why inup?
 
 The picker does more than `outdated` — every capability is a keystroke away:
