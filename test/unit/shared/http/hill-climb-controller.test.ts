@@ -108,6 +108,16 @@ describe('HillClimbController', () => {
       expect(h.c.getState()).toBe('hold')
     })
 
+    it('downshifts from doubling to +1 climbing on a moderate gain', () => {
+      const h = makeController({})
+      expect(closeWindow(h, 1200)).toBe(8) // blind double, goodput 10/s
+      // 12/s: 1.2× — real improvement, but below the doubling gate. Doubling
+      // again would overshoot; probe upward one step at a time instead.
+      expect(closeWindow(h, 1000)).toBe(9)
+      expect(h.c.getState()).toBe('climb-up')
+      expect(h.ticks.at(-1)?.reason).toBe('up')
+    })
+
     it('reverts the last double and starts counting down when goodput plateaus', () => {
       const h = makeController({})
       expect(closeWindow(h, 1200)).toBe(8) // blind double, goodput 10/s
@@ -511,5 +521,85 @@ describe('HillClimbController unhappy paths', () => {
     closeWindow(h, 1200, { revalidatedCount: 12 }) // blind double → 8
     closeWindow(h, 600, { revalidatedCount: 12 }) // same mix → comparable → 2× gain
     expect(h.c.getLimit()).toBe(16)
+  })
+})
+
+describe('HillClimbController coverage edges', () => {
+  it('a success without a latency sample counts toward the window but decides nothing', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    expect(h.c.record('success')).toBe(null)
+    // No latency → no EWMA sample → validation must not be consumed by it.
+    expect(h.c.getState()).toBe('validating')
+  })
+
+  it('HOLD reached through congestion alone never yields a profile (sample-starved)', () => {
+    const h = makeController({})
+    h.c.record('congested') // forces HOLD with totalCompletions = 1
+    expect(h.c.getState()).toBe('hold')
+    expect(h.c.getSettledProfile(5_000_000)).toBeNull()
+  })
+
+  it('a soft-down before freeze degrades the profile goodput to 0, not the profile itself', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200) // plateau → 7
+    closeWindow(h, 1371) // revert → HOLD at 8
+    feed(h.c, T.windowCompletions - 1, 100)
+    h.c.record('retryable')
+    h.c.maybeTick(h.clock.advance(1200)) // soft-down clears the goodput baseline
+    h.c.freeze()
+
+    const profile = h.c.getSettledProfile(5_000_000)
+    expect(profile).not.toBeNull() // soft-downs do not poison the profile…
+    expect(profile?.baselineGoodputRps).toBe(0) // …but the goodput reading is gone
+  })
+
+  it('a cache-mix shift during a pending probe rejects the probe', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200)
+    closeWindow(h, 1371) // HOLD at 8
+    for (let i = 0; i < T.reprobeAfterWindows; i++) closeWindow(h, 1200)
+    expect(h.c.getLimit()).toBe(9) // probing
+
+    closeWindow(h, 1200, { revalidatedCount: 10 }) // 304 share jumps 0 → 0.83
+    expect(h.ticks.at(-1)?.reason).toBe('probe-reject')
+    expect(h.c.getLimit()).toBe(8)
+  })
+
+  it('climb-up ends with a revert to the knee when a +1 stops paying', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200)
+    closeWindow(h, 1371) // HOLD at 8, best 10/s
+    for (let i = 0; i < T.reprobeAfterWindows; i++) closeWindow(h, 1200)
+    closeWindow(h, 1000) // probe accepted: 12/s ≥ 1.05× → climb-up, limit 10
+    expect(h.c.getState()).toBe('climb-up')
+    expect(h.c.getLimit()).toBe(10)
+
+    closeWindow(h, 1000) // 12/s again: gain 1.0 < gainEpsilon → take the +1 back
+    expect(h.ticks.at(-1)?.reason).toBe('revert')
+    expect(h.c.getLimit()).toBe(9)
+    expect(h.c.getState()).toBe('hold')
+  })
+
+  it('a flat count-down lands on the floor and holds there', () => {
+    const h = makeController({ profile: { learnedLimit: 4, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 }) // baseline at 4
+    closeWindow(h, 1200) // plateau → 3 (floor), climb-down
+    closeWindow(h, 1200) // still flat at the floor → settle
+    expect(h.c.getLimit()).toBe(T.floor)
+    expect(h.c.getState()).toBe('hold')
+
+    // Degraded windows at the floor must not push below it.
+    h.ticks.length = 0
+    closeWindow(h, 1600)
+    closeWindow(h, 1600)
+    expect(h.c.getLimit()).toBe(T.floor)
+    expect(reasons(h)).toEqual(['hold', 'hold'])
   })
 })

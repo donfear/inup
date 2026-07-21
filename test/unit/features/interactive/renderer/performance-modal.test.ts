@@ -104,6 +104,22 @@ describe('renderPerformanceModal', () => {
     expect(text).toMatch(/Last goodput\s+9\.5\/s/)
   })
 
+  it('renders placeholders when the final hill-climb tick carries no window data', () => {
+    // Defensive rendering: snapshots may come from perf logs written by other
+    // versions, where a final hard-down tick has neither state nor goodput.
+    const snapshot = makeSnapshot({
+      controlTicks: [
+        { atMs: 0, limit: 8, ewmaMs: 700, retries: 0, reason: 'double', state: 'slow-start' },
+        { atMs: 5, limit: 4, ewmaMs: 900, retries: 1, reason: 'hard-down' },
+      ],
+    })
+    const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)
+
+    expect(text).toMatch(/Controller\s+hillclimb/) // any state-carrying tick decides the arm
+    expect(text).toMatch(/State\s+—/)
+    expect(text).toMatch(/Last goodput\s+—/)
+  })
+
   it('lists each failed package with a cross mark', () => {
     const snapshot = makeSnapshot({ failedPackages: ['left-pad', 'is-odd'] })
     const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)

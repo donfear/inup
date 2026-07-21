@@ -291,7 +291,12 @@ export class HillClimbController implements ConcurrencyController {
     this.validationRemaining--
     if (this.validationRemaining > 0) return null
     const t = this.tuning
+    // The 'validating' phase only exists when a profile was supplied, and the
+    // constructor sets the baseline together with it; the fallback is for the
+    // field's nullable type only.
+    /* v8 ignore start */
     const baseline = this.profileBaselineMs ?? 0
+    /* v8 ignore stop */
     const worse = this.ewmaMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
     const better =
       baseline - this.ewmaMs > t.regimeBetterMinDeltaMs &&
@@ -414,20 +419,28 @@ export class HillClimbController implements ConcurrencyController {
 
   private decideClimbUp(goodput: number): ControlTickReason {
     const t = this.tuning
-    const gain = goodput / (this.prevGoodput ?? goodput)
+    // Climb states are only entered from a decided (comparable) window, so a
+    // baseline always exists; the fallback only guards impossible-null math.
+    /* v8 ignore start */
+    const prev = this.prevGoodput ?? goodput
+    /* v8 ignore stop */
+    const gain = goodput / prev
     if (gain >= t.gainEpsilon) {
       return this.increase(this.limit + 1, 'up', goodput)
     }
     // The last +1 bought nothing: take it back and hold at the knee.
-    const knee = this.prevGoodput ?? goodput
     this.limit = clamp(this.limit - 1, t.floor, t.ceil)
-    this.enterHold(knee)
+    this.enterHold(prev)
     return 'revert'
   }
 
   private decideClimbDown(goodput: number): ControlTickReason {
     const t = this.tuning
-    const gain = goodput / (this.prevGoodput ?? goodput)
+    // Same invariant as decideClimbUp: the baseline is always present here.
+    /* v8 ignore start */
+    const prev = this.prevGoodput ?? goodput
+    /* v8 ignore stop */
+    const gain = goodput / prev
     if (gain >= t.keepDownEpsilon) {
       // Flat: fewer sockets, same throughput — keep descending.
       if (this.limit <= t.floor) {
@@ -438,9 +451,8 @@ export class HillClimbController implements ConcurrencyController {
       return 'step-down'
     }
     // Real loss: one step back up is the knee.
-    const knee = this.prevGoodput ?? goodput
     this.limit = clamp(this.limit + 1, t.floor, t.ceil)
-    this.enterHold(knee)
+    this.enterHold(prev)
     return 'revert'
   }
 

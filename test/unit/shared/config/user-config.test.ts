@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -139,6 +139,12 @@ describe('ConfigManager', () => {
       configManager.clearNetworkProfile()
       expect(configManager.getNetworkProfile()).toBeNull()
       expect(configManager.getTheme()).toBe('monokai')
+    })
+
+    it('clearNetworkProfile without a stored profile writes nothing', () => {
+      configManager.clearNetworkProfile()
+      // No profile to clear → no write → the config file is never created.
+      expect(existsSync(join(pathsMock.configDir, 'config.json'))).toBe(false)
     })
   })
 

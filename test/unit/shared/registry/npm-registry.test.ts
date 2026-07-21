@@ -516,6 +516,27 @@ describe('npm-registry', () => {
   describe('hill-climb wiring', () => {
     const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
 
+    // The whole block runs on a virtual clock: mock latencies are fake-timer
+    // milliseconds, so window goodput — and therefore every controller
+    // decision — is exact and load-independent. Real timers made these tests
+    // flake under coverage instrumentation.
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Start the fetch, drain the virtual clock, return the result. */
+    const runFetch = async (
+      packageNames: string[],
+      options: Parameters<typeof fetchPackageVersions>[1]
+    ) => {
+      const done = fetchPackageVersions(packageNames, options)
+      await vi.runAllTimersAsync()
+      return done
+    }
+
     /**
      * A bandwidth-bound pipe: responses are serialized through a promise chain
      * at a fixed cost each, so total goodput is flat no matter how many
@@ -531,11 +552,25 @@ describe('npm-registry', () => {
       })
     }
 
+    /** A fast, wide link: fixed per-response latency, unlimited parallelism. */
+    const withFastLink = (latencyMs: number) => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, latencyMs))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      return () => peak
+    }
+
     it('adapts DOWN on a bandwidth-bound link without any error signal', async () => {
       withBandwidthBoundPipe(8)
       const ticks: ControlTick[] = []
 
-      const result = await fetchPackageVersions(names(100), {
+      const result = await runFetch(names(100), {
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -548,55 +583,38 @@ describe('npm-registry', () => {
     })
 
     it('reaches the ceiling by doubling on a fast link', async () => {
-      let inFlight = 0
-      let peak = 0
-      // 20ms per response: large against scheduler noise, so window-over-window
-      // goodput gains stay well above the doubling gate even under a loaded
-      // test runner (real timers make this an inherently timing-based test).
-      requestMock.mockImplementation(async () => {
-        inFlight++
-        peak = Math.max(peak, inFlight)
-        await new Promise((r) => setTimeout(r, 20))
-        inFlight--
-        return makeOkBody({ versions: { '1.0.0': {} } })
-      })
+      const getPeak = withFastLink(20)
       const ticks: ControlTick[] = []
 
-      await fetchPackageVersions(names(120), {
+      await runFetch(names(120), {
         onControlTick: (t) => ticks.push(t),
       })
 
+      // Virtual clock: 12-completion windows at limits 4/8/16 take exactly
+      // 60/40/20 fake-ms → gains 1.5 and 2.0 clear the doubling gate every time.
       expect(ticks.filter((t) => t.reason === 'double').length).toBeGreaterThanOrEqual(2)
-      expect(Math.max(...ticks.map((t) => t.limit))).toBeGreaterThanOrEqual(16)
-      expect(peak).toBeLessThanOrEqual(24)
+      expect(Math.max(...ticks.map((t) => t.limit))).toBe(24)
+      expect(getPeak()).toBeLessThanOrEqual(24)
     })
 
     it('concurrency option pins the limit and disables the controller', async () => {
-      let inFlight = 0
-      let peak = 0
-      requestMock.mockImplementation(async () => {
-        inFlight++
-        peak = Math.max(peak, inFlight)
-        await new Promise((r) => setTimeout(r, 5))
-        inFlight--
-        return makeOkBody({ versions: { '1.0.0': {} } })
-      })
+      const getPeak = withFastLink(5)
       const ticks: ControlTick[] = []
 
-      await fetchPackageVersions(names(40), {
+      await runFetch(names(40), {
         concurrency: 5,
         onControlTick: (t) => ticks.push(t),
       })
 
-      expect(peak).toBeLessThanOrEqual(5)
+      expect(getPeak()).toBeLessThanOrEqual(5)
       expect(ticks).toHaveLength(0)
     })
 
     it('starts from the injected network profile when the regime matches', async () => {
-      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      withFastLink(5)
       const ticks: ControlTick[] = []
 
-      await fetchPackageVersions(names(60), {
+      await runFetch(names(60), {
         networkProfile: {
           schemaVersion: 1,
           learnedLimit: 8,
@@ -613,18 +631,10 @@ describe('npm-registry', () => {
     })
 
     it('uses the learned limit as the fixed start for runs too small to control', async () => {
-      let inFlight = 0
-      let peak = 0
-      requestMock.mockImplementation(async () => {
-        inFlight++
-        peak = Math.max(peak, inFlight)
-        await new Promise((r) => setTimeout(r, 5))
-        inFlight--
-        return makeOkBody({ versions: { '1.0.0': {} } })
-      })
+      const getPeak = withFastLink(5)
       const ticks: ControlTick[] = []
 
-      await fetchPackageVersions(names(20), {
+      await runFetch(names(20), {
         networkProfile: {
           schemaVersion: 1,
           learnedLimit: 5,
@@ -637,14 +647,14 @@ describe('npm-registry', () => {
       })
 
       expect(ticks).toHaveLength(0) // too small for the controller…
-      expect(peak).toBeLessThanOrEqual(5) // …but the learned limit still caps the fixed start
+      expect(getPeak()).toBeLessThanOrEqual(5) // …but the learned limit still caps the fixed start
     })
 
     it('emits a settled profile via onNetworkProfile once the run held', async () => {
       withBandwidthBoundPipe(8)
       const profiles: unknown[] = []
 
-      await fetchPackageVersions(names(100), {
+      await runFetch(names(100), {
         onNetworkProfile: (p) => profiles.push(p),
       })
 
@@ -658,7 +668,7 @@ describe('npm-registry', () => {
       requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
       const profiles: unknown[] = []
 
-      await fetchPackageVersions(names(12), {
+      await runFetch(names(12), {
         onNetworkProfile: (p) => profiles.push(p),
       })
 
@@ -681,7 +691,7 @@ describe('npm-registry', () => {
       })
       const ticks: ControlTick[] = []
 
-      const result = await fetchPackageVersions(names(80), {
+      const result = await runFetch(names(80), {
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -701,7 +711,7 @@ describe('npm-registry', () => {
       requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
       const ticks: ControlTick[] = []
 
-      await fetchPackageVersions(names(120), {
+      await runFetch(names(120), {
         controllerMode: 'aimd',
         onControlTick: (t) => ticks.push(t),
       })
@@ -709,6 +719,54 @@ describe('npm-registry', () => {
       expect(ticks.length).toBeGreaterThan(0)
       expect(ticks[0].limit).toBe(24) // AIMD smart-starts at the ceiling
       expect(ticks.some((t) => t.reason === 'double')).toBe(false)
+    })
+
+    it('applies a failed profile validation to the semaphore immediately', async () => {
+      // 600 fake-ms per response against a 10ms baseline: the regime check
+      // fails on the 8th success and the returned cold-start limit must reach
+      // the semaphore through the success path of the observer.
+      const getPeak = withFastLink(600)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 24,
+          baselineLatencyMs: 10,
+          baselineGoodputRps: 100,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(60)
+      expect(ticks.some((t) => t.reason === 'regime-reset')).toBe(true)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('emits no profile when congestion never lets the run settle', async () => {
+      // A 429 storm through the whole run: the controller keeps hard-halving,
+      // so whatever limit it ends on is a back-off artifact, not a profile.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls % 4 === 0) {
+          return { statusCode: 429, body: '', headers: { 'retry-after': '0' } }
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const profiles: unknown[] = []
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(60), {
+        onNetworkProfile: (p) => profiles.push(p),
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
+      expect(profiles).toHaveLength(0)
     })
   })
 
