@@ -1,4 +1,4 @@
-import type { DependencyEntry, PackageInfo } from './domain'
+import type { DependencyEntry, NetworkProfile, PackageInfo } from './domain'
 
 export interface PackageLoadProgress {
   discovered: number
@@ -53,10 +53,32 @@ export interface FetchPackageVersionsOptions {
   /** Sequence of batch sizes; overrides batchSize when provided. */
   batchSizes?: number[]
   /**
-   * Enable the AIMD adaptive-concurrency controller. Default: true. Set false to
+   * Enable the adaptive-concurrency controller. Default: true. Set false to
    * pin concurrency at `maxConcurrency` (legacy fixed behavior / A/B baseline).
    */
   adaptive?: boolean
+  /**
+   * Pin registry-fetch concurrency to exactly this value and disable all
+   * adaptation (and profile learning). The user-facing escape hatch.
+   */
+  concurrency?: number
+  /**
+   * Which adaptive controller drives the limit. Default: 'hillclimb'
+   * (slow-start + goodput hill-climb, adapts down on slow links);
+   * 'aimd' is the previous behavior, kept as the A/B control arm.
+   */
+  controllerMode?: 'aimd' | 'hillclimb'
+  /**
+   * Persisted starting hypothesis for the hill-climb controller. Validated
+   * against live latency at run start — never a hard cap. Also caps the fixed
+   * start of runs too small to control.
+   */
+  networkProfile?: NetworkProfile | null
+  /**
+   * Fires once at end of run with the settled profile worth persisting
+   * (hill-climb controller only; pinned and fixed runs never learn).
+   */
+  onNetworkProfile?: (profile: NetworkProfile) => void
 }
 
 export interface RegistryBatchProgressItem {

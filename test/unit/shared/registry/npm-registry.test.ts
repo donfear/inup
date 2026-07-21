@@ -513,6 +513,170 @@ describe('npm-registry', () => {
     })
   })
 
+  describe('hill-climb wiring', () => {
+    const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
+
+    /**
+     * A bandwidth-bound pipe: responses are serialized through a promise chain
+     * at a fixed cost each, so total goodput is flat no matter how many
+     * requests are in flight — exactly what a narrow link looks like.
+     */
+    const withBandwidthBoundPipe = (costMs: number) => {
+      let chain = Promise.resolve()
+      requestMock.mockImplementation(async () => {
+        const my = chain.then(() => new Promise<void>((r) => setTimeout(r, costMs)))
+        chain = my
+        await my
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+    }
+
+    it('adapts DOWN on a bandwidth-bound link without any error signal', async () => {
+      withBandwidthBoundPipe(8)
+      const ticks: ControlTick[] = []
+
+      const result = await fetchPackageVersions(names(100), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(100)
+      // Passive down-adaptation: the flat pipe must produce at least one
+      // goodput-driven down decision — with zero 429s or network errors.
+      expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down' || t.reason === 'soft-down')).toBe(false)
+      expect(ticks.at(-1)!.limit).toBeLessThanOrEqual(8)
+    })
+
+    it('reaches the ceiling by doubling on a fast link', async () => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 5))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(120), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.some((t) => t.reason === 'double')).toBe(true)
+      expect(ticks.some((t) => t.limit === 24)).toBe(true)
+      expect(peak).toBeLessThanOrEqual(24)
+    })
+
+    it('concurrency option pins the limit and disables the controller', async () => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 5))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(40), {
+        concurrency: 5,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(peak).toBeLessThanOrEqual(5)
+      expect(ticks).toHaveLength(0)
+    })
+
+    it('starts from the injected network profile when the regime matches', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 8,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // The first window runs (and reports) at the learned limit.
+      expect(ticks[0].limit).toBeGreaterThanOrEqual(8)
+    })
+
+    it('uses the learned limit as the fixed start for runs too small to control', async () => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 5))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(20), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 5,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks).toHaveLength(0) // too small for the controller…
+      expect(peak).toBeLessThanOrEqual(5) // …but the learned limit still caps the fixed start
+    })
+
+    it('emits a settled profile via onNetworkProfile once the run held', async () => {
+      withBandwidthBoundPipe(8)
+      const profiles: unknown[] = []
+
+      await fetchPackageVersions(names(100), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(1)
+      const profile = profiles[0] as { schemaVersion: number; learnedLimit: number }
+      expect(profile.schemaVersion).toBe(1)
+      expect(profile.learnedLimit).toBeLessThanOrEqual(8)
+    })
+
+    it('does not emit a profile for runs too small to control', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const profiles: unknown[] = []
+
+      await fetchPackageVersions(names(12), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(0)
+    })
+
+    it('controllerMode aimd selects the control arm (smart start at the ceiling)', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(names(120), {
+        controllerMode: 'aimd',
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(ticks[0].limit).toBe(24) // AIMD smart-starts at the ceiling
+      expect(ticks.some((t) => t.reason === 'double')).toBe(false)
+    })
+  })
+
   describe('ETag conditional caching', () => {
     // Isolated root per test: never wipe (or race parallel test files on) the
     // user's real persistent cache directory.
