@@ -105,7 +105,8 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
-  adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
+  adaptive?: boolean // Adaptive registry concurrency. Defaults to true.
+  concurrency?: number // Pin registry fetch parallelism (1..24) and disable adaptation
 }
 
 /**

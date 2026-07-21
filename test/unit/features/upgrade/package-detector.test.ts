@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   findPackageJson: vi.fn(),
@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   loadPnpmCatalogs: vi.fn(),
   isPerfLoggingEnabled: vi.fn(() => false),
+  getNetworkProfile: vi.fn(() => null),
+  setNetworkProfile: vi.fn(),
   performanceTracker: {
     recordControlTick: vi.fn(),
     recordPackageTiming: vi.fn(),
@@ -74,6 +76,14 @@ vi.mock('../../../../src/shared/terminal', () => ({
   ConsoleUtils: {
     showProgress: vi.fn(),
     clearProgress: vi.fn(),
+  },
+}))
+
+// Keep the detector's profile read/write away from the user's real config.
+vi.mock('../../../../src/shared/config/user-config', () => ({
+  configManager: {
+    getNetworkProfile: mocks.getNetworkProfile,
+    setNetworkProfile: mocks.setNetworkProfile,
   },
 }))
 
@@ -457,6 +467,10 @@ describe('PackageDetector edge paths', () => {
       maxConcurrency: 10,
       batchSize: 10,
       poolConnections: expect.any(Number),
+      controllerMode: 'hillclimb',
+      pinnedConcurrency: null,
+      hadNetworkProfile: false,
+      profileLearnedLimit: null,
     })
   })
 
@@ -819,5 +833,113 @@ describe('PackageDetector edge paths', () => {
     await expect(detector.streamOutdatedPackages(() => {})).rejects.toThrow(
       /Failed to scan for package\.json files: .*sync boom/
     )
+  })
+})
+
+describe('PackageDetector concurrency plumbing', () => {
+  const originalController = process.env.INUP_CONTROLLER
+  const originalNetProfile = process.env.INUP_NET_PROFILE
+
+  const storedProfile = {
+    schemaVersion: 1 as const,
+    learnedLimit: 6,
+    baselineLatencyMs: 350,
+    baselineGoodputRps: 8.5,
+    sampleCount: 120,
+    updatedAt: new Date().toISOString(),
+  }
+
+  let fetchOptions: Record<string, unknown>
+
+  beforeEach(() => {
+    delete process.env.INUP_CONTROLLER
+    delete process.env.INUP_NET_PROFILE
+    mocks.getNetworkProfile.mockReset()
+    mocks.getNetworkProfile.mockReturnValue(null)
+    mocks.setNetworkProfile.mockReset()
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
+    mocks.findPackageJson.mockReturnValue('/repo/package.json')
+    mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
+    mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'zod',
+        version: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/package.json',
+      },
+    ])
+    mocks.findClosestMinorVersion.mockImplementation(
+      (version: string, versions: string[]) => versions[0] ?? version
+    )
+    mocks.fetchPackageVersions.mockReset()
+    mocks.fetchPackageVersions.mockImplementation(
+      async (_packageNames: string[], options: Record<string, unknown>) => {
+        fetchOptions = options
+        return new Map()
+      }
+    )
+  })
+
+  afterEach(() => {
+    if (originalController === undefined) delete process.env.INUP_CONTROLLER
+    else process.env.INUP_CONTROLLER = originalController
+    if (originalNetProfile === undefined) delete process.env.INUP_NET_PROFILE
+    else process.env.INUP_NET_PROFILE = originalNetProfile
+  })
+
+  const run = async (options?: ConstructorParameters<typeof PackageDetector>[0]) => {
+    const detector = new PackageDetector({ cwd: '/repo', ...options })
+    await detector.streamOutdatedPackages(() => {})
+    return detector
+  }
+
+  it('passes a pinned concurrency through to the registry fetcher', async () => {
+    await run({ concurrency: 5 })
+    expect(fetchOptions.concurrency).toBe(5)
+  })
+
+  it('defaults to the hillclimb controller', async () => {
+    await run()
+    expect(fetchOptions.controllerMode).toBe('hillclimb')
+  })
+
+  it('INUP_CONTROLLER=aimd selects the control arm', async () => {
+    process.env.INUP_CONTROLLER = 'aimd'
+    await run()
+    expect(fetchOptions.controllerMode).toBe('aimd')
+  })
+
+  it('injects the stored network profile', async () => {
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    await run()
+    expect(fetchOptions.networkProfile).toEqual(storedProfile)
+  })
+
+  it('persists the settled profile via onNetworkProfile', async () => {
+    await run()
+    const onNetworkProfile = fetchOptions.onNetworkProfile as (p: unknown) => void
+    expect(onNetworkProfile).toBeTypeOf('function')
+    onNetworkProfile(storedProfile)
+    expect(mocks.setNetworkProfile).toHaveBeenCalledWith(storedProfile)
+  })
+
+  it('INUP_NET_PROFILE=0 disables both profile read and write', async () => {
+    process.env.INUP_NET_PROFILE = '0'
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    await run()
+    expect(fetchOptions.networkProfile).toBeNull()
+    expect(fetchOptions.onNetworkProfile).toBeUndefined()
+  })
+
+  it('exposes the new knobs in the perf config', async () => {
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    const detector = await run({ concurrency: 7 })
+    expect(detector.getPerfConfig()).toMatchObject({
+      controllerMode: 'hillclimb',
+      pinnedConcurrency: 7,
+      hadNetworkProfile: true,
+      profileLearnedLimit: 6,
+    })
   })
 })

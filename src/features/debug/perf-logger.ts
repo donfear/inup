@@ -67,6 +67,8 @@ export function isPerfLoggingEnabled(): boolean {
 export function perfEnv(): Record<string, string | undefined> {
   return {
     INUP_ADAPTIVE: process.env.INUP_ADAPTIVE,
+    INUP_CONTROLLER: process.env.INUP_CONTROLLER,
+    INUP_NET_PROFILE: process.env.INUP_NET_PROFILE,
     INUP_PERF: process.env.INUP_PERF,
     INUP_DEBUG: process.env.INUP_DEBUG,
     CI: process.env.CI,

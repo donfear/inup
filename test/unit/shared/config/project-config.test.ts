@@ -121,6 +121,24 @@ describe('project-config', () => {
     })
   })
 
+  describe('concurrency field', () => {
+    it('accepts an integer concurrency within the pool range', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ concurrency: 8 }))
+      expect(loadProjectConfig(testDir).concurrency).toBe(8)
+    })
+
+    it.each([
+      ['"8"', '"8"'],
+      ['zero', '0'],
+      ['negative', '-3'],
+      ['above pool', '99'],
+      ['fractional', '7.5'],
+    ])('drops an invalid concurrency value (%s)', (_label, raw) => {
+      writeFileSync(join(testDir, '.inuprc'), `{"concurrency": ${raw}}`)
+      expect(loadProjectConfig(testDir).concurrency).toBeUndefined()
+    })
+  })
+
   describe('isPackageIgnored()', () => {
     it('should match exact package names', () => {
       expect(isPackageIgnored('lodash', ['lodash'])).toBe(true)

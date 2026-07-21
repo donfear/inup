@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { POOL_CONNECTIONS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
 
 /**
@@ -35,6 +36,13 @@ export interface InupProjectConfig {
    * Defaults to false so optional dependency risk stays hidden unless explicitly enabled.
    */
   showOptionalDependencyVulnerabilities?: boolean
+
+  /**
+   * Pin registry-fetch parallelism for this project (integer 1..24) and disable
+   * adaptive ramping. Escape hatch for known-slow networks; the --concurrency
+   * flag overrides this.
+   */
+  concurrency?: number
 }
 
 const CONFIG_FILES = [
@@ -106,6 +114,15 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
 
   if (typeof config.showOptionalDependencyVulnerabilities === 'boolean') {
     normalized.showOptionalDependencyVulnerabilities = config.showOptionalDependencyVulnerabilities
+  }
+
+  if (
+    typeof config.concurrency === 'number' &&
+    Number.isInteger(config.concurrency) &&
+    config.concurrency >= 1 &&
+    config.concurrency <= POOL_CONNECTIONS
+  ) {
+    normalized.concurrency = config.concurrency
   }
 
   return normalized

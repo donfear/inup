@@ -57,6 +57,8 @@ describe('perfEnv', () => {
     expect(perfEnv()).toMatchObject({ INUP_ADAPTIVE: '0', INUP_PERF: '1' })
     expect(Object.keys(perfEnv())).toEqual([
       'INUP_ADAPTIVE',
+      'INUP_CONTROLLER',
+      'INUP_NET_PROFILE',
       'INUP_PERF',
       'INUP_DEBUG',
       'CI',

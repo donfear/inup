@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 import * as semver from 'semver'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
+import { configManager } from '../../shared/config/user-config'
 import { debugLog } from '../../shared/debug-logger'
 import {
   collectAllDependenciesAsync,
@@ -13,6 +14,7 @@ import { fetchPackageVersions, type PackageVersionData } from '../../shared/regi
 import { ConsoleUtils } from '../../shared/terminal'
 import type {
   DependencyEntry,
+  NetworkProfile,
   PackageInfo,
   PackageLoadProgress,
   StreamOutdatedPackagesBatchItem,
@@ -41,6 +43,12 @@ export class PackageDetector {
   private readonly batchSize = 10
   private readonly maxConcurrency = 10
   private readonly adaptive: boolean
+  /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
+  private readonly concurrency?: number
+  private readonly controllerMode: 'aimd' | 'hillclimb'
+  /** INUP_NET_PROFILE=0 disables learned-profile read AND write (clean A/B runs). */
+  private readonly profilePersistenceEnabled: boolean
+  private readonly networkProfile: NetworkProfile | null
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -49,6 +57,10 @@ export class PackageDetector {
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.adaptive = options?.adaptive ?? true
+    this.concurrency = options?.concurrency
+    this.controllerMode = process.env.INUP_CONTROLLER === 'aimd' ? 'aimd' : 'hillclimb'
+    this.profilePersistenceEnabled = process.env.INUP_NET_PROFILE !== '0'
+    this.networkProfile = this.profilePersistenceEnabled ? configManager.getNetworkProfile() : null
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -69,6 +81,10 @@ export class PackageDetector {
     maxConcurrency: number
     batchSize: number
     poolConnections: number
+    controllerMode: 'aimd' | 'hillclimb'
+    pinnedConcurrency: number | null
+    hadNetworkProfile: boolean
+    profileLearnedLimit: number | null
   } {
     return {
       cwd: this.cwd,
@@ -76,6 +92,10 @@ export class PackageDetector {
       maxConcurrency: this.maxConcurrency,
       batchSize: this.batchSize,
       poolConnections: POOL_CONNECTIONS,
+      controllerMode: this.controllerMode,
+      pinnedConcurrency: this.concurrency ?? null,
+      hadNetworkProfile: this.networkProfile !== null,
+      profileLearnedLimit: this.networkProfile?.learnedLimit ?? null,
     }
   }
 
@@ -130,6 +150,12 @@ export class PackageDetector {
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
+      concurrency: this.concurrency,
+      controllerMode: this.controllerMode,
+      networkProfile: this.networkProfile,
+      onNetworkProfile: this.profilePersistenceEnabled
+        ? (profile) => configManager.setNetworkProfile(profile)
+        : undefined,
       onControlTick: (tick) => performanceTracker.recordControlTick(tick),
       onPackageTiming: isPerfLoggingEnabled()
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
