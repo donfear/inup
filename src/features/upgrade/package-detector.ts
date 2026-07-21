@@ -167,6 +167,9 @@ export class PackageDetector {
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
         : undefined,
       onBatchReady: (batch) => {
+        // First-wins in the tracker; headless runs get the phase from here,
+        // the interactive runner's own mark becomes a no-op duplicate.
+        performanceTracker.mark('firstBatch')
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0
         const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {

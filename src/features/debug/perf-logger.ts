@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { DEFAULT_TUNING } from '../../shared/http/adaptive-controller'
+import { HILL_CLIMB_TUNING } from '../../shared/http/hill-climb-controller'
 import type { PerformanceSnapshot } from './types'
 
 /**
@@ -54,8 +55,10 @@ export interface PerfRunRecord {
   /** Wall-clock time for the whole tracked run, in ms. */
   wallMs: number | null
   config: PerfRunConfig
-  /** Tuning constants in effect when adaptive is on (for cross-run comparison). */
+  /** AIMD tuning constants in effect (for cross-run comparison). */
   tuning: typeof DEFAULT_TUNING
+  /** Hill-climb tuning constants in effect (which arm ran is in config.controllerMode). */
+  hillClimbTuning: typeof HILL_CLIMB_TUNING
   snapshot: PerformanceSnapshot
 }
 
@@ -122,6 +125,7 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
       wallMs: snapshot.totalMs,
       config,
       tuning: DEFAULT_TUNING,
+      hillClimbTuning: HILL_CLIMB_TUNING,
       snapshot,
     }
 

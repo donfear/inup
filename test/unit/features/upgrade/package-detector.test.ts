@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getNetworkProfile: vi.fn(() => null),
   setNetworkProfile: vi.fn(),
   performanceTracker: {
+    mark: vi.fn(),
     recordControlTick: vi.fn(),
     recordPackageTiming: vi.fn(),
     recordFailedPackage: vi.fn(),
@@ -947,7 +948,7 @@ describe('PackageDetector concurrency plumbing', () => {
     const flags: (boolean | undefined)[] = []
     const data = { latestVersion: '2.0.0', allVersions: ['2.0.0'] }
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: Record<string, any>) => {
+      async (_packageNames: string[], options: Record<string, any>) => {
         options.onControlTick(tick)
         options.onBatchReady([
           { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
@@ -986,5 +987,19 @@ describe('PackageDetector concurrency plumbing', () => {
       goodputRps: 300,
     })
     expect(flags).toEqual([false])
+  })
+
+  it('marks the firstBatch phase when the first batch streams in', async () => {
+    mocks.performanceTracker.mark.mockClear()
+    await streamWithTick({
+      atMs: 1,
+      limit: 24,
+      ewmaMs: 40,
+      retries: 0,
+      reason: 'hold',
+      state: 'hold',
+      goodputRps: 300,
+    })
+    expect(mocks.performanceTracker.mark).toHaveBeenCalledWith('firstBatch')
   })
 })
