@@ -69,13 +69,14 @@ export class UpgradeRunner {
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
       const selectionPromise = new Promise<PackageUpgradeChoice[]>((resolve, reject) => {
+        // The UI holds a reference to `progress`, so updates must mutate it in
+        // place — and copy EVERY field (a field-by-field copy silently dropped
+        // slowNetwork once).
+        const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
+
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
           if (event.type === 'initial') {
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
+            syncProgress(event.payload.progress)
 
             selectionStates = []
 
@@ -91,11 +92,7 @@ export class UpgradeRunner {
             latestPackages = latestPackages
               .filter((pkg) => !event.payload.batch.some((item) => item.packageName === pkg.name))
               .concat(event.payload.batch.flatMap((item) => item.packageInfo))
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
+            syncProgress(event.payload.progress)
             performanceTracker.mark('firstBatch')
             this.ui.appendOutdatedBatchToSelectionStates(
               selectionStates,
@@ -107,11 +104,7 @@ export class UpgradeRunner {
 
           if (event.type === 'complete') {
             latestPackages = event.payload.packages
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
+            syncProgress(event.payload.progress)
             performanceTracker.mark('firstBatch')
             performanceTracker.mark('allLoaded')
             if (isPerfLoggingEnabled()) {

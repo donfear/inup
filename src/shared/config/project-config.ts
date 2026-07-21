@@ -116,13 +116,22 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
     normalized.showOptionalDependencyVulnerabilities = config.showOptionalDependencyVulnerabilities
   }
 
-  if (
-    typeof config.concurrency === 'number' &&
-    Number.isInteger(config.concurrency) &&
-    config.concurrency >= 1 &&
-    config.concurrency <= POOL_CONNECTIONS
-  ) {
-    normalized.concurrency = config.concurrency
+  if (config.concurrency !== undefined) {
+    if (
+      typeof config.concurrency === 'number' &&
+      Number.isInteger(config.concurrency) &&
+      config.concurrency >= 1 &&
+      config.concurrency <= POOL_CONNECTIONS
+    ) {
+      normalized.concurrency = config.concurrency
+    } else {
+      // Never drop this one silently: the user set it to protect a slow or
+      // metered link, and ignoring it would let the run adapt up to the pool
+      // ceiling — the exact opposite of their intent.
+      console.warn(
+        `Warning: ignoring invalid "concurrency" in project config (expected an integer 1..${POOL_CONNECTIONS}, got ${JSON.stringify(config.concurrency)})`
+      )
+    }
   }
 
   return normalized

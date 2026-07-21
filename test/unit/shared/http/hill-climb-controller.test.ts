@@ -445,6 +445,7 @@ describe('HillClimbController unhappy paths', () => {
     expect(immediate).toBe(5) // round(9 × 0.5), applied now
     expect(h.c.getState()).toBe('hold')
 
+    closeWindow(h, 1200) // half-timed window after the hard-down: discarded
     closeWindow(h, 1200)
     // The abandoned probe must not be evaluated after the hard-down.
     expect(h.ticks.at(-1)?.reason).toBe('hold')
@@ -489,19 +490,21 @@ describe('HillClimbController unhappy paths', () => {
     expect(reasons(h)).not.toContain('regime-reset')
   })
 
-  it('errors during validation abandon it without wedging the controller', () => {
+  it('a soft-down during validation applies the decrease but keeps validating', () => {
     const h = makeController({ profile: { learnedLimit: 16, baselineLatencyMs: 100 } })
     feed(h.c, 4, 100) // validation under way (4 of 8)
     for (let i = 0; i < 8; i++) h.c.record('retryable')
-    expect(h.c.maybeTick(h.clock.advance(1200))).toBe(11) // soft-down, validation over
+    expect(h.c.maybeTick(h.clock.advance(1200))).toBe(11) // soft-down applies…
+    expect(h.c.getState()).toBe('validating') // …but the regime check survives
 
-    // These would have failed the regime check — but validation was abandoned.
-    feed(h.c, T.validateAfterCompletions, 900)
+    // Matching latency completes the check without a reset; state moves on.
+    feed(h.c, 4, 100)
     expect(reasons(h)).not.toContain('regime-reset')
     expect(h.c.getLimit()).toBe(11)
+    expect(h.c.getState()).toBe('slow-start')
 
     // And the controller still ticks normally afterwards.
-    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200)
     expect(h.ticks.at(-1)?.reason).toBe('hold') // clean baseline window
   })
 
@@ -601,5 +604,122 @@ describe('HillClimbController coverage edges', () => {
     closeWindow(h, 1600)
     expect(h.c.getLimit()).toBe(T.floor)
     expect(reasons(h)).toEqual(['hold', 'hold'])
+  })
+})
+
+describe('HillClimbController review fixes', () => {
+  it('a soft-down forgets the pre-error revert point (no multi-slot jumps)', () => {
+    const h = makeController({})
+    closeWindow(h, 1200) // blind double 4 → 8
+    closeWindow(h, 600) // 2.0× → double 8 → 16, revert point = 8
+    feed(h.c, T.windowCompletions - 1, 100)
+    h.c.record('retryable')
+    expect(h.c.maybeTick(h.clock.advance(600))).toBe(11) // soft-down 16 × 0.7
+    closeWindow(h, 1200) // clean baseline window
+    const before = h.c.getLimit()
+    closeWindow(h, 1200) // flat: plateau — must step ±1, never snap to the stale 8
+    expect(before - h.c.getLimit()).toBeLessThanOrEqual(1)
+    expect(h.c.getLimit()).toBe(10)
+  })
+})
+
+describe('HillClimbController clock and mix safety (review fixes)', () => {
+  it('skips the decision when the clock did not move forward across the window', () => {
+    const h = makeController({})
+    expect(closeWindow(h, 0)).toBe(null) // zero elapsed: unmeasurable
+    expect(h.ticks).toHaveLength(0)
+    expect(closeWindow(h, -100)).toBe(null) // clock stepped backwards
+    expect(h.ticks).toHaveLength(0)
+    expect(h.c.getLimit()).toBe(T.coldStart)
+    // A normal window afterwards works and decides again.
+    expect(closeWindow(h, 1200)).toBe(8)
+  })
+
+  it('discards the half-timed window after a hard-down instead of mis-measuring it', () => {
+    const h = makeController({ profile: { learnedLimit: 16, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    h.c.record('congested') // → 8, resets counters but cannot reset the window clock
+    h.ticks.length = 0
+    closeWindow(h, 30_000) // Retry-After pause inflated this window's elapsed time
+    expect(h.ticks).toHaveLength(0) // unmeasurable — no goodput may be derived from it
+    closeWindow(h, 1200) // the next full window is the clean baseline
+    expect(h.ticks).toHaveLength(1)
+    expect(h.ticks[0].reason).toBe('hold')
+    expect(h.ticks[0].goodputRps).toBeCloseTo(10, 1)
+  })
+
+  it('keeps validating through an errorful window (flaky links need the check most)', () => {
+    const h = makeController({ profile: { learnedLimit: 24, baselineLatencyMs: 100 } })
+    feed(h.c, 4, 900) // 4 slow full fetches — validation under way
+    for (let i = 0; i < 8; i++) h.c.record('retryable')
+    h.c.maybeTick(h.clock.advance(1200)) // soft-down 24 → 17
+    expect(h.c.getState()).toBe('validating') // NOT abandoned
+    const immediate = feed(h.c, 4, 900) // 8th full success completes the check
+    expect(immediate).toBe(T.coldStart) // 900ms vs 100ms baseline → regime reset
+    expect(reasons(h)).toContain('regime-reset')
+  })
+
+  it('revalidated (304) successes cannot fake a regime change', () => {
+    // Warm cache after a cold-learned profile: 304s are fast on ANY link, so
+    // they must neither trigger the "better" reset nor advance validation.
+    const h = makeController({ profile: { learnedLimit: 24, baselineLatencyMs: 700 } })
+    feed(h.c, 12, 80, 12) // a full window of 80ms 304s
+    h.c.maybeTick(h.clock.advance(1200))
+    expect(h.c.getState()).toBe('validating') // still undecided
+    expect(reasons(h)).not.toContain('regime-reset')
+    feed(h.c, 12, 80, 12)
+    h.c.maybeTick(h.clock.advance(1200))
+    // Two windows without enough full fetches: give up on the latency check
+    // and keep the learned limit — a warm run is cheap at any limit.
+    expect(h.c.getState()).toBe('slow-start')
+    expect(h.c.getLimit()).toBe(24)
+    expect(reasons(h)).not.toContain('regime-reset')
+  })
+
+  it('persists the FULL-FETCH latency as the baseline, not the 304-diluted mix', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 700 } })
+    feed(h.c, T.validateAfterCompletions, 700) // full fetches at 700ms: same regime
+    const mixed = {
+      count: 12,
+      latencyMs: (i: number) => (i < 10 ? 80 : 700), // 10 fast 304s + 2 real fetches
+      revalidatedCount: 10,
+    }
+    closeWindow(h, 1200, { count: 4, latencyMs: 80, revalidatedCount: 4 }) // baseline window
+    closeWindow(h, 1200, mixed) // mix shifted → incomparable, rolls baseline
+    closeWindow(h, 1200, mixed) // plateau → 7, climb-down
+    closeWindow(h, 1371, mixed) // real loss → revert → HOLD at 8
+    h.c.freeze()
+
+    const profile = h.c.getSettledProfile(5_000_000)
+    expect(profile).not.toBeNull()
+    // All full fetches ran at 700ms; the 80ms 304s must not drag the baseline.
+    expect(profile?.baselineLatencyMs).toBe(700)
+  })
+
+  it('an all-304 run learns a limit but never persists a latency baseline', () => {
+    const h = makeController({})
+    const warm = { revalidatedCount: 12 }
+    closeWindow(h, 1200, warm) // blind double → 8
+    closeWindow(h, 1200, warm) // plateau → revert 4, climb-down
+    closeWindow(h, 1200, warm) // flat → 3 (floor)
+    closeWindow(h, 1200, warm) // settle → HOLD
+    expect(h.c.getState()).toBe('hold')
+    h.c.freeze()
+    // Zero full fetches → no trustworthy latency baseline → nothing to persist
+    // (a stored 304-based baseline would poison the next run's regime check).
+    expect(h.c.getSettledProfile(5_000_000)).toBeNull()
+  })
+
+  it('counts only successes toward the profile sample size', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200) // → 7
+    closeWindow(h, 1371) // → HOLD at 8 (36 successes so far)
+    feed(h.c, T.windowCompletions - 1, 100)
+    h.c.record('retryable') // 47 successes + 1 error
+    h.c.maybeTick(h.clock.advance(1200))
+    h.c.freeze()
+    expect(h.c.getSettledProfile(5_000_000)?.sampleCount).toBe(47)
   })
 })

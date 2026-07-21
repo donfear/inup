@@ -9,9 +9,9 @@ the settled concurrency limit, and failure counts.
 Usage: python3 scripts/analyze-hill-climb.py [.inup-perf] [--since ISO8601]
 """
 
+import argparse
 import json
 import statistics
-import sys
 from pathlib import Path
 
 
@@ -32,12 +32,12 @@ def pct(values: list[float], p: float) -> float:
 
 
 def main() -> None:
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    perf_dir = Path(args[0]) if args else Path(".inup-perf")
-    since = None
-    for i, a in enumerate(sys.argv[1:]):
-        if a == "--since":
-            since = sys.argv[1:][i + 1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("perf_dir", nargs="?", default=".inup-perf", type=Path)
+    parser.add_argument("--since", help="only include runs at or after this ISO8601 timestamp")
+    parsed = parser.parse_args()
+    perf_dir = parsed.perf_dir
+    since = parsed.since
 
     groups: dict[str, list[dict]] = {}
     for path in sorted(perf_dir.glob("run-*.json")):

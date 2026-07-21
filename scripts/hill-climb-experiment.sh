@@ -32,9 +32,17 @@ CACHE_MODE=${3:-cold}
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 PERF_DIR="$REPO_DIR/.inup-perf"
 CLI="$REPO_DIR/dist/cli.js"
-ETAG_CACHE="$HOME/Library/Caches/inup/etag-cache"
 
 [ -f "$CLI" ] || { echo "dist/cli.js missing — run 'pnpm build' first" >&2; exit 1; }
+
+# Resolve the ETag cache dir through env-paths itself — the only source of
+# truth (it appends a "-nodejs" suffix; hardcoding the path once made every
+# "cold" rep silently warm because rm -rf deleted a directory that never
+# existed).
+ETAG_CACHE=$(cd "$REPO_DIR" && node --input-type=module -e \
+  "import envPaths from 'env-paths'; console.log(envPaths('inup').cache)")/etag-cache
+[ -n "$ETAG_CACHE" ] || { echo "failed to resolve the ETag cache dir" >&2; exit 1; }
+echo "ETag cache: $ETAG_CACHE"
 
 ARMS=(aimd hillclimb fixed4 fixed10 fixed24)
 
@@ -58,7 +66,9 @@ run_arm() {
 
 if [ "$CACHE_MODE" = warm ]; then
   echo "priming ETag cache..."
-  node "$CLI" --check --dir "$TARGET_DIR" >/dev/null 2>&1 || true
+  # INUP_NET_PROFILE=0 here too: a priming run on a throttled link must not
+  # persist a slow-link profile into the user's real config for the next week.
+  INUP_NET_PROFILE=0 node "$CLI" --check --dir "$TARGET_DIR" >/dev/null 2>&1 || true
 fi
 
 for rep in $(seq 1 "$REPS"); do

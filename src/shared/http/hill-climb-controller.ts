@@ -116,6 +116,11 @@ export const HILL_CLIMB_TUNING: HillClimbTuning = {
 /** Runs below this size cannot close two windows plus a tail — skip control. */
 const MIN_CONTROLLED_TOTAL = 30
 
+/** Full (non-304) fetches needed before a latency baseline is worth persisting.
+ * A 304 is header-sized and fast on any link; a baseline diluted by 304s would
+ * poison the next run's regime check in either direction. */
+const MIN_BASELINE_SAMPLES = 4
+
 const clamp = (value: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, value))
 
 const round2 = (value: number): number => Math.round(value * 100) / 100
@@ -139,20 +144,30 @@ export class HillClimbController implements ConcurrencyController {
   private phase: ConcurrencyControllerState
   private frozen = false
 
-  // Latency EWMA: instrumentation plus the one-shot regime check — decisions
-  // never read it (see the class docblock).
+  // Latency EWMA over ALL successes: instrumentation only (perf modal / logs).
   private ewmaMs = 0
   private hasEwma = false
+  // Latency EWMA over FULL fetches only (no 304s): feeds the regime check and
+  // the persisted baseline. A 304 is fast on any link, so mixing it in would
+  // let a cache-mix shift impersonate a network change.
+  private fullEwmaMs = 0
+  private hasFullEwma = false
+  private fullSamples = 0
   private readonly profileBaselineMs: number | null = null
   private validationRemaining = 0
+  private validatingWindows = 0
 
   private completionsSinceTick = 0
   private retriesSinceTick = 0
   private revalidatedSinceTick = 0
+  /** Successful completions (attempts that failed do not count as evidence). */
   private totalCompletions = 0
   private windowStartedAt: number
   private windowIndex = 0
   private lastHardDownWindow = Number.NEGATIVE_INFINITY
+  /** A hard-down reset the counters mid-window but record() has no clock to
+   * reset the window start — the next tick must discard that half-timed window. */
+  private windowClockDirty = false
 
   /** Goodput and 304-share of the last closed comparable-or-rolled window. */
   private prevGoodput: number | null = null
@@ -217,13 +232,19 @@ export class HillClimbController implements ConcurrencyController {
    */
   record(kind: RequestOutcomeKind, latencyMs?: number, meta?: RequestOutcomeMeta): number | null {
     this.completionsSinceTick++
-    this.totalCompletions++
 
     if (kind === 'success') {
-      if (meta?.revalidated) this.revalidatedSinceTick++
+      this.totalCompletions++
+      const revalidated = meta?.revalidated === true
+      if (revalidated) this.revalidatedSinceTick++
       if (latencyMs !== undefined) {
         this.sampleLatency(latencyMs)
-        if (this.phase === 'validating') return this.validateProfile()
+        if (!revalidated) {
+          this.sampleFullLatency(latencyMs)
+          // Only full fetches inform the regime check: a warm-cache 304 looks
+          // fast on the slowest of links.
+          if (this.phase === 'validating') return this.validateProfile()
+        }
       }
       return null
     }
@@ -260,10 +281,14 @@ export class HillClimbController implements ConcurrencyController {
     if (!this.reachedHold) return null
     if (this.totalCompletions < MIN_CONTROLLED_TOTAL) return null
     if (this.windowIndex - this.lastHardDownWindow < 2) return null
+    // No trustworthy latency baseline (all-304 warm run): persist nothing —
+    // better to keep last run's profile than to store one that cannot be
+    // regime-checked next time.
+    if (this.fullSamples < MIN_BASELINE_SAMPLES) return null
     return {
       schemaVersion: 1,
       learnedLimit: this.limit,
-      baselineLatencyMs: Math.round(this.ewmaMs),
+      baselineLatencyMs: Math.round(this.fullEwmaMs),
       baselineGoodputRps: round2(this.prevGoodput ?? 0),
       sampleCount: this.totalCompletions,
       updatedAt: new Date(now).toISOString(),
@@ -277,6 +302,17 @@ export class HillClimbController implements ConcurrencyController {
     } else {
       const a = this.tuning.ewmaAlpha
       this.ewmaMs = a * latencyMs + (1 - a) * this.ewmaMs
+    }
+  }
+
+  private sampleFullLatency(latencyMs: number): void {
+    this.fullSamples++
+    if (!this.hasFullEwma) {
+      this.fullEwmaMs = latencyMs
+      this.hasFullEwma = true
+    } else {
+      const a = this.tuning.ewmaAlpha
+      this.fullEwmaMs = a * latencyMs + (1 - a) * this.fullEwmaMs
     }
   }
 
@@ -297,10 +333,13 @@ export class HillClimbController implements ConcurrencyController {
     /* v8 ignore start */
     const baseline = this.profileBaselineMs ?? 0
     /* v8 ignore stop */
-    const worse = this.ewmaMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
+    // Full-fetch latency on both sides of the comparison: the stored baseline
+    // is full-fetch-only too (getSettledProfile), so a cache-mix difference
+    // between the runs cannot impersonate a network change.
+    const worse = this.fullEwmaMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
     const better =
-      baseline - this.ewmaMs > t.regimeBetterMinDeltaMs &&
-      this.ewmaMs * t.regimeWorseFactor < baseline
+      baseline - this.fullEwmaMs > t.regimeBetterMinDeltaMs &&
+      this.fullEwmaMs * t.regimeWorseFactor < baseline
     this.phase = 'slow-start'
     if (!worse && !better) {
       // Same regime: climb from the learned limit, gated from here on.
@@ -323,30 +362,71 @@ export class HillClimbController implements ConcurrencyController {
     this.blindDoubleArmed = false
     this.lastHardDownWindow = this.windowIndex
     this.emit('hard-down')
-    // A hard decrease resets the window so we don't immediately move again.
+    // Reset the window counters so we don't immediately move again. record()
+    // has no clock to restart the window timer, so the current window's
+    // elapsed time is wrong — mark it and let the next tick discard it.
     this.resetWindow(this.windowStartedAt)
+    this.windowClockDirty = true
     return this.limit
   }
 
   private tick(now: number): number | null {
     const t = this.tuning
-    this.windowIndex++
     const before = this.limit
-    const elapsedSec = Math.max((now - this.windowStartedAt) / 1000, 1e-6)
-    const goodput = this.completionsSinceTick / elapsedSec
-    const ratio = this.revalidatedSinceTick / this.completionsSinceTick
+    const measurable = now > this.windowStartedAt && !this.windowClockDirty
+    this.windowClockDirty = false
 
-    let reason: ControlTickReason
+    // Errors in the window: AIMD soft-decrease, then re-establish a baseline
+    // before climbing again (gated slow-start, like TCP after a loss). The
+    // signal is the errors themselves — no goodput needed, so this branch
+    // runs even for a window whose elapsed time is unmeasurable.
+    // Validation is NOT abandoned: flaky links are exactly where the regime
+    // check matters, and errors say nothing about the latency comparison.
     if (this.retriesSinceTick > 0) {
-      // Errors in the window: AIMD soft-decrease, then re-establish a baseline
-      // before climbing again (gated slow-start, like TCP after a loss).
+      this.windowIndex++
       this.limit = clamp(Math.round(this.limit * t.softDecreaseFactor), t.floor, t.ceil)
-      this.phase = 'slow-start'
+      if (this.phase !== 'validating') this.phase = 'slow-start'
       this.blindDoubleArmed = false
       this.probePending = false
       this.prevGoodput = null
       this.prevRatio = null
-      reason = 'soft-down'
+      // The pre-error revert point is stale now — a later plateau must step
+      // ±1 from the post-soft-down limit, never snap back across it.
+      this.limitBeforeIncrease = null
+      // No goodput fields on this tick: the window's timing may be invalid,
+      // and the soft-down decision never reads it anyway.
+      this.emit('soft-down', now)
+      this.resetWindow(now)
+      return this.limit === before ? null : this.limit
+    }
+
+    // Unmeasurable clean window: the clock did not move forward (zero or
+    // backward step — Date.now() is not monotonic) or the window straddles a
+    // hard-down whose timer could not be restarted. No goodput can be derived;
+    // decide nothing and let the next full window re-establish the baseline.
+    if (!measurable) {
+      this.resetWindow(now)
+      return null
+    }
+
+    this.windowIndex++
+    const elapsedSec = (now - this.windowStartedAt) / 1000
+    const goodput = this.completionsSinceTick / elapsedSec
+    const ratio = this.revalidatedSinceTick / this.completionsSinceTick
+
+    let reason: ControlTickReason
+    if (this.phase === 'validating') {
+      // A clean window closed but the latency check is still short of full
+      // fetches — a warm cache serves mostly 304s. One more window of grace,
+      // then trust the learned limit: a warm run is cheap at any limit and
+      // the goodput gates take over from here.
+      this.validatingWindows++
+      if (this.validatingWindows >= 2) {
+        this.phase = 'slow-start'
+      }
+      this.prevGoodput = goodput
+      this.prevRatio = ratio
+      reason = 'hold'
     } else if (
       this.prevRatio !== null &&
       Math.abs(ratio - this.prevRatio) > t.revalidatedComparableDelta

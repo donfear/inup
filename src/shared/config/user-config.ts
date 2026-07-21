@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import envPaths from 'env-paths'
 import type { NetworkProfile, PersistedFilters } from '../types'
@@ -14,6 +14,9 @@ interface ConfigFile {
 // Networks move (travel, VPN, tethering): an old profile is a misleading hint,
 // and re-learning costs one run's ramp-up — expiry is the cheap, safe choice.
 const NETWORK_PROFILE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+// A timestamp from the future (clock was ahead, then NTP-corrected; or a hand
+// edit) must not defeat expiry forever. Tolerate a day of skew, no more.
+const NETWORK_PROFILE_MAX_FUTURE_MS = 24 * 60 * 60 * 1000
 
 class ConfigManager {
   private configDir: string
@@ -49,7 +52,13 @@ class ConfigManager {
   private writeConfig(config: ConfigFile): void {
     try {
       this.ensureConfigDir()
-      writeFileSync(this.configPath, JSON.stringify(config, null, 2), 'utf-8')
+      // Write-then-rename: the learned network profile is now written
+      // automatically at the end of a run, so this file is written far more
+      // often than before — a crash mid-write must never leave truncated JSON
+      // that would silently erase the user's theme and filters on next write.
+      const tmpPath = `${this.configPath}.${process.pid}.tmp`
+      writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
+      renameSync(tmpPath, this.configPath)
     } catch (error) {
       console.error('Error writing config:', error)
     }
@@ -93,9 +102,9 @@ class ConfigManager {
     }
     if (!Number.isFinite(profile.baselineLatencyMs) || profile.baselineLatencyMs < 0) return null
     const updatedAt = Date.parse(profile.updatedAt)
-    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > NETWORK_PROFILE_MAX_AGE_MS) {
-      return null
-    }
+    const age = Date.now() - updatedAt
+    if (!Number.isFinite(age) || age > NETWORK_PROFILE_MAX_AGE_MS) return null
+    if (age < -NETWORK_PROFILE_MAX_FUTURE_MS) return null
     return profile
   }
 

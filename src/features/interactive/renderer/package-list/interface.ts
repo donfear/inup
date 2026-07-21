@@ -211,11 +211,18 @@ export function renderInterface(
     const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
     const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
     const slowLabel = loadingProgress.slowNetwork ? ' — slow connection, reduced parallelism' : ''
-    const loadingLine =
+    let loadingLine =
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
-      (failedLabel ? chalk.yellow(failedLabel) : '') +
-      (slowLabel ? chalk.dim(slowLabel) : '')
+      (failedLabel ? chalk.yellow(failedLabel) : '')
+    // The hint is informational only: drop it rather than overflow the row —
+    // padLineToWidth pads but never truncates, so an overflow wraps the frame.
+    if (
+      slowLabel &&
+      VersionUtils.getVisualLength(loadingLine) + slowLabel.length <= terminalWidth
+    ) {
+      loadingLine += chalk.dim(slowLabel)
+    }
     const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }

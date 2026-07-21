@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -131,6 +139,23 @@ describe('ConfigManager', () => {
     it('rejects an unparsable timestamp', () => {
       configManager.setNetworkProfile(validProfile({ updatedAt: 'not a date' }))
       expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects a timestamp far in the future (clock skew must not defeat expiry)', () => {
+      const threeDaysAhead = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+      configManager.setNetworkProfile(validProfile({ updatedAt: threeDaysAhead }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('writes atomically: no temp files survive and the JSON is always complete', () => {
+      configManager.setTheme('dracula')
+      configManager.setNetworkProfile(validProfile())
+      const entries = readdirSync(pathsMock.configDir)
+      expect(entries).toEqual(['config.json'])
+      // The file on disk is complete, parseable JSON with every key intact.
+      const raw = JSON.parse(readFileSync(join(pathsMock.configDir, 'config.json'), 'utf8'))
+      expect(raw.theme).toBe('dracula')
+      expect(raw.networkProfile.schemaVersion).toBe(1)
     })
 
     it('clearNetworkProfile removes only the profile', () => {

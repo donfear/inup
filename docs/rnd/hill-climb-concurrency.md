@@ -72,6 +72,26 @@ Prereqs: `pnpm build`; a target project with 100+ unique dependencies.
 | all arms | `failed` count | 0 |
 | sanity | hillclimb ≈ best fixed arm per condition | fixed4 when throttled, fixed24 when fast |
 
+## Review hardening (adversarial pass, 2026-07-21)
+
+- Regime check is cache-mix-safe: both the persisted `baselineLatencyMs` and
+  the live comparison use FULL-fetch latency only (304s are fast on any link
+  and used to be able to fake a regime change in either direction). All-304
+  runs persist no baseline; validation that cannot gather 8 full fetches in
+  2 windows gives up and trusts the learned limit.
+- Validation survives errorful windows (soft-down applies, check continues);
+  a stale pre-error revert point can no longer cause multi-slot jumps.
+- Windows with a non-advancing clock (`Date.now()` is not monotonic) or
+  straddling a hard-down are discarded, never measured. Error windows
+  soft-decrease regardless of timing.
+- Profile `sampleCount` counts successes only; config writes are atomic
+  (write-then-rename); future `updatedAt` cannot defeat expiry.
+- `slowNetwork` now actually reaches the TUI (the runner dropped it), and the
+  loading-line hint is dropped before it can wrap a narrow terminal.
+- Experiment kit: ETag cache dir resolved via env-paths (the hardcoded path
+  made "cold" runs silently warm), priming run no longer writes a profile,
+  analyzer uses argparse.
+
 ## Known limitations / follow-ups
 
 - One global profile, not keyed by registry origin (VPN/private registries
