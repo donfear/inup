@@ -80,8 +80,11 @@ export interface HillClimbTuning {
   validateAfterCompletions: number
   /** Live EWMA must exceed baseline × this AND the absolute floor below… */
   regimeWorseFactor: number
-  /** …this many ms, for the regime to count as changed. */
+  /** …this many ms, for the regime to count as changed for the worse. */
   regimeWorseMinMs: number
+  /** A better regime needs the same ratio AND at least this much absolute
+   * improvement — two fast states differing by a few ms are the same regime. */
+  regimeBetterMinDeltaMs: number
 }
 
 export const HILL_CLIMB_TUNING: HillClimbTuning = {
@@ -107,6 +110,7 @@ export const HILL_CLIMB_TUNING: HillClimbTuning = {
   validateAfterCompletions: 8,
   regimeWorseFactor: 3,
   regimeWorseMinMs: 500,
+  regimeBetterMinDeltaMs: 200,
 }
 
 /** Runs below this size cannot close two windows plus a tail — skip control. */
@@ -277,21 +281,30 @@ export class HillClimbController implements ConcurrencyController {
   }
 
   /** The one place latency decides anything: does the persisted profile still
-   * describe this network? A 3× AND ≥500ms bar is far above CDN variance. */
+   * describe this network? The check is symmetric. Worse (3× AND ≥500ms —
+   * far above CDN variance): the learned limit would strangle a slow link.
+   * Better (3× AND ≥200ms improvement): the learned limit would drag a fast
+   * link — from a profile the start is gated, so same-limit windows read as a
+   * plateau and the controller would climb DOWN, recovering only by probes.
+   * Either way the profile is from a different network: restart and re-learn. */
   private validateProfile(): number | null {
     this.validationRemaining--
     if (this.validationRemaining > 0) return null
     const t = this.tuning
     const baseline = this.profileBaselineMs ?? 0
     const worse = this.ewmaMs > Math.max(t.regimeWorseFactor * baseline, t.regimeWorseMinMs)
+    const better =
+      baseline - this.ewmaMs > t.regimeBetterMinDeltaMs &&
+      this.ewmaMs * t.regimeWorseFactor < baseline
     this.phase = 'slow-start'
-    if (!worse) {
-      // Regime matches (or improved — doubling will discover that): climb
-      // from the learned limit, gated from the first comparison on.
+    if (!worse && !better) {
+      // Same regime: climb from the learned limit, gated from here on.
       return null
     }
-    // The profile is from a different network. Restart low and re-learn.
     this.limit = clamp(t.coldStart, t.floor, t.ceil)
+    // On a better regime the cold start may double blindly (the link is fast;
+    // a wrong guess costs one window). On a worse one, stay gated.
+    this.blindDoubleArmed = better
     this.emit('regime-reset')
     return this.limit
   }

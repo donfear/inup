@@ -332,9 +332,33 @@ describe('HillClimbController', () => {
       expect(reasons(h)).not.toContain('regime-reset')
     })
 
-    it('keeps the learned limit when the network got faster (doubling handles it)', () => {
+    it('resets on a drastically FASTER network too (a stuck-low profile would drag a fast link)', () => {
+      // Symmetric regime check: from a profile the controller starts gated, so
+      // two windows at the same limit read as a plateau and it would climb DOWN
+      // from a learned slow-café limit even on fast home wifi. A much-better
+      // regime therefore discards the profile and re-learns via cold slow-start.
       const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 400 } })
-      feed(h.c, T.validateAfterCompletions, 20)
+      const immediate = feed(h.c, T.validateAfterCompletions, 20)
+      expect(immediate).toBe(T.coldStart)
+      expect(reasons(h)).toContain('regime-reset')
+      // Cold restart re-arms the blind double: fast links reach the ceiling in
+      // 3 windows instead of crawling up by probe.
+      closeWindow(h, 1200)
+      expect(h.c.getLimit()).toBe(T.coldStart * 2)
+    })
+
+    it('keeps the profile when latency merely improved a little', () => {
+      // 150 → 100ms: below the better-regime delta — not worth re-learning.
+      const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 150 } })
+      feed(h.c, T.validateAfterCompletions, 100)
+      expect(h.c.getLimit()).toBe(8)
+      expect(reasons(h)).not.toContain('regime-reset')
+    })
+
+    it('keeps the profile when the improvement misses the ratio gate', () => {
+      // 400 → 160ms: big delta but not 3× better — same regime, keep the limit.
+      const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 400 } })
+      feed(h.c, T.validateAfterCompletions, 160)
       expect(h.c.getLimit()).toBe(8)
       expect(reasons(h)).not.toContain('regime-reset')
     })
@@ -356,5 +380,136 @@ describe('HillClimbController', () => {
       expect(tick.limit).toBe(8)
       expect(tick.atMs).toBe(START_AT + 1200)
     })
+  })
+})
+
+describe('HillClimbController unhappy paths', () => {
+  /** Close a window that contained one retryable error (11 successes + 1 error). */
+  const errorWindow = (h: Harness, elapsedMs = 1200): number | null => {
+    feed(h.c, T.windowCompletions - 1, 100)
+    h.c.record('retryable')
+    return h.c.maybeTick(h.clock.advance(elapsedMs))
+  }
+
+  it('a disconnect walks the limit down to the floor and never below', () => {
+    const h = makeController({})
+    closeWindow(h, 1200) // healthy: blind double → 8
+    expect(errorWindow(h)).toBe(6) // round(8 × 0.7)
+    expect(errorWindow(h)).toBe(4)
+    expect(errorWindow(h)).toBe(3) // floor
+    expect(errorWindow(h)).toBe(null) // clamped — no change, no underflow
+    expect(h.c.getLimit()).toBe(T.floor)
+    expect(
+      reasons(h)
+        .slice(1)
+        .every((r) => r === 'soft-down')
+    ).toBe(true)
+  })
+
+  it('recovers after a reconnect: floor → probes → climb back up', () => {
+    const h = makeController({})
+    closeWindow(h, 1200)
+    for (let i = 0; i < 4; i++) errorWindow(h) // disconnect: down to floor 3
+    expect(h.c.getLimit()).toBe(T.floor)
+
+    // Reconnect onto a fast, RTT-bound link: goodput ∝ limit (10/s per slot).
+    for (let i = 0; i < 40; i++) {
+      const limit = h.c.getLimit()
+      closeWindow(h, Math.max(1, Math.round(1200 / limit)))
+    }
+    expect(h.c.getLimit()).toBeGreaterThanOrEqual(10)
+    expect(reasons(h)).toContain('probe-up')
+    expect(reasons(h)).toContain('up')
+  })
+
+  it('congestion while a probe is pending cleans the probe up', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 }) // baseline 10/s at 8
+    closeWindow(h, 1200) // plateau → 7, climb-down
+    closeWindow(h, 1371) // RTT-bound loss → revert to 8, HOLD
+    for (let i = 0; i < T.reprobeAfterWindows; i++) closeWindow(h, 1200)
+    expect(h.c.getLimit()).toBe(9) // probing
+
+    const immediate = h.c.record('congested')
+    expect(immediate).toBe(5) // round(9 × 0.5), applied now
+    expect(h.c.getState()).toBe('hold')
+
+    closeWindow(h, 1200)
+    // The abandoned probe must not be evaluated after the hard-down.
+    expect(h.ticks.at(-1)?.reason).toBe('hold')
+    expect(h.c.getLimit()).toBe(5)
+  })
+
+  it('repeated congestion at the floor stays clamped', () => {
+    const h = makeController({})
+    expect(h.c.record('congested')).toBe(T.floor) // round(4 × 0.5) = 2 → clamp 3
+    expect(h.c.record('congested')).toBe(T.floor)
+    expect(h.c.getLimit()).toBe(T.floor)
+  })
+
+  it('a pure latency spike in HOLD moves nothing (goodput is the only signal)', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200)
+    closeWindow(h, 1371) // HOLD at 8
+    h.ticks.length = 0
+
+    // Latency 50× worse, goodput unchanged: nothing may move.
+    for (let i = 0; i < 4; i++) closeWindow(h, 1200, { latencyMs: 5000 })
+    expect(h.c.getLimit()).toBe(8)
+    expect(h.ticks.every((t) => t.reason === 'hold')).toBe(true)
+  })
+
+  it('zero-elapsed windows do not produce NaN or unbounded limits', () => {
+    const h = makeController({})
+    closeWindow(h, 0)
+    closeWindow(h, 0)
+    expect(Number.isFinite(h.c.getLimit())).toBe(true)
+    expect(h.c.getLimit()).toBeLessThanOrEqual(T.ceil)
+    expect(h.ticks.every((t) => Number.isFinite(t.goodputRps ?? 0))).toBe(true)
+  })
+
+  it('a corrupt zero baseline cannot trigger a false regime reset', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 0 } })
+    feed(h.c, T.validateAfterCompletions, 400)
+    // worse needs > max(3×0, 500) = 500ms; better needs baseline − ewma > 200.
+    expect(h.c.getLimit()).toBe(8)
+    expect(reasons(h)).not.toContain('regime-reset')
+  })
+
+  it('errors during validation abandon it without wedging the controller', () => {
+    const h = makeController({ profile: { learnedLimit: 16, baselineLatencyMs: 100 } })
+    feed(h.c, 4, 100) // validation under way (4 of 8)
+    for (let i = 0; i < 8; i++) h.c.record('retryable')
+    expect(h.c.maybeTick(h.clock.advance(1200))).toBe(11) // soft-down, validation over
+
+    // These would have failed the regime check — but validation was abandoned.
+    feed(h.c, T.validateAfterCompletions, 900)
+    expect(reasons(h)).not.toContain('regime-reset')
+    expect(h.c.getLimit()).toBe(11)
+
+    // And the controller still ticks normally afterwards.
+    closeWindow(h, 1200, { count: 4 })
+    expect(h.ticks.at(-1)?.reason).toBe('hold') // clean baseline window
+  })
+
+  it('congestion after freeze still applies but poisons no profile', () => {
+    const h = makeController({ profile: { learnedLimit: 8, baselineLatencyMs: 100 } })
+    feed(h.c, T.validateAfterCompletions, 100)
+    closeWindow(h, 1200, { count: 4 })
+    closeWindow(h, 1200)
+    closeWindow(h, 1371) // HOLD at 8, 36 completions
+    h.c.freeze()
+    expect(h.c.record('congested')).toBe(4) // the server signal still counts
+    expect(h.c.getSettledProfile(5_000_000)).toBeNull()
+  })
+
+  it('an all-304 warm-cache run still adapts on revalidation goodput', () => {
+    const h = makeController({})
+    closeWindow(h, 1200, { revalidatedCount: 12 }) // blind double → 8
+    closeWindow(h, 600, { revalidatedCount: 12 }) // same mix → comparable → 2× gain
+    expect(h.c.getLimit()).toBe(16)
   })
 })

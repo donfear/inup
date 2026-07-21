@@ -665,6 +665,38 @@ describe('npm-registry', () => {
       expect(profiles).toHaveLength(0)
     })
 
+    it('survives a mid-run blackout: completes, backs off, reports partial results', async () => {
+      // Simulated disconnect/reconnect: calls 41-100 all fail with a transient
+      // network error (every retry attempt included), then the link is back.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls > 40 && calls <= 100) {
+          const error = new Error('socket hang up')
+          error.name = 'AbortError'
+          throw error
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      const result = await fetchPackageVersions(names(80), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Every package gets an answer — the run never hangs or throws.
+      expect(result.size).toBe(80)
+      const unavailable = [...result.values()].filter((v) => v.latestVersion === 'unknown')
+      // A partial outage, visibly partial: some packages exhausted their
+      // retries during the blackout, the rest resolved after the reconnect.
+      expect(unavailable.length).toBeGreaterThan(0)
+      expect(unavailable.length).toBeLessThan(80)
+      // The controller backed off on the transient errors — no 429 needed.
+      expect(ticks.some((t) => t.reason === 'soft-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
+    })
+
     it('controllerMode aimd selects the control arm (smart start at the ceiling)', async () => {
       requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
       const ticks: ControlTick[] = []
