@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PersistedFilters } from '../../../../src/shared/types'
+import type { NetworkProfile, PersistedFilters } from '../../../../src/shared/types'
 
 // Redirect the env-paths config directory into a per-test temp dir so the
 // singleton never touches the user's real ~/.config/inup.
@@ -75,6 +75,71 @@ describe('ConfigManager', () => {
 
     expect(configManager.getTheme()).toBeNull()
     expect(error).toHaveBeenCalledWith('Error reading config:', expect.anything())
+  })
+
+  describe('network profile', () => {
+    const validProfile = (overrides: Partial<NetworkProfile> = {}): NetworkProfile => ({
+      schemaVersion: 1,
+      learnedLimit: 6,
+      baselineLatencyMs: 350,
+      baselineGoodputRps: 8.5,
+      sampleCount: 120,
+      updatedAt: new Date().toISOString(),
+      ...overrides,
+    })
+
+    it('returns null when no profile is stored', () => {
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('round-trips a profile through the config file', () => {
+      const profile = validProfile()
+      configManager.setNetworkProfile(profile)
+      expect(configManager.getNetworkProfile()).toEqual(profile)
+    })
+
+    it('coexists with the theme in the same file', () => {
+      configManager.setTheme('dracula')
+      configManager.setNetworkProfile(validProfile())
+      expect(configManager.getTheme()).toBe('dracula')
+      expect(configManager.getNetworkProfile()).not.toBeNull()
+    })
+
+    it('expires profiles older than 7 days (networks move; stale hints mislead)', () => {
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+      configManager.setNetworkProfile(validProfile({ updatedAt: eightDaysAgo }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects a profile with an unknown schema version', () => {
+      configManager.setNetworkProfile(validProfile({ schemaVersion: 2 as unknown as 1 }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects out-of-range or non-integer learned limits', () => {
+      for (const learnedLimit of [0, -1, 99, 7.5, Number.NaN]) {
+        configManager.setNetworkProfile(validProfile({ learnedLimit }))
+        expect(configManager.getNetworkProfile()).toBeNull()
+      }
+    })
+
+    it('rejects a non-finite baseline latency', () => {
+      configManager.setNetworkProfile(validProfile({ baselineLatencyMs: Number.POSITIVE_INFINITY }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects an unparsable timestamp', () => {
+      configManager.setNetworkProfile(validProfile({ updatedAt: 'not a date' }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('clearNetworkProfile removes only the profile', () => {
+      configManager.setTheme('monokai')
+      configManager.setNetworkProfile(validProfile())
+      configManager.clearNetworkProfile()
+      expect(configManager.getNetworkProfile()).toBeNull()
+      expect(configManager.getTheme()).toBe('monokai')
+    })
   })
 
   it('swallows write failures and reports them', async () => {
