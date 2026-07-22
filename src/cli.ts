@@ -5,7 +5,7 @@ import chalk from 'chalk'
 import { Command } from 'commander'
 import { HeadlessRunner } from './features/headless'
 import { UpgradeRunner } from './index'
-import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION } from './shared/config'
+import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION, POOL_CONNECTIONS } from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
 import { loadInupLocalEnv } from './shared/local-env'
@@ -33,6 +33,7 @@ export interface CliOptions {
   check?: boolean
   apply?: boolean
   target?: string
+  concurrency?: string
 }
 
 export async function runCli(options: CliOptions): Promise<void> {
@@ -100,6 +101,21 @@ export async function runCli(options: CliOptions): Promise<void> {
     process.exit(1)
   }
 
+  let concurrency: number | undefined
+  if (options.concurrency !== undefined) {
+    const parsed = Number(options.concurrency)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > POOL_CONNECTIONS) {
+      console.error(chalk.red(`Invalid concurrency: ${options.concurrency}`))
+      console.error(
+        chalk.yellow(
+          `Expected an integer between 1 and ${POOL_CONNECTIONS}, for example: --concurrency 4`
+        )
+      )
+      process.exit(1)
+    }
+    concurrency = parsed
+  }
+
   // Check for updates in the background (non-blocking). Interactive only — keeps headless stdout
   // clean and avoids a lingering fetch handle in CI.
   const updateCheckPromise = interactive
@@ -130,9 +146,13 @@ export async function runCli(options: CliOptions): Promise<void> {
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
-    // Adaptive concurrency defaults ON; it's an internal/dev toggle with no public
-    // flag. Set INUP_ADAPTIVE=0 to disable (e.g. for A/B perf comparisons).
+    // Adaptive concurrency defaults ON; INUP_ADAPTIVE=0 disables it (fixed
+    // limit, A/B baseline). Related dev toggles read further down the stack:
+    // INUP_CONTROLLER=aimd|hillclimb picks the controller arm and
+    // INUP_NET_PROFILE=0 disables learned-profile persistence.
     adaptive: process.env.INUP_ADAPTIVE !== '0',
+    // Pinned parallelism: flag > .inuprc; undefined lets the controller adapt.
+    concurrency: concurrency ?? projectConfig.concurrency,
   }
 
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
@@ -195,6 +215,10 @@ program
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
+  .option(
+    '--concurrency <n>',
+    'pin registry-fetch parallelism (1-24) and disable adaptive ramping — for slow or metered connections'
+  )
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .option(

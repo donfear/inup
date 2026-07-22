@@ -513,6 +513,263 @@ describe('npm-registry', () => {
     })
   })
 
+  describe('hill-climb wiring', () => {
+    const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
+
+    // The whole block runs on a virtual clock: mock latencies are fake-timer
+    // milliseconds, so window goodput — and therefore every controller
+    // decision — is exact and load-independent. Real timers made these tests
+    // flake under coverage instrumentation.
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Start the fetch, drain the virtual clock, return the result. */
+    const runFetch = async (
+      packageNames: string[],
+      options: Parameters<typeof fetchPackageVersions>[1]
+    ) => {
+      const done = fetchPackageVersions(packageNames, options)
+      await vi.runAllTimersAsync()
+      return done
+    }
+
+    /**
+     * A bandwidth-bound pipe: responses are serialized through a promise chain
+     * at a fixed cost each, so total goodput is flat no matter how many
+     * requests are in flight — exactly what a narrow link looks like.
+     */
+    const withBandwidthBoundPipe = (costMs: number) => {
+      let chain = Promise.resolve()
+      requestMock.mockImplementation(async () => {
+        const my = chain.then(() => new Promise<void>((r) => setTimeout(r, costMs)))
+        chain = my
+        await my
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+    }
+
+    /** A fast, wide link: fixed per-response latency, unlimited parallelism. */
+    const withFastLink = (latencyMs: number) => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, latencyMs))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      return () => peak
+    }
+
+    it('adapts DOWN on a bandwidth-bound link without any error signal', async () => {
+      withBandwidthBoundPipe(8)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(100), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(100)
+      // Passive down-adaptation: the flat pipe must produce at least one
+      // goodput-driven down decision — with zero 429s or network errors.
+      expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down' || t.reason === 'soft-down')).toBe(false)
+      expect(ticks.at(-1)!.limit).toBeLessThanOrEqual(8)
+    })
+
+    it('reaches the ceiling by doubling on a fast link', async () => {
+      const getPeak = withFastLink(20)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(120), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Virtual clock: 12-completion windows at limits 4/8/16 take exactly
+      // 60/40/20 fake-ms → gains 1.5 and 2.0 clear the doubling gate every time.
+      expect(ticks.filter((t) => t.reason === 'double').length).toBeGreaterThanOrEqual(2)
+      expect(Math.max(...ticks.map((t) => t.limit))).toBe(24)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('concurrency option pins the limit and disables the controller', async () => {
+      const getPeak = withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(40), {
+        concurrency: 5,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(getPeak()).toBeLessThanOrEqual(5)
+      expect(ticks).toHaveLength(0)
+    })
+
+    it('starts from the injected network profile when the regime matches', async () => {
+      withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 8,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // The first window runs (and reports) at the learned limit.
+      expect(ticks[0].limit).toBeGreaterThanOrEqual(8)
+    })
+
+    it('uses the learned limit as the fixed start for runs too small to control', async () => {
+      const getPeak = withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(20), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 5,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks).toHaveLength(0) // too small for the controller…
+      expect(getPeak()).toBeLessThanOrEqual(5) // …but the learned limit still caps the fixed start
+    })
+
+    it('emits a settled profile via onNetworkProfile once the run held', async () => {
+      withBandwidthBoundPipe(8)
+      const profiles: unknown[] = []
+
+      await runFetch(names(100), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(1)
+      const profile = profiles[0] as { schemaVersion: number; learnedLimit: number }
+      expect(profile.schemaVersion).toBe(1)
+      expect(profile.learnedLimit).toBeLessThanOrEqual(8)
+    })
+
+    it('does not emit a profile for runs too small to control', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const profiles: unknown[] = []
+
+      await runFetch(names(12), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(0)
+    })
+
+    it('survives a mid-run blackout: completes, backs off, reports partial results', async () => {
+      // Simulated disconnect/reconnect: calls 41-100 all fail with a transient
+      // network error (every retry attempt included), then the link is back.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls > 40 && calls <= 100) {
+          const error = new Error('socket hang up')
+          error.name = 'AbortError'
+          throw error
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(80), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Every package gets an answer — the run never hangs or throws.
+      expect(result.size).toBe(80)
+      const unavailable = [...result.values()].filter((v) => v.latestVersion === 'unknown')
+      // A partial outage, visibly partial: some packages exhausted their
+      // retries during the blackout, the rest resolved after the reconnect.
+      expect(unavailable.length).toBeGreaterThan(0)
+      expect(unavailable.length).toBeLessThan(80)
+      // The controller backed off on the transient errors — no 429 needed.
+      expect(ticks.some((t) => t.reason === 'soft-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
+    })
+
+    it('controllerMode aimd selects the control arm (smart start at the ceiling)', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(120), {
+        controllerMode: 'aimd',
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(ticks[0].limit).toBe(24) // AIMD smart-starts at the ceiling
+      expect(ticks.some((t) => t.reason === 'double')).toBe(false)
+    })
+
+    it('applies a failed profile validation to the semaphore immediately', async () => {
+      // 600 fake-ms per response against a 10ms baseline: the regime check
+      // fails on the 8th success and the returned cold-start limit must reach
+      // the semaphore through the success path of the observer.
+      const getPeak = withFastLink(600)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 24,
+          baselineLatencyMs: 10,
+          baselineGoodputRps: 100,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(60)
+      expect(ticks.some((t) => t.reason === 'regime-reset')).toBe(true)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('emits no profile when congestion never lets the run settle', async () => {
+      // A 429 storm through the whole run: the controller keeps hard-halving,
+      // so whatever limit it ends on is a back-off artifact, not a profile.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls % 4 === 0) {
+          return { statusCode: 429, body: '', headers: { 'retry-after': '0' } }
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const profiles: unknown[] = []
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(60), {
+        onNetworkProfile: (p) => profiles.push(p),
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
+      expect(profiles).toHaveLength(0)
+    })
+  })
+
   describe('ETag conditional caching', () => {
     // Isolated root per test: never wipe (or race parallel test files on) the
     // user's real persistent cache directory.

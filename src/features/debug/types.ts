@@ -1,3 +1,5 @@
+import type { ControlTick } from '../../shared/http/controller-contract'
+
 export type PerformancePhase =
   | 'firstBatch'
   | 'allLoaded'
@@ -13,16 +15,14 @@ export interface BatchTiming {
   failedCount: number
 }
 
-export type ControlTickReason = 'up' | 'soft-down' | 'hard-down' | 'hold'
-
-/** One adaptive-concurrency control decision (separate channel from BatchTiming). */
-export interface ControlTick {
-  atMs: number
-  limit: number
-  ewmaMs: number
-  retries: number
-  reason: ControlTickReason
-}
+// One adaptive-concurrency control decision (separate channel from BatchTiming).
+// The canonical definitions live with the controllers; re-exported here so the
+// perf tracker/modal and the controllers can never drift apart structurally.
+export type {
+  ConcurrencyControllerState,
+  ControlTick,
+  ControlTickReason,
+} from '../../shared/http/controller-contract'
 
 export interface PerformanceCounts {
   packageJsonFiles?: number

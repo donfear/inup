@@ -105,7 +105,28 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
-  adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
+  adaptive?: boolean // Adaptive registry concurrency. Defaults to true.
+  concurrency?: number // Pin registry fetch parallelism (1..24) and disable adaptation
+}
+
+/**
+ * Locally persisted network shape learned by the hill-climb concurrency
+ * controller. A starting hypothesis for the next run — never a hard cap: the
+ * controller re-validates it against live latency at run start and discards it
+ * when the network regime changed (different location, VPN, tethering).
+ */
+export interface NetworkProfile {
+  schemaVersion: 1
+  /** Last stable HOLD limit the controller settled at. */
+  learnedLimit: number
+  /** Success-only single-attempt latency EWMA at the end of that run. */
+  baselineLatencyMs: number
+  /** Window goodput (completions/sec) at settle time; diagnostic only. */
+  baselineGoodputRps: number
+  /** Completions that informed the profile. */
+  sampleCount: number
+  /** ISO timestamp; profiles expire after a few days. */
+  updatedAt: string
 }
 
 export interface PackageJson {

@@ -1,8 +1,16 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PersistedFilters } from '../../../../src/shared/types'
+import type { NetworkProfile, PersistedFilters } from '../../../../src/shared/types'
 
 // Redirect the env-paths config directory into a per-test temp dir so the
 // singleton never touches the user's real ~/.config/inup.
@@ -75,6 +83,94 @@ describe('ConfigManager', () => {
 
     expect(configManager.getTheme()).toBeNull()
     expect(error).toHaveBeenCalledWith('Error reading config:', expect.anything())
+  })
+
+  describe('network profile', () => {
+    const validProfile = (overrides: Partial<NetworkProfile> = {}): NetworkProfile => ({
+      schemaVersion: 1,
+      learnedLimit: 6,
+      baselineLatencyMs: 350,
+      baselineGoodputRps: 8.5,
+      sampleCount: 120,
+      updatedAt: new Date().toISOString(),
+      ...overrides,
+    })
+
+    it('returns null when no profile is stored', () => {
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('round-trips a profile through the config file', () => {
+      const profile = validProfile()
+      configManager.setNetworkProfile(profile)
+      expect(configManager.getNetworkProfile()).toEqual(profile)
+    })
+
+    it('coexists with the theme in the same file', () => {
+      configManager.setTheme('dracula')
+      configManager.setNetworkProfile(validProfile())
+      expect(configManager.getTheme()).toBe('dracula')
+      expect(configManager.getNetworkProfile()).not.toBeNull()
+    })
+
+    it('expires profiles older than 7 days (networks move; stale hints mislead)', () => {
+      const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+      configManager.setNetworkProfile(validProfile({ updatedAt: eightDaysAgo }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects a profile with an unknown schema version', () => {
+      configManager.setNetworkProfile(validProfile({ schemaVersion: 2 as unknown as 1 }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects out-of-range or non-integer learned limits', () => {
+      for (const learnedLimit of [0, -1, 99, 7.5, Number.NaN]) {
+        configManager.setNetworkProfile(validProfile({ learnedLimit }))
+        expect(configManager.getNetworkProfile()).toBeNull()
+      }
+    })
+
+    it('rejects a non-finite baseline latency', () => {
+      configManager.setNetworkProfile(validProfile({ baselineLatencyMs: Number.POSITIVE_INFINITY }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects an unparsable timestamp', () => {
+      configManager.setNetworkProfile(validProfile({ updatedAt: 'not a date' }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('rejects a timestamp far in the future (clock skew must not defeat expiry)', () => {
+      const threeDaysAhead = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+      configManager.setNetworkProfile(validProfile({ updatedAt: threeDaysAhead }))
+      expect(configManager.getNetworkProfile()).toBeNull()
+    })
+
+    it('writes atomically: no temp files survive and the JSON is always complete', () => {
+      configManager.setTheme('dracula')
+      configManager.setNetworkProfile(validProfile())
+      const entries = readdirSync(pathsMock.configDir)
+      expect(entries).toEqual(['config.json'])
+      // The file on disk is complete, parseable JSON with every key intact.
+      const raw = JSON.parse(readFileSync(join(pathsMock.configDir, 'config.json'), 'utf8'))
+      expect(raw.theme).toBe('dracula')
+      expect(raw.networkProfile.schemaVersion).toBe(1)
+    })
+
+    it('clearNetworkProfile removes only the profile', () => {
+      configManager.setTheme('monokai')
+      configManager.setNetworkProfile(validProfile())
+      configManager.clearNetworkProfile()
+      expect(configManager.getNetworkProfile()).toBeNull()
+      expect(configManager.getTheme()).toBe('monokai')
+    })
+
+    it('clearNetworkProfile without a stored profile writes nothing', () => {
+      configManager.clearNetworkProfile()
+      // No profile to clear → no write → the config file is never created.
+      expect(existsSync(join(pathsMock.configDir, 'config.json'))).toBe(false)
+    })
   })
 
   it('swallows write failures and reports them', async () => {

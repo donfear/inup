@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { clamp } from '../../../shared/math'
 import type { PerformanceSnapshot } from '../../debug'
 import {
   getModalWidth,
@@ -88,12 +89,26 @@ function buildSections(snapshot: PerformanceSnapshot): {
     const limits = controlTicks.map((t) => t.limit)
     const finalTick = controlTicks[controlTicks.length - 1]
     const hardDowns = controlTicks.filter((t) => t.reason === 'hard-down').length
+    // Hill-climb ticks carry a state; plain AIMD ticks never do.
+    const isHillClimb = controlTicks.some((t) => t.state !== undefined)
+    bodyRows.push(labelValue('Controller', chalk.cyan(isHillClimb ? 'hillclimb' : 'aimd')))
     bodyRows.push(labelValue('Start limit', formatCount(controlTicks[0].limit)))
     bodyRows.push(labelValue('Peak limit', formatCount(Math.max(...limits))))
     bodyRows.push(labelValue('Final limit', formatCount(finalTick.limit)))
     bodyRows.push(labelValue('Final EWMA', formatMs(finalTick.ewmaMs)))
     bodyRows.push(labelValue('Control ticks', formatCount(controlTicks.length)))
     bodyRows.push(labelValue('Hard back-offs', formatCount(hardDowns)))
+    if (isHillClimb) {
+      bodyRows.push(labelValue('State', chalk.cyan(finalTick.state ?? '—')))
+      bodyRows.push(
+        labelValue(
+          'Last goodput',
+          finalTick.goodputRps !== undefined
+            ? chalk.yellow(`${finalTick.goodputRps}/s`)
+            : chalk.gray('—')
+        )
+      )
+    }
   } else {
     bodyRows.push(chalk.gray('  (fixed — adaptive off or run too small)'))
   }
@@ -140,7 +155,7 @@ export function renderPerformanceModal(
   const needsScroll = totalScrollableRows > availableForBody
   const visibleBodyRows = needsScroll ? Math.max(1, availableForBody - 1) : availableForBody
   const maxScroll = Math.max(0, totalScrollableRows - visibleBodyRows)
-  const clampedOffset = Math.min(Math.max(0, scrollOffset), maxScroll)
+  const clampedOffset = clamp(scrollOffset, 0, maxScroll)
   const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
 
   const lines: string[] = []

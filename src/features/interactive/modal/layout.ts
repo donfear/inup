@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { clamp } from '../../../shared/math'
 import { getVisualLength } from '../../../shared/terminal'
 import type { ModalSection } from './types'
 
@@ -10,7 +11,7 @@ export interface RenderModalOptions {
 }
 
 export function getModalWidth(terminalWidth: number, minWidth: number, maxWidth: number): number {
-  return Math.min(Math.max(minWidth, terminalWidth - 6), maxWidth)
+  return clamp(terminalWidth - 6, minWidth, maxWidth)
 }
 
 export function renderModalRow(padding: number, modalWidth: number, text: string): string {

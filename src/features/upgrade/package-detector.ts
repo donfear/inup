@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 import * as semver from 'semver'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
+import { configManager } from '../../shared/config/user-config'
 import { debugLog } from '../../shared/debug-logger'
 import {
   collectAllDependenciesAsync,
@@ -8,11 +9,13 @@ import {
   findPackageJson,
   readPackageJson,
 } from '../../shared/fs'
+import type { ControlTick } from '../../shared/http/controller-contract'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import { ConsoleUtils } from '../../shared/terminal'
 import type {
   DependencyEntry,
+  NetworkProfile,
   PackageInfo,
   PackageLoadProgress,
   StreamOutdatedPackagesBatchItem,
@@ -22,6 +25,12 @@ import type {
 } from '../../shared/types'
 import { findClosestMinorVersion } from '../../shared/versions'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
+
+// Slow-connection heuristic: the hill-climb controller (HILL_CLIMB_TUNING:
+// floor 3, ceil 24) settling at/below this limit in a down state, or a latency
+// EWMA above this, reads as a slow link for the loading UI.
+const SLOW_NETWORK_LIMIT_MAX = 6
+const SLOW_NETWORK_EWMA_MS = 1000
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
@@ -41,6 +50,14 @@ export class PackageDetector {
   private readonly batchSize = 10
   private readonly maxConcurrency = 10
   private readonly adaptive: boolean
+  /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
+  private readonly concurrency?: number
+  private readonly controllerMode: 'aimd' | 'hillclimb'
+  /** INUP_NET_PROFILE=0 disables learned-profile read AND write (clean A/B runs). */
+  private readonly profilePersistenceEnabled: boolean
+  private readonly networkProfile: NetworkProfile | null
+  /** Latest control decision of the current run, for the slow-network hint. */
+  private lastControlTick: ControlTick | null = null
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
@@ -49,6 +66,10 @@ export class PackageDetector {
     this.ignorePackages = options?.ignorePackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.adaptive = options?.adaptive ?? true
+    this.concurrency = options?.concurrency
+    this.controllerMode = process.env.INUP_CONTROLLER === 'aimd' ? 'aimd' : 'hillclimb'
+    this.profilePersistenceEnabled = process.env.INUP_NET_PROFILE !== '0'
+    this.networkProfile = this.profilePersistenceEnabled ? configManager.getNetworkProfile() : null
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -69,6 +90,10 @@ export class PackageDetector {
     maxConcurrency: number
     batchSize: number
     poolConnections: number
+    controllerMode: 'aimd' | 'hillclimb'
+    pinnedConcurrency: number | null
+    hadNetworkProfile: boolean
+    profileLearnedLimit: number | null
   } {
     return {
       cwd: this.cwd,
@@ -76,6 +101,10 @@ export class PackageDetector {
       maxConcurrency: this.maxConcurrency,
       batchSize: this.batchSize,
       poolConnections: POOL_CONNECTIONS,
+      controllerMode: this.controllerMode,
+      pinnedConcurrency: this.concurrency ?? null,
+      hadNetworkProfile: this.networkProfile !== null,
+      profileLearnedLimit: this.networkProfile?.learnedLimit ?? null,
     }
   }
 
@@ -130,11 +159,23 @@ export class PackageDetector {
       batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
-      onControlTick: (tick) => performanceTracker.recordControlTick(tick),
+      concurrency: this.concurrency,
+      controllerMode: this.controllerMode,
+      networkProfile: this.networkProfile,
+      onNetworkProfile: this.profilePersistenceEnabled
+        ? (profile) => configManager.setNetworkProfile(profile)
+        : undefined,
+      onControlTick: (tick) => {
+        this.lastControlTick = tick
+        performanceTracker.recordControlTick(tick)
+      },
       onPackageTiming: isPerfLoggingEnabled()
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
         : undefined,
       onBatchReady: (batch) => {
+        // First-wins in the tracker; headless runs get the phase from here,
+        // the interactive runner's own mark becomes a no-op duplicate.
+        performanceTracker.mark('firstBatch')
         const batchStart = lastBatchEndAt
         let batchFailedCount = 0
         const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {
@@ -472,7 +513,17 @@ export class PackageDetector {
       total,
       failed,
       isLoading,
+      slowNetwork: this.isSlowNetwork(),
     }
+  }
+
+  /** A settled-low limit or high latency EWMA reads as a slow connection. */
+  private isSlowNetwork(): boolean {
+    const tick = this.lastControlTick
+    if (!tick) return false
+    const settledLow =
+      (tick.state === 'hold' || tick.state === 'climb-down') && tick.limit <= SLOW_NETWORK_LIMIT_MAX
+    return settledLow || tick.ewmaMs > SLOW_NETWORK_EWMA_MS
   }
 
   private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {

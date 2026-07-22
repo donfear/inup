@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { isPackageIgnored, loadProjectConfig } from '../../../../src/shared/config/project-config'
 
 describe('project-config', () => {
@@ -118,6 +118,39 @@ describe('project-config', () => {
 
       const config = loadProjectConfig(testDir)
       expect(config.showOptionalDependencyVulnerabilities).toBe(true)
+    })
+  })
+
+  describe('concurrency field', () => {
+    it('accepts an integer concurrency within the pool range', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ concurrency: 8 }))
+      expect(loadProjectConfig(testDir).concurrency).toBe(8)
+    })
+
+    it.each([
+      ['"8"', '"8"'],
+      ['zero', '0'],
+      ['negative', '-3'],
+      ['above pool', '99'],
+      ['fractional', '7.5'],
+    ])('drops an invalid concurrency value (%s) and says so', (_label, raw) => {
+      // Silent dropping would invert the user's intent: they pinned a low limit
+      // to protect a slow/metered link, and the run would adapt up to 24.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      writeFileSync(join(testDir, '.inuprc'), `{"concurrency": ${raw}}`)
+      expect(loadProjectConfig(testDir).concurrency).toBeUndefined()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('concurrency'))
+      warn.mockRestore()
+    })
+
+    it('does not warn when concurrency is valid or absent', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ concurrency: 8 }))
+      loadProjectConfig(testDir)
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: [] }))
+      loadProjectConfig(testDir)
+      expect(warn).not.toHaveBeenCalled()
+      warn.mockRestore()
     })
   })
 

@@ -7,10 +7,14 @@ const mocks = vi.hoisted(() => ({
   checkForUpdateAsync: vi.fn(),
   getGitWorkingTreeState: vi.fn(),
   promptForImmediateConfirmation: vi.fn(),
+  upgradeRunnerOptions: [] as unknown[],
 }))
 
 vi.mock('../../src/index', () => ({
   UpgradeRunner: class {
+    constructor(options: unknown) {
+      mocks.upgradeRunnerOptions.push(options)
+    }
     run = mocks.upgradeRunnerRun
   },
 }))
@@ -225,5 +229,64 @@ describe('CLI headless routing', () => {
       target: 'latest',
     })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+  })
+})
+
+describe('CLI concurrency flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    setInteractive(true)
+    delete process.env.CI
+
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+  const runnerOptions = () => mocks.upgradeRunnerOptions[0] as { concurrency?: number }
+
+  it('passes --concurrency through to the runner options', async () => {
+    await runCli({ ...baseOptions, concurrency: '6' })
+    expect(runnerOptions().concurrency).toBe(6)
+  })
+
+  it('leaves concurrency undefined when neither flag nor config sets it', async () => {
+    await runCli(baseOptions)
+    expect(runnerOptions().concurrency).toBeUndefined()
+  })
+
+  it('falls back to the .inuprc concurrency field', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ concurrency: 4 })
+    await runCli(baseOptions)
+    expect(runnerOptions().concurrency).toBe(4)
+  })
+
+  it('prefers the flag over the .inuprc field', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ concurrency: 4 })
+    await runCli({ ...baseOptions, concurrency: '2' })
+    expect(runnerOptions().concurrency).toBe(2)
+  })
+
+  it.each(['0', 'abc', '99', '7.5'])('rejects invalid --concurrency %s', async (raw) => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli({ ...baseOptions, concurrency: raw })).rejects.toThrow('process.exit')
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
   })
 })

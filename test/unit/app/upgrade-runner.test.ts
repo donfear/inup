@@ -129,6 +129,68 @@ describe('UpgradeRunner terminal handoff', () => {
     })
   })
 
+  it('propagates the slowNetwork flag into the live progress object', async () => {
+    let seenProgress: { slowNetwork?: boolean } | undefined
+    const snapshotsAtBatch: (boolean | undefined)[] = []
+    mocks.selectPackagesToUpgradeProgressive.mockImplementation(
+      async (_states: unknown, progress: { slowNetwork?: boolean }) => {
+        seenProgress = progress
+        return []
+      }
+    )
+    mocks.appendOutdatedBatchToSelectionStates.mockImplementation(() => {
+      snapshotsAtBatch.push(seenProgress?.slowNetwork)
+    })
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: ['next'],
+          currentVersions: new Map(),
+          progress: { discovered: 1, resolved: 0, total: 1, failed: 0, isLoading: true },
+        },
+      })
+      onEvent({
+        type: 'batch',
+        payload: {
+          batch: [],
+          progress: {
+            discovered: 1,
+            resolved: 1,
+            total: 1,
+            failed: 0,
+            isLoading: true,
+            slowNetwork: true,
+          },
+        },
+      })
+      onEvent({
+        type: 'complete',
+        payload: {
+          packages: [],
+          progress: {
+            discovered: 1,
+            resolved: 1,
+            total: 1,
+            failed: 0,
+            isLoading: false,
+            slowNetwork: false,
+          },
+        },
+      })
+    })
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    logSpy.mockRestore()
+
+    // The UI holds one live progress object; the hint must arrive through it.
+    expect(snapshotsAtBatch).toEqual([true])
+    expect(seenProgress?.slowNetwork).toBe(false) // and clear again on recovery
+  })
+
   it('exits early with up-to-date message when no outdated packages', async () => {
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       onEvent({

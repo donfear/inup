@@ -7,8 +7,10 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 
 import { POOL_CONNECTIONS } from '../config'
-import { AdaptiveController, type ControlTick } from '../http/adaptive-controller'
+import { AdaptiveController } from '../http/adaptive-controller'
+import type { ConcurrencyController, ControlTick } from '../http/controller-contract'
 import { readEtag, writeEtag } from '../http/etag-store'
+import { HillClimbController } from '../http/hill-climb-controller'
 import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
 import {
@@ -18,6 +20,7 @@ import {
   parseRetryAfterMs,
   sleep,
 } from '../http/retry'
+import { clamp } from '../math'
 import type {
   FetchPackageVersionsOptions,
   OnBatchReadyCallback,
@@ -96,7 +99,7 @@ const encodeRegistryPath = (packageName: string, pathPrefix: string): string => 
 }
 
 type RegistryAttemptOutcome =
-  | { kind: 'success'; data: PackageVersionData; latencyMs: number }
+  | { kind: 'success'; data: PackageVersionData; latencyMs: number; revalidated: boolean }
   | { kind: 'not-found' }
   | { kind: 'retryable' }
   | { kind: 'congested'; retryAfterMs: number | null }
@@ -145,7 +148,12 @@ async function attemptRegistryFetch(
     // Registry confirmed our cached copy is current — reuse it, skip the download.
     if (statusCode === 304 && cached) {
       await body.dump().catch(() => undefined)
-      return { kind: 'success', data: cached.data, latencyMs: Date.now() - startedAt }
+      return {
+        kind: 'success',
+        data: cached.data,
+        latencyMs: Date.now() - startedAt,
+        revalidated: true,
+      }
     }
 
     if (statusCode < 200 || statusCode >= 300) {
@@ -190,6 +198,7 @@ async function attemptRegistryFetch(
       kind: 'success',
       data,
       latencyMs: Date.now() - startedAt,
+      revalidated: false,
     }
   } catch (error) {
     if (isTransientNetworkError(error)) {
@@ -253,12 +262,16 @@ async function fetchPackageFromRegistry(
  * - A single resizable semaphore caps in-flight fetches. Package names are
  *   pulled from a work queue and dispatched as slots free up (a lazy pump),
  *   rather than pre-sliced into fixed batches.
- * - `adaptive` (default true) enables an AIMD controller that ramps the limit to
- *   the ceiling on a healthy link and backs off on congestion (429/503) or
- *   errors. With `adaptive:false` the limit is fixed at `maxConcurrency` (the A/B
- *   control arm), reproducing the legacy fixed path.
- * - Tiny runs (<= ceil packages) skip the controller and run at a fixed
- *   `min(ceil, count)` so they never crawl up from the floor and lose to fixed.
+ * - `adaptive` (default true) enables a controller that moves the limit at run
+ *   time. `controllerMode` picks which: 'hillclimb' (default) slow-starts and
+ *   climbs to the goodput knee — adapting DOWN on slow-but-healthy links;
+ *   'aimd' (the A/B control arm) ramps to the ceiling and backs off only on
+ *   congestion (429/503) or errors. With `adaptive:false` the limit is fixed at
+ *   `maxConcurrency`, reproducing the legacy fixed path. `concurrency` pins the
+ *   limit outright and disables everything adaptive.
+ * - Tiny runs skip the controller and run at a fixed `min(learned ?? ceil, count)`
+ *   so they never crawl up from the floor and lose to fixed — while still
+ *   honoring a persisted slow-link profile.
  * - No body timeout: slow responses finish. Real network errors and header
  *   stalls are retried with backoff; after the retry budget is exhausted the
  *   package is reported unavailable (`latestVersion: 'unknown'`).
@@ -270,6 +283,8 @@ async function fetchPackageFromRegistry(
  *   gate concurrency.
  * - `onControlTick` (optional) reports each adaptive control decision for
  *   instrumentation.
+ * - `onNetworkProfile` (optional) fires once at the end of a run whose
+ *   hill-climb controller settled on a limit worth persisting.
  */
 export async function fetchPackageVersions(
   packageNames: string[],
@@ -288,21 +303,37 @@ export async function fetchPackageVersions(
     return packageData
   }
 
-  const adaptive = options.adaptive ?? true
+  const pinned = options.concurrency
+  const adaptive = pinned === undefined && (options.adaptive ?? true)
+  const controllerMode = options.controllerMode ?? 'hillclimb'
+  const networkProfile = options.networkProfile ?? null
   // `maxConcurrency` is the fixed cap used only when adaptive is off; it never
-  // caps the adaptive start (the controller smart-starts near the work size and
-  // ramps to the ceiling, which beats a low fixed start on large runs).
+  // caps the adaptive start.
   const fixedConcurrency = Math.max(1, options.maxConcurrency ?? DEFAULT_FIXED_CONCURRENCY)
 
-  const controller =
-    adaptive && AdaptiveController.shouldControl(total)
-      ? new AdaptiveController(total, options.onControlTick)
-      : null
-  const initialLimit = controller
-    ? controller.getLimit()
-    : adaptive
-      ? Math.min(POOL_CONNECTIONS, total) // too small to control: smart fixed start
-      : fixedConcurrency
+  let controller: ConcurrencyController | null = null
+  if (adaptive) {
+    if (controllerMode === 'hillclimb' && HillClimbController.shouldControl(total)) {
+      controller = new HillClimbController(total, {
+        profile: networkProfile,
+        onTick: options.onControlTick,
+      })
+    } else if (controllerMode === 'aimd' && AdaptiveController.shouldControl(total)) {
+      controller = new AdaptiveController(total, options.onControlTick)
+    }
+  }
+  const initialLimit =
+    pinned !== undefined
+      ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
+        // this is the last stop before the semaphore — never exceed the pool.
+        clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
+      : controller
+        ? controller.getLimit()
+        : adaptive
+          ? // Too small to control: smart fixed start, capped by any learned
+            // slow-link limit so small projects still benefit from the profile.
+            Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
+          : fixedConcurrency
   const semaphore = new ResizableSemaphore(initialLimit)
 
   // --- emission ordering (unchanged contract) ---------------------------------
@@ -355,7 +386,12 @@ export async function fetchPackageVersions(
     if (!controller && !options.onPackageTiming) return undefined
     return (outcome) => {
       if (outcome.kind === 'success') {
-        controller?.record('success', outcome.latencyMs)
+        // A success can also demand an immediate limit change (the hill-climb
+        // controller's failed profile validation), so apply any returned limit.
+        const next = controller?.record('success', outcome.latencyMs, {
+          revalidated: outcome.revalidated,
+        })
+        if (next != null) semaphore.setLimit(next)
         options.onPackageTiming?.(packageName, outcome.latencyMs)
       } else if (outcome.kind === 'congested') {
         const next = controller?.record('congested')
@@ -400,6 +436,11 @@ export async function fetchPackageVersions(
       }
 
       if (controller) {
+        // Run tail: with fewer pending items than the limit the drain would
+        // read as a goodput collapse — stop deciding (and stop learning).
+        if (total - completedCount < 2 * controller.getLimit()) {
+          controller.freeze?.()
+        }
         const next = controller.maybeTick()
         if (next !== null) semaphore.setLimit(next)
       }
@@ -419,6 +460,12 @@ export async function fetchPackageVersions(
   }
 
   await Promise.all(workers)
+
+  if (controller instanceof HillClimbController && options.onNetworkProfile) {
+    const settled = controller.getSettledProfile()
+    if (settled) options.onNetworkProfile(settled)
+  }
+
   return packageData
 }
 
