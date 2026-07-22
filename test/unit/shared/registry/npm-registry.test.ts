@@ -534,7 +534,7 @@ describe('npm-registry', () => {
     ) => {
       const done = fetchPackageVersions(packageNames, options)
       await vi.runAllTimersAsync()
-      return done
+      return await done
     }
 
     /**
