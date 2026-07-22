@@ -27,6 +27,6 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/markdown-satteri": "^0.3.4",
     "marked": "^18.0.7",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   }
 }
