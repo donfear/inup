@@ -2,7 +2,7 @@
 title: Configuration
 description: The .inuprc file — ignore packages with globs, exclude directories, extend the scan list, and control vulnerability display.
 order: 40
-updated: 2026-07-06
+updated: 2026-07-27
 ---
 
 inup needs no configuration to run. When you want persistent project rules, add a JSON config file. inup looks for the first of these, searching from the working directory upward to the filesystem root:
@@ -12,6 +12,10 @@ inup needs no configuration to run. When you want persistent project rules, add 
 3. `inup.config.json`
 
 Every mode honors it — the interactive picker, `--json`, `--check` and `--apply`. A package the config excludes is never reported or written.
+
+Despite the JSON format, `//` line comments and `/* ... */` block comments are allowed — inup strips them before parsing, so the file can document itself.
+
+The quickest start is `inup --init`: it writes a commented `.inuprc` template with every field documented inline (and asks before overwriting an existing config).
 
 ## Example
 
@@ -52,6 +56,10 @@ Show vulnerability badges for `peerDependencies` in the package list. Defaults t
 ### `showOptionalDependencyVulnerabilities`
 
 Show vulnerability badges for `optionalDependencies`. Defaults to `false`.
+
+### `concurrency`
+
+Pin registry-fetch parallelism for this project (integer 1–24) and disable adaptive ramping — an escape hatch for known-slow or metered connections. The `--concurrency` flag overrides it.
 
 ## Environment variables
 

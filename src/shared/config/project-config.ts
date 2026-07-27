@@ -64,7 +64,7 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
       if (existsSync(configPath)) {
         try {
           const content = readFileSync(configPath, 'utf-8')
-          const config = JSON.parse(content) as InupProjectConfig
+          const config = JSON.parse(stripJsonComments(content)) as InupProjectConfig
           return normalizeConfig(config)
         } catch (error) {
           // Invalid JSON or read error - continue searching
@@ -82,6 +82,81 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
   }
 
   return {}
+}
+
+/**
+ * Remove line comments (slash-slash) and block comments (slash-star) so config files can
+ * be self-documenting (the `--init` template relies on this). String-aware: a
+ * `//` inside a JSON string (e.g. a URL) is left untouched. Comment characters
+ * are replaced rather than deleted so JSON.parse error positions still line up
+ * with the file.
+ */
+export function stripJsonComments(content: string): string {
+  let result = ''
+  let inString = false
+  let inLineComment = false
+  let inBlockComment = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false
+        result += char
+      } else {
+        result += ' '
+      }
+      continue
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false
+        result += '  '
+        i++
+      } else {
+        result += char === '\n' ? char : ' '
+      }
+      continue
+    }
+
+    if (inString) {
+      if (char === '\\') {
+        result += char + (next ?? '')
+        i++
+        continue
+      }
+      if (char === '"') inString = false
+      result += char
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      result += char
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true
+      result += '  '
+      i++
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true
+      result += '  '
+      i++
+      continue
+    }
+
+    result += char
+  }
+
+  return result
 }
 
 /**

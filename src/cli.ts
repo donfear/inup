@@ -1,11 +1,20 @@
 #!/usr/bin/env node
 
-import { resolve } from 'node:path'
+import { writeFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import chalk from 'chalk'
 import { Command } from 'commander'
 import { HeadlessRunner } from './features/headless'
 import { UpgradeRunner } from './index'
-import { loadProjectConfig, PACKAGE_NAME, PACKAGE_VERSION, POOL_CONNECTIONS } from './shared/config'
+import {
+  buildConfigTemplate,
+  findExistingConfigFile,
+  INIT_CONFIG_FILENAME,
+  loadProjectConfig,
+  PACKAGE_NAME,
+  PACKAGE_VERSION,
+  POOL_CONNECTIONS,
+} from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
 import { loadInupLocalEnv } from './shared/local-env'
@@ -26,6 +35,7 @@ export interface CliOptions {
   ignore: string
   maxDepth: string
   packageManager?: string
+  init?: boolean
   debug?: boolean
   color?: boolean
   saveExact?: boolean
@@ -36,11 +46,54 @@ export interface CliOptions {
   concurrency?: string
 }
 
+/**
+ * `--init`: write a fully commented starter config to <cwd>/.inuprc.
+ * When a config file already exists in that directory, ask before overwriting;
+ * without a TTY there is no way to confirm, so refuse instead of clobbering.
+ */
+async function runInit(cwd: string): Promise<void> {
+  const existing = findExistingConfigFile(cwd)
+  const targetPath = join(cwd, INIT_CONFIG_FILENAME)
+
+  if (existing) {
+    if (!process.stdout.isTTY || process.env.CI) {
+      console.error(chalk.red(`Config already exists: ${existing}`))
+      console.error(chalk.yellow('Refusing to overwrite without confirmation. Delete it first,'))
+      console.error(chalk.yellow('or run `inup --init` in an interactive terminal to confirm.'))
+      process.exit(1)
+    }
+    const shouldOverwrite = await TerminalInput.promptForImmediateConfirmation(
+      `${chalk.yellow('Config already exists:')} ${existing}. Overwrite with a fresh template? ${chalk.dim('[y/N]')} `,
+      false
+    )
+    if (!shouldOverwrite) {
+      console.log(chalk.yellow('Kept the existing config.'))
+      return
+    }
+  }
+
+  writeFileSync(targetPath, buildConfigTemplate(), 'utf-8')
+  console.log(`${chalk.green('Created')} ${targetPath}`)
+  if (existing && existing !== targetPath) {
+    // e.g. inup.config.json was found but we always write .inuprc, which is
+    // first in the loader's lookup order — the old file is now shadowed.
+    console.log(
+      chalk.yellow(`Note: ${existing} still exists but ${INIT_CONFIG_FILENAME} takes precedence.`)
+    )
+  }
+  console.log(chalk.dim('Every field is documented inline; comments are allowed in this file.'))
+}
+
 export async function runCli(options: CliOptions): Promise<void> {
   // Resolve colored-output intent before anything renders.
   applyColorSetting(options.color)
 
   const cwd = resolve(options.dir)
+
+  if (options.init) {
+    await runInit(cwd)
+    return
+  }
 
   if (options.debug || process.env.INUP_DEBUG === '1') {
     enableDebugLogging()
@@ -211,6 +264,10 @@ program
     'ignore packages (comma-separated, supports glob patterns like @babel/*)'
   )
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
+  .option(
+    '--init',
+    'create a commented .inuprc template documenting every option (asks before overwriting)'
+  )
   .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
