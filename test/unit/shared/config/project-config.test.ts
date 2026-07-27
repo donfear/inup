@@ -258,6 +258,12 @@ describe('stripJsonComments()', () => {
     })
   })
 
+  it('does not crash on a truncated file ending in a string escape', () => {
+    // Malformed input (unterminated string, dangling backslash at EOF): the
+    // stripper must pass it through untouched and let JSON.parse report it.
+    expect(stripJsonComments('{"a": "b\\')).toBe('{"a": "b\\')
+  })
+
   it('preserves line numbers by blanking instead of deleting', () => {
     const stripped = stripJsonComments('// one\n// two\n{}')
     expect(stripped.split('\n')).toHaveLength(3)
