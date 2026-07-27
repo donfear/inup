@@ -100,6 +100,27 @@ describe('project-config', () => {
       expect(config.ignore).toEqual(['valid', 'also-valid', 'still-valid'])
     })
 
+    it('should load ignoreMajor patterns', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({ ignoreMajor: ['@tiptap/*', 'react'] })
+      )
+
+      const config = loadProjectConfig(testDir)
+      expect(config.ignoreMajor).toEqual(['@tiptap/*', 'react'])
+    })
+
+    it('drops a non-array ignoreMajor field and filters non-string entries', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignoreMajor: '@tiptap/*' }))
+      expect(loadProjectConfig(testDir).ignoreMajor).toBeUndefined()
+
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        JSON.stringify({ ignoreMajor: ['@tiptap/*', 42, null] })
+      )
+      expect(loadProjectConfig(testDir).ignoreMajor).toEqual(['@tiptap/*'])
+    })
+
     it('should load showPeerDependencyVulnerabilities when set to a boolean', () => {
       writeFileSync(
         join(testDir, '.inuprc'),

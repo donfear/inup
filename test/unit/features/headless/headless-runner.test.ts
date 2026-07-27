@@ -291,6 +291,42 @@ describe('HeadlessRunner.run', () => {
       logSpy.mockRestore()
     })
 
+    it('target=latest holds ignoreMajor packages to their in-range bump', async () => {
+      // Detector-level suppression already cleared hasMajorUpdate and set
+      // majorIgnored; latest must not resurrect the major via latestVersion.
+      const majorIgnored = {
+        ...OUTDATED,
+        name: '@tiptap/core',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([majorIgnored])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({ name: '@tiptap/core', targetVersion: '^0.27.2' })
+      logSpy.mockRestore()
+    })
+
+    it('target=latest skips ignoreMajor packages without an in-range bump', async () => {
+      const suppressedMajorOnly = {
+        ...MAJOR_ONLY,
+        isOutdated: false,
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([suppressedMajorOnly])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
     it('--save-exact writes bare versions without the range prefix', async () => {
       mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})

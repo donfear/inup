@@ -114,8 +114,9 @@ Unlike `--json` and `--check`, **`--apply` writes**: it bumps `package.json` and
 manager's install to update the lockfile. By default (`--target minor`) it only applies **in-range**
 updates and leaves majors for you to review; `--target patch` stays within the current
 `major.minor` line (patch bumps only); `--target latest` includes majors. It honors `.inuprc`
-(`ignore`, `exclude`, `scanDirs`) exactly as the report does — a package the config excludes is
-never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
+(`ignore`, `ignoreMajor`, `exclude`, `scanDirs`) exactly as the report does — a package the config
+excludes is never written, and an `ignoreMajor` match is held to its in-range bump even under
+`--target latest`. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 
 **pnpm catalogs work in every mode.** Dependencies declared as `catalog:` / `catalog:<name>` are
 resolved from `pnpm-workspace.yaml`; `--apply` writes the new range back into that file (comments
@@ -243,7 +244,7 @@ your name/email as repo secrets (Settings → Secrets and variables → Actions)
 Outputs: `outdated`, `vulnerable`, `pull-request-number`.
 
 > `@v1` floats to the latest `1.x` release; pin to `@v1.6.2` or a SHA for reproducible runs. inup
-> honors your `.inuprc` (`ignore`, `exclude`, `scanDirs`).
+> honors your `.inuprc` (`ignore`, `ignoreMajor`, `exclude`, `scanDirs`).
 
 </details>
 

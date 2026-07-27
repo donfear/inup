@@ -2,7 +2,7 @@
 title: Configuration
 description: The .inuprc file — ignore packages with globs, exclude directories, extend the scan list, and control vulnerability display.
 order: 40
-updated: 2026-07-06
+updated: 2026-07-27
 ---
 
 inup needs no configuration to run. When you want persistent project rules, add a JSON config file. inup looks for the first of these, searching from the working directory upward to the filesystem root:
@@ -18,6 +18,7 @@ Every mode honors it — the interactive picker, `--json`, `--check` and `--appl
 ```json
 {
   "ignore": ["@babel/*", "eslint-*", "typescript"],
+  "ignoreMajor": ["@tiptap/*"],
   "exclude": ["fixtures", "examples/.*"],
   "scanDirs": ["lib"],
   "showPeerDependencyVulnerabilities": false,
@@ -36,6 +37,20 @@ Packages to skip during upgrade checks. Supports exact names and glob patterns:
 - `"eslint-*"` — wildcard, `*` matches any sequence, `?` matches one character
 
 The same syntax works ad hoc via `--ignore` on the command line.
+
+### `ignoreMajor`
+
+Packages whose **major** updates are suppressed — minor and patch updates still show. Same pattern syntax as `ignore`. Use it for dependencies you deliberately keep on their current major (a UI kit mid-migration, a framework pinned by a peer range) without losing sight of safe in-range bumps.
+
+- A package whose only available update is a new major is treated as up to date.
+- When an in-range update exists, the package shows with the in-range target; the major is never offered — the interactive picker won't select it, and `--apply --target latest` holds the package to its in-range bump.
+- `--json` reports such entries with `"hasMajorUpdate": false` and `"majorIgnored": true` (the `latest` field stays truthful).
+
+```json
+{
+  "ignoreMajor": ["@tiptap/*"]
+}
+```
 
 ### `exclude`
 

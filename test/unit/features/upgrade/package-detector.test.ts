@@ -617,6 +617,131 @@ describe('PackageDetector edge paths', () => {
     expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
   })
 
+  it('treats a package as up to date when ignoreMajor suppresses its only update', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      // No in-range update: the only available bump crosses the major boundary.
+      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+          const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.0.0'] }
+          options.onBatchReady([
+            {
+              packageName: '@tiptap/core',
+              data,
+              completed: 1,
+              total: 1,
+              batchIndex: 0,
+              itemIndex: 0,
+            },
+          ])
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages).toHaveLength(1)
+      expect(packages[0]).toMatchObject({
+        name: '@tiptap/core',
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        majorIgnored: true,
+        latestVersion: '3.0.0',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('keeps the in-range update visible when ignoreMajor suppresses the major', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      mocks.findClosestMinorVersion.mockImplementation(() => '2.6.0')
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+          const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.6.0', '2.0.0'] }
+          options.onBatchReady([
+            {
+              packageName: '@tiptap/core',
+              data,
+              completed: 1,
+              total: 1,
+              batchIndex: 0,
+              itemIndex: 0,
+            },
+          ])
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages[0]).toMatchObject({
+        isOutdated: true,
+        hasRangeUpdate: true,
+        rangeVersion: '2.6.0',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+        latestVersion: '3.0.0',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('leaves majors intact for packages ignoreMajor does not match', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('react', '^17.0.0')])
+      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+          const data = { latestVersion: '18.0.0', allVersions: ['18.0.0', '17.0.0'] }
+          options.onBatchReady([
+            { packageName: 'react', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
+          ])
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages[0]).toMatchObject({
+        name: 'react',
+        isOutdated: true,
+        hasMajorUpdate: true,
+        majorIgnored: false,
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
   it('sorts scoped packages before unscoped ones', async () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       dep('zod', '^1.0.0'),

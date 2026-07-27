@@ -140,6 +140,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     scanDirs: projectConfig.scanDirs,
     maxDepth,
     ignorePackages,
+    ignoreMajorPackages: projectConfig.ignoreMajor,
     packageManager,
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
