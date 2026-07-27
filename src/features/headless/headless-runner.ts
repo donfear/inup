@@ -148,6 +148,11 @@ export class HeadlessRunner {
   /** Resolve the version a package should be bumped to under the given policy, or null to skip. */
   private resolveTargetVersion(pkg: PackageInfo, target: ApplyTarget): string | null {
     if (target === 'latest') {
+      // ignoreMajor holds matched packages to their in-range bump even under
+      // --target latest; without a range update there is nothing to write.
+      if (pkg.majorIgnored) {
+        return pkg.hasRangeUpdate ? pkg.rangeVersion || null : null
+      }
       return pkg.latestVersion || null
     }
     if (target === 'patch') {

@@ -14,6 +14,13 @@ export interface InupProjectConfig {
   ignore?: string[]
 
   /**
+   * Packages whose major updates are suppressed. Minor/patch updates still
+   * show; a package whose only available update is a new major is treated as
+   * up to date. Same pattern syntax as `ignore`.
+   */
+  ignoreMajor?: string[]
+
+  /**
    * Exclude directory patterns (regex patterns)
    */
   exclude?: string[]
@@ -93,6 +100,12 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   if (config.ignore) {
     if (Array.isArray(config.ignore)) {
       normalized.ignore = config.ignore.filter((item) => typeof item === 'string')
+    }
+  }
+
+  if (config.ignoreMajor) {
+    if (Array.isArray(config.ignoreMajor)) {
+      normalized.ignoreMajor = config.ignoreMajor.filter((item) => typeof item === 'string')
     }
   }
 

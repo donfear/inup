@@ -45,6 +45,7 @@ export class PackageDetector {
   private excludePatterns: string[]
   private scanDirs: string[]
   private ignorePackages: string[]
+  private ignoreMajorPackages: string[]
   private maxDepth: number
 
   private readonly batchSize = 10
@@ -64,6 +65,7 @@ export class PackageDetector {
     this.excludePatterns = options?.excludePatterns || []
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
+    this.ignoreMajorPackages = options?.ignoreMajorPackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.adaptive = options?.adaptive ?? true
     this.concurrency = options?.concurrency
@@ -443,10 +445,24 @@ export class PackageDetector {
         const latestClean = semver.coerce(latestVersion)?.version || latestVersion
 
         const hasRangeUpdate = minorClean !== null && minorClean !== installedClean
-        const hasMajorUpdate =
+        let hasMajorUpdate =
           semver.valid(latestClean) !== null &&
           semver.valid(installedClean) !== null &&
           semver.major(latestClean) > semver.major(installedClean)
+
+        // .inuprc ignoreMajor: majors for matched packages are never offered.
+        // A package whose only update is a new major counts as up to date;
+        // in-range minor/patch updates still surface normally.
+        let majorIgnored = false
+        if (
+          hasMajorUpdate &&
+          this.ignoreMajorPackages.length > 0 &&
+          isPackageIgnored(dep.name, this.ignoreMajorPackages)
+        ) {
+          majorIgnored = true
+          hasMajorUpdate = false
+        }
+
         const isOutdated = hasRangeUpdate || hasMajorUpdate
 
         if (isOutdated) {
@@ -473,6 +489,7 @@ export class PackageDetector {
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
+          majorIgnored,
           allVersions,
           deprecated: packageData.deprecated,
           enginesNode: packageData.enginesNode,

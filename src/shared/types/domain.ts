@@ -27,6 +27,7 @@ export interface PackageInfo {
   isOutdated: boolean
   hasRangeUpdate: boolean // If range version is different from current
   hasMajorUpdate: boolean // If latest version is a major update
+  majorIgnored?: boolean // Major update exists but is suppressed by .inuprc ignoreMajor
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases
@@ -103,6 +104,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
+  ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
   adaptive?: boolean // Adaptive registry concurrency. Defaults to true.
