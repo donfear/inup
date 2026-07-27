@@ -312,13 +312,22 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=latest skips ignoreMajor packages without an in-range bump', async () => {
+      // Normally the detector already drops these from the outdated set
+      // (isOutdated=false); keep them outdated here to pin the defensive
+      // branch in resolveTargetVersion itself.
       const suppressedMajorOnly = {
         ...MAJOR_ONLY,
-        isOutdated: false,
         hasMajorUpdate: false,
         majorIgnored: true,
       }
-      mocks.getOutdatedPackages.mockResolvedValue([suppressedMajorOnly])
+      const suppressedEmptyRange = {
+        ...OUTDATED,
+        name: 'no-range-data',
+        rangeVersion: '',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([suppressedMajorOnly, suppressedEmptyRange])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
