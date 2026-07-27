@@ -80,6 +80,7 @@ inup [options]
 -e, --exclude <patterns>      Skip directories (comma-separated regex)
 -i, --ignore <packages>       Ignore packages (comma-separated, glob supported)
 --max-depth <number>          Maximum scan depth for package discovery (default: 10)
+--init                        Create a commented .inuprc template (asks before overwriting)
 --package-manager <name>      Force package manager (npm, yarn, pnpm, bun)
 --json                        Print a machine-readable JSON report and exit (read-only)
 -c, --check                   Exit non-zero if updates exist, without writing (for CI)

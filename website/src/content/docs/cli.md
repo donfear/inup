@@ -2,7 +2,7 @@
 title: CLI reference
 description: Every inup flag — directories, package filters, headless JSON reports, CI checks, upgrade targets and exit codes.
 order: 20
-updated: 2026-07-06
+updated: 2026-07-27
 ---
 
 inup is a single command. Without flags it opens the interactive picker; with `--json`, `--check` or `--apply` (or when stdout isn't a TTY) it runs headless.
@@ -19,7 +19,9 @@ inup [options]
 | `-e, --exclude <patterns>` | Exclude paths matching regex patterns, comma-separated |
 | `-i, --ignore <packages>` | Ignore packages — comma-separated, glob supported (`@babel/*`) |
 | `--max-depth <number>` | Maximum directory depth for `package.json` discovery (default: 10) |
+| `--init` | Create a commented `.inuprc` template documenting every option (asks before overwriting) |
 | `--package-manager <name>` | Force the package manager: `npm`, `yarn`, `pnpm` or `bun` |
+| `--concurrency <n>` | Pin registry-fetch parallelism (1–24) and disable adaptive ramping — for slow or metered connections |
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation) |

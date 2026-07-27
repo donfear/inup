@@ -13,6 +13,10 @@ inup needs no configuration to run. When you want persistent project rules, add 
 
 Every mode honors it — the interactive picker, `--json`, `--check` and `--apply`. A package the config excludes is never reported or written.
 
+Despite the JSON format, `//` line comments and `/* ... */` block comments are allowed — inup strips them before parsing, so the file can document itself.
+
+The quickest start is `inup --init`: it writes a commented `.inuprc` template with every field documented inline (and asks before overwriting an existing config).
+
 ## Example
 
 ```json
@@ -67,6 +71,10 @@ Show vulnerability badges for `peerDependencies` in the package list. Defaults t
 ### `showOptionalDependencyVulnerabilities`
 
 Show vulnerability badges for `optionalDependencies`. Defaults to `false`.
+
+### `concurrency`
+
+Pin registry-fetch parallelism for this project (integer 1–24) and disable adaptive ramping — an escape hatch for known-slow or metered connections. The `--concurrency` flag overrides it.
 
 ## Environment variables
 
