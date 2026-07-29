@@ -1145,6 +1145,102 @@ describe('PackageDetector prerelease handling', () => {
     }
   })
 
+  it('reports prerelease-only packages unavailable to a STABLE install', async () => {
+    // Hard invariant: a stable install is never offered a prerelease, even
+    // when the package has zero stable publishes — same behavior as before
+    // prerelease support (unavailable), not a ^1.0.0-alpha.2 suggestion.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^0.9.0')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '1.0.0-alpha.2',
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-alpha.2', '1.0.0-alpha.1'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      latestVersion: 'unknown',
+      rangeVersion: 'unknown',
+    })
+  })
+
+  it('treats wildcard specifiers as up to date instead of resolving them to 0.0.0', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('anything-goes', 'x')])
+    mockRegistry({
+      'anything-goes': { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+  })
+
+  it('surfaces a same-major cross-tuple prerelease as the latest update', async () => {
+    // 1.0.0-beta.2 installed, the project moved on to 1.1.0-alpha.1: no
+    // same-tuple bump exists and no major is crossed, but latest must still
+    // show it — otherwise headless --target latest writes a version the
+    // interactive UI never displayed.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      lib: {
+        latestVersion: '0.19.5',
+        allVersions: ['0.19.5'],
+        prereleaseVersions: ['1.1.0-alpha.1', '1.0.0-beta.2'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: true,
+      hasRangeUpdate: false,
+      hasMajorUpdate: true,
+      latestVersion: '1.1.0-alpha.1',
+    })
+  })
+
+  it('does not let ignoreMajor suppress a same-major prerelease latest', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+      mockRegistry({
+        lib: {
+          latestVersion: '0.19.5',
+          allVersions: ['0.19.5'],
+          prereleaseVersions: ['1.1.0-alpha.1', '1.0.0-beta.2'],
+        },
+      })
+
+      const detector = new PackageDetector({ cwd: '/repo', ignoreMajorPackages: ['lib'] })
+      const packages = await detector.getOutdatedPackages()
+
+      // 1.0.0-beta.2 → 1.1.0-alpha.1 never crosses a major; ignoreMajor must
+      // not hide it.
+      expect(packages[0]).toMatchObject({
+        hasMajorUpdate: true,
+        majorIgnored: false,
+        latestVersion: '1.1.0-alpha.1',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
   it('resolves prerelease-only packages instead of marking them unavailable', async () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
     mockRegistry({

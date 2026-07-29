@@ -444,6 +444,15 @@ export class PackageDetector {
         const { latestVersion, allVersions, prereleaseVersions } = packageData
         const installed = parseCurrentVersion(dep.version)
         const currentIsPrerelease = (installed?.prerelease.length ?? 0) > 0
+
+        // A stable install never upgrades onto the prerelease channel.
+        // latestVersion is a prerelease only for prerelease-only packages
+        // (zero stable publishes) — report those unavailable, exactly as
+        // before prerelease support existed.
+        if (!currentIsPrerelease && semver.prerelease(latestVersion) !== null) {
+          return this.createFailedPackageInfo(dep)
+        }
+
         // Stable installs see the stable pool untouched; prerelease installs
         // also see prereleases on their own major.minor.patch tuple (npm range
         // semantics: ^1.0.0-beta.2 satisfies 1.0.0-rc.3).
@@ -462,17 +471,35 @@ export class PackageDetector {
         const latestClean = toComparableVersion(effectiveLatest) || effectiveLatest
 
         const hasRangeUpdate = minorClean !== null && minorClean !== installedClean
-        let hasMajorUpdate =
-          semver.valid(latestClean) !== null &&
+        const latestValid = semver.valid(latestClean) !== null
+        const crossesMajor =
+          latestValid &&
           semver.valid(installedClean) !== null &&
           semver.major(latestClean) > semver.major(installedClean)
+        let hasMajorUpdate: boolean
+        if (currentIsPrerelease) {
+          // Prerelease channel: the latest column shows anything the range
+          // bump cannot reach — including same-major cross-tuple prereleases
+          // (1.0.0-beta.2 → 1.1.0-alpha.1) that never cross a major. gt()
+          // keeps the interactive UI consistent with `--target latest`.
+          const rangeCeiling = minorClean ?? installedClean
+          hasMajorUpdate =
+            latestValid &&
+            semver.valid(rangeCeiling) !== null &&
+            semver.gt(latestClean, rangeCeiling)
+        } else {
+          hasMajorUpdate = crossesMajor
+        }
 
         // .inuprc ignoreMajor: majors for matched packages are never offered.
         // A package whose only update is a new major counts as up to date;
-        // in-range minor/patch updates still surface normally.
+        // in-range minor/patch updates still surface normally. Only true
+        // major crossings are suppressed — a same-major prerelease jump on
+        // the prerelease channel is not a major.
         let majorIgnored = false
         if (
           hasMajorUpdate &&
+          crossesMajor &&
           this.ignoreMajorPackages.length > 0 &&
           isPackageIgnored(dep.name, this.ignoreMajorPackages)
         ) {

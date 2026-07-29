@@ -241,14 +241,6 @@ export function renderPackageLine(
   // Trailing badges each occupy 3 columns: the dep-type marker ([D]/[P]/[O])
   // and the pnpm-catalog marker ([C]); both may be present at once.
   const badgeWidth = (state.type === 'dependencies' ? 0 : 3) + (state.catalog ? 3 : 0)
-  const truncatedName = VersionUtils.truncateMiddle(state.name, packageNameWidth - 1 - badgeWidth)
-
-  const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
-
-  const dashColor = isCurrentRow ? chalk.white : chalk.gray
-
-  const displayName = truncatedName !== state.name ? truncatedName : packageName
-
   const typeBadge = getTypeBadge(state.type)
   const shouldShowVulnerability = shouldDisplayVulnerabilityForDependency(state.type, options)
   const vulnBadge = shouldShowVulnerability ? getVulnerabilityBadge(state.vulnerability) : ''
@@ -256,6 +248,21 @@ export function renderPackageLine(
   // Deprecation / engines-incompatibility marker (independent of dep type).
   const healthBadge = getHealthBadge(state)
   const healthBadgeWidth = healthBadge ? VersionUtils.getVisualLength(healthBadge) + 1 : 0
+
+  // The name budget must leave room for EVERY badge in the section —
+  // vulnerability and health markers included — or a saturated name pushes
+  // them past the column and the whole row overflows and wraps the frame.
+  const truncatedName = VersionUtils.truncateMiddle(
+    state.name,
+    packageNameWidth - 1 - badgeWidth - vulnBadgeWidth - healthBadgeWidth
+  )
+
+  const shouldShowDashes = (paddingAmount: number): boolean => paddingAmount > 2
+
+  const dashColor = isCurrentRow ? chalk.white : chalk.gray
+
+  const displayName = truncatedName !== state.name ? truncatedName : packageName
+
   const nameLength = VersionUtils.getVisualLength(truncatedName)
   const namePadding = Math.max(
     0,

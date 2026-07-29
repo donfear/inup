@@ -724,6 +724,36 @@ describe('version column sizing for long prerelease versions', () => {
     }
   })
 
+  it('never overflows the terminal when badges, a long name, and grown columns combine', () => {
+    // Worst case: saturated name column + [HIGH] + [DEPR] + [D] badges while
+    // long prerelease versions grow every version column. The name budget
+    // must absorb the badges or the row wraps and corrupts the frame.
+    const loaded = makeSelectionState({
+      name: '@a-very-long-scope/an-extremely-long-package-name-for-testing',
+      currentVersionSpecifier: '^16.0.0-preview.9',
+      rangeVersion: '16.0.0-preview.10',
+      latestVersion: '16.0.0-preview.10',
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+      type: 'devDependencies',
+      deprecated: 'this package is deprecated',
+      vulnerability: {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-x',
+        advisories: [],
+      },
+    })
+    for (const terminalWidth of [84, 100, 111, 120, 139, 160]) {
+      const widths = computeVersionColumnWidths([loaded, longState], terminalWidth)
+      const badgedRow = renderPackageLine(loaded, 0, false, terminalWidth, {}, widths)
+      const plainRow = renderPackageLine(longState, 0, false, terminalWidth, {}, widths)
+
+      expect(VersionUtils.getVisualLength(badgedRow)).toBeLessThanOrEqual(terminalWidth)
+      expect(VersionUtils.getVisualLength(badgedRow)).toBe(VersionUtils.getVisualLength(plainRow))
+    }
+  })
+
   it('ignores range/latest lengths of rows that are not ready', () => {
     const pendingLong = makeSelectionState({
       loadState: 'pending',

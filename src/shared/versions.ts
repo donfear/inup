@@ -24,7 +24,8 @@ export interface ParsedVersions {
   latestVersion: string
   allVersions: string[]
   // Prerelease versions (any tag: alpha/beta/rc/preview/…), sorted descending.
-  // Optional: entries cached before this field existed lack it.
+  // Optional so callers tolerate data from sources that never carried it
+  // (hand-built fixtures, failed-fetch fallbacks).
   prereleaseVersions?: string[]
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
@@ -70,7 +71,13 @@ export function parseVersions(raw: string): ParsedVersions {
  * (the lowest version actually allowed) where coerce yielded 2.0.0.
  */
 export function parseCurrentVersion(specifier: string): semver.SemVer | null {
-  const exact = semver.valid(specifier.trim())
+  const trimmed = specifier.trim()
+  // Pure wildcards ('x', 'x.x', '*', '') pin nothing — minVersion would
+  // resolve them to 0.0.0 and flag every such dep as outdated (and a later
+  // applyVersionPrefix would write garbage like 'x2.5.1'). coerce returned
+  // null for these; keep that contract.
+  if (/^[xX*\s.]*$/.test(trimmed)) return null
+  const exact = semver.valid(trimmed)
   if (exact) return semver.parse(exact)
   try {
     const min = semver.minVersion(specifier)

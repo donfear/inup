@@ -118,6 +118,19 @@ describe('version utils', () => {
       expect(parseCurrentVersion('invalid')).toBeNull()
       expect(parseCurrentVersion('workspace:*')).toBeNull()
     })
+
+    it('returns null for pure wildcards instead of resolving them to 0.0.0', () => {
+      // minVersion('x') is 0.0.0 — resolving these would flag every wildcard
+      // dep as outdated and write invalid specifiers like 'x2.5.1' on apply.
+      expect(parseCurrentVersion('x')).toBeNull()
+      expect(parseCurrentVersion('X')).toBeNull()
+      expect(parseCurrentVersion('x.x')).toBeNull()
+      expect(parseCurrentVersion('*')).toBeNull()
+      expect(parseCurrentVersion('')).toBeNull()
+      expect(parseCurrentVersion('  ')).toBeNull()
+      // Partial wildcards still resolve like before
+      expect(parseCurrentVersion('1.x')?.version).toBe('1.0.0')
+    })
   })
 
   describe('isPrereleaseCurrent()', () => {
