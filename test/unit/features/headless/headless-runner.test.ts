@@ -86,6 +86,22 @@ const UP_TO_DATE = {
   hasMajorUpdate: false,
 }
 
+// A prerelease install with a newer same-tuple prerelease available. The
+// detector produced the candidate pool (stable + same-tuple prereleases) and
+// an effective latest on the prerelease channel.
+const PRERELEASE = {
+  name: 'vuetify-nuxt-module',
+  currentVersion: '^1.0.0-beta.2',
+  rangeVersion: '1.0.0-rc.3',
+  latestVersion: '1.0.0-rc.3',
+  allVersions: ['1.0.0-rc.3', '1.0.0-rc.1', '1.0.0-beta.2', '0.19.5'],
+  type: 'dependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: true,
+  hasMajorUpdate: false,
+}
+
 // Only a major bump is available — no in-range update. `--target minor` must skip this entirely.
 const MAJOR_ONLY = {
   name: 'chalk',
@@ -407,6 +423,75 @@ describe('HeadlessRunner.run', () => {
       expect(mocks.upgradePackages).not.toHaveBeenCalled()
       logSpy.mockRestore()
     })
+
+    it('target=minor writes a prerelease bump with the original prefix preserved', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({
+        name: 'vuetify-nuxt-module',
+        upgradeType: 'range',
+        targetVersion: '^1.0.0-rc.3',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('target=patch resolves the highest same-tuple prerelease from the pool', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0].targetVersion).toBe('^1.0.0-rc.3')
+      logSpy.mockRestore()
+    })
+
+    it('target=latest takes the effective latest on the prerelease channel', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices[0]).toMatchObject({
+        upgradeType: 'latest',
+        targetVersion: '^1.0.0-rc.3',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('--save-exact writes the bare prerelease version', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo', saveExact: true }).run({
+        apply: true,
+        target: 'minor',
+      })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices[0].targetVersion).toBe('1.0.0-rc.3')
+      logSpy.mockRestore()
+    })
+  })
+
+  it('plain report shows a prerelease bump without the (major) tag', async () => {
+    mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({})
+
+    const output = String(logSpy.mock.calls[0][0])
+    expect(output).toContain('vuetify-nuxt-module')
+    expect(output).toContain('1.0.0-rc.3')
+    expect(output).not.toContain('(major)')
+    logSpy.mockRestore()
   })
 
   it('stringifies non-Error failures before exiting', async () => {

@@ -12,6 +12,7 @@ import { getFooterHints } from '../../keymap'
 import { coloredInupLogo, getThemeColor } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
 import {
+  computeVersionColumnWidths,
   type PackageListRenderOptions,
   padLineToWidth,
   renderPackageLine,
@@ -178,6 +179,10 @@ export function renderInterface(
   output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
 
+  // Sized once per frame over every state (not the visible window), so the
+  // columns hold still while scrolling and long prerelease versions get room.
+  const columnWidths = computeVersionColumnWidths(states, terminalWidth)
+
   if (renderableItems && renderableItems.length > 0) {
     for (
       let i = scrollOffset;
@@ -195,14 +200,22 @@ export function renderInterface(
           item.originalIndex,
           item.originalIndex === currentRow,
           terminalWidth,
-          options
+          options,
+          columnWidths
         )
         output.push(line)
       }
     }
   } else {
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth, options)
+      const line = renderPackageLine(
+        states[i],
+        i,
+        i === currentRow,
+        terminalWidth,
+        options,
+        columnWidths
+      )
       output.push(line)
     }
   }

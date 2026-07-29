@@ -1,11 +1,14 @@
-import * as semver from 'semver'
 import type {
   PackageInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
   VulnerabilitySummary,
 } from '../../../shared/types'
-import { applyVersionPrefix } from '../../../shared/versions'
+import {
+  applyVersionPrefix,
+  parseCurrentVersion,
+  toComparableVersion,
+} from '../../../shared/versions'
 
 type CachedSummaryFn = (
   name: string,
@@ -67,9 +70,11 @@ export function createSelectionStates(
   const uniquePackages = deduplicatePackages(relevantPackages)
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
-    const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
-    const rangeClean = semver.coerce(pkg.rangeVersion)?.version || pkg.rangeVersion
-    const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
+    // parseCurrentVersion / toComparableVersion preserve prerelease tags —
+    // coerce would strip '-rc.3' and the upgrade would silently write ^1.0.0.
+    const currentClean = parseCurrentVersion(pkg.currentVersion)?.version || pkg.currentVersion
+    const rangeClean = toComparableVersion(pkg.rangeVersion) || pkg.rangeVersion
+    const latestClean = toComparableVersion(pkg.latestVersion) || pkg.latestVersion
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 
@@ -116,7 +121,7 @@ export function createPendingSelectionStates(
   )
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
-    const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
+    const currentClean = parseCurrentVersion(pkg.currentVersion)?.version || pkg.currentVersion
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 

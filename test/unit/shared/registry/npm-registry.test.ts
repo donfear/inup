@@ -107,6 +107,7 @@ describe('npm-registry', () => {
     expect(result.get('demo-pkg')).toEqual({
       latestVersion: '1.2.0',
       allVersions: ['1.2.0', '1.1.0', '1.0.0'],
+      prereleaseVersions: ['2.0.0-beta.1'],
     })
   })
 
@@ -172,6 +173,7 @@ describe('npm-registry', () => {
     expect(result.get('demo-pkg')).toEqual({
       latestVersion: '1.1.0',
       allVersions: ['1.1.0', '1.0.0'],
+      prereleaseVersions: [],
     })
   })
 
@@ -201,6 +203,7 @@ describe('npm-registry', () => {
     expect(result.get('good-pkg')).toEqual({
       latestVersion: '1.1.0',
       allVersions: ['1.1.0', '1.0.0'],
+      prereleaseVersions: [],
     })
     expect(result.get('bad-pkg')).toEqual({
       latestVersion: 'unknown',
@@ -797,6 +800,7 @@ describe('npm-registry', () => {
       expect(first.get('demo-pkg')).toEqual({
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
+        prereleaseVersions: [],
       })
 
       // Second run: registry validates the stored ETag → 304 with no body. The
@@ -823,6 +827,7 @@ describe('npm-registry', () => {
       expect(second.get('demo-pkg')).toEqual({
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
+        prereleaseVersions: [],
       })
     })
 

@@ -1,3 +1,4 @@
+import type { ParsedVersions } from '../versions'
 import type { DependencyEntry, NetworkProfile, PackageInfo } from './domain'
 
 export interface PackageLoadProgress {
@@ -86,7 +87,7 @@ export interface FetchPackageVersionsOptions {
 
 export interface RegistryBatchProgressItem {
   packageName: string
-  data: { latestVersion: string; allVersions: string[] }
+  data: ParsedVersions
   completed: number
   total: number
   batchIndex: number

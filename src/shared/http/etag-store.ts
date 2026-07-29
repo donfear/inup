@@ -38,7 +38,7 @@ interface EtagEntry {
 }
 
 /** Bump when the on-disk entry shape changes; old generations are ignored. */
-const SCHEMA = 'v1'
+const SCHEMA = 'v2' // v2: PackageVersionData gained prereleaseVersions
 
 /** Entries untouched for longer than this are swept on first access. */
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days

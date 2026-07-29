@@ -23,7 +23,13 @@ import type {
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
 } from '../../shared/types'
-import { findClosestMinorVersion } from '../../shared/versions'
+import {
+  buildRangeCandidates,
+  findClosestMinorVersion,
+  highestOverallVersion,
+  parseCurrentVersion,
+  toComparableVersion,
+} from '../../shared/versions'
 import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
 
 // Slow-connection heuristic: the hill-climb controller (HILL_CLIMB_TUNING:
@@ -435,27 +441,65 @@ export class PackageDetector {
           return this.createFailedPackageInfo(dep)
         }
 
-        const { latestVersion, allVersions } = packageData
-        const closestMinorVersion = findClosestMinorVersion(dep.version, allVersions)
+        const { latestVersion, allVersions, prereleaseVersions } = packageData
+        const installed = parseCurrentVersion(dep.version)
+        const currentIsPrerelease = (installed?.prerelease.length ?? 0) > 0
 
-        const installedClean = semver.coerce(dep.version)?.version || dep.version
+        // A stable install never upgrades onto the prerelease channel.
+        // latestVersion is a prerelease only for prerelease-only packages
+        // (zero stable publishes) — report those unavailable, exactly as
+        // before prerelease support existed.
+        if (!currentIsPrerelease && semver.prerelease(latestVersion) !== null) {
+          return this.createFailedPackageInfo(dep)
+        }
+
+        // Stable installs see the stable pool untouched; prerelease installs
+        // also see prereleases on their own major.minor.patch tuple (npm range
+        // semantics: ^1.0.0-beta.2 satisfies 1.0.0-rc.3).
+        const candidateVersions = buildRangeCandidates(installed, allVersions, prereleaseVersions)
+        const closestMinorVersion = findClosestMinorVersion(dep.version, candidateVersions)
+        // On the prerelease channel "latest" is the newest publish on any
+        // channel — a beta user is told about the rc and about the final.
+        const effectiveLatest = currentIsPrerelease
+          ? (highestOverallVersion(allVersions, prereleaseVersions) ?? latestVersion)
+          : latestVersion
+
+        const installedClean = installed?.version || dep.version
         const minorClean = closestMinorVersion
-          ? semver.coerce(closestMinorVersion)?.version || closestMinorVersion
+          ? toComparableVersion(closestMinorVersion) || closestMinorVersion
           : null
-        const latestClean = semver.coerce(latestVersion)?.version || latestVersion
+        const latestClean = toComparableVersion(effectiveLatest) || effectiveLatest
 
         const hasRangeUpdate = minorClean !== null && minorClean !== installedClean
-        let hasMajorUpdate =
-          semver.valid(latestClean) !== null &&
+        const latestValid = semver.valid(latestClean) !== null
+        const crossesMajor =
+          latestValid &&
           semver.valid(installedClean) !== null &&
           semver.major(latestClean) > semver.major(installedClean)
+        let hasMajorUpdate: boolean
+        if (currentIsPrerelease) {
+          // Prerelease channel: the latest column shows anything the range
+          // bump cannot reach — including same-major cross-tuple prereleases
+          // (1.0.0-beta.2 → 1.1.0-alpha.1) that never cross a major. gt()
+          // keeps the interactive UI consistent with `--target latest`.
+          const rangeCeiling = minorClean ?? installedClean
+          hasMajorUpdate =
+            latestValid &&
+            semver.valid(rangeCeiling) !== null &&
+            semver.gt(latestClean, rangeCeiling)
+        } else {
+          hasMajorUpdate = crossesMajor
+        }
 
         // .inuprc ignoreMajor: majors for matched packages are never offered.
         // A package whose only update is a new major counts as up to date;
-        // in-range minor/patch updates still surface normally.
+        // in-range minor/patch updates still surface normally. Only true
+        // major crossings are suppressed — a same-major prerelease jump on
+        // the prerelease channel is not a major.
         let majorIgnored = false
         if (
           hasMajorUpdate &&
+          crossesMajor &&
           this.ignoreMajorPackages.length > 0 &&
           isPackageIgnored(dep.name, this.ignoreMajorPackages)
         ) {
@@ -471,7 +515,7 @@ export class PackageDetector {
             loggedOutdated.add(outdatedKey)
             debugLog.info(
               'PackageDetector',
-              `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${latestVersion}`
+              `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${effectiveLatest}`
             )
           }
         }
@@ -480,7 +524,7 @@ export class PackageDetector {
           name: dep.name,
           currentVersion: dep.version,
           rangeVersion: closestMinorVersion || dep.version,
-          latestVersion,
+          latestVersion: effectiveLatest,
           type: dep.type,
           packageJsonPath: dep.packageJsonPath,
           catalog: dep.catalog,
@@ -490,7 +534,7 @@ export class PackageDetector {
           hasRangeUpdate,
           hasMajorUpdate,
           majorIgnored,
-          allVersions,
+          allVersions: candidateVersions,
           deprecated: packageData.deprecated,
           enginesNode: packageData.enginesNode,
         }

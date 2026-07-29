@@ -26,15 +26,11 @@ import type {
   OnBatchReadyCallback,
   RegistryBatchProgressItem,
 } from '../types'
-import { parseVersions } from '../versions'
+import { type ParsedVersions, parseVersions } from '../versions'
 import { type RegistryTarget, registryTargetFor } from './registry-config'
 
-export interface PackageVersionData {
-  latestVersion: string
-  allVersions: string[]
-  deprecated?: string // npm deprecation message for the latest version, if any
-  enginesNode?: string // declared engines.node range for the latest version, if any
-}
+// Aliased so the registry payload can never drift from what parseVersions emits.
+export type PackageVersionData = ParsedVersions
 
 const inFlightLookups = new InflightMap<PackageVersionData>()
 
