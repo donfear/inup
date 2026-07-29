@@ -11,6 +11,99 @@ import { VersionUtils } from '../version-format'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions
 
+export interface VersionColumnWidths {
+  current: number
+  range: number
+  latest: number
+}
+
+// Version column layout: dot + space + version + trailing space. The overhead
+// is what a column needs beyond the version text itself.
+const VERSION_COLUMN_OVERHEAD = 3
+const MIN_VERSION_COLUMN_WIDTH = 16
+const MAX_VERSION_COLUMN_WIDTH = 24
+const PREFIX_WIDTH = 2
+const SPACING_WIDTH = 3
+const MIN_PACKAGE_NAME_WIDTH = 24
+const MAX_PACKAGE_NAME_WIDTH = 50
+
+/**
+ * Size the three version columns for a render pass. Columns start at the
+ * classic 16 and grow — only as far as the terminal allows after the package
+ * name keeps its minimum — to fit the longest version on screen (prerelease
+ * specs like ^16.0.0-preview.10 overflow 16). Computed over ALL states, not
+ * just the visible window, so columns never shift while scrolling. Versions
+ * that still do not fit are middle-truncated by renderPackageLine.
+ */
+export function computeVersionColumnWidths(
+  states: PackageSelectionState[],
+  terminalWidth: number
+): VersionColumnWidths {
+  const need: VersionColumnWidths = {
+    current: MIN_VERSION_COLUMN_WIDTH,
+    range: MIN_VERSION_COLUMN_WIDTH,
+    latest: MIN_VERSION_COLUMN_WIDTH,
+  }
+  for (const state of states) {
+    const cap = (value: number) => Math.min(value, MAX_VERSION_COLUMN_WIDTH)
+    need.current = cap(
+      Math.max(
+        need.current,
+        VersionUtils.getVisualLength(state.currentVersionSpecifier) + VERSION_COLUMN_OVERHEAD
+      )
+    )
+    if (state.loadState !== 'ready') continue
+    if (state.hasRangeUpdate) {
+      const range = VersionUtils.applyVersionPrefix(
+        state.currentVersionSpecifier,
+        state.rangeVersion
+      )
+      need.range = cap(
+        Math.max(need.range, VersionUtils.getVisualLength(range) + VERSION_COLUMN_OVERHEAD)
+      )
+    }
+    if (state.hasMajorUpdate) {
+      const latest = VersionUtils.applyVersionPrefix(
+        state.currentVersionSpecifier,
+        state.latestVersion
+      )
+      need.latest = cap(
+        Math.max(need.latest, VersionUtils.getVisualLength(latest) + VERSION_COLUMN_OVERHEAD)
+      )
+    }
+  }
+
+  // Growth budget: whatever remains once the package name keeps its minimum
+  // width at the classic column sizes. The name column absorbs the squeeze —
+  // it already middle-truncates long names gracefully.
+  let pool = Math.max(
+    0,
+    terminalWidth -
+      PREFIX_WIDTH -
+      1 -
+      MIN_PACKAGE_NAME_WIDTH -
+      (MIN_VERSION_COLUMN_WIDTH * 3 + SPACING_WIDTH * 3)
+  )
+  const widths: VersionColumnWidths = {
+    current: MIN_VERSION_COLUMN_WIDTH,
+    range: MIN_VERSION_COLUMN_WIDTH,
+    latest: MIN_VERSION_COLUMN_WIDTH,
+  }
+  // Round-robin growth keeps the distribution fair when the pool runs short.
+  let grew = true
+  while (pool > 0 && grew) {
+    grew = false
+    for (const key of ['current', 'range', 'latest'] as const) {
+      if (pool > 0 && widths[key] < need[key]) {
+        widths[key]++
+        pool--
+        grew = true
+      }
+    }
+  }
+  return widths
+}
+
 export function padLineToWidth(line: string, terminalWidth: number): string {
   const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
   return line + ' '.repeat(padding)
@@ -39,7 +132,8 @@ export function renderPackageLine(
   _index: number,
   isCurrentRow: boolean,
   terminalWidth: number = 80,
-  options: PackageListRenderOptions = {}
+  options: PackageListRenderOptions = {},
+  columnWidths?: VersionColumnWidths
 ): string {
   const prefix = isCurrentRow ? getThemeColor('success')('❯ ') : '  '
 
@@ -78,8 +172,19 @@ export function renderPackageLine(
   const isPending = state.loadState === 'pending'
   const isFailed = state.loadState === 'failed'
 
+  const currentColumnWidth = columnWidths?.current ?? MIN_VERSION_COLUMN_WIDTH
+  const rangeColumnWidth = columnWidths?.range ?? MIN_VERSION_COLUMN_WIDTH
+  const latestColumnWidth = columnWidths?.latest ?? MIN_VERSION_COLUMN_WIDTH
+
+  // A version that outgrows its column is middle-truncated: both ends carry
+  // the signal (^16.0.0-preview.10 → ^16.0.…eview.10), and a fixed row width
+  // is what keeps the frame from wrapping. Truncate the raw string before
+  // coloring — truncateMiddle strips ANSI codes.
+  const fitColumn = (version: string, columnWidth: number): string =>
+    VersionUtils.truncateMiddle(version, columnWidth - VERSION_COLUMN_OVERHEAD)
+
   const currentDot = isCurrentSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
-  const currentVersion = chalk.white(state.currentVersionSpecifier)
+  const currentVersion = chalk.white(fitColumn(state.currentVersionSpecifier, currentColumnWidth))
 
   let rangeDot = ''
   let rangeVersionText = ''
@@ -95,7 +200,9 @@ export function renderPackageLine(
       state.currentVersionSpecifier,
       state.rangeVersion
     )
-    rangeVersionText = getThemeColor('versionRange')(rangeVersionWithPrefix)
+    rangeVersionText = getThemeColor('versionRange')(
+      fitColumn(rangeVersionWithPrefix, rangeColumnWidth)
+    )
   } else {
     rangeDot = getThemeColor('dotEmpty')('○')
     rangeVersionText = ''
@@ -115,26 +222,20 @@ export function renderPackageLine(
       state.currentVersionSpecifier,
       state.latestVersion
     )
-    latestVersionText = getThemeColor('versionLatest')(latestVersionWithPrefix)
+    latestVersionText = getThemeColor('versionLatest')(
+      fitColumn(latestVersionWithPrefix, latestColumnWidth)
+    )
   } else {
     latestDot = getThemeColor('dotEmpty')('○')
     latestVersionText = ''
   }
 
-  const currentColumnWidth = 16
-  const rangeColumnWidth = 16
-  const latestColumnWidth = 16
-  const spacingWidth = 3
-
-  const maxPackageNameWidth = 50
-  const minPackageNameWidth = 24
   const otherColumnsWidth =
-    currentColumnWidth + rangeColumnWidth + latestColumnWidth + spacingWidth * 3
-  const prefixWidth = 2
-  const availableForPackageName = terminalWidth - prefixWidth - otherColumnsWidth - 1
+    currentColumnWidth + rangeColumnWidth + latestColumnWidth + SPACING_WIDTH * 3
+  const availableForPackageName = terminalWidth - PREFIX_WIDTH - otherColumnsWidth - 1
   const packageNameWidth = Math.min(
-    maxPackageNameWidth,
-    Math.max(minPackageNameWidth, availableForPackageName)
+    MAX_PACKAGE_NAME_WIDTH,
+    Math.max(MIN_PACKAGE_NAME_WIDTH, availableForPackageName)
   )
 
   // Trailing badges each occupy 3 columns: the dep-type marker ([D]/[P]/[O])

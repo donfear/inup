@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  computeVersionColumnWidths,
   renderInterface,
   renderPackageLine,
   renderPackagesTable,
@@ -631,6 +632,113 @@ describe('renderPackageLine option columns', () => {
   })
 })
 
+describe('version column sizing for long prerelease versions', () => {
+  const longState = makeSelectionState({
+    name: 'next',
+    currentVersionSpecifier: '^16.0.0-preview.9',
+    currentVersion: '16.0.0-preview.9',
+    rangeVersion: '16.0.0-preview.10',
+    latestVersion: '16.0.0-preview.10',
+    hasRangeUpdate: true,
+    hasMajorUpdate: true,
+  })
+
+  it('keeps default column widths when every version fits', () => {
+    const widths = computeVersionColumnWidths([baseState], 120)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+
+  it('grows columns to fit long prerelease versions on a wide terminal', () => {
+    // ^16.0.0-preview.10 = 18 visual chars, +3 column overhead = 21.
+    const widths = computeVersionColumnWidths([baseState, longState], 120)
+
+    expect(widths).toEqual({ current: 20, range: 21, latest: 21 })
+  })
+
+  it('shows the full prerelease version when the terminal has room', () => {
+    const text = renderPlain([longState], { terminalWidth: 120 })
+
+    expect(text).toContain('^16.0.0-preview.9')
+    expect(text).toContain('^16.0.0-preview.10')
+    expect(text).not.toContain('…')
+  })
+
+  it('never grows columns past the name-column minimum on a narrow terminal', () => {
+    // 84 columns leave zero growth budget: name keeps its 24 minimum.
+    const widths = computeVersionColumnWidths([longState], 84)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+
+  it('splits a short growth budget round-robin across the columns', () => {
+    // 88 columns leave a pool of 4: +2 current, +1 range, +1 latest.
+    const widths = computeVersionColumnWidths([longState], 88)
+
+    expect(widths).toEqual({ current: 18, range: 17, latest: 17 })
+  })
+
+  it('caps column growth for absurdly long versions', () => {
+    const absurd = makeSelectionState({
+      currentVersionSpecifier: '^1.0.0-canary.20260729093015.sha.abcdef12',
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+    const widths = computeVersionColumnWidths([absurd], 200)
+
+    expect(widths.current).toBe(24)
+  })
+
+  it('middle-truncates a version that cannot fit its column', () => {
+    const lines = renderInterface(
+      [longState],
+      0,
+      0,
+      10,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      '',
+      1,
+      84
+    )
+    const row = lines.map(stripAnsi).find((line) => line.includes('next'))
+
+    expect(row).toBeDefined()
+    expect(row).toContain('…')
+    expect(row).not.toContain('^16.0.0-preview.10')
+    // Both ends of the version survive the ellipsis
+    expect(row).toMatch(/\^16\.0\.[^ ]*…[^ ]*w\.10/)
+  })
+
+  it('keeps every row at the same visual width when versions overflow', () => {
+    for (const terminalWidth of [84, 100, 120]) {
+      const widths = computeVersionColumnWidths([baseState, longState], terminalWidth)
+      const rowWidths = [baseState, longState].flatMap((state) => [
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, false, terminalWidth, {}, widths)),
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, true, terminalWidth, {}, widths)),
+      ])
+      expect(new Set(rowWidths).size).toBe(1)
+    }
+  })
+
+  it('ignores range/latest lengths of rows that are not ready', () => {
+    const pendingLong = makeSelectionState({
+      loadState: 'pending',
+      currentVersionSpecifier: '^1.0.0',
+      rangeVersion: '16.0.0-preview.10',
+      latestVersion: '16.0.0-preview.10',
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+    })
+    const widths = computeVersionColumnWidths([pendingLong], 120)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+})
+
 describe('package-list render fallbacks', () => {
   it('renders a scoped name without a slash on both row states', () => {
     const state = makeSelectionState({ name: '@solo' })
@@ -640,9 +748,11 @@ describe('package-list render fallbacks', () => {
   })
 
   it('pads the current-version column with spaces when dashes do not fit', () => {
-    const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-beta.12' })
+    // 13 visual chars fill the default 16-wide column exactly (dot + space +
+    // version + trailing space) — no room for dashes, spaces only.
+    const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-b1' })
 
-    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-beta.12')
+    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-b1')
   })
 
   it('colors the header with the provided color for unknown package managers', () => {
