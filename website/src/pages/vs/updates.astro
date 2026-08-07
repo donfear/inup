@@ -50,22 +50,23 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where updates is stronger — use it if you need these</h2>
-  <ul>
-    <li>
-      <strong>Speed and non-interactive batching.</strong> Sub-second checks
-      make it ideal for a quick CI or scripting step.
-    </li>
-    <li>
-      <strong>Beyond JavaScript.</strong> One tool also bumps Cargo, Go, Docker
-      images, GitHub Actions and Makefile tool versions.
-    </li>
-    <li>
-      <strong>Typed config and a cooldown.</strong> An <code>updates.config</code>
-      file (TS/JS) plus a publish-age cooldown to skip brand-new releases —
-      neither of which inup has today.
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Speed and non-interactive batching.</strong> Sub-second checks
+        make it ideal for a quick CI or scripting step.
+      </li>
+      <li>
+        <strong>Beyond JavaScript.</strong> One tool also bumps Cargo, Go, Docker
+        images, GitHub Actions and Makefile tool versions.
+      </li>
+      <li>
+        <strong>Typed config and a cooldown.</strong> An <code>updates.config</code>
+        file (TS/JS) plus a publish-age cooldown to skip brand-new releases —
+        neither of which inup has today.
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> reach for updates when you

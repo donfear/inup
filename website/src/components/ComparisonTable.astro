@@ -1,52 +1,101 @@
 ---
-import { competitors, rowsFor, type ColumnId } from '../data/comparison';
+/**
+ * The comparison matrix, in one shape for every page that shows it: the
+ * homepage teaser, /compare/ and each head-to-head. Rows the tool wins
+ * alone and the row it loses are both badged — the table is only worth
+ * reading if the losses are as visible as the wins.
+ */
+import { competitors, rowsFor, verdictFor, type ColumnId } from '../data/comparison';
 import Mark from './Mark.astro';
 
 interface Props {
   /** Columns to render, in order. 'inup' is highlighted. */
   columns: ColumnId[];
-  /** Restrict to the curated homepage subset of rows. */
+  /** Restrict to the curated overview subset of rows. */
   homepageOnly?: boolean;
+  /** Badge the rows only inup wins and the row it loses. */
+  badges?: boolean;
 }
 
-const { columns, homepageOnly = false } = Astro.props;
+const { columns, homepageOnly = false, badges = true } = Astro.props;
 const rows = rowsFor(columns).filter((r) => !homepageOnly || r.homepage);
 
+// Badges only earn their place where a row stands out from a field. On a
+// two-column head-to-head "only inup" is just the ✓/✗ pair restated, and
+// nearly every row would carry one — there, the concession is the amber
+// panel further down the page instead.
+const showBadges = badges && columns.length > 2;
+
 const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
+
+// The grid template and the mobile scroll floor both follow the column
+// count, so one component serves a two-column slice and a five-column table.
+const style = [
+  `--cmp-cols: 1.7fr repeat(${columns.length}, minmax(4rem, 0.85fr))`,
+  `--cmp-min: ${14 + columns.length * 5}rem`,
+].join(';');
+
+const badgeText = { 'only-inup': 'only inup', 'inup-loses': 'inup loses' } as const;
 ---
 
-<div class="overflow-x-auto rounded-2xl border border-border bg-surface shadow-xs">
-  <table class="w-full min-w-[560px] border-collapse text-sm">
-    <thead>
-      <tr class="bg-muted/50">
-        <th scope="col" class="sticky left-0 z-10 border-b border-border bg-surface"
-        ><span class="sr-only">Feature</span></th>
-        {columns.map((c) => (
-          <th
-            scope="col"
-            class={`whitespace-nowrap border-b border-border px-4 py-3 text-center font-mono text-xs ${
-              c === 'inup' ? 'font-bold text-brand' : 'font-medium text-muted-foreground'
-            }`}
-          >{label(c)}</th>
-        ))}
-      </tr>
-    </thead>
-    <tbody>
-      {rows.map((r, i) => (
-        <tr class="transition-colors hover:bg-muted/40">
-          <th
-            scope="row"
-            class={`sticky left-0 z-10 bg-surface px-4 py-2.5 text-left font-medium ${i === rows.length - 1 ? '' : 'border-b border-border'}`}
-          >{r.feature}</th>
-          {columns.map((c) => (
-            <td
-              class={`px-4 py-2.5 text-center ${i === rows.length - 1 ? '' : 'border-b border-border'} ${
-                c === 'inup' ? 'bg-brand/5' : ''
-              }`}
-            ><Mark v={r.support[c]!} /></td>
-          ))}
-        </tr>
-      ))}
-    </tbody>
-  </table>
+<div class="cmp" data-cmp style={style}>
+  <div class="cmp-head cmp-row">
+    <span>capability</span>
+    {columns.map((c) =>
+      c === 'inup' ? (
+        <span class="cmp-inup font-semibold text-brand">{label(c)}</span>
+      ) : (
+        <span class="text-center">{label(c)}</span>
+      ),
+    )}
+  </div>
+  <div class="cmp-body">
+    {rows.map((r) => {
+      const verdict = showBadges ? verdictFor(r, columns) : null;
+      return (
+        <div
+          class={`cmp-row ${verdict === 'only-inup' ? 'cmp-row-win' : ''} ${
+            verdict === 'inup-loses' ? 'cmp-row-loss' : ''
+          }`}
+          data-cmp-row
+        >
+          <span class="flex flex-wrap items-center gap-2 text-foreground">
+            {r.feature}
+            {verdict && (
+              <span
+                class={`cmp-badge ${verdict === 'only-inup' ? 'cmp-badge-win' : 'cmp-badge-loss'}`}
+              >{badgeText[verdict]}</span>
+            )}
+          </span>
+          {columns.map((c) =>
+            c === 'inup' ? (
+              <span class="cmp-inup"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
+            ) : (
+              <span class="flex justify-center"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
+            ),
+          )}
+        </div>
+      );
+    })}
+  </div>
 </div>
+
+<script>
+  // Reveal the rows in sequence when the table scrolls in — one observer per
+  // table, so a page can carry more than one (the /compare/ overview and a
+  // head-to-head slice) without them firing together.
+  const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        e.target.querySelectorAll('[data-cmp-row]').forEach((row, i) => {
+          setTimeout(() => row.classList.add('is-in'), prefersReduced ? 0 : i * 90);
+        });
+        observer.unobserve(e.target);
+      }
+    },
+    { threshold: 0.15 },
+  );
+  for (const table of document.querySelectorAll('[data-cmp]')) observer.observe(table);
+</script>

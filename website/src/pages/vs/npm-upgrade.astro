@@ -53,18 +53,19 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where npm-upgrade is stronger — use it if you need these</h2>
-  <ul>
-    <li>
-      <strong>A simple one-by-one flow.</strong> It walks each dependency with a
-      Yes / No / Show changelog / Ignore prompt — minimal and focused for small
-      npm projects.
-    </li>
-    <li>
-      <strong>Global packages.</strong> A <code>--global</code> mode upgrades
-      your globally installed npm packages, which inup does not do.
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>A simple one-by-one flow.</strong> It walks each dependency with a
+        Yes / No / Show changelog / Ignore prompt — minimal and focused for small
+        npm projects.
+      </li>
+      <li>
+        <strong>Global packages.</strong> A <code>--global</code> mode upgrades
+        your globally installed npm packages, which inup does not do.
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> for a small npm-only

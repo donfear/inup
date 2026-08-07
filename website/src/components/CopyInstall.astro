@@ -24,3 +24,25 @@ const iconSize = size === 'lg' ? 15 : 14;
   <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={iconSize} /></span>
   <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={iconSize} /></span>
 </button>
+
+<script>
+  // The chip copies itself wherever it appears (homepage, /compare/, CTAs).
+  // Bundled once by Astro no matter how many chips a page renders.
+  for (const chip of navigator.clipboard
+    ? document.querySelectorAll('[data-copy-install]')
+    : []) {
+    chip.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('npx inup');
+      } catch {
+        return; // permission denied — leave the chip as-is
+      }
+      chip.querySelector('.copy-hint')?.classList.add('hidden');
+      chip.querySelector('.copied-hint')?.classList.remove('hidden');
+      setTimeout(() => {
+        chip.querySelector('.copy-hint')?.classList.remove('hidden');
+        chip.querySelector('.copied-hint')?.classList.add('hidden');
+      }, 1500);
+    });
+  }
+</script>

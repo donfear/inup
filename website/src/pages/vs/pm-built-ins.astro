@@ -55,17 +55,18 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where the built-ins are stronger — use them if you need these</h2>
-  <ul>
-    <li>
-      <strong>Nothing to install.</strong> They ship with the package manager
-      you already have, so there's zero setup for a quick one-off upgrade.
-    </li>
-    <li>
-      <strong>Native by definition.</strong> Each is maintained in lockstep with
-      its own package manager's resolver and lockfile format.
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Nothing to install.</strong> They ship with the package manager
+        you already have, so there's zero setup for a quick one-off upgrade.
+      </li>
+      <li>
+        <strong>Native by definition.</strong> Each is maintained in lockstep with
+        its own package manager's resolver and lockfile format.
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> if you live in a single

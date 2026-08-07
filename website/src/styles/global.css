@@ -787,23 +787,33 @@
     background: var(--surface);
   }
 
+  /* --cmp-cols is set per instance (the column count varies: four tools on
+     the overview, two on a head-to-head), so one grid serves every table. */
   .cmp-row {
     display: grid;
-    grid-template-columns: 1.7fr 0.8fr 0.8fr 0.8fr 0.9fr;
+    grid-template-columns: var(--cmp-cols, 1.7fr repeat(4, 0.8fr));
     align-items: center;
   }
 
+  /* Vertical padding sits on the cells, not the row, so the inup spine can
+     stretch edge to edge and read as one continuous column. */
   .cmp-head {
-    padding: 1rem 1.25rem;
+    padding-inline: 1.25rem;
     background: color-mix(in srgb, var(--foreground) 3%, var(--surface));
     border-bottom: 1px solid var(--border);
     font-family: var(--font-mono, ui-monospace);
-    font-size: 0.78rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--muted-foreground);
   }
 
+  .cmp-head > * {
+    padding-block: 0.85rem;
+  }
+
   .cmp-body .cmp-row {
-    padding: 0.875rem 1.25rem;
+    padding-inline: 1.25rem;
     font-size: 0.875rem;
     border-bottom: 1px solid var(--border);
     opacity: 0;
@@ -811,6 +821,10 @@
     transition:
       opacity 0.4s ease,
       translate 0.4s ease;
+  }
+
+  .cmp-body .cmp-row > * {
+    padding-block: 0.875rem;
   }
 
   .cmp-body .cmp-row:last-child {
@@ -855,13 +869,141 @@
     }
   }
 
+  /* Row badges. The page only reads as honest if the row inup loses is
+     marked as loudly as the rows it wins alone — same shape, risk color. */
+  .cmp-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.4rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .cmp-badge-win {
+    color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 14%, transparent);
+  }
+
+  .cmp-badge-loss {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 16%, transparent);
+  }
+
+  /* The two flagged row states wash the whole row, so the badge is a
+     confirmation of something already visible rather than the only cue. */
+  .cmp-body .cmp-row-win {
+    background: color-mix(in srgb, var(--brand) 3.5%, transparent);
+  }
+
+  .cmp-body .cmp-row-loss {
+    background: color-mix(in srgb, var(--warning) 4%, transparent);
+  }
+
   @media (width < 48rem) {
     .cmp {
       overflow-x: auto;
     }
     .cmp-row {
-      min-width: 33rem;
+      min-width: var(--cmp-min, 33rem);
     }
+  }
+}
+
+/* ————————————————————————————————————————————————
+   /compare — the scoreboard, the matrix and the head-to-heads.
+   ———————————————————————————————————————————————— */
+@layer components {
+  .score-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (width >= 40rem) {
+    .score-strip {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .score-tile {
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    background: var(--surface);
+    padding: 0.875rem 1rem;
+    text-align: center;
+  }
+
+  .score-tile-lead {
+    border-color: color-mix(in srgb, var(--brand) 35%, transparent);
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--brand) 8%, var(--surface)),
+      var(--surface)
+    );
+  }
+
+  .score-value {
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--foreground);
+  }
+
+  .score-tile-lead .score-value {
+    color: var(--brand);
+  }
+
+  .score-label {
+    margin-top: 0.35rem;
+    font-size: 0.78rem;
+    /* "PM built-ins" is the widest label — balance it onto two even lines
+       instead of orphaning "ins" after the hyphen. */
+    text-wrap: balance;
+    color: var(--muted-foreground);
+  }
+
+  /* Head-to-head card grid — one card per /vs/ page. */
+  .h2h {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  @media (width >= 40rem) {
+    .h2h {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (width >= 64rem) {
+    .h2h {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  /* Amber panel: the paragraph that concedes a point. Same risk color the
+     picker uses for "read this first", so the meaning carries over. */
+  .panel-warn {
+    border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--warning) 5%, transparent);
+    padding: 1.25rem 1.4rem;
+  }
+
+  .panel-warn-label {
+    margin: 0 0 0.5rem;
+    font-family: var(--font-mono, ui-monospace);
+    font-size: 0.65rem;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--warning);
   }
 }
 

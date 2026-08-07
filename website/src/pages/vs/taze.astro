@@ -49,23 +49,24 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where taze is stronger — use it if you need these</h2>
-  <ul>
-    <li>
-      <strong>Per-package update policy.</strong> taze's
-      <code>packageMode</code> maps exact names or regexes to
-      major/minor/patch/ignore — “majors for typescript, minors for all
-      <code>@types/*</code>”. inup's config can only ignore or exclude
-      packages.
-    </li>
-    <li>
-      <strong>Typed configuration.</strong> <code>taze.config.ts</code> with
-      <code>defineConfig</code>, shared across runs and CI.
-    </li>
-    <li>
-      <strong>A programmatic API</strong> (<code>CheckPackages()</code>).
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Per-package update policy.</strong> taze's
+        <code>packageMode</code> maps exact names or regexes to
+        major/minor/patch/ignore — “majors for typescript, minors for all
+        <code>@types/*</code>”. inup's config can only ignore or exclude
+        packages.
+      </li>
+      <li>
+        <strong>Typed configuration.</strong> <code>taze.config.ts</code> with
+        <code>defineConfig</code>, shared across runs and CI.
+      </li>
+      <li>
+        <strong>A programmatic API</strong> (<code>CheckPackages()</code>).
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> if you want codified per-package
