@@ -4,3 +4,4 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - '@iconify-json/lucide@1.2.122'
+  - '@types/node@26.2.0'
