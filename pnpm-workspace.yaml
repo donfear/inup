@@ -2,3 +2,5 @@ packages:
   - website
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@iconify-json/lucide@1.2.122'
