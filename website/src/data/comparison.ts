@@ -26,6 +26,10 @@ export interface Competitor {
   /** Short header label for tight tables. */
   short: string;
   url: string;
+  /** Path segment of the head-to-head page: /vs/<slug>/. */
+  slug: string;
+  /** One line for the head-to-head card on /compare/. */
+  blurb: string;
 }
 
 export const competitors: Record<CompetitorId, Competitor> = {
@@ -34,48 +38,64 @@ export const competitors: Record<CompetitorId, Competitor> = {
     name: 'npm-check-updates',
     short: 'ncu',
     url: 'https://github.com/raineorshine/npm-check-updates',
+    slug: 'npm-check-updates',
+    blurb: 'The closest tool. Mature rules and doctor mode, no audit in the picker.',
   },
   taze: {
     id: 'taze',
     name: 'taze',
     short: 'taze',
     url: 'https://github.com/antfu-collective/taze',
+    slug: 'taze',
+    blurb: 'Modern, catalog-aware, per-package rules. No audit, no changelogs.',
   },
   'npm-check': {
     id: 'npm-check',
     name: 'npm-check',
     short: 'npm-check',
     url: 'https://github.com/dylang/npm-check',
+    slug: 'npm-check',
+    blurb: 'Finds unused dependencies. Not published since July 2022.',
   },
   builtin: {
     id: 'builtin',
     name: 'PM built-ins',
     short: 'PM built-ins',
     url: 'https://docs.npmjs.com/cli/commands/npm-update',
+    slug: 'pm-built-ins',
+    blurb: 'One per package manager, four to learn. No audit, no changelogs.',
   },
   renovate: {
     id: 'renovate',
     name: 'Renovate',
     short: 'Renovate',
     url: 'https://github.com/renovatebot/renovate',
+    slug: 'renovate',
+    blurb: 'An always-on bot that opens PRs. inup is the local pass.',
   },
   dependabot: {
     id: 'dependabot',
     name: 'Dependabot',
     short: 'Dependabot',
     url: 'https://github.com/dependabot/dependabot-core',
+    slug: 'dependabot',
+    blurb: "GitHub's built-in bot. Hosted, scheduled, no interactive choice.",
   },
   updates: {
     id: 'updates',
     name: 'updates',
     short: 'updates',
     url: 'https://github.com/silverwind/updates',
+    slug: 'updates',
+    blurb: 'Fast, multi-ecosystem, non-interactive. A checker, not a picker.',
   },
   'npm-upgrade': {
     id: 'npm-upgrade',
     name: 'npm-upgrade',
     short: 'npm-upgrade',
     url: 'https://github.com/th0r/npm-upgrade',
+    slug: 'npm-upgrade',
+    blurb: 'Interactive and changelog-aware, but npm-only and single-package.',
   },
 };
 
@@ -298,4 +318,42 @@ export function rowsFor(columns: ColumnId[]): FeatureRow[] {
       columns.every((c) => r.support[c] !== undefined) &&
       columns.some((c) => r.support[c] !== 'no'),
   );
+}
+
+/**
+ * The four-column overview shared by the homepage teaser and /compare/, so
+ * the two can never show different marks for the same capability.
+ */
+export const overviewColumns: ColumnId[] = ['inup', 'ncu', 'taze', 'builtin'];
+
+/** Every tool the site compares against, in matrix order. */
+export const competitorList: Competitor[] = (Object.keys(competitors) as CompetitorId[]).map(
+  (id) => competitors[id],
+);
+
+/**
+ * Which way a row cuts, within one column set. Drives the row badges: the
+ * page is only honest if the row inup loses is marked as loudly as the
+ * rows it wins alone.
+ */
+export type RowVerdict = 'only-inup' | 'inup-loses' | null;
+
+export function verdictFor(row: FeatureRow, columns: ColumnId[]): RowVerdict {
+  const others = columns.filter((c) => c !== 'inup');
+  if (row.support.inup === 'yes' && others.every((c) => row.support[c] === 'no')) {
+    return 'only-inup';
+  }
+  if (row.support.inup === 'no' && others.some((c) => row.support[c] === 'yes')) {
+    return 'inup-loses';
+  }
+  return null;
+}
+
+/** Yes-marks per column over a row set — the score tiles on /compare/. */
+export function scoresFor(columns: ColumnId[], forRows: FeatureRow[]) {
+  return columns.map((column) => ({
+    column,
+    yes: forRows.filter((r) => r.support[column] === 'yes').length,
+    of: forRows.length,
+  }));
 }

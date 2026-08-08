@@ -57,27 +57,28 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where ncu is stronger — use it if you need these</h2>
-  <ul>
-    <li>
-      <strong>Doctor mode.</strong> <code>ncu --doctor</code> applies
-      upgrades one by one, runs your tests, and identifies the exact upgrade
-      that breaks them. inup has nothing comparable.
-    </li>
-    <li>
-      <strong>Cooldown.</strong> <code>ncu --cooldown</code> skips versions
-      published fewer than N days ago — a practical defence against
-      supply-chain attacks that inup currently lacks.
-    </li>
-    <li>
-      <strong>Fine-grained policy.</strong> Per-package target functions and
-      filters let you encode rules like “majors for typescript, patches for
-      eslint”. inup's config only supports ignore and exclude.
-    </li>
-    <li>
-      <strong>A programmatic API and Deno support.</strong>
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Doctor mode.</strong> <code>ncu --doctor</code> applies
+        upgrades one by one, runs your tests, and identifies the exact upgrade
+        that breaks them. inup has nothing comparable.
+      </li>
+      <li>
+        <strong>Cooldown.</strong> <code>ncu --cooldown</code> skips versions
+        published fewer than N days ago — a practical defence against
+        supply-chain attacks that inup currently lacks.
+      </li>
+      <li>
+        <strong>Fine-grained policy.</strong> Per-package target functions and
+        filters let you encode rules like “majors for typescript, patches for
+        eslint”. inup's config only supports ignore and exclude.
+      </li>
+      <li>
+        <strong>A programmatic API and Deno support.</strong>
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> ncu is the safer default for batch

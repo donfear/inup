@@ -47,19 +47,20 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>What you'd genuinely miss</h2>
-  <ul>
-    <li>
-      <strong>Unused-dependency detection.</strong> npm-check tells you when
-      a dependency isn't imported anywhere (via depcheck). inup doesn't do
-      this — pair it with{' '}
-      <a href="https://github.com/webpro-nl/knip">knip</a>, which does it
-      far more thoroughly than npm-check ever did.
-    </li>
-    <li>
-      <strong>Global package checks</strong> (<code>npm-check -g</code>).
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Unused-dependency detection.</strong> npm-check tells you when
+        a dependency isn't imported anywhere (via depcheck). inup doesn't do
+        this — pair it with{' '}
+        <a href="https://github.com/webpro-nl/knip">knip</a>, which does it
+        far more thoroughly than npm-check ever did.
+      </li>
+      <li>
+        <strong>Global package checks</strong> (<code>npm-check -g</code>).
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> npm-check earned its popularity, but

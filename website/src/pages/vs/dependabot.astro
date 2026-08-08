@@ -53,22 +53,23 @@ import { base } from '../../lib/url';
     </li>
   </ul>
 
-  <h2>Where Dependabot is stronger — use it if you need these</h2>
-  <ul>
-    <li>
-      <strong>Zero-setup, GitHub-native automation.</strong> Turn it on in
-      repository settings and it opens scheduled PRs with no local step.
-    </li>
-    <li>
-      <strong>Automatic security updates.</strong> Tight integration with GitHub
-      security advisories opens fix PRs for vulnerable dependencies on its own.
-    </li>
-    <li>
-      <strong>Grouping, auto-merge, and non-JS ecosystems.</strong> Grouped
-      update PRs, auto-merge via GitHub, and coverage of 30+ ecosystems beyond
-      npm.
-    </li>
-  </ul>
+  <Fragment slot="wins">
+    <ul>
+      <li>
+        <strong>Zero-setup, GitHub-native automation.</strong> Turn it on in
+        repository settings and it opens scheduled PRs with no local step.
+      </li>
+      <li>
+        <strong>Automatic security updates.</strong> Tight integration with GitHub
+        security advisories opens fix PRs for vulnerable dependencies on its own.
+      </li>
+      <li>
+        <strong>Grouping, auto-merge, and non-JS ecosystems.</strong> Grouped
+        update PRs, auto-merge via GitHub, and coverage of 30+ ecosystems beyond
+        npm.
+      </li>
+    </ul>
+  </Fragment>
 
   <Fragment slot="verdict">
     <p class="m-0 mb-2"><strong>Honest verdict:</strong> Dependabot is the easiest

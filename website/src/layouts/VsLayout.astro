@@ -2,8 +2,8 @@
 import ComparisonTable from '../components/ComparisonTable.astro';
 import Base from './Base.astro';
 import { breadcrumbs } from '../lib/seo';
-import { absUrl } from '../lib/url';
-import { verifiedOn, type ColumnId } from '../data/comparison';
+import { absUrl, base } from '../lib/url';
+import { competitors, verifiedOn, type ColumnId } from '../data/comparison';
 
 interface Props {
   title: string;
@@ -17,9 +17,15 @@ interface Props {
 const { title, description, heading, columns, faq = [] } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 
+// The page is always inup against exactly one tool; the layout derives it
+// from the columns so no page has to repeat itself in a second prop.
+const rivalId = columns.find((c) => c !== 'inup') as Exclude<ColumnId, 'inup'>;
+const rival = competitors[rivalId];
+
 const jsonLd: Array<Record<string, unknown>> = [
   breadcrumbs([
     { name: 'inup', item: absUrl('/', Astro.site!) },
+    { name: 'Compare', item: absUrl('/compare/', Astro.site!) },
     { name: heading, item: canonical },
   ]),
   ...(faq.length > 0
@@ -39,28 +45,53 @@ const jsonLd: Array<Record<string, unknown>> = [
 ---
 
 <Base title={title} description={description} jsonLd={jsonLd}>
-  <div class="mx-auto max-w-3xl px-6">
-    <section class="pt-14 pb-8 sm:pt-20">
-      <p class="m-0 mb-4 font-mono text-xs tracking-[0.08em] uppercase text-muted-foreground">
-        comparison · verified {verifiedOn}
-      </p>
-      <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight sm:text-4xl">{heading}</h1>
-      <div class="prose text-lg text-muted-foreground">
-        <slot name="lede" />
+  <div class="mx-auto max-w-4xl px-6">
+    <nav class="pt-10 font-mono text-xs text-muted-foreground" aria-label="Breadcrumb">
+      <a class="no-underline hover:text-foreground" href={`${base}/compare/`}>compare</a>
+      <span class="px-1.5" aria-hidden="true">/</span>
+      <span>{rival.name}</span>
+    </nav>
+
+    {/* The verdict leads instead of closing the page: someone who reads one
+        thing here should read the recommendation, not scroll for it. */}
+    <section class="grid gap-8 pt-8 pb-10 lg:grid-cols-[1fr_19rem] lg:items-start">
+      <div>
+        <h1 class="m-0 mb-4 text-3xl font-bold tracking-tight text-balance sm:text-4xl">
+          {heading}
+        </h1>
+        <div class="prose text-lg text-muted-foreground">
+          <slot name="lede" />
+        </div>
       </div>
+
+      <aside
+        class="rounded-2xl border border-brand/25 bg-surface bg-gradient-to-b from-brand/8 to-transparent px-6 py-5 text-sm shadow-xs"
+      >
+        <p class="eyebrow m-0 mb-2">verdict</p>
+        <slot name="verdict" />
+      </aside>
     </section>
 
     <ComparisonTable columns={columns} />
+
+    <p class="mt-3 mb-0 font-mono text-xs text-muted-foreground">
+      verified against each tool's own documentation on {verifiedOn}
+    </p>
 
     <div class="prose py-10">
       <slot />
     </div>
 
-    <div
-      class="mb-10 rounded-2xl border border-brand/25 bg-surface bg-gradient-to-b from-brand/8 to-transparent px-6 py-5 shadow-xs"
-    >
-      <slot name="verdict" />
-    </div>
+    {/* Optional, and named for the tool that wins: a comparison nobody can
+        lose is a sales page, so the concession gets its own panel. */}
+    {Astro.slots.has('wins') && (
+      <div class="panel-warn mb-10">
+        <p class="panel-warn-label">where {rival.short} wins</p>
+        <div class="prose m-0 text-sm">
+          <slot name="wins" />
+        </div>
+      </div>
+    )}
 
     {faq.length > 0 && (
       <section class="mb-12">

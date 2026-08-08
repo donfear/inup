@@ -1,7 +1,7 @@
 ---
+import ComparisonTable from '../components/ComparisonTable.astro';
 import CopyInstall from '../components/CopyInstall.astro';
 import Icon from '../components/Icon.astro';
-import Mark from '../components/Mark.astro';
 import Base from '../layouts/Base.astro';
 // The real recording from the repo (the README embeds the gif variant) —
 // imported from docs/demo/ so re-recording the demo updates the site
@@ -9,7 +9,7 @@ import Base from '../layouts/Base.astro';
 import demoVideo from '../../../docs/demo/interactive-upgrade.mp4';
 import demoPoster from '../assets/demo-poster.webp';
 import { site } from '../data/site';
-import { competitors, rowsFor, verifiedOn, type ColumnId } from '../data/comparison';
+import { competitorList, overviewColumns, verifiedOn } from '../data/comparison';
 import { testStats, features as readmeFeatures } from '../lib/readme';
 import { stats } from '../lib/stats';
 import type { IconName } from '../components/icons';
@@ -80,11 +80,6 @@ const features: Feature[] = featurePresentation.map((presentation, i) => {
   return { ...presentation, title: copy.title, body: copy.body };
 });
 
-// The comparison matrix is built from the real data so it can never drift
-// from comparison.ts. The homepage shows a curated subset of four columns.
-const cmpColumns: ColumnId[] = ['inup', 'ncu', 'taze', 'builtin'];
-const cmpRows = rowsFor(cmpColumns).filter((r) => r.homepage);
-const cmpLabel = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
 ---
 
 <Base
@@ -98,9 +93,11 @@ const cmpLabel = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short)
   <div class="scroll-progress" data-progress aria-hidden="true"></div>
   <div class="ambient" aria-hidden="true"></div>
 
-  <!-- Hero -->
-  <header class="mx-auto max-w-3xl px-6 pt-16 pb-16 text-center sm:pt-24">
-    <p class="reveal m-0 mb-8 flex justify-center">
+  {/* Hero — the headline states the problem, the recording answers it. The
+      only terminal on this fold is a real session: a mocked-up picker beside
+      a genuine recording of the same picker would be redundant at best. */}
+  <header class="mx-auto max-w-6xl px-6 pt-14 pb-6 sm:pt-20">
+    <p class="reveal m-0 mb-7 flex">
       <a
         href={`${base}/changelog/`}
         class="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/5 py-1.5 pr-4 pl-3 font-mono text-xs text-brand no-underline transition-colors hover:border-brand/50"
@@ -114,37 +111,45 @@ const cmpLabel = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short)
     </p>
 
     <h1
-      class="kinetic m-0 mb-6 text-4xl leading-[1.05] font-bold tracking-tight sm:text-6xl"
+      class="kinetic m-0 mb-10 max-w-[20ch] text-4xl leading-[1.05] font-bold tracking-tight text-balance sm:text-5xl lg:text-6xl"
     >
-      <span>The</span> <span class="hero-cmd">upgrade-interactive</span><br />
-      <span>npm</span> <span>never</span> <span>shipped.</span>
+      <span>Your lockfile is</span> <span class="text-brand">nine months</span>{' '}
+      <span>behind and you don't know which part is dangerous.</span>
     </h1>
 
-    <p class="reveal mx-auto m-0 mb-9 max-w-[36rem] text-lg leading-relaxed text-pretty text-muted-foreground">
-      One command for <strong class="font-normal text-foreground"
-        >npm, yarn, pnpm &amp; bun</strong
-      >. Pick upgrades in an interactive terminal UI — see vulnerabilities and
-      changelogs <strong class="font-normal text-foreground">before</strong> you commit.
-      Zero config, monorepo-ready.
+    <p class="reveal m-0 max-w-[44rem] text-lg leading-relaxed text-pretty text-muted-foreground">
+      inup reads every workspace in one pass and shows the drift per package —
+      with the advisory and the release notes attached to the bump, not to a
+      separate tab. One command for{' '}
+      <strong class="font-normal text-foreground">npm, yarn, pnpm &amp; bun</strong>.
     </p>
 
-    <div class="reveal flex flex-wrap items-center justify-center gap-3">
-      <CopyInstall />
-      <a
-        href={`${base}/docs/getting-started/`}
-        class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
-      >
-        Read the docs <Icon name="arrow-up-right" size={15} class="text-brand" />
-      </a>
+    <div class="reveal mt-8">
+      <div class="flex flex-wrap items-center gap-3">
+        <CopyInstall />
+        <a
+          href={`${base}/docs/getting-started/`}
+          class="inline-flex h-12 items-center gap-1.5 rounded-xl bg-brand px-5 text-sm font-semibold text-primary-foreground no-underline shadow-xs transition-shadow hover:shadow-md hover:shadow-brand/20"
+        >
+          Read the docs <Icon name="arrow-up-right" size={15} />
+        </a>
+        <a
+          href={`${base}/compare/`}
+          class="inline-flex h-12 items-center gap-1.5 rounded-xl border border-border bg-surface px-5 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
+        >
+          Compare tools <Icon name="scale" size={15} class="text-brand" />
+        </a>
+      </div>
+
+      <p class="mt-5 mb-0 font-mono text-xs leading-relaxed text-muted-foreground">
+        or install: npm i -g inup · pnpm add -g inup · yarn global add inup ·
+        bun add -g inup
+      </p>
     </div>
-
-    <p class="reveal mt-6 mb-0 font-mono text-xs text-muted-foreground">
-      or install: npm i -g inup · pnpm add -g inup · yarn global add inup · bun add -g inup
-    </p>
   </header>
 
-  <!-- Demo — the real recording, in place of the animated mock terminal -->
-  <section class="mx-auto max-w-5xl px-6 pb-4">
+  <!-- Demo — the real recording, and the only terminal on the fold -->
+  <section class="mx-auto max-w-6xl px-6 pb-4">
     <figure class="reveal m-0">
       <div class="rounded-2xl bg-gradient-to-b from-brand-2/25 via-brand/10 to-transparent p-px">
         {/* No autoplay attribute and preload=none: the script below starts
@@ -321,42 +326,25 @@ inup --apply <span class="text-term-green">--target minor</span></code></pre>
       each tool's docs on {verifiedOn}.
     </p>
 
-    <div class="reveal cmp" data-cmp>
-      <div class="cmp-head cmp-row" role="row">
-        <span></span>
-        {cmpColumns.map((c) => (
-          <span class={`text-center font-mono ${c === 'inup' ? 'text-brand' : ''}`}>{cmpLabel(c)}</span>
-        ))}
-      </div>
-      <div class="cmp-body">
-        {cmpRows.map((r) => (
-          <div class="cmp-row" data-cmp-row>
-            <span class="text-foreground">{r.feature}</span>
-            {cmpColumns.map((c) =>
-              c === 'inup' ? (
-                <span class="cmp-inup"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
-              ) : (
-                <span class="flex justify-center"><span class="cmp-mark"><Mark v={r.support[c]!} /></span></span>
-              ),
-            )}
-          </div>
-        ))}
-      </div>
+    <div class="reveal">
+      <ComparisonTable columns={overviewColumns} homepageOnly />
     </div>
 
     <p class="mt-4 mb-0 max-w-[66ch] font-mono text-xs leading-relaxed text-muted-foreground">
       "PM built-ins" = <code>yarn upgrade-interactive</code>,
       <code>pnpm update -i</code>, <code>bun update -i</code>,
       <code>deno outdated -i</code> — each works with its own package manager
-      only. Detailed head-to-heads: inup vs{' '}
-      <a href={`${base}/vs/npm-check-updates/`} class="link">npm-check-updates</a>,{' '}
-      <a href={`${base}/vs/taze/`} class="link">taze</a>,{' '}
-      <a href={`${base}/vs/npm-check/`} class="link">npm-check</a>,{' '}
-      <a href={`${base}/vs/npm-upgrade/`} class="link">npm-upgrade</a>,{' '}
-      <a href={`${base}/vs/updates/`} class="link">updates</a>,{' '}
-      <a href={`${base}/vs/pm-built-ins/`} class="link">PM built-ins</a>,{' '}
-      <a href={`${base}/vs/renovate/`} class="link">Renovate</a> and{' '}
-      <a href={`${base}/vs/dependabot/`} class="link">Dependabot</a>.
+      only.
+    </p>
+
+    <p class="reveal mt-6 mb-0">
+      <a
+        href={`${base}/compare/`}
+        class="inline-flex items-center gap-1.5 rounded-xl border border-border bg-surface px-5 py-3 text-sm font-medium no-underline shadow-xs transition-all hover:border-brand/40 hover:shadow-md hover:shadow-brand/5"
+      >
+        All {competitorList.length} comparisons{' '}
+        <Icon name="arrow-up-right" size={15} class="text-brand" />
+      </a>
     </p>
   </section>
 
@@ -393,25 +381,6 @@ inup --apply <span class="text-term-green">--target minor</span></code></pre>
     video.play().catch(() => {
       // Autoplay blocked (e.g. data saver): fall back to manual controls.
       video.controls = true;
-    });
-  }
-
-  // The install command copies itself (when the Clipboard API exists).
-  for (const chip of navigator.clipboard
-    ? document.querySelectorAll('[data-copy-install]')
-    : []) {
-    chip.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText('npx inup');
-      } catch {
-        return; // permission denied — leave the chip as-is
-      }
-      chip.querySelector('.copy-hint')?.classList.add('hidden');
-      chip.querySelector('.copied-hint')?.classList.remove('hidden');
-      setTimeout(() => {
-        chip.querySelector('.copy-hint')?.classList.remove('hidden');
-        chip.querySelector('.copied-hint')?.classList.add('hidden');
-      }, 1500);
     });
   }
 
@@ -473,25 +442,6 @@ inup --apply <span class="text-term-green">--target minor</span></code></pre>
   );
   for (const el of document.querySelectorAll<HTMLElement>('[data-count]')) {
     countObserver.observe(el);
-  }
-
-  // Comparison matrix: reveal rows in sequence when the table scrolls in.
-  const cmp = document.querySelector('[data-cmp]');
-  if (cmp) {
-    const cmpObserver = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (!e.isIntersecting) continue;
-          const rows = cmp.querySelectorAll('[data-cmp-row]');
-          rows.forEach((row, i) => {
-            setTimeout(() => row.classList.add('is-in'), prefersReduced ? 0 : i * 90);
-          });
-          cmpObserver.unobserve(e.target);
-        }
-      },
-      { threshold: 0.15 },
-    );
-    cmpObserver.observe(cmp);
   }
 
   // Reading-progress bar: width tracks scroll fraction, updated on a rAF
