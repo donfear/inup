@@ -35,7 +35,9 @@ function findEnvFile(): string | null {
 /** Parse a minimal KEY=VALUE env file. Ignores blanks and `#` comments. */
 function parseEnv(contents: string): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const rawLine of contents.split(/\r?\n/)) {
+  // Strip a UTF-8 BOM (common from Windows editors) — otherwise it fuses onto the
+  // first key and that variable silently never matches.
+  for (const rawLine of contents.replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const line = rawLine.trim()
     if (!line || line.startsWith('#')) continue
     const eq = line.indexOf('=')
