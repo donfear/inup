@@ -4,3 +4,27 @@ allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
   - '@iconify-json/lucide@1.2.122'
+  - '@astrojs/internal-helpers@0.10.3'
+  - '@astrojs/markdown-satteri@0.3.6'
+  - '@biomejs/biome@2.5.9'
+  - '@biomejs/cli-darwin-arm64@2.5.9'
+  - '@biomejs/cli-darwin-x64@2.5.9'
+  - '@biomejs/cli-linux-arm64-musl@2.5.9'
+  - '@biomejs/cli-linux-arm64@2.5.9'
+  - '@biomejs/cli-linux-x64-musl@2.5.9'
+  - '@biomejs/cli-linux-x64@2.5.9'
+  - '@biomejs/cli-win32-arm64@2.5.9'
+  - '@biomejs/cli-win32-x64@2.5.9'
+  - '@vitest/coverage-v8@4.1.11'
+  - '@vitest/expect@4.1.11'
+  - '@vitest/mocker@4.1.11'
+  - '@vitest/pretty-format@4.1.11'
+  - '@vitest/runner@4.1.11'
+  - '@vitest/snapshot@4.1.11'
+  - '@vitest/spy@4.1.11'
+  - '@vitest/utils@4.1.11'
+  - astro-icon@1.2.0
+  - astro@7.2.3
+  - marked@18.0.10
+  - vitest@4.1.11
+  - wrap-ansi@10.0.1
