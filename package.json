@@ -71,7 +71,7 @@
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^4.1.11",
     "dependency-cruiser": "^18.2.0",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
   "dependencies": {
