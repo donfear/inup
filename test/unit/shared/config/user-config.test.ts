@@ -85,6 +85,22 @@ describe('ConfigManager', () => {
     expect(error).toHaveBeenCalledWith('Error reading config:', expect.anything())
   })
 
+  it('degrades a BOM-prefixed config to empty and recovers on the next write', () => {
+    // A user hand-editing config.json with a Windows editor can leave a UTF-8 BOM,
+    // which JSON.parse rejects. Reads must degrade, and the next write must heal it.
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mkdirSync(pathsMock.configDir, { recursive: true })
+    const configPath = join(pathsMock.configDir, 'config.json')
+    writeFileSync(configPath, `\uFEFF${JSON.stringify({ theme: 'dracula' })}`)
+
+    expect(configManager.getTheme()).toBeNull()
+    expect(error).toHaveBeenCalledWith('Error reading config:', expect.anything())
+
+    configManager.setTheme('nord')
+    expect(configManager.getTheme()).toBe('nord')
+    expect(readFileSync(configPath, 'utf8').charCodeAt(0)).not.toBe(0xfeff)
+  })
+
   describe('network profile', () => {
     const validProfile = (overrides: Partial<NetworkProfile> = {}): NetworkProfile => ({
       schemaVersion: 1,
