@@ -1,15 +1,16 @@
+import { stripVTControlCharacters } from 'node:util'
 import cliTruncate from 'cli-truncate'
 import stringWidth from 'string-width'
-import stripAnsiPackaged from 'strip-ansi'
 import wrapAnsi from 'wrap-ansi'
 
 // Thin wrappers over the battle-tested terminal-string stack (string-width,
-// strip-ansi, wrap-ansi, cli-truncate). The previous hand-rolled versions
-// handled emoji but had no East Asian Width tables, so CJK text was counted at
-// width 1 and misaligned every column that contained it.
+// wrap-ansi, cli-truncate). The previous hand-rolled versions handled emoji but
+// had no East Asian Width tables, so CJK text was counted at width 1 and
+// misaligned every column that contained it. Stripping is the one piece Node
+// ships itself, so it needs no dependency.
 
 export function stripAnsi(text: string): string {
-  return stripAnsiPackaged(text)
+  return stripVTControlCharacters(text)
 }
 
 /** Terminal columns `text` occupies: ANSI-aware, emoji- and CJK-correct. */
