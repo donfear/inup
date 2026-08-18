@@ -67,15 +67,15 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.9",
-    "@types/node": "^25.9.5",
+    "@types/node": "^26.2.0",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^4.1.11",
     "dependency-cruiser": "^18.2.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
+    "chalk": "^6.0.0",
     "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
     "env-paths": "^4.0.0",
