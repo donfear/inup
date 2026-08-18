@@ -1,7 +1,12 @@
 /**
- * The site's icon vocabulary, mapped to Iconify names (Lucide for UI,
- * Simple Icons for brand marks). astro-icon inlines each SVG at build
- * time — no icon font, no CDN, no client requests.
+ * The site's icon vocabulary, mapped to Iconify names. astro-icon inlines
+ * each SVG at build time — no icon font, no CDN, no client requests.
+ *
+ * Lucide covers the UI set. The one brand mark we use is vendored into
+ * `src/icons/` (astro-icon's local collection, referenced without a
+ * prefix) rather than pulled from `@iconify-json/simple-icons`, which
+ * shipped 4.7 MB of icon data for this single glyph. Simple Icons is
+ * CC0-1.0, so the copy carries no attribution requirement.
  */
 export const iconNames = {
   check: 'lucide:check',
@@ -24,7 +29,7 @@ export const iconNames = {
   keyboard: 'lucide:keyboard',
   zap: 'lucide:zap',
   scale: 'lucide:scale',
-  github: 'simple-icons:github',
+  github: 'github',
   rss: 'lucide:rss',
   sun: 'lucide:sun',
   moon: 'lucide:moon',
