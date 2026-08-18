@@ -20,10 +20,12 @@ export interface JsonFormat {
   indent: string | number
   /** Whether the original file ended with a trailing newline. */
   trailingNewline: boolean
+  /** Line-ending style of the original file. CRLF files (common on Windows) must round-trip. */
+  newline: '\n' | '\r\n'
 }
 
 /**
- * Detect the indentation and trailing-newline style of a raw JSON document so a
+ * Detect the indentation, line-ending, and trailing-newline style of a raw JSON document so a
  * re-serialized version can preserve the original formatting instead of normalizing it.
  *
  * The first indented line's leading whitespace is exactly one indent unit; using it verbatim
@@ -34,8 +36,22 @@ export function detectJsonFormat(raw: string): JsonFormat {
   const match = raw.match(/\n([ \t]+)\S/)
   return {
     indent: match ? match[1] : 2,
-    trailingNewline: raw.endsWith('\n'),
+    trailingNewline: /\n$/.test(raw),
+    newline: raw.includes('\r\n') ? '\r\n' : '\n',
   }
+}
+
+/**
+ * Serialize with JSON.stringify, then restore the document's original line-ending and
+ * trailing-newline style. JSON.stringify only ever emits `\n`, so a CRLF package.json
+ * would otherwise be silently rewritten to LF — pure diff churn for Windows users.
+ */
+export function stringifyWithFormat(value: unknown, format: JsonFormat): string {
+  let content = JSON.stringify(value, null, format.indent)
+  if (format.newline === '\r\n') {
+    content = content.replace(/\n/g, '\r\n')
+  }
+  return content + (format.trailingNewline ? format.newline : '')
 }
 
 export async function readPackageJsonAsync(path: string): Promise<PackageJson> {

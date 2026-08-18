@@ -354,6 +354,105 @@ describe('PackageUpgrader', () => {
       expect(readFileSync(pkgPath, 'utf-8')).toBe(raw)
       logSpy.mockRestore()
     })
+
+    it('preserves CRLF line endings instead of silently rewriting the file to LF', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw =
+        '{\r\n' +
+        '  "name": "fixture",\r\n' +
+        '  "dependencies": {\r\n' +
+        '    "lodash": "^4.0.0"\r\n' +
+        '  }\r\n' +
+        '}\r\n'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.0.0',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(
+        '{\r\n' +
+          '  "name": "fixture",\r\n' +
+          '  "dependencies": {\r\n' +
+          '    "lodash": "^4.17.21"\r\n' +
+          '  }\r\n' +
+          '}\r\n'
+      )
+      logSpy.mockRestore()
+    })
+
+    it('leaves a CRLF file byte-identical when the chosen version already matches on disk', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw =
+        '{\r\n  "name": "fixture",\r\n  "dependencies": {\r\n    "lodash": "^4.17.21"\r\n  }\r\n}\r\n'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages(
+        [
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.17.21',
+          },
+        ],
+        []
+      )
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(raw)
+      logSpy.mockRestore()
+    })
+  })
+
+  it('logs the package directory, not the package.json file path (Windows-safe dirname)', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    writeFileSync(
+      pkgPath,
+      `${JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.0.0' } }, null, 2)}\n`
+    )
+
+    // quiet mode logs plainly to stderr — no spinner frames to fish through
+    const upgrader = new PackageUpgrader(makePackageManager(), { quiet: true })
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await upgrader.upgradePackages(
+      [
+        {
+          name: 'lodash',
+          packageJsonPath: pkgPath,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^4.17.21',
+          currentVersionSpecifier: '^4.0.0',
+        },
+      ],
+      []
+    )
+
+    const upgraded = errSpy.mock.calls
+      .map((call) => String(call[0]))
+      .find((line) => line.includes('Upgraded'))
+    expect(upgraded).toContain(`in ${testDir}`)
+    expect(upgraded).not.toContain('package.json')
+    errSpy.mockRestore()
   })
 
   describe('pnpm catalog entries', () => {
