@@ -4,7 +4,12 @@ import { dirname } from 'node:path'
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { executeCommand } from '../../shared/exec'
-import { detectJsonFormat, findWorkspaceRoot, readPackageJson } from '../../shared/fs'
+import {
+  detectJsonFormat,
+  findWorkspaceRoot,
+  readPackageJson,
+  stringifyWithFormat,
+} from '../../shared/fs'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
 import type {
   DependencyType,
@@ -222,7 +227,9 @@ export class PackageUpgrader {
       return
     }
 
-    const packageDir = packageJsonPath.replace('/package.json', '')
+    // dirname, not string replace: Windows paths use backslashes, so a '/package.json'
+    // replace would silently no-op there and log the full file path instead of the dir.
+    const packageDir = dirname(packageJsonPath)
     // The spinner animates on stdout; skip it in quiet mode so the --json document stays clean.
     const spinner = this.quiet
       ? null
@@ -255,11 +262,11 @@ export class PackageUpgrader {
         })
       }
 
-      // Write back the modified package.json, preserving the original indentation and
-      // trailing-newline style. Skip the write entirely when nothing actually changed.
+      // Write back the modified package.json, preserving the original indentation,
+      // line-ending, and trailing-newline style. Skip the write entirely when nothing
+      // actually changed.
       const format = detectJsonFormat(rawContent)
-      const nextContent =
-        JSON.stringify(packageJson, null, format.indent) + (format.trailingNewline ? '\n' : '')
+      const nextContent = stringifyWithFormat(packageJson, format)
       if (nextContent !== rawContent) {
         writeFileSync(packageJsonPath, nextContent)
       }

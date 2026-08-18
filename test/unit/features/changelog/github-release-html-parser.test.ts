@@ -79,4 +79,13 @@ describe('extractReleaseNotesFromHtml', () => {
       'one\n\ntwo\nthree'
     )
   })
+
+  it('drops carriage returns from CRLF-formatted release page HTML', () => {
+    const html = wrap('<p>alpha</p>\r\n<p>beta</p>\r\n')
+
+    const notes = extractReleaseNotesFromHtml(html)
+
+    expect(notes).toBe('alpha\n\nbeta')
+    expect(notes!.includes('\r')).toBe(false)
+  })
 })

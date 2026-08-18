@@ -86,6 +86,25 @@ describe('loadInupLocalEnv', () => {
     expect(process.env.T_SINGLE).toBe('baz')
   })
 
+  it('strips a UTF-8 BOM so the first key still matches (Windows editors)', () => {
+    existsMock.mockReturnValueOnce(true)
+    readMock.mockReturnValue('\uFEFFT_FOO=bar\r\nT_SINGLE=baz\r\n')
+
+    loadInupLocalEnv()
+
+    expect(process.env.T_FOO).toBe('bar')
+    expect(process.env.T_SINGLE).toBe('baz')
+  })
+
+  it('splits on the first equals sign only, keeping later ones in the value', () => {
+    existsMock.mockReturnValueOnce(true)
+    readMock.mockReturnValue('T_FOO=a=b=c')
+
+    loadInupLocalEnv()
+
+    expect(process.env.T_FOO).toBe('a=b=c')
+  })
+
   it('returns null when the file cannot be read', () => {
     existsMock.mockReturnValueOnce(true)
     readMock.mockImplementation(() => {
