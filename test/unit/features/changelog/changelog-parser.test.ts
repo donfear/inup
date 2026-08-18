@@ -77,6 +77,18 @@ describe('extractVersionSection', () => {
     expect(extractVersionSection(empty, '1.0.0')).toBeNull()
   })
 
+  it('finds a section in a CRLF changelog (Windows-authored repos)', () => {
+    const crlf =
+      '# Changelog\r\n\r\n## 1.0.0\r\n\r\n- fixed\r\n- added\r\n\r\n## 0.9.0\r\n\r\n- old\r\n'
+
+    const section = extractVersionSection(crlf, '1.0.0')
+
+    expect(section).not.toBeNull()
+    // CR is carried through untouched here; the release-notes service normalizes it.
+    expect(section!.replace(/\r/g, '')).toBe('- fixed\n- added')
+    expect(extractVersionSection(crlf, '0.9.0')!.replace(/\r/g, '')).toBe('- old')
+  })
+
   it('truncates sections longer than 100 lines', () => {
     const longBody = Array.from({ length: 150 }, (_, i) => `- entry ${i}`).join('\n')
     const long = `## 1.0.0\n${longBody}\n`
