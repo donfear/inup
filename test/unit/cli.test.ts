@@ -51,6 +51,7 @@ vi.mock('../../src/shared/terminal/terminal-input', () => ({
 }))
 
 import { runCli } from '../../src/cli'
+import { stripAnsi } from '../../src/shared/terminal/text'
 
 // The dirty-tree preflight is an interactive-only concern; force a TTY (and clear $CI) so these
 // tests exercise the interactive branch regardless of where the suite runs.
@@ -58,6 +59,14 @@ const originalIsTTY = process.stdout.isTTY
 const originalCI = process.env.CI
 const setInteractive = (interactive: boolean) =>
   Object.defineProperty(process.stdout, 'isTTY', { value: interactive, configurable: true })
+
+// The prompt is chalk-colored, so compare its visible text rather than the raw string.
+const expectDirtyTreePrompt = () => {
+  expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledTimes(1)
+  const [message, defaultValue] = mocks.promptForImmediateConfirmation.mock.calls[0]
+  expect(stripAnsi(message)).toContain('Warning: dirty working tree. Proceed anyway? [y/N] ')
+  expect(defaultValue).toBe(false)
+}
 
 describe('CLI git dirty preflight', () => {
   beforeEach(() => {
@@ -90,10 +99,7 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledWith(
-      expect.stringContaining('Warning: dirty working tree. Proceed anyway? [y/N] '),
-      false
-    )
+    expectDirtyTreePrompt()
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
   })
 
@@ -108,10 +114,7 @@ describe('CLI git dirty preflight', () => {
       maxDepth: '10',
     })
 
-    expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledWith(
-      expect.stringContaining('Warning: dirty working tree. Proceed anyway? [y/N] '),
-      false
-    )
+    expectDirtyTreePrompt()
     expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
   })
 

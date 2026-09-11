@@ -149,7 +149,7 @@ describe('modal renderer', () => {
       24
     )
 
-    const rendered = result.lines.join('\n')
+    const rendered = stripAnsi(result.lines.join('\n'))
     expect(rendered).toContain('Package: next')
     expect(rendered).toContain('Breaking Changes')
     expect(rendered).toContain('• Remove legacy mode')
