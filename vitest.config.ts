@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     pool: 'threads',
+    setupFiles: ['test/helpers/disable-color.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary', 'html'],
