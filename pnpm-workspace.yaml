@@ -15,16 +15,16 @@ minimumReleaseAgeExclude:
   - '@biomejs/cli-linux-x64@2.5.9 || 2.5.13'
   - '@biomejs/cli-win32-arm64@2.5.9 || 2.5.13'
   - '@biomejs/cli-win32-x64@2.5.9 || 2.5.13'
-  - '@vitest/coverage-v8@4.1.11'
-  - '@vitest/expect@4.1.11'
-  - '@vitest/mocker@4.1.11'
-  - '@vitest/pretty-format@4.1.11'
-  - '@vitest/runner@4.1.11'
-  - '@vitest/snapshot@4.1.11'
-  - '@vitest/spy@4.1.11'
-  - '@vitest/utils@4.1.11'
+  - '@vitest/coverage-v8@5.0.0'
+  - '@vitest/expect@5.0.0'
+  - '@vitest/mocker@5.0.0'
+  - '@vitest/pretty-format@5.0.0'
+  - '@vitest/runner@5.0.0'
+  - '@vitest/snapshot@5.0.0'
+  - '@vitest/spy@5.0.0'
+  - '@vitest/utils@5.0.0'
   - astro-icon@1.2.0
   - astro@7.2.3
   - marked@18.0.10
-  - vitest@4.1.11
+  - vitest@5.0.0
   - wrap-ansi@10.0.1
