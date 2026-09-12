@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-09-12
+
 ### Changed
 
 - Results appear one at a time in their sorted position the moment they resolve, instead of arriving in batches held behind request order — a single slow scoped package no longer stalls the list or leaves it blank. Once you have started navigating, the cursor stays on the package you were looking at as rows insert above it, and an open info modal moves with it ([#116](https://github.com/donfear/inup/pull/116)).
@@ -394,7 +396,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.7.1...HEAD
+[1.7.1]: https://github.com/donfear/inup/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/donfear/inup/compare/v1.6.11...v1.7.0
 [1.6.11]: https://github.com/donfear/inup/compare/v1.6.10...v1.6.11
 [1.6.10]: https://github.com/donfear/inup/compare/v1.6.9...v1.6.10
