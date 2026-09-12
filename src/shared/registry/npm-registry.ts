@@ -337,10 +337,13 @@ export async function fetchPackageVersions(
   const resolvedByIndex = new Array<ParsedVersions | undefined>(total)
   let nextEmitIndex = 0
   const releaseResolvedPrefix = () => {
-    for (; nextEmitIndex < total; nextEmitIndex++) {
+    while (nextEmitIndex < total) {
       const data = resolvedByIndex[nextEmitIndex]
       if (!data) break
-      options.onPackageReady?.({ packageName: packageNames[nextEmitIndex], data })
+      // Advance before calling out: a throwing consumer must not see the same
+      // package again from the next worker's flush.
+      const packageName = packageNames[nextEmitIndex++]
+      options.onPackageReady?.({ packageName, data })
     }
   }
 

@@ -359,6 +359,26 @@ describe('npm-registry', () => {
     expect((await run).get('c')?.latestVersion).toBe('3.0.0')
   })
 
+  it('fails the run on a throwing consumer without replaying the package to later flushes', async () => {
+    requestMock.mockImplementation(async ({ path }) =>
+      makeOkBody({ versions: { [path.endsWith('/a') ? '1.0.0' : '2.0.0']: {} } })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => {
+        emitted.push(packageName)
+        if (packageName === 'a') throw new Error('consumer failed')
+      },
+    })
+
+    await expect(run).rejects.toThrow('consumer failed')
+    // Workers for b and c still complete and flush; none of them re-emits a.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted.filter((name) => name === 'a')).toHaveLength(1)
+  })
+
   it('emits a retried package once, after its retry succeeds, without reordering', async () => {
     let attemptsForA = 0
     requestMock.mockImplementation(async ({ path }) => {
