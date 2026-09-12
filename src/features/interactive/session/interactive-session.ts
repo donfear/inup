@@ -15,7 +15,7 @@ import type { PackageInfoModalController } from '../controllers'
 import { InputHandler } from '../input-handler'
 import type { UIRenderer } from '../renderer'
 import { renderHelpModal } from '../renderer/help-modal'
-import type { PackageListRenderOptions } from '../renderer/package-list'
+import { type PackageListRenderOptions, VersionColumnWidthCache } from '../renderer/package-list'
 import { renderPerformanceModal } from '../renderer/performance-modal'
 import { StateManager } from '../state'
 import { coloredInupLogo, getTerminalBgColorCode, getTerminalResetCode } from '../themes-colors'
@@ -48,6 +48,15 @@ export async function runInteractiveSession(
     )
     let isResolved = false
     let ownsAlternateScreen = false
+    let backgroundRender: ReturnType<typeof setTimeout> | undefined
+    let dataRevision = 0
+    const columnWidthCache = new VersionColumnWidthCache()
+    const cancelBackgroundRender = () => {
+      if (backgroundRender !== undefined) {
+        clearTimeout(backgroundRender)
+        backgroundRender = undefined
+      }
+    }
     const vulnerabilityDisplayOptions: VulnerabilityDisplayOptions = options
 
     let infoModalMaxScrollOffset = 0
@@ -167,6 +176,7 @@ export async function runInteractiveSession(
     }
 
     const renderInterface = () => {
+      cancelBackgroundRender()
       const uiState = stateManager.getUIState()
       const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
       const auditProgress = vulnerabilityAuditController.getProgress()
@@ -322,7 +332,15 @@ export async function runInteractiveSession(
           terminalWidth,
           loadingProgress,
           auditProgress,
-          packageListRenderOptions,
+          {
+            ...packageListRenderOptions,
+            columnWidths: columnWidthCache.get(
+              filteredStates,
+              terminalWidth,
+              dataRevision,
+              JSON.stringify([stateManager.getFilterSnapshot(), uiState.filterQuery])
+            ),
+          },
           uiState.notice
         )
 
@@ -333,6 +351,18 @@ export async function runInteractiveSession(
       }
 
       stateManager.setInitialRender(false)
+    }
+
+    // Background results arrive per package. Render once per window without
+    // delaying keyboard input; renderInterface consumes any pending frame.
+    const requestBackgroundRender = () => {
+      if (isResolved) return
+      dataRevision++
+      if (backgroundRender !== undefined) return
+      backgroundRender = setTimeout(() => {
+        backgroundRender = undefined
+        renderInterface()
+      }, 16)
     }
 
     // Safety net: restore terminal if the process exits without going through finalizeSelection.
@@ -362,6 +392,7 @@ export async function runInteractiveSession(
 
     const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
       isResolved = true
+      cancelBackgroundRender()
       onRefreshViewReady?.(undefined)
       packageInfoModalController.cancel()
       // Remember the view filters for next launch (best-effort, never throws).
@@ -391,6 +422,7 @@ export async function runInteractiveSession(
           vulnerabilityAuditController,
           isResolved: () => isResolved,
           renderInterface,
+          requestBackgroundRender,
           handleCancel,
           getInfoModalMaxScrollOffset: () => infoModalMaxScrollOffset,
           getDebugModalMaxScrollOffset: () => debugModalMaxScrollOffset,
@@ -409,15 +441,8 @@ export async function runInteractiveSession(
     try {
       claimInteractiveScreen()
 
-      onRefreshViewReady?.(() => {
-        if (!isResolved) renderInterface()
-      })
-
-      attachRefresh?.(() => {
-        if (!isResolved) {
-          renderInterface()
-        }
-      })
+      onRefreshViewReady?.(requestBackgroundRender)
+      attachRefresh?.(requestBackgroundRender)
 
       const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
       const previousCleanup = cleanupInteractiveSession
@@ -440,10 +465,10 @@ export async function runInteractiveSession(
       /* v8 ignore stop */
 
       renderInterface()
-      vulnerabilityAuditController.enqueueStates(states, () => {
-        if (!isResolved) renderInterface()
-      })
+      vulnerabilityAuditController.enqueueStates(states, requestBackgroundRender)
     } catch {
+      isResolved = true
+      cancelBackgroundRender()
       onRefreshViewReady?.(undefined)
       process.off('exit', emergencyCleanup)
       releaseInteractiveScreen()

@@ -8,6 +8,7 @@ import { configManager } from '../../../../src/shared/config/user-config'
 import { CursorUtils, TerminalInput } from '../../../../src/shared/terminal'
 import { stripAnsi } from '../../../../src/shared/terminal/text'
 import type {
+  PackageLoadProgress,
   PackageManagerInfo,
   PackageSelectionState,
   VulnerabilityDisplayOptions,
@@ -63,18 +64,20 @@ function startSession(
   extras: {
     onRefreshViewReady?: (refresh: (() => void) | undefined) => void
     attachRefresh?: (refresh: () => void) => void
+    loadingProgress?: PackageLoadProgress
+    renderer?: UIRenderer
   } = {}
 ) {
   const controllers = makeControllers()
   const promise = runInteractiveSession(
     states,
     npmInfo,
-    new UIRenderer(),
+    extras.renderer ?? new UIRenderer(),
     controllers.packageInfoModalController as unknown as PackageInfoModalController,
     controllers.vulnerabilityAuditController as unknown as VulnerabilityAuditController,
     displayOptions,
     extras.onRefreshViewReady,
-    undefined,
+    extras.loadingProgress,
     extras.attachRefresh
   )
   return { promise, ...controllers }
@@ -95,6 +98,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   stdout.restore()
   fake.restore()
   // A finished session must not leak process-level listeners.
@@ -168,9 +172,13 @@ describe('runInteractiveSession lifecycle', () => {
     )
     const onUpdate = vulnerabilityAuditController.enqueueStates.mock.calls[0][1] as () => void
 
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     stdout.clear()
     onUpdate()
+    expect(stdout.output()).toBe('')
+    vi.advanceTimersByTime(16)
     expect(stdout.output()).not.toBe('')
+    vi.useRealTimers()
 
     await fake.sendKeys('\r')
     await promise
@@ -194,13 +202,17 @@ describe('runInteractiveSession lifecycle', () => {
     expect(refreshCalls[0]).toBeTypeOf('function')
     expect(attached).toHaveLength(1)
 
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     stdout.clear()
     refreshCalls[0]!()
+    vi.advanceTimersByTime(16)
     expect(stdout.output()).not.toBe('')
 
     stdout.clear()
     attached[0]()
+    vi.advanceTimersByTime(16)
     expect(stdout.output()).not.toBe('')
+    vi.useRealTimers()
 
     await fake.sendKeys('\r')
     await promise
@@ -404,7 +416,7 @@ describe('runInteractiveSession edge paths', () => {
     ]
     const { promise } = startSession(states)
 
-    await fake.sendKeys('i')
+    await fake.sendKeys('i', 20)
     await fake.sendKeys('\x1b[B') // scroll inside the modal
     await fake.sendKeys('i')
     await fake.sendKeys('\r')
@@ -430,5 +442,140 @@ describe('runInteractiveSession edge paths', () => {
     refreshCalls[0]!()
     attached[0]()
     expect(stdout.output()).toBe('')
+  })
+})
+
+describe('progressive rendering', () => {
+  it('coalesces background arrivals and lets keyboard input consume a pending frame', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    let refresh!: () => void
+    const states = [makeSelectionState({ name: 'a' }), makeSelectionState({ name: 'b' })]
+    const { promise } = startSession(states, {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    render.mockClear()
+    for (let i = 0; i < 10; i++) refresh()
+    expect(vi.getTimerCount()).toBe(1)
+    vi.advanceTimersByTime(15)
+    expect(render).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(render).toHaveBeenCalledTimes(1)
+
+    refresh()
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    expect(render).toHaveBeenCalledTimes(2)
+    expect(render.mock.lastCall![1]).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+    vi.advanceTimersByTime(16)
+    expect(render).toHaveBeenCalledTimes(2)
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    refresh()
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    expect((await promise)[1].selectedOption).toBe('latest')
+    expect(vi.getTimerCount()).toBe(0)
+    const frames = render.mock.calls.length
+    refresh()
+    vi.advanceTimersByTime(100)
+    expect(render).toHaveBeenCalledTimes(frames)
+  })
+
+  it('keeps focused/scrolled rows and selections fixed as packages append and loading completes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const states = Array.from({ length: 35 }, (_, i) =>
+      makeSelectionState({ name: `pkg-${String(i).padStart(2, '0')}` })
+    )
+    const originals = [...states]
+    const progress = { discovered: 40, total: 40, resolved: 35, failed: 0, isLoading: true }
+    let refresh!: () => void
+    const { promise } = startSession(states, {
+      renderer,
+      loadingProgress: progress,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    for (let i = 0; i < 28; i++) fake.stdin.emit('keypress', '', { name: 'down' })
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    const row = render.mock.lastCall![1]
+    const scroll = render.mock.lastCall![2]
+    expect(scroll).toBeGreaterThan(0)
+    for (let i = 35; i < 40; i++) {
+      states.push(makeSelectionState({ name: `pkg-${i}` }))
+      refresh()
+    }
+    vi.advanceTimersByTime(16)
+    expect(render.mock.lastCall![1]).toBe(row)
+    expect(render.mock.lastCall![2]).toBe(scroll)
+    for (const [index, state] of originals.entries()) expect(states[index]).toBe(state)
+    expect(states[row].selectedOption).toBe('latest')
+
+    stdout.clear()
+    progress.resolved = 40
+    progress.isLoading = false
+    refresh()
+    vi.advanceTimersByTime(16)
+    expect(stdout.output()).not.toBe('')
+    expect(stripAnsi(stdout.output())).not.toContain('Loading packages...')
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    expect(await promise).toBe(states)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('reuses column widths for input but invalidates them on data, filtering, and resize', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const widths = () => render.mock.lastCall![14]!.columnWidths
+    const states = [makeSelectionState({ selectedOption: 'range' })]
+    let refresh!: () => void
+    const { promise } = startSession(states, {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    const original = widths()
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    fake.stdin.emit('keypress', '', { name: 'right' })
+    expect(widths()).toBe(original)
+    states.push(makeSelectionState({ name: 'z', type: 'devDependencies' }))
+    refresh()
+    vi.advanceTimersByTime(16)
+    const appended = widths()
+    expect(appended).not.toBe(original)
+    fake.stdin.emit('keypress', 'd', { name: 'd' })
+    const filtered = widths()
+    expect(filtered).not.toBe(appended)
+    Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 120 })
+    process.emit('SIGWINCH')
+    expect(widths()).not.toBe(filtered)
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    await promise
+  })
+
+  it('cancels a scheduled frame if terminal setup falls back', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const start = vi.spyOn(TerminalInput, 'startKeypressSession').mockImplementation(() => {
+      throw new Error('raw mode unavailable')
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const { promise } = startSession([], { attachRefresh: (refresh) => refresh() })
+      await promise
+      expect(vi.getTimerCount()).toBe(0)
+      stdout.clear()
+      vi.advanceTimersByTime(16)
+      expect(stdout.output()).toBe('')
+    } finally {
+      start.mockRestore()
+      log.mockRestore()
+    }
   })
 })

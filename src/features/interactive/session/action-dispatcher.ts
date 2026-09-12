@@ -28,6 +28,7 @@ export type DispatchContext = {
   vulnerabilityAuditController: VulnerabilityAuditController
   isResolved: () => boolean
   renderInterface: () => void
+  requestBackgroundRender: () => void
   handleCancel: () => void
   getInfoModalMaxScrollOffset: () => number
   getDebugModalMaxScrollOffset: () => number
@@ -43,6 +44,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     vulnerabilityAuditController,
     isResolved,
     renderInterface,
+    requestBackgroundRender,
     handleCancel,
     getInfoModalMaxScrollOffset,
     getDebugModalMaxScrollOffset,
@@ -67,7 +69,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       stateManager.toggleVulnerableFilter()
     } else if (!auditProgress.isRunning) {
       vulnerabilityAuditController.enqueueStates(states, () => {
-        if (!isResolved()) renderInterface()
+        if (!isResolved()) requestBackgroundRender()
       })
     }
   }
@@ -126,21 +128,21 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
               if (update) Object.assign(currentState, update.patch)
 
               stateManager.setModalLoading(false, modalSessionId)
-              renderInterface()
+              requestBackgroundRender()
 
               if (
                 stateManager.getInfoModalSessionId() === modalSessionId &&
                 packageInfoModalController.getVersionCount(currentState) > 0
               ) {
                 void packageInfoModalController.loadVersionAtIndex(currentState, 0, () => {
-                  if (!isResolved()) renderInterface()
+                  if (!isResolved()) requestBackgroundRender()
                 })
               }
             })
             .catch(() => {
               if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
               stateManager.setModalLoading(false, modalSessionId)
-              renderInterface()
+              requestBackgroundRender()
             })
         }
       } else {
@@ -186,7 +188,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
           stateManager.resetInfoModalScroll()
           if (!packageInfoModalController.isVersionLoaded(currentState, newIndex)) {
             void packageInfoModalController.loadVersionAtIndex(currentState, newIndex, () => {
-              if (!isResolved()) renderInterface()
+              if (!isResolved()) requestBackgroundRender()
             })
           }
         } else {

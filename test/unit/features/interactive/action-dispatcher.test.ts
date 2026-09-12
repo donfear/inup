@@ -51,6 +51,7 @@ function makeHarness(states = makeStates()) {
 
   let resolved = false
 
+  const render = vi.fn()
   const ctx: DispatchContext = {
     stateManager,
     states,
@@ -59,7 +60,8 @@ function makeHarness(states = makeStates()) {
     vulnerabilityAuditController:
       vulnerabilityAuditController as unknown as VulnerabilityAuditController,
     isResolved: () => resolved,
-    renderInterface: vi.fn(),
+    renderInterface: render,
+    requestBackgroundRender: render,
     handleCancel: vi.fn(),
     getInfoModalMaxScrollOffset: () => 5,
     getDebugModalMaxScrollOffset: () => 5,

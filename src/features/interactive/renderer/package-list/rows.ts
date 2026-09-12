@@ -9,12 +9,44 @@ import { getHealthBadge } from '../../presenters/health'
 import { getThemeColor } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
 
-export type PackageListRenderOptions = VulnerabilityDisplayOptions
+export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
+  columnWidths?: VersionColumnWidths
+}
 
 export interface VersionColumnWidths {
   current: number
   range: number
   latest: number
+}
+
+/** Session-owned layout cache; selection and cursor changes do not affect widths. */
+export class VersionColumnWidthCache {
+  private cached?: {
+    terminalWidth: number
+    revision: number
+    filterKey: string
+    widths: VersionColumnWidths
+  }
+
+  get(
+    states: PackageSelectionState[],
+    terminalWidth: number,
+    revision: number,
+    filterKey: string
+  ): VersionColumnWidths {
+    const previous = this.cached
+    if (
+      previous &&
+      previous.terminalWidth === terminalWidth &&
+      previous.revision === revision &&
+      previous.filterKey === filterKey
+    ) {
+      return previous.widths
+    }
+    const widths = computeVersionColumnWidths(states, terminalWidth)
+    this.cached = { terminalWidth, revision, filterKey, widths }
+    return widths
+  }
 }
 
 // Version column layout: dot + space + version + trailing space. The overhead
