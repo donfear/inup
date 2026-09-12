@@ -103,6 +103,13 @@ jobs:
         if: matrix.os != 'ubuntu-latest' || matrix.node != '24'
         run: pnpm test
 
+      # Smoke run of the offline benchmark: proves the harness still executes
+      # and prints the numbers for the log. Not a gate — CI runners are too
+      # noisy to assert on timings.
+      - name: Benchmark (smoke)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        run: BENCH_RUNS=3 BENCH_FORMAT=table pnpm bench
+
       - name: Upload coverage report
         if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
         uses: actions/upload-artifact@v7

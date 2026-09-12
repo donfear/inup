@@ -12,7 +12,7 @@ describe('renderPerformanceModal', () => {
 
     expect(text).toContain('⚡ Performance')
     expect(text).toContain('Package manager: unknown')
-    expect(text).toContain('(no batches recorded)')
+    expect(text).toContain('(no registry responses timed yet)')
     expect(text).toContain('(fixed — adaptive off or run too small)')
     expect(text).toContain('(none)')
     expect(text).toContain('—')
@@ -25,7 +25,7 @@ describe('renderPerformanceModal', () => {
         depCollection: 34,
         filter: 5,
         registryFetch: 200,
-        firstBatch: 220,
+        firstResult: 220,
         allLoaded: 400,
       },
       totalMs: 400,
@@ -46,19 +46,48 @@ describe('renderPerformanceModal', () => {
     expect(text).toContain('Package manager: pnpm')
   })
 
-  it('computes batch average and slowest batch with its index', () => {
+  it('summarizes per-package registry latency with average, p95, and the slowest package', () => {
     const snapshot = makeSnapshot({
-      batches: [
-        { index: 0, size: 5, durationMs: 100, failedCount: 0 },
-        { index: 1, size: 5, durationMs: 300, failedCount: 1 },
-        { index: 2, size: 5, durationMs: 200, failedCount: 0 },
+      packageTimings: [
+        { name: 'fast', latencyMs: 100 },
+        { name: 'slow', latencyMs: 300 },
+        { name: 'mid', latencyMs: 200 },
       ],
     })
     const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)
 
-    expect(text).toMatch(/Batch count\s+3/)
-    expect(text).toMatch(/Avg batch\s+200 ms/)
-    expect(text).toMatch(/Slowest batch\s+300 ms \(#1\)/)
+    expect(text).toMatch(/Packages timed\s+3/)
+    expect(text).toMatch(/Avg\s+200 ms/)
+    expect(text).toMatch(/p95\s+300 ms/)
+    expect(text).toMatch(/Slowest\s+300 ms \(slow\)/)
+  })
+
+  it('reports nearest-rank p95 from the sorted latencies, not the arrival order', () => {
+    // 20 samples with latencies 0..19 in scrambled order: nearest-rank p95 is
+    // the 19th smallest (index 18), one below the maximum.
+    const timings = Array.from({ length: 20 }, (_, i) => ({
+      name: `pkg-${i}`,
+      latencyMs: (i * 7) % 20,
+    }))
+    const text = plain(
+      renderPerformanceModal(makeSnapshot({ packageTimings: timings }), 100, 60).lines
+    )
+
+    expect(text).toMatch(/p95\s+18 ms/)
+    expect(text).toMatch(/Slowest\s+19 ms \(pkg-17\)/)
+  })
+
+  it('does not let one outlier become the p95 of a small sample', () => {
+    const timings = [
+      ...Array.from({ length: 19 }, (_, i) => ({ name: `ok-${i}`, latencyMs: 200 })),
+      { name: 'stalled', latencyMs: 8000 },
+    ]
+    const text = plain(
+      renderPerformanceModal(makeSnapshot({ packageTimings: timings }), 100, 60).lines
+    )
+
+    expect(text).toMatch(/p95\s+200 ms/)
+    expect(text).toMatch(/Slowest\s+8000 ms \(stalled\)/)
   })
 
   it('summarizes concurrency control ticks', () => {

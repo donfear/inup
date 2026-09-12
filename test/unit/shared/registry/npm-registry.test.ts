@@ -308,45 +308,102 @@ describe('npm-registry', () => {
     }
   })
 
-  it('emits batched results in request order', async () => {
+  it('emits every package exactly once with its own data', async () => {
     requestMock.mockImplementation(async ({ path }) => {
-      if (path.includes('pkg-a')) {
-        return makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } })
-      }
-      if (path.includes('pkg-b')) {
-        return makeOkBody({ versions: { '2.0.0': {}, '2.1.0': {} } })
-      }
-      return makeOkBody({ versions: { '3.0.0': {}, '3.1.0': {} } })
+      const major = path.endsWith('pkg-a') ? 1 : path.endsWith('pkg-b') ? 2 : 3
+      return makeOkBody({ versions: { [`${major}.0.0`]: {}, [`${major}.1.0`]: {} } })
     })
 
-    const batches: string[][] = []
+    const emitted: Array<[string, string]> = []
     const result = await fetchPackageVersions(['pkg-a', 'pkg-b', 'pkg-c'], {
-      batchSize: 2,
-      maxConcurrency: 1,
-      onBatchReady: (batch) => {
-        batches.push(batch.map((item) => item.packageName))
-      },
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
     })
 
-    expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
-    expect(new Set(result.keys())).toEqual(new Set(['pkg-a', 'pkg-b', 'pkg-c']))
+    expect(emitted).toEqual([
+      ['pkg-a', '1.1.0'],
+      ['pkg-b', '2.1.0'],
+      ['pkg-c', '3.1.0'],
+    ])
+    expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
 
-  it('supports a growing batch-size sequence', async () => {
-    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+  it('emits each package the moment it resolves; a slow earlier package holds nothing back', async () => {
+    const pending = new Map<string, (response: MockResponse) => void>()
+    requestMock.mockImplementation(
+      ({ path }) =>
+        new Promise((resolve) => {
+          pending.set(path, resolve)
+        })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => emitted.push(packageName),
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(Array.from(pending.keys()).sort()).toEqual(['/a', '/b', '/c'])
 
-    const packageNames = Array.from({ length: 50 }, (_, index) => `pkg-${index + 1}`)
-    const batches: number[] = []
+    pending.get('/c')!(makeOkBody({ versions: { '3.0.0': {} } }))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['c'])
 
-    await fetchPackageVersions(packageNames, {
-      batchSizes: [10, 15, 20, 25],
-      maxConcurrency: 5,
-      onBatchReady: (batch) => {
-        batches.push(batch.length)
+    pending.get('/b')!(makeErrBody(404))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['c', 'b'])
+
+    pending.get('/a')!(makeOkBody({ versions: { '1.0.0': {} } }))
+    const result = await run
+    expect(emitted).toEqual(['c', 'b', 'a'])
+    expect(result.get('b')?.latestVersion).toBe('unknown')
+    expect(result.get('c')?.latestVersion).toBe('3.0.0')
+  })
+
+  it('fails the run on a throwing consumer and never emits that package twice', async () => {
+    requestMock.mockImplementation(async ({ path }) =>
+      makeOkBody({ versions: { [path.endsWith('/a') ? '1.0.0' : '2.0.0']: {} } })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => {
+        emitted.push(packageName)
+        if (packageName === 'a') throw new Error('consumer failed')
       },
     })
 
-    expect(batches).toEqual([10, 15, 20, 5])
+    await expect(run).rejects.toThrow('consumer failed')
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted.filter((name) => name === 'a')).toHaveLength(1)
+  })
+
+  it('emits a retried package once, after its retry succeeds', async () => {
+    let attemptsForA = 0
+    requestMock.mockImplementation(async ({ path }) => {
+      if (path.endsWith('/a')) {
+        attemptsForA++
+        return attemptsForA === 1
+          ? makeErrBody(500)
+          : makeOkBody({ versions: { '1.0.0': {}, '1.5.0': {} } })
+      }
+      return makeOkBody({ versions: { '2.0.0': {} } })
+    })
+
+    const emitted: Array<[string, string]> = []
+    await fetchPackageVersions(['a', 'b'], {
+      adaptive: false,
+      maxConcurrency: 2,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
+    })
+
+    expect(attemptsForA).toBe(2)
+    // b resolves on its first attempt, so it lands before a's retry completes.
+    expect(emitted).toEqual([
+      ['b', '2.0.0'],
+      ['a', '1.5.0'],
+    ])
   })
 
   describe('adaptive concurrency', () => {

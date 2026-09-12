@@ -189,6 +189,13 @@ export class ModalManager {
     return this.state.infoModalSessionId
   }
 
+  /** Rows were inserted above the package the modal shows; keep pointing at it. */
+  shiftRow(delta: number): void {
+    if (this.state.showInfoModal && this.state.infoModalRow >= 0) {
+      this.state.infoModalRow += delta
+    }
+  }
+
   closeInfoModal(): void {
     this.state.showInfoModal = false
     this.state.infoModalRow = -1

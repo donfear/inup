@@ -7,6 +7,7 @@ export {
   createSelectionStates,
   createUpgradeChoices,
   runInteractiveSession,
+  SelectionList,
   selectionKey,
 } from './session'
 export { StateManager } from './state'

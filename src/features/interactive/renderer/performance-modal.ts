@@ -28,7 +28,7 @@ function buildSections(snapshot: PerformanceSnapshot): {
   pinned: ModalSection[]
   body: ModalSection[]
 } {
-  const { phases, counts, batches, controlTicks, failedPackages, packageManager, totalMs } =
+  const { phases, counts, packageTimings, controlTicks, failedPackages, packageManager, totalMs } =
     snapshot
 
   const pinned: ModalSection[] = [
@@ -52,7 +52,7 @@ function buildSections(snapshot: PerformanceSnapshot): {
   bodyRows.push(labelValue('Dep collection', formatMs(phases.depCollection)))
   bodyRows.push(labelValue('Filter', formatMs(phases.filter)))
   bodyRows.push(labelValue('Registry fetch', formatMs(phases.registryFetch)))
-  bodyRows.push(labelValue('First batch ready', formatMs(phases.firstBatch)))
+  bodyRows.push(labelValue('First result ready', formatMs(phases.firstResult)))
   bodyRows.push(labelValue('All packages loaded', formatMs(phases.allLoaded)))
   bodyRows.push(labelValue('Elapsed total', formatMs(totalMs ?? undefined)))
 
@@ -67,20 +67,21 @@ function buildSections(snapshot: PerformanceSnapshot): {
   bodyRows.push(labelValue('Failed', formatCount(counts.failed)))
 
   bodyRows.push('')
-  bodyRows.push(chalk.bold('Batches'))
-  if (batches.length > 0) {
-    const durations = batches.map((b) => b.durationMs)
-    const total = durations.reduce((a, b) => a + b, 0)
-    const avg = Math.round(total / batches.length)
-    const slowest = Math.max(...durations)
-    const slowestBatch = batches.find((b) => b.durationMs === slowest)
-    bodyRows.push(labelValue('Batch count', formatCount(batches.length)))
-    bodyRows.push(labelValue('Avg batch', formatMs(avg)))
+  bodyRows.push(chalk.bold('Registry latency'))
+  if (packageTimings.length > 0) {
+    const sorted = packageTimings.map((t) => t.latencyMs).sort((a, b) => a - b)
+    const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length)
+    // Nearest-rank percentile: the smallest value with >= 95% of samples at or below it.
+    const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1]
+    const slowest = packageTimings.reduce((a, b) => (b.latencyMs > a.latencyMs ? b : a))
+    bodyRows.push(labelValue('Packages timed', formatCount(sorted.length)))
+    bodyRows.push(labelValue('Avg', formatMs(avg)))
+    bodyRows.push(labelValue('p95', formatMs(p95)))
     bodyRows.push(
-      labelValue('Slowest batch', `${formatMs(slowest)} ${chalk.gray(`(#${slowestBatch?.index})`)}`)
+      labelValue('Slowest', `${formatMs(slowest.latencyMs)} ${chalk.gray(`(${slowest.name})`)}`)
     )
   } else {
-    bodyRows.push(chalk.gray('  (no batches recorded)'))
+    bodyRows.push(chalk.gray('  (no registry responses timed yet)'))
   }
 
   bodyRows.push('')

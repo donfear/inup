@@ -18,7 +18,6 @@ vi.mock('../../../../src/features/upgrade/package-detector', () => ({
       cwd: '/repo',
       adaptive: false,
       maxConcurrency: 8,
-      batchSize: 10,
       poolConnections: 5,
     })
   },

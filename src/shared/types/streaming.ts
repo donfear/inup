@@ -26,21 +26,15 @@ export interface StreamOutdatedPackagesInitialPayload {
   progress: PackageLoadProgress
 }
 
-export interface StreamOutdatedPackagesBatchItem {
+/** One resolved package: every declaration of it across the workspace. */
+export interface StreamedPackage {
   packageName: string
   packageInfo: PackageInfo[]
-  failed: boolean
 }
 
 export type StreamOutdatedPackagesEvent =
   | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
-  | {
-      type: 'batch'
-      payload: {
-        batch: StreamOutdatedPackagesBatchItem[]
-        progress: PackageLoadProgress
-      }
-    }
+  | { type: 'package'; payload: StreamedPackage & { progress: PackageLoadProgress } }
   | { type: 'complete'; payload: { packages: PackageInfo[]; progress: PackageLoadProgress } }
 
 export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
@@ -52,10 +46,6 @@ export interface FetchPackageVersionsOptions {
    * for runs too small to control. Default: 10.
    */
   maxConcurrency?: number
-  /** Size of each emission batch (UI grouping only, not concurrency). Default: 25. */
-  batchSize?: number
-  /** Sequence of batch sizes; overrides batchSize when provided. */
-  batchSizes?: number[]
   /**
    * Enable the adaptive-concurrency controller. Default: true. Set false to
    * pin concurrency at `maxConcurrency` (legacy fixed behavior / A/B baseline).
@@ -85,13 +75,10 @@ export interface FetchPackageVersionsOptions {
   onNetworkProfile?: (profile: NetworkProfile) => void
 }
 
-export interface RegistryBatchProgressItem {
+export interface RegistryPackageResult {
   packageName: string
   data: ParsedVersions
-  completed: number
-  total: number
-  batchIndex: number
-  itemIndex: number
 }
 
-export type OnBatchReadyCallback = (batch: RegistryBatchProgressItem[]) => void
+/** Fires once per package the moment it resolves; completion order, not request order. */
+export type OnPackageReadyCallback = (result: RegistryPackageResult) => void

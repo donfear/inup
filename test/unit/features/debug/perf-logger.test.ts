@@ -20,7 +20,6 @@ function makeConfig(overrides?: Partial<PerfRunConfig>): PerfRunConfig {
     adaptive: true,
     maxConcurrency: 8,
     poolConnections: 16,
-    batchSize: 20,
     mode: 'interactive',
     env: perfEnv(),
     ...overrides,
@@ -106,7 +105,8 @@ describe('writePerfLog', () => {
 
     expect(filePath).not.toBeNull()
     const record = JSON.parse(readFileSync(filePath!, 'utf8'))
-    expect(record.schemaVersion).toBe(1)
+    // Bumped when the record shape changes; analysis scripts pin to it.
+    expect(record.schemaVersion).toBe(2)
     expect(record.wallMs).toBe(1234)
     expect(record.config.packageManager).toBe('pnpm')
     expect(record.tuning).toBeDefined()

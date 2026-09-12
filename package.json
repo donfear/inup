@@ -20,6 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
+    "bench": "node --expose-gc test/benchmarks/performance.cjs",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
     "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme",

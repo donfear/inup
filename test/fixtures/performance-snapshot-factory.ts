@@ -6,7 +6,6 @@ export function makeSnapshot(overrides?: Partial<PerformanceSnapshot>): Performa
     phases: {},
     totalMs: null,
     counts: {},
-    batches: [],
     controlTicks: [],
     packageTimings: [],
     failedPackages: [],

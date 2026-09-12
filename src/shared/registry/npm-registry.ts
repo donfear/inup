@@ -21,11 +21,7 @@ import {
   sleep,
 } from '../http/retry'
 import { clamp } from '../math'
-import type {
-  FetchPackageVersionsOptions,
-  OnBatchReadyCallback,
-  RegistryBatchProgressItem,
-} from '../types'
+import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
 import { type RegistryTarget, registryTargetFor } from './registry-config'
 
@@ -274,9 +270,9 @@ async function fetchPackageFromRegistry(
  * - Unchanged packuments are revalidated via ETag (304), skipping re-download.
  *
  * Callbacks:
- * - `onBatchReady` fires once an emission window has resolved, in original order.
- *   Emission windows are fixed-size groupings for UI progress only; they do not
- *   gate concurrency.
+ * - `onPackageReady` fires once per package the moment it resolves, in
+ *   completion order. Consumers that need a stable order sort on their side;
+ *   nothing waits for a slower earlier package.
  * - `onControlTick` (optional) reports each adaptive control decision for
  *   instrumentation.
  * - `onNetworkProfile` (optional) fires once at the end of a run whose
@@ -285,7 +281,7 @@ async function fetchPackageFromRegistry(
 export async function fetchPackageVersions(
   packageNames: string[],
   options: {
-    onBatchReady?: OnBatchReadyCallback
+    onPackageReady?: OnPackageReadyCallback
     currentVersions?: Map<string, string>
     onControlTick?: (tick: ControlTick) => void
     /** Per-package successful round-trip latency, for perf diagnostics. */
@@ -332,48 +328,7 @@ export async function fetchPackageVersions(
           : fixedConcurrency
   const semaphore = new ResizableSemaphore(initialLimit)
 
-  // --- emission ordering (unchanged contract) ---------------------------------
   let completedCount = 0
-  const pendingEmissions = new Map<number, RegistryBatchProgressItem[]>()
-  let nextEmitIndex = 0
-  const flushPending = () => {
-    while (true) {
-      const ready = pendingEmissions.get(nextEmitIndex)
-      if (!ready) break
-      pendingEmissions.delete(nextEmitIndex)
-      options.onBatchReady?.(ready)
-      nextEmitIndex++
-    }
-  }
-
-  // Emission windows group results for UI progress only (decoupled from
-  // concurrency). Sizes come from `batchSizes` (a sequence, last value repeats)
-  // or a uniform `batchSize`. We precompute, per package index, which window it
-  // belongs to and its position within that window, so a window can flush as soon
-  // as all its items resolve — preserving original order via `flushPending`.
-  const windowSizes =
-    options.batchSizes && options.batchSizes.length > 0
-      ? options.batchSizes.map((size) => Math.max(1, size))
-      : [Math.max(1, options.batchSize ?? 25)]
-  const windowIdByIndex = new Array<number>(total)
-  const itemIndexByIndex = new Array<number>(total)
-  const windowRemaining: number[] = []
-  {
-    let cursorIndex = 0
-    let windowId = 0
-    while (cursorIndex < total) {
-      const size = windowSizes[Math.min(windowId, windowSizes.length - 1)]
-      const end = Math.min(cursorIndex + size, total)
-      windowRemaining[windowId] = end - cursorIndex
-      for (let i = cursorIndex; i < end; i++) {
-        windowIdByIndex[i] = windowId
-        itemIndexByIndex[i] = i - cursorIndex
-      }
-      cursorIndex = end
-      windowId++
-    }
-  }
-  const windowResults = windowRemaining.map(() => [] as RegistryBatchProgressItem[])
 
   // --- per-attempt observer ---------------------------------------------------
   // Feeds the adaptive controller AND (optionally) reports per-package latency
@@ -413,23 +368,7 @@ export async function fetchPackageVersions(
       )
       packageData.set(packageName, data)
       completedCount++
-
-      const w = windowIdByIndex[index]
-      const itemIndex = itemIndexByIndex[index]
-      // Index by position (not push) so items keep their original in-window order
-      // even when they resolve out of order.
-      windowResults[w][itemIndex] = {
-        packageName,
-        data,
-        completed: completedCount,
-        total,
-        batchIndex: w,
-        itemIndex,
-      }
-      if (--windowRemaining[w] === 0) {
-        pendingEmissions.set(w, windowResults[w])
-        flushPending()
-      }
+      options.onPackageReady?.({ packageName, data })
 
       if (controller) {
         // Run tail: with fewer pending items than the limit the drain would

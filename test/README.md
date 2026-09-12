@@ -25,7 +25,6 @@ test/
 │   └── apply-config-invariant.test.ts
 ├── fixtures/                # Test fixtures and factories
 │   ├── test-package/        # Sample package for integration detection tests
-│   ├── mock-registry.ts     # fetchPackageVersions mock factory
 │   ├── package-info-factory.ts        # makePackageInfo(overrides)
 │   ├── selection-state-factory.ts     # makeSelectionState(overrides)
 │   └── performance-snapshot-factory.ts # makeSnapshot(overrides)

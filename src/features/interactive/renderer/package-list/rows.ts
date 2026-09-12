@@ -9,12 +9,48 @@ import { getHealthBadge } from '../../presenters/health'
 import { getThemeColor } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
 
-export type PackageListRenderOptions = VulnerabilityDisplayOptions
+export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
+  columnWidths?: VersionColumnWidths
+}
 
 export interface VersionColumnWidths {
   current: number
   range: number
   latest: number
+}
+
+/**
+ * Session-owned column layout over an append-only sequence of rows.
+ *
+ * Measures each row once, when it first appears in `arrivals`, and keeps the
+ * running maximum, so a frame during streaming costs O(new rows) rather than
+ * O(all rows). Widths are taken over every row rather than the filtered view,
+ * so toggling a filter never makes the columns jump. Re-fits only when a new
+ * row widened a column or the terminal width changed.
+ */
+export class VersionColumnLayout {
+  private readonly need = initialColumnNeed()
+  private measured = 0
+  private cached?: { terminalWidth: number; need: VersionColumnWidths; widths: VersionColumnWidths }
+
+  get(arrivals: readonly PackageSelectionState[], terminalWidth: number): VersionColumnWidths {
+    for (; this.measured < arrivals.length; this.measured++) {
+      measureVersionColumns(arrivals[this.measured], this.need)
+    }
+    const previous = this.cached
+    if (
+      previous &&
+      previous.terminalWidth === terminalWidth &&
+      previous.need.current === this.need.current &&
+      previous.need.range === this.need.range &&
+      previous.need.latest === this.need.latest
+    ) {
+      return previous.widths
+    }
+    const widths = fitVersionColumns(this.need, terminalWidth)
+    this.cached = { terminalWidth, need: { ...this.need }, widths }
+    return widths
+  }
 }
 
 // Version column layout: dot + space + version + trailing space. The overhead
@@ -39,40 +75,48 @@ export function computeVersionColumnWidths(
   states: PackageSelectionState[],
   terminalWidth: number
 ): VersionColumnWidths {
-  const need: VersionColumnWidths = {
+  const need = initialColumnNeed()
+  for (const state of states) measureVersionColumns(state, need)
+  return fitVersionColumns(need, terminalWidth)
+}
+
+function initialColumnNeed(): VersionColumnWidths {
+  return {
     current: MIN_VERSION_COLUMN_WIDTH,
     range: MIN_VERSION_COLUMN_WIDTH,
     latest: MIN_VERSION_COLUMN_WIDTH,
   }
-  for (const state of states) {
-    const cap = (value: number) => Math.min(value, MAX_VERSION_COLUMN_WIDTH)
-    need.current = cap(
-      Math.max(
-        need.current,
-        VersionUtils.getVisualLength(state.currentVersionSpecifier) + VERSION_COLUMN_OVERHEAD
-      )
-    )
-    if (state.loadState !== 'ready') continue
-    if (state.hasRangeUpdate) {
-      const range = VersionUtils.applyVersionPrefix(
-        state.currentVersionSpecifier,
-        state.rangeVersion
-      )
-      need.range = cap(
-        Math.max(need.range, VersionUtils.getVisualLength(range) + VERSION_COLUMN_OVERHEAD)
-      )
-    }
-    if (state.hasMajorUpdate) {
-      const latest = VersionUtils.applyVersionPrefix(
-        state.currentVersionSpecifier,
-        state.latestVersion
-      )
-      need.latest = cap(
-        Math.max(need.latest, VersionUtils.getVisualLength(latest) + VERSION_COLUMN_OVERHEAD)
-      )
-    }
-  }
+}
 
+/** Grows `need` to fit one row's versions (capped at the maximum column width). */
+function measureVersionColumns(state: PackageSelectionState, need: VersionColumnWidths): void {
+  const cap = (value: number) => Math.min(value, MAX_VERSION_COLUMN_WIDTH)
+  need.current = cap(
+    Math.max(
+      need.current,
+      VersionUtils.getVisualLength(state.currentVersionSpecifier) + VERSION_COLUMN_OVERHEAD
+    )
+  )
+  if (state.loadState !== 'ready') return
+  if (state.hasRangeUpdate) {
+    const range = VersionUtils.applyVersionPrefix(state.currentVersionSpecifier, state.rangeVersion)
+    need.range = cap(
+      Math.max(need.range, VersionUtils.getVisualLength(range) + VERSION_COLUMN_OVERHEAD)
+    )
+  }
+  if (state.hasMajorUpdate) {
+    const latest = VersionUtils.applyVersionPrefix(
+      state.currentVersionSpecifier,
+      state.latestVersion
+    )
+    need.latest = cap(
+      Math.max(need.latest, VersionUtils.getVisualLength(latest) + VERSION_COLUMN_OVERHEAD)
+    )
+  }
+}
+
+/** Fits the needed widths into the terminal, growing columns round-robin from the classic size. */
+function fitVersionColumns(need: VersionColumnWidths, terminalWidth: number): VersionColumnWidths {
   // Growth budget: whatever remains once the package name keeps its minimum
   // width at the classic column sizes. The name column absorbs the squeeze —
   // it already middle-truncates long names gracefully.

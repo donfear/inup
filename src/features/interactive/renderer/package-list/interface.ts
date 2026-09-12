@@ -181,7 +181,7 @@ export function renderInterface(
 
   // Sized once per frame over every state (not the visible window), so the
   // columns hold still while scrolling and long prerelease versions get room.
-  const columnWidths = computeVersionColumnWidths(states, terminalWidth)
+  const columnWidths = options.columnWidths ?? computeVersionColumnWidths(states, terminalWidth)
 
   if (renderableItems && renderableItems.length > 0) {
     for (
