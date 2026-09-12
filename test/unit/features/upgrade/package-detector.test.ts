@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
     recordControlTick: vi.fn(),
     recordPackageTiming: vi.fn(),
     recordFailedPackage: vi.fn(),
-    recordBatch: vi.fn(),
     recordCounts: vi.fn(),
     recordPhaseDuration: vi.fn(),
   },
@@ -119,37 +118,23 @@ describe('PackageDetector streaming', () => {
       async (
         packageNames: string[],
         options: {
-          onBatchReady: (batch: any[]) => void
-          batchSize: number
+          onPackageReady: (result: any) => void
           maxConcurrency: number
         }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options.batchSize).toBe(1)
         expect(options.maxConcurrency).toBe(10)
-        const onBatchReady = options.onBatchReady
+        const onPackageReady = options.onPackageReady
 
-        onBatchReady([
-          {
-            packageName: '@scope/pkg',
-            data: { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] },
-            completed: 1,
-            total: 2,
-            batchIndex: 0,
-            itemIndex: 0,
-          },
-        ])
+        onPackageReady({
+          packageName: '@scope/pkg',
+          data: { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] },
+        })
 
-        onBatchReady([
-          {
-            packageName: 'zod',
-            data: { latestVersion: 'unknown', allVersions: [] },
-            completed: 2,
-            total: 2,
-            batchIndex: 0,
-            itemIndex: 1,
-          },
-        ])
+        onPackageReady({
+          packageName: 'zod',
+          data: { latestVersion: 'unknown', allVersions: [] },
+        })
 
         return new Map([
           ['@scope/pkg', { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] }],
@@ -159,10 +144,10 @@ describe('PackageDetector streaming', () => {
     )
   })
 
-  it('emits initial, batch, and complete events in stable order', async () => {
+  it('emits initial, one package event per package, and complete in stable order', async () => {
     const detector = new PackageDetector({ cwd: '/repo' })
     const eventTypes: string[] = []
-    const batchPackageNames: string[][] = []
+    const packageNames: string[] = []
 
     const packages = await detector.streamOutdatedPackages((event) => {
       eventTypes.push(event.type)
@@ -176,8 +161,8 @@ describe('PackageDetector streaming', () => {
         })
       }
 
-      if (event.type === 'batch') {
-        batchPackageNames.push(event.payload.batch.map((item) => item.packageName))
+      if (event.type === 'package') {
+        packageNames.push(event.payload.packageName)
       }
 
       if (event.type === 'complete') {
@@ -190,8 +175,8 @@ describe('PackageDetector streaming', () => {
       }
     })
 
-    expect(eventTypes).toEqual(['initial', 'batch', 'batch', 'complete'])
-    expect(batchPackageNames).toEqual([['@scope/pkg'], ['zod']])
+    expect(eventTypes).toEqual(['initial', 'package', 'package', 'complete'])
+    expect(packageNames).toEqual(['@scope/pkg', 'zod'])
     expect(packages.map((pkg) => pkg.name)).toEqual(['@scope/pkg', 'zod'])
     expect(packages[0]).toMatchObject({
       name: '@scope/pkg',
@@ -203,6 +188,48 @@ describe('PackageDetector streaming', () => {
       name: 'zod',
       latestVersion: 'unknown',
       isOutdated: false,
+    })
+  })
+
+  it('advances progress by one per package and flags failures without breaking order', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      { name: 'a', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+      { name: 'b', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+      { name: 'c', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+    ])
+    const ok = { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] }
+    const failed = { latestVersion: 'unknown', allVersions: [] }
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      options.onPackageReady({ packageName: 'a', data: ok })
+      options.onPackageReady({ packageName: 'b', data: failed })
+      options.onPackageReady({ packageName: 'c', data: ok })
+      return new Map([
+        ['a', ok],
+        ['b', failed],
+        ['c', ok],
+      ])
+    })
+    mocks.performanceTracker.recordCounts.mockClear()
+    mocks.performanceTracker.recordFailedPackage.mockClear()
+
+    const seen: Array<[string, boolean, number, number, boolean]> = []
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type !== 'package') return
+      const { packageName, failed, progress } = event.payload
+      seen.push([packageName, failed, progress.resolved, progress.failed, progress.isLoading])
+    })
+
+    expect(seen).toEqual([
+      ['a', false, 1, 0, true],
+      ['b', true, 2, 1, true],
+      ['c', false, 3, 1, false],
+    ])
+    expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledTimes(1)
+    expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledWith('b')
+    expect(mocks.performanceTracker.recordCounts).toHaveBeenLastCalledWith({
+      resolved: 3,
+      failed: 1,
     })
   })
 
@@ -241,7 +268,7 @@ describe('PackageDetector streaming', () => {
     let range = '1.5.0'
     mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
       const data = { latestVersion: '3.0.0', allVersions: [range, '1.0.0'] }
-      options.onBatchReady([{ packageName: 'shared', data }])
+      options.onPackageReady({ packageName: 'shared', data })
       return new Map([['shared', data]])
     })
     mocks.findClosestMinorVersion.mockClear()
@@ -267,9 +294,10 @@ describe('PackageDetector streaming', () => {
 
   it('ignores unexpected registry results with no corresponding dependency', async () => {
     mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
-      options.onBatchReady([
-        { packageName: 'unrequested', data: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } },
-      ])
+      options.onPackageReady({
+        packageName: 'unrequested',
+        data: { latestVersion: '1.0.0', allVersions: ['1.0.0'] },
+      })
       return new Map()
     })
     expect(await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()).toEqual([])
@@ -331,12 +359,10 @@ describe('PackageDetector streaming', () => {
       },
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         expect(packageNames).toEqual(['react'])
         const data = { latestVersion: '19.1.0', allVersions: ['19.1.0', '18.3.0', '18.2.0'] }
-        options.onBatchReady([
-          { packageName: 'react', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'react', data })
         return new Map([['react', data]])
       }
     )
@@ -418,12 +444,10 @@ describe('PackageDetector streaming', () => {
       },
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         expect(packageNames).toEqual(['shared-lib'])
         const data = { latestVersion: '1.2.0', allVersions: ['1.2.0', '1.0.0'] }
-        options.onBatchReady([
-          { packageName: 'shared-lib', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'shared-lib', data })
         return new Map([['shared-lib', data]])
       }
     )
@@ -509,18 +533,9 @@ describe('PackageDetector edge paths', () => {
     )
     mocks.fetchPackageVersions.mockReset()
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.2.0', '1.0.0'] }
-        options.onBatchReady(
-          packageNames.map((packageName, itemIndex) => ({
-            packageName,
-            data,
-            completed: itemIndex + 1,
-            total: packageNames.length,
-            batchIndex: 0,
-            itemIndex,
-          }))
-        )
+        for (const packageName of packageNames) options.onPackageReady({ packageName, data })
         return new Map(packageNames.map((name) => [name, data]))
       }
     )
@@ -535,7 +550,6 @@ describe('PackageDetector edge paths', () => {
       cwd: process.cwd(),
       adaptive: true,
       maxConcurrency: 10,
-      batchSize: 1,
       poolConnections: expect.any(Number),
       controllerMode: 'hillclimb',
       pinnedConcurrency: null,
@@ -566,7 +580,7 @@ describe('PackageDetector edge paths', () => {
       async (
         _packageNames: string[],
         options: {
-          onBatchReady: (batch: any[]) => void
+          onPackageReady: (result: any) => void
           onControlTick: (tick: unknown) => void
           onPackageTiming?: (name: string, latencyMs: number) => void
         }
@@ -575,11 +589,9 @@ describe('PackageDetector edge paths', () => {
         expect(options.onPackageTiming).toBeDefined()
         options.onPackageTiming!('zod', 12)
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
-        // Only one of the two packages ever gets a batch: the other must fall
+        // Only one of the two packages ever resolves: the other must fall
         // back to an empty group in the final assembly.
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 2, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -664,18 +676,12 @@ describe('PackageDetector edge paths', () => {
       dep('zod', '^3.0.0'),
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         expect(packageNames).toEqual(['zod'])
-        options.onBatchReady([
-          {
-            packageName: 'zod',
-            data: { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] },
-            completed: 1,
-            total: 1,
-            batchIndex: 0,
-            itemIndex: 0,
-          },
-        ])
+        options.onPackageReady({
+          packageName: 'zod',
+          data: { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] },
+        })
         return new Map([['zod', { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] }]])
       }
     )
@@ -696,18 +702,12 @@ describe('PackageDetector edge paths', () => {
       // No in-range update: the only available bump crosses the major boundary.
       mocks.findClosestMinorVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
-        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.0.0'] }
-          options.onBatchReady([
-            {
-              packageName: '@tiptap/core',
-              data,
-              completed: 1,
-              total: 1,
-              batchIndex: 0,
-              itemIndex: 0,
-            },
-          ])
+          options.onPackageReady({
+            packageName: '@tiptap/core',
+            data,
+          })
           return new Map(packageNames.map((name) => [name, data]))
         }
       )
@@ -741,18 +741,12 @@ describe('PackageDetector edge paths', () => {
       mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
       mocks.findClosestMinorVersion.mockImplementation(() => '2.6.0')
       mocks.fetchPackageVersions.mockImplementation(
-        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.6.0', '2.0.0'] }
-          options.onBatchReady([
-            {
-              packageName: '@tiptap/core',
-              data,
-              completed: 1,
-              total: 1,
-              batchIndex: 0,
-              itemIndex: 0,
-            },
-          ])
+          options.onPackageReady({
+            packageName: '@tiptap/core',
+            data,
+          })
           return new Map(packageNames.map((name) => [name, data]))
         }
       )
@@ -785,11 +779,9 @@ describe('PackageDetector edge paths', () => {
       mocks.collectAllDependenciesAsync.mockResolvedValue([dep('react', '^17.0.0')])
       mocks.findClosestMinorVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
-        async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '18.0.0', allVersions: ['18.0.0', '17.0.0'] }
-          options.onBatchReady([
-            { packageName: 'react', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-          ])
+          options.onPackageReady({ packageName: 'react', data })
           return new Map(packageNames.map((name) => [name, data]))
         }
       )
@@ -838,11 +830,9 @@ describe('PackageDetector edge paths', () => {
       dep('zod', '^1.0.0', '/repo/packages/b/package.json'),
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: 'unknown', allVersions: [] }
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -862,11 +852,9 @@ describe('PackageDetector edge paths', () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', 'latest')])
     mocks.findClosestMinorVersion.mockReturnValue('weird-version')
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: 'next', allVersions: ['next'] }
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -889,11 +877,9 @@ describe('PackageDetector edge paths', () => {
     ])
     mocks.findClosestMinorVersion.mockReturnValue(null)
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
-        options.onBatchReady([
-          { packageName: 'major-only', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'major-only', data })
         return new Map([['major-only', data]])
       }
     )
@@ -1043,17 +1029,10 @@ describe('PackageDetector prerelease handling', () => {
   // shape (allVersions = stable only, prereleaseVersions = every channel).
   const mockRegistry = (data: Record<string, unknown>) => {
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
-        options.onBatchReady(
-          packageNames.map((packageName, itemIndex) => ({
-            packageName,
-            data: data[packageName],
-            completed: itemIndex + 1,
-            total: packageNames.length,
-            batchIndex: 0,
-            itemIndex,
-          }))
-        )
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        for (const packageName of packageNames) {
+          options.onPackageReady({ packageName, data: data[packageName] })
+        }
         return new Map(packageNames.map((name) => [name, data[name]]))
       }
     )
@@ -1478,15 +1457,13 @@ describe('PackageDetector concurrency plumbing', () => {
     mocks.fetchPackageVersions.mockImplementation(
       async (_packageNames: string[], options: Record<string, any>) => {
         options.onControlTick(tick)
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
     const detector = new PackageDetector({ cwd: '/repo' })
     await detector.streamOutdatedPackages((event) => {
-      if (event.type === 'batch') flags.push(event.payload.progress.slowNetwork)
+      if (event.type === 'package') flags.push(event.payload.progress.slowNetwork)
     })
     return flags
   }
@@ -1517,7 +1494,7 @@ describe('PackageDetector concurrency plumbing', () => {
     expect(flags).toEqual([false])
   })
 
-  it('marks the firstBatch phase when the first batch streams in', async () => {
+  it('marks the firstResult phase when the first package streams in', async () => {
     mocks.performanceTracker.mark.mockClear()
     await streamWithTick({
       atMs: 1,
@@ -1528,6 +1505,6 @@ describe('PackageDetector concurrency plumbing', () => {
       state: 'hold',
       goodputRps: 300,
     })
-    expect(mocks.performanceTracker.mark).toHaveBeenCalledWith('firstBatch')
+    expect(mocks.performanceTracker.mark).toHaveBeenCalledWith('firstResult')
   })
 })

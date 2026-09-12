@@ -91,15 +91,13 @@ export class UpgradeRunner {
               .catch(reject)
           }
 
-          if (event.type === 'batch') {
-            for (const item of event.payload.batch) {
-              packagesByName.set(item.packageName, item.packageInfo)
-            }
+          if (event.type === 'package') {
+            packagesByName.set(event.payload.packageName, event.payload.packageInfo)
             syncProgress(event.payload.progress)
-            performanceTracker.mark('firstBatch')
-            this.ui.appendOutdatedBatchToSelectionStates(
+            performanceTracker.mark('firstResult')
+            this.ui.appendOutdatedPackageToSelectionStates(
               selectionStates,
-              event.payload.batch,
+              event.payload.packageInfo,
               previousSelections
             )
             refreshUI?.()
@@ -108,7 +106,7 @@ export class UpgradeRunner {
           if (event.type === 'complete') {
             completedPackages = event.payload.packages
             syncProgress(event.payload.progress)
-            performanceTracker.mark('firstBatch')
+            performanceTracker.mark('firstResult')
             performanceTracker.mark('allLoaded')
             if (isPerfLoggingEnabled()) {
               writePerfLog(

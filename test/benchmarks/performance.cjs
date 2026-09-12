@@ -83,8 +83,8 @@ async function scan() {
   const packages = await detector.streamOutdatedPackages((event) => {
     if (
       firstVisibleMs === null &&
-      event.type === 'batch' &&
-      event.payload.batch.some((item) => item.packageInfo.some((pkg) => pkg.isOutdated))
+      event.type === 'package' &&
+      event.payload.packageInfo.some((pkg) => pkg.isOutdated)
     ) {
       firstVisibleMs = +(performance.now() - start).toFixed(2)
     }

@@ -1,5 +1,4 @@
 import type {
-  BatchTiming,
   ControlTick,
   PackageTiming,
   PerformanceCounts,
@@ -11,7 +10,6 @@ class PerformanceTracker {
   private startedAt: number | null = null
   private phases: Partial<Record<PerformancePhase, number>> = {}
   private counts: PerformanceCounts = {}
-  private batches: BatchTiming[] = []
   private controlTicks: ControlTick[] = []
   private packageTimings: PackageTiming[] = []
   private failedPackages: string[] = []
@@ -21,7 +19,6 @@ class PerformanceTracker {
     this.startedAt = Date.now()
     this.phases = {}
     this.counts = {}
-    this.batches = []
     this.controlTicks = []
     this.packageTimings = []
     this.failedPackages = []
@@ -39,10 +36,6 @@ class PerformanceTracker {
 
   recordCounts(partial: Partial<PerformanceCounts>): void {
     this.counts = { ...this.counts, ...partial }
-  }
-
-  recordBatch(batch: BatchTiming): void {
-    this.batches.push(batch)
   }
 
   recordControlTick(tick: ControlTick): void {
@@ -71,7 +64,6 @@ class PerformanceTracker {
       phases: { ...this.phases },
       totalMs,
       counts: { ...this.counts },
-      batches: [...this.batches],
       controlTicks: [...this.controlTicks],
       packageTimings: [...this.packageTimings],
       failedPackages: [...this.failedPackages],
@@ -83,7 +75,6 @@ class PerformanceTracker {
     this.startedAt = null
     this.phases = {}
     this.counts = {}
-    this.batches = []
     this.controlTicks = []
     this.packageTimings = []
     this.failedPackages = []

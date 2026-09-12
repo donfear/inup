@@ -8,8 +8,8 @@ import type { PerformanceSnapshot } from './types'
  * Performance debug logger.
  *
  * When INUP_PERF=1, every run writes ONE self-contained JSON file capturing the
- * full configuration plus the performance snapshot (phases, batches, adaptive
- * control ticks, counts). The files accumulate in a gitignored directory so a
+ * full configuration plus the performance snapshot (phases, per-package
+ * latency, adaptive control ticks, counts). The files accumulate in a gitignored directory so a
  * series of runs can be diffed to find the best-performing configuration.
  *
  * Output location:
@@ -40,13 +40,18 @@ export interface PerfRunConfig {
   maxConcurrency: number
   /** Pool ceiling / controller ceiling in effect. */
   poolConnections: number
-  /** Emission batch size used for UI grouping. */
-  batchSize: number
   /** Entry path: interactive TUI vs headless (json/check/plain). */
   mode: 'interactive' | 'headless'
   /** Relevant env toggles, captured verbatim for reproducibility. */
   env: Record<string, string | undefined>
 }
+
+/**
+ * Bumped on breaking shape changes:
+ * 2 — results stream per package: `config.batchSize` and `snapshot.batches`
+ *     removed, phase `firstBatch` renamed `firstResult`.
+ */
+export const PERF_RECORD_SCHEMA_VERSION = 2
 
 export interface PerfRunRecord {
   schemaVersion: number
@@ -120,7 +125,7 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
   try {
     const now = new Date()
     const record: PerfRunRecord = {
-      schemaVersion: 1,
+      schemaVersion: PERF_RECORD_SCHEMA_VERSION,
       timestamp: now.toISOString(),
       wallMs: snapshot.totalMs,
       config,

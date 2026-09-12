@@ -1,21 +1,14 @@
 import type { ControlTick } from '../../shared/http/controller-contract'
 
 export type PerformancePhase =
-  | 'firstBatch'
+  | 'firstResult'
   | 'allLoaded'
   | 'discovery'
   | 'depCollection'
   | 'filter'
   | 'registryFetch'
 
-export interface BatchTiming {
-  index: number
-  size: number
-  durationMs: number
-  failedCount: number
-}
-
-// One adaptive-concurrency control decision (separate channel from BatchTiming).
+// One adaptive-concurrency control decision (separate channel from PackageTiming).
 // The canonical definitions live with the controllers; re-exported here so the
 // perf tracker/modal and the controllers can never drift apart structurally.
 export type {
@@ -45,7 +38,6 @@ export interface PerformanceSnapshot {
   phases: Partial<Record<PerformancePhase, number>>
   totalMs: number | null
   counts: PerformanceCounts
-  batches: BatchTiming[]
   controlTicks: ControlTick[]
   packageTimings: PackageTiming[]
   failedPackages: string[]

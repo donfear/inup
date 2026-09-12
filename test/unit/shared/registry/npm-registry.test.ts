@@ -308,45 +308,81 @@ describe('npm-registry', () => {
     }
   })
 
-  it('emits batched results in request order', async () => {
+  it('emits every package exactly once, in request order, with its own data', async () => {
     requestMock.mockImplementation(async ({ path }) => {
-      if (path.includes('pkg-a')) {
-        return makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } })
-      }
-      if (path.includes('pkg-b')) {
-        return makeOkBody({ versions: { '2.0.0': {}, '2.1.0': {} } })
-      }
-      return makeOkBody({ versions: { '3.0.0': {}, '3.1.0': {} } })
+      const major = path.endsWith('pkg-a') ? 1 : path.endsWith('pkg-b') ? 2 : 3
+      return makeOkBody({ versions: { [`${major}.0.0`]: {}, [`${major}.1.0`]: {} } })
     })
 
-    const batches: string[][] = []
+    const emitted: Array<[string, string]> = []
     const result = await fetchPackageVersions(['pkg-a', 'pkg-b', 'pkg-c'], {
-      batchSize: 2,
-      maxConcurrency: 1,
-      onBatchReady: (batch) => {
-        batches.push(batch.map((item) => item.packageName))
-      },
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
     })
 
-    expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
-    expect(new Set(result.keys())).toEqual(new Set(['pkg-a', 'pkg-b', 'pkg-c']))
+    expect(emitted).toEqual([
+      ['pkg-a', '1.1.0'],
+      ['pkg-b', '2.1.0'],
+      ['pkg-c', '3.1.0'],
+    ])
+    expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
 
-  it('supports a growing batch-size sequence', async () => {
-    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+  it('keeps fetching later packages while an earlier one is held back', async () => {
+    const pending = new Map<string, (response: MockResponse) => void>()
+    requestMock.mockImplementation(
+      ({ path }) =>
+        new Promise((resolve) => {
+          pending.set(path, resolve)
+        })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => emitted.push(packageName),
+    })
+    await new Promise((resolve) => setImmediate(resolve))
 
-    const packageNames = Array.from({ length: 50 }, (_, index) => `pkg-${index + 1}`)
-    const batches: number[] = []
+    // All three requests are in flight before anything resolves: emission
+    // order is a consumer-side contract and must not gate the network.
+    expect(Array.from(pending.keys()).sort()).toEqual(['/a', '/b', '/c'])
 
-    await fetchPackageVersions(packageNames, {
-      batchSizes: [10, 15, 20, 25],
-      maxConcurrency: 5,
-      onBatchReady: (batch) => {
-        batches.push(batch.length)
-      },
+    pending.get('/c')!(makeOkBody({ versions: { '3.0.0': {} } }))
+    pending.get('/b')!(makeOkBody({ versions: { '2.0.0': {} } }))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual([])
+
+    pending.get('/a')!(makeOkBody({ versions: { '1.0.0': {} } }))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['a', 'b', 'c'])
+    expect((await run).get('c')?.latestVersion).toBe('3.0.0')
+  })
+
+  it('emits a retried package once, after its retry succeeds, without reordering', async () => {
+    let attemptsForA = 0
+    requestMock.mockImplementation(async ({ path }) => {
+      if (path.endsWith('/a')) {
+        attemptsForA++
+        return attemptsForA === 1
+          ? makeErrBody(500)
+          : makeOkBody({ versions: { '1.0.0': {}, '1.5.0': {} } })
+      }
+      return makeOkBody({ versions: { '2.0.0': {} } })
     })
 
-    expect(batches).toEqual([10, 15, 20, 5])
+    const emitted: Array<[string, string]> = []
+    await fetchPackageVersions(['a', 'b'], {
+      adaptive: false,
+      maxConcurrency: 2,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
+    })
+
+    expect(attemptsForA).toBe(2)
+    expect(emitted).toEqual([
+      ['a', '1.5.0'],
+      ['b', '2.0.0'],
+    ])
   })
 
   it.each([
@@ -364,8 +400,7 @@ describe('npm-registry', () => {
     const run = fetchPackageVersions(['a', 'b', 'c'], {
       adaptive: false,
       maxConcurrency: 3,
-      batchSize: 1,
-      onBatchReady: (batch) => emitted.push(...batch.map((item) => item.packageName)),
+      onPackageReady: ({ packageName }) => emitted.push(packageName),
     })
     await new Promise((resolve) => setImmediate(resolve))
     const completed = new Set<string>()

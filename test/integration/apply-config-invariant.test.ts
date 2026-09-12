@@ -75,13 +75,13 @@ describe('--apply respects .inuprc (config-filtered == reported == written)', ()
       throw new Error('not installed')
     })
     mocks.fetchPackageVersions.mockImplementation(
-      async (names: string[], opts: { onBatchReady?: (batch: unknown[]) => void }) => {
-        opts.onBatchReady?.(
-          names.map((name) => ({
+      async (names: string[], opts: { onPackageReady?: (result: unknown) => void }) => {
+        for (const name of names) {
+          opts.onPackageReady?.({
             packageName: name,
             data: { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.5.0', '1.0.0'] },
-          }))
-        )
+          })
+        }
       }
     )
 

@@ -18,7 +18,6 @@ import type {
   NetworkProfile,
   PackageInfo,
   PackageLoadProgress,
-  StreamOutdatedPackagesBatchItem,
   StreamOutdatedPackagesCallback,
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
@@ -55,7 +54,6 @@ export class PackageDetector {
   private ignoreMajorPackages: string[]
   private maxDepth: number
 
-  private readonly batchSize = 1
   private readonly maxConcurrency = 10
   private readonly adaptive: boolean
   /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
@@ -97,7 +95,6 @@ export class PackageDetector {
     cwd: string
     adaptive: boolean
     maxConcurrency: number
-    batchSize: number
     poolConnections: number
     controllerMode: 'aimd' | 'hillclimb'
     pinnedConcurrency: number | null
@@ -108,7 +105,6 @@ export class PackageDetector {
       cwd: this.cwd,
       adaptive: this.adaptive,
       maxConcurrency: this.maxConcurrency,
-      batchSize: this.batchSize,
       poolConnections: POOL_CONNECTIONS,
       controllerMode: this.controllerMode,
       pinnedConcurrency: this.concurrency ?? null,
@@ -121,10 +117,8 @@ export class PackageDetector {
     const packages: PackageInfo[] = []
 
     await this.streamOutdatedPackages((event) => {
-      if (event.type === 'batch') {
-        event.payload.batch.forEach((item) => {
-          packages.push(...item.packageInfo)
-        })
+      if (event.type === 'package') {
+        packages.push(...event.payload.packageInfo)
       } else if (event.type === 'complete') {
         packages.splice(0, packages.length, ...event.payload.packages)
       }
@@ -157,15 +151,12 @@ export class PackageDetector {
     let resolved = 0
     let failed = 0
     const performanceTracker = getPerformanceTracker()
-    let batchIndex = 0
-    let lastBatchEndAt = Date.now()
 
     const tFetch = Date.now()
-    debugLog.info('PackageDetector', 'fetching version data via npm registry in batches')
+    debugLog.info('PackageDetector', 'fetching version data via npm registry')
 
     await fetchPackageVersions(prepared.uniquePackages, {
       currentVersions: prepared.currentVersions,
-      batchSize: this.batchSize,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
       concurrency: this.concurrency,
@@ -181,57 +172,37 @@ export class PackageDetector {
       onPackageTiming: isPerfLoggingEnabled()
         ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
         : undefined,
-      onBatchReady: (batch) => {
+      onPackageReady: ({ packageName, data }) => {
         // First-wins in the tracker; headless runs get the phase from here,
         // the interactive runner's own mark becomes a no-op duplicate.
-        performanceTracker.mark('firstBatch')
-        const batchStart = lastBatchEndAt
-        let batchFailedCount = 0
-        const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {
-          const packageInfo = this.resolvePackageGroup(
-            batchItem.packageName,
-            prepared.dependenciesByName.get(batchItem.packageName) ?? [],
-            batchItem.data
-          )
-          packageLookup.set(batchItem.packageName, packageInfo)
-          resolved++
+        performanceTracker.mark('firstResult')
+        const packageInfo = this.resolvePackageGroup(
+          packageName,
+          prepared.dependenciesByName.get(packageName) ?? [],
+          data
+        )
+        packageLookup.set(packageName, packageInfo)
+        resolved++
 
-          const isFailed = batchItem.data.latestVersion === 'unknown'
-          if (isFailed) {
-            failed++
-            batchFailedCount++
-            performanceTracker.recordFailedPackage(batchItem.packageName)
-          }
-
-          return {
-            packageName: batchItem.packageName,
-            packageInfo,
-            failed: isFailed,
-          }
-        })
-
-        const batchEnd = Date.now()
-        performanceTracker.recordBatch({
-          index: batchIndex++,
-          size: batch.length,
-          durationMs: batchEnd - batchStart,
-          failedCount: batchFailedCount,
-        })
-        lastBatchEndAt = batchEnd
+        const isFailed = data.latestVersion === 'unknown'
+        if (isFailed) {
+          failed++
+          performanceTracker.recordFailedPackage(packageName)
+        }
         performanceTracker.recordCounts({ resolved, failed })
 
-        const progress = this.createProgressSnapshot(
-          prepared.uniquePackages.length,
-          resolved,
-          failed,
-          resolved < prepared.uniquePackages.length
-        )
-
         onEvent({
-          type: 'batch',
+          type: 'package',
           payload: {
-            batch: batchItems,
-            progress,
+            packageName,
+            packageInfo,
+            failed: isFailed,
+            progress: this.createProgressSnapshot(
+              prepared.uniquePackages.length,
+              resolved,
+              failed,
+              resolved < prepared.uniquePackages.length
+            ),
           },
         })
       },

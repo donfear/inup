@@ -17,7 +17,6 @@ import type {
   PackageManagerInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
-  StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from '../shared/types'
 
@@ -115,13 +114,18 @@ export class InteractiveUI {
     )
   }
 
-  public appendOutdatedBatchToSelectionStates(
+  /**
+   * Appends the outdated declarations of one streamed package. Called once per
+   * package as results arrive, so membership is tracked per list rather than
+   * rebuilt from the full list each time.
+   */
+  public appendOutdatedPackageToSelectionStates(
     selectionStates: PackageSelectionState[],
-    batch: StreamOutdatedPackagesBatchItem[],
+    packageInfo: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): void {
     const outdatedStates = this.createSelectionStates(
-      batch.flatMap((batchItem) => batchItem.packageInfo).filter((pkg) => pkg.isOutdated),
+      packageInfo.filter((pkg) => pkg.isOutdated),
       previousSelections,
       false
     )

@@ -2,11 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveUI } from '../../../src/app/interactive-ui'
 import { runInteractiveSession } from '../../../src/features/interactive'
 import { TerminalInput } from '../../../src/shared/terminal'
-import type {
-  PackageManagerInfo,
-  PackageSelectionState,
-  StreamOutdatedPackagesBatchItem,
-} from '../../../src/shared/types'
+import type { PackageManagerInfo, PackageSelectionState } from '../../../src/shared/types'
 import { makePackageInfo } from '../../fixtures/package-info-factory'
 import { makeSelectionState } from '../../fixtures/selection-state-factory'
 import { type FakeStdin, installFakeStdin } from '../../helpers/fake-stdin'
@@ -115,22 +111,17 @@ describe('InteractiveUI selection state builders', () => {
   })
 })
 
-describe('InteractiveUI.appendOutdatedBatchToSelectionStates', () => {
-  const batchItem = (
-    name: string,
-    overrides?: Partial<ReturnType<typeof makePackageInfo>>
-  ): StreamOutdatedPackagesBatchItem => ({
-    packageName: name,
-    packageInfo: [makePackageInfo({ name, ...overrides })],
-    failed: false,
-  })
+describe('InteractiveUI.appendOutdatedPackageToSelectionStates', () => {
+  const resolved = (name: string, overrides?: Partial<ReturnType<typeof makePackageInfo>>) => [
+    makePackageInfo({ name, ...overrides }),
+  ]
 
   it('appends new outdated packages and audits the combined list', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selectionStates: PackageSelectionState[] = [makeSelectionState({ name: 'existing' })]
 
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('fresh-pkg')])
+    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('fresh-pkg'))
 
     expect(selectionStates.map((s) => s.name)).toEqual(['existing', 'fresh-pkg'])
     expect(audit).toHaveBeenCalledWith(selectionStates)
@@ -142,7 +133,7 @@ describe('InteractiveUI.appendOutdatedBatchToSelectionStates', () => {
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
     ]
 
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('test-pkg')])
+    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('test-pkg'))
 
     expect(selectionStates).toHaveLength(1)
   })
@@ -151,23 +142,24 @@ describe('InteractiveUI.appendOutdatedBatchToSelectionStates', () => {
     const ui = new InteractiveUI(npmInfo)
     const selectionStates: PackageSelectionState[] = []
 
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-a')])
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-b')])
+    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-a'))
+    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-b'))
     // A package already appended by an earlier arrival must not be added twice,
     // even though the index was not rebuilt for this call.
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-a')])
+    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-a'))
 
     expect(selectionStates.map((s) => s.name)).toEqual(['pkg-a', 'pkg-b'])
   })
 
-  it('ignores batches with nothing outdated and skips the audit', () => {
+  it('ignores an up-to-date package and skips the audit', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selectionStates: PackageSelectionState[] = []
 
-    ui.appendOutdatedBatchToSelectionStates(selectionStates, [
-      batchItem('current-pkg', { isOutdated: false }),
-    ])
+    ui.appendOutdatedPackageToSelectionStates(
+      selectionStates,
+      resolved('current-pkg', { isOutdated: false })
+    )
 
     expect(selectionStates).toEqual([])
     expect(audit).not.toHaveBeenCalled()

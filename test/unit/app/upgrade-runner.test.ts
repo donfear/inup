@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   upgradePackages: vi.fn(),
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
-  appendOutdatedBatchToSelectionStates: vi.fn(),
+  appendOutdatedPackageToSelectionStates: vi.fn(),
   isPerfLoggingEnabled: vi.fn(() => false),
   writePerfLog: vi.fn(),
   performanceTracker: {
@@ -43,7 +43,7 @@ vi.mock('../../../src/app/interactive-ui', () => ({
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
-    appendOutdatedBatchToSelectionStates = mocks.appendOutdatedBatchToSelectionStates
+    appendOutdatedPackageToSelectionStates = mocks.appendOutdatedPackageToSelectionStates
   },
 }))
 
@@ -82,7 +82,7 @@ describe('UpgradeRunner terminal handoff', () => {
       color: null,
     })
     mocks.getOutdatedPackagesOnly.mockImplementation((packages: any[]) => packages)
-    mocks.appendOutdatedBatchToSelectionStates.mockImplementation(() => {})
+    mocks.appendOutdatedPackageToSelectionStates.mockImplementation(() => {})
 
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
@@ -131,15 +131,15 @@ describe('UpgradeRunner terminal handoff', () => {
 
   it('propagates the slowNetwork flag into the live progress object', async () => {
     let seenProgress: { slowNetwork?: boolean } | undefined
-    const snapshotsAtBatch: (boolean | undefined)[] = []
+    const snapshotsAtPackage: (boolean | undefined)[] = []
     mocks.selectPackagesToUpgradeProgressive.mockImplementation(
       async (_states: unknown, progress: { slowNetwork?: boolean }) => {
         seenProgress = progress
         return []
       }
     )
-    mocks.appendOutdatedBatchToSelectionStates.mockImplementation(() => {
-      snapshotsAtBatch.push(seenProgress?.slowNetwork)
+    mocks.appendOutdatedPackageToSelectionStates.mockImplementation(() => {
+      snapshotsAtPackage.push(seenProgress?.slowNetwork)
     })
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       onEvent({
@@ -152,9 +152,11 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
       onEvent({
-        type: 'batch',
+        type: 'package',
         payload: {
-          batch: [],
+          packageName: 'next',
+          packageInfo: [],
+          failed: false,
           progress: {
             discovered: 1,
             resolved: 1,
@@ -187,7 +189,7 @@ describe('UpgradeRunner terminal handoff', () => {
     logSpy.mockRestore()
 
     // The UI holds one live progress object; the hint must arrive through it.
-    expect(snapshotsAtBatch).toEqual([true])
+    expect(snapshotsAtPackage).toEqual([true])
     expect(seenProgress?.slowNetwork).toBe(false) // and clear again on recovery
   })
 
@@ -292,8 +294,8 @@ describe('UpgradeRunner terminal handoff', () => {
     expect(mocks.detectPackageManager).toHaveBeenCalledWith(process.cwd())
   })
 
-  it('appends streamed batches to the selection UI and refreshes it', async () => {
-    const batchPackage = {
+  it('appends each streamed package to the selection UI and refreshes it', async () => {
+    const streamedPackage = {
       name: 'next',
       currentVersion: '^1.0.0',
       rangeVersion: '^1.1.0',
@@ -316,25 +318,29 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
       onEvent({
-        type: 'batch',
+        type: 'package',
         payload: {
-          batch: [{ packageName: 'next', packageInfo: [batchPackage], failed: false }],
+          packageName: 'next',
+          packageInfo: [streamedPackage],
+          failed: false,
           progress: { ...progress, resolved: 1 },
         },
       })
-      // A second batch for the same package replaces the earlier entry
+      // A repeated result for the same package replaces the earlier entry
       // instead of duplicating it.
       onEvent({
-        type: 'batch',
+        type: 'package',
         payload: {
-          batch: [{ packageName: 'next', packageInfo: [batchPackage], failed: false }],
+          packageName: 'next',
+          packageInfo: [streamedPackage],
+          failed: false,
           progress: { ...progress, resolved: 1 },
         },
       })
       onEvent({
         type: 'complete',
         payload: {
-          packages: [batchPackage],
+          packages: [streamedPackage],
           progress: { ...progress, resolved: 1, isLoading: false },
         },
       })
@@ -350,8 +356,8 @@ describe('UpgradeRunner terminal handoff', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
 
-    expect(mocks.appendOutdatedBatchToSelectionStates).toHaveBeenCalledTimes(2)
-    // Once per batch, once for completion.
+    expect(mocks.appendOutdatedPackageToSelectionStates).toHaveBeenCalledTimes(2)
+    // Once per package event, once for completion.
     expect(refresh).toHaveBeenCalledTimes(3)
     logSpy.mockRestore()
   })
@@ -373,7 +379,7 @@ describe('UpgradeRunner terminal handoff', () => {
   })
 
   it('re-enters progressive selection when declining confirmation while still loading', async () => {
-    const batchPackage = {
+    const streamedPackage = {
       name: 'next',
       currentVersion: '^1.0.0',
       rangeVersion: '^1.1.0',
@@ -384,7 +390,7 @@ describe('UpgradeRunner terminal handoff', () => {
       hasRangeUpdate: true,
       hasMajorUpdate: true,
     }
-    // The stream delivers one batch but never completes: progress stays loading.
+    // The stream delivers one package but never completes: progress stays loading.
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = { discovered: 1, resolved: 0, total: 1, failed: 0, isLoading: true }
       onEvent({
@@ -397,9 +403,11 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
       onEvent({
-        type: 'batch',
+        type: 'package',
         payload: {
-          batch: [{ packageName: 'next', packageInfo: [batchPackage], failed: false }],
+          packageName: 'next',
+          packageInfo: [streamedPackage],
+          failed: false,
           progress: { ...progress, resolved: 1 },
         },
       })
