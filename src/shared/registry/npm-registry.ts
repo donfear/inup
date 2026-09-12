@@ -270,10 +270,9 @@ async function fetchPackageFromRegistry(
  * - Unchanged packuments are revalidated via ETag (304), skipping re-download.
  *
  * Callbacks:
- * - `onPackageReady` fires once per package in request order: a package is
- *   released as soon as it and every package before it have resolved. Emission
- *   order never gates fetching — later packages keep downloading while an
- *   earlier one is still in flight.
+ * - `onPackageReady` fires once per package the moment it resolves, in
+ *   completion order. Consumers that need a stable order sort on their side;
+ *   nothing waits for a slower earlier package.
  * - `onControlTick` (optional) reports each adaptive control decision for
  *   instrumentation.
  * - `onNetworkProfile` (optional) fires once at the end of a run whose
@@ -329,23 +328,7 @@ export async function fetchPackageVersions(
           : fixedConcurrency
   const semaphore = new ResizableSemaphore(initialLimit)
 
-  // --- ordered emission -------------------------------------------------------
-  // Results land by request index; the cursor releases the longest resolved
-  // prefix so consumers see packages in request order without waiting for a
-  // fixed-size window to fill.
   let completedCount = 0
-  const resolvedByIndex = new Array<ParsedVersions | undefined>(total)
-  let nextEmitIndex = 0
-  const releaseResolvedPrefix = () => {
-    while (nextEmitIndex < total) {
-      const data = resolvedByIndex[nextEmitIndex]
-      if (!data) break
-      // Advance before calling out: a throwing consumer must not see the same
-      // package again from the next worker's flush.
-      const packageName = packageNames[nextEmitIndex++]
-      options.onPackageReady?.({ packageName, data })
-    }
-  }
 
   // --- per-attempt observer ---------------------------------------------------
   // Feeds the adaptive controller AND (optionally) reports per-package latency
@@ -385,8 +368,7 @@ export async function fetchPackageVersions(
       )
       packageData.set(packageName, data)
       completedCount++
-      resolvedByIndex[index] = data
-      releaseResolvedPrefix()
+      options.onPackageReady?.({ packageName, data })
 
       if (controller) {
         // Run tail: with fewer pending items than the limit the drain would

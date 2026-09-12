@@ -308,7 +308,7 @@ describe('npm-registry', () => {
     }
   })
 
-  it('emits every package exactly once, in request order, with its own data', async () => {
+  it('emits every package exactly once with its own data', async () => {
     requestMock.mockImplementation(async ({ path }) => {
       const major = path.endsWith('pkg-a') ? 1 : path.endsWith('pkg-b') ? 2 : 3
       return makeOkBody({ versions: { [`${major}.0.0`]: {}, [`${major}.1.0`]: {} } })
@@ -328,7 +328,7 @@ describe('npm-registry', () => {
     expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
 
-  it('keeps fetching later packages while an earlier one is held back', async () => {
+  it('emits each package the moment it resolves; a slow earlier package holds nothing back', async () => {
     const pending = new Map<string, (response: MockResponse) => void>()
     requestMock.mockImplementation(
       ({ path }) =>
@@ -343,23 +343,24 @@ describe('npm-registry', () => {
       onPackageReady: ({ packageName }) => emitted.push(packageName),
     })
     await new Promise((resolve) => setImmediate(resolve))
-
-    // All three requests are in flight before anything resolves: emission
-    // order is a consumer-side contract and must not gate the network.
     expect(Array.from(pending.keys()).sort()).toEqual(['/a', '/b', '/c'])
 
     pending.get('/c')!(makeOkBody({ versions: { '3.0.0': {} } }))
-    pending.get('/b')!(makeOkBody({ versions: { '2.0.0': {} } }))
     await new Promise((resolve) => setImmediate(resolve))
-    expect(emitted).toEqual([])
+    expect(emitted).toEqual(['c'])
+
+    pending.get('/b')!(makeErrBody(404))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['c', 'b'])
 
     pending.get('/a')!(makeOkBody({ versions: { '1.0.0': {} } }))
-    await new Promise((resolve) => setImmediate(resolve))
-    expect(emitted).toEqual(['a', 'b', 'c'])
-    expect((await run).get('c')?.latestVersion).toBe('3.0.0')
+    const result = await run
+    expect(emitted).toEqual(['c', 'b', 'a'])
+    expect(result.get('b')?.latestVersion).toBe('unknown')
+    expect(result.get('c')?.latestVersion).toBe('3.0.0')
   })
 
-  it('fails the run on a throwing consumer without replaying the package to later flushes', async () => {
+  it('fails the run on a throwing consumer and never emits that package twice', async () => {
     requestMock.mockImplementation(async ({ path }) =>
       makeOkBody({ versions: { [path.endsWith('/a') ? '1.0.0' : '2.0.0']: {} } })
     )
@@ -374,12 +375,11 @@ describe('npm-registry', () => {
     })
 
     await expect(run).rejects.toThrow('consumer failed')
-    // Workers for b and c still complete and flush; none of them re-emits a.
     await new Promise((resolve) => setImmediate(resolve))
     expect(emitted.filter((name) => name === 'a')).toHaveLength(1)
   })
 
-  it('emits a retried package once, after its retry succeeds, without reordering', async () => {
+  it('emits a retried package once, after its retry succeeds', async () => {
     let attemptsForA = 0
     requestMock.mockImplementation(async ({ path }) => {
       if (path.endsWith('/a')) {
@@ -399,47 +399,11 @@ describe('npm-registry', () => {
     })
 
     expect(attemptsForA).toBe(2)
+    // b resolves on its first attempt, so it lands before a's retry completes.
     expect(emitted).toEqual([
-      ['a', '1.5.0'],
       ['b', '2.0.0'],
+      ['a', '1.5.0'],
     ])
-  })
-
-  it.each([
-    ['a', 'c', 'b'],
-    ['c', 'b', 'a'],
-  ])('releases only the completed ordered prefix: %s, %s, %s', async (...order) => {
-    const pending = new Map<string, (response: MockResponse) => void>()
-    requestMock.mockImplementation(
-      ({ path }) =>
-        new Promise((resolve) => {
-          pending.set(path, resolve)
-        })
-    )
-    const emitted: string[] = []
-    const run = fetchPackageVersions(['a', 'b', 'c'], {
-      adaptive: false,
-      maxConcurrency: 3,
-      onPackageReady: ({ packageName }) => emitted.push(packageName),
-    })
-    await new Promise((resolve) => setImmediate(resolve))
-    const completed = new Set<string>()
-    for (const name of order) {
-      pending.get(`/${name}`)!(
-        name === 'b' ? makeErrBody(404) : makeOkBody({ versions: { '1.1.0': {} } })
-      )
-      completed.add(name)
-      await new Promise((resolve) => setImmediate(resolve))
-      const prefix: string[] = []
-      for (const candidate of ['a', 'b', 'c']) {
-        if (!completed.has(candidate)) break
-        prefix.push(candidate)
-      }
-      expect(emitted).toEqual(prefix)
-    }
-    const result = await run
-    expect(result.get('b')?.latestVersion).toBe('unknown')
-    expect(emitted).toEqual(['a', 'b', 'c'])
   })
 
   describe('adaptive concurrency', () => {
