@@ -67,10 +67,12 @@ async function measure(label, run) {
     ...details,
   })
 }
+// Workspaces alternate specifiers so the per-specifier cache sees both hits and misses.
+const SPECIFIERS = ['^1.0.0', '~1.2.0', '1.3.0']
 function fixture(unique, repeats) {
   return Array.from({ length: unique * repeats }, (_, i) => ({
     name: `pkg-${String(i % unique).padStart(4, '0')}`,
-    version: '^1.0.0',
+    version: SPECIFIERS[Math.floor(i / unique) % SPECIFIERS.length],
     type: 'dependencies',
     packageJsonPath: `/fixture/workspace-${Math.floor(i / unique)}/package.json`,
   }))
@@ -107,8 +109,9 @@ async function main() {
   for (const size of [100, 1000, 10000]) {
     const states = Array.from({ length: size }, (_, i) => makeSelectionState({ name: `pkg-${i}` }))
     const cache = list.VersionColumnWidthCache ? new list.VersionColumnWidthCache() : null
+    let revision = 0
     const frame = () => {
-      const options = cache ? { columnWidths: cache.get(states, 120, 0, '') } : {}
+      const options = cache ? { columnWidths: cache.get(states, 120, revision, '') } : {}
       return list.renderInterface(
         states,
         0,
@@ -127,17 +130,27 @@ async function main() {
         options
       )
     }
-    for (let i = 0; i < 10; i++) frame()
-    await measure(`render-${size}-rows`, () => {
+    const timed = (run) => {
       const timings = []
       for (let i = 0; i < 100; i++) {
         const start = performance.now()
-        frame()
+        run(i)
         timings.push(performance.now() - start)
       }
       timings.sort((a, b) => a - b)
       return { medianFrameMs: +timings[50].toFixed(3), p95FrameMs: +timings[95].toFixed(3) }
-    })
+    }
+    for (let i = 0; i < 10; i++) frame()
+    // Idle frames: navigation and selection changes over a settled list.
+    await measure(`render-${size}-rows`, () => timed(() => frame()))
+    // Streaming frames: one row appended per frame, so the layout is remeasured.
+    await measure(`render-${size}-rows-appending`, () =>
+      timed((i) => {
+        states.push(makeSelectionState({ name: `late-${i}` }))
+        if (cache) revision++
+        frame()
+      })
+    )
   }
   console.log(JSON.stringify({ node: process.version, results }, null, 2))
 }
