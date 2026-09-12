@@ -4,7 +4,7 @@ import type {
   RenderableItem,
   VulnerabilityDisplayOptions,
 } from '../../../shared/types'
-import { FilterManager } from './filter-manager'
+import { FilterManager, type FilterState } from './filter-manager'
 import { type InfoModalTab, ModalManager } from './modal-manager'
 import { NavigationManager } from './navigation-manager'
 import { ThemeManager } from './theme-manager'
@@ -416,6 +416,11 @@ export class StateManager {
 
   getFilterSnapshot(): PersistedFilters {
     return this.filterManager.getPersistableState()
+  }
+
+  /** Everything that decides which rows getFilteredStates returns. */
+  getFilterState(): FilterState {
+    return this.filterManager.getState()
   }
 
   // Display and render state management

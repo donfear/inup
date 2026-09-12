@@ -535,7 +535,7 @@ describe('progressive rendering', () => {
     const widths = () => render.mock.lastCall![14]!.columnWidths
     const states = [makeSelectionState({ selectedOption: 'range' })]
     let refresh!: () => void
-    const { promise } = startSession(states, {
+    const { promise, vulnerabilityAuditController } = startSession(states, {
       renderer,
       attachRefresh: (fn) => {
         refresh = fn
@@ -555,9 +555,55 @@ describe('progressive rendering', () => {
     expect(filtered).not.toBe(appended)
     Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 120 })
     process.emit('SIGWINCH')
-    expect(widths()).not.toBe(filtered)
+    const resized = widths()
+    expect(resized).not.toBe(filtered)
+    // Audit results change badges, never version columns: no remeasure.
+    const onAudit = vulnerabilityAuditController.enqueueStates.mock.calls[0][1] as () => void
+    onAudit()
+    vi.advanceTimersByTime(16)
+    expect(widths()).toBe(resized)
     fake.stdin.emit('keypress', '', { name: 'return' })
     await promise
+  })
+
+  it('rejects the session and restores the terminal when a background frame throws', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    let refresh!: () => void
+    const { promise } = startSession([makeSelectionState()], {
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    vi.spyOn(renderer, 'renderInterface')
+    const original = UIRenderer.prototype.renderInterface
+    const boom = vi.spyOn(UIRenderer.prototype, 'renderInterface').mockImplementation(function (
+      this: UIRenderer,
+      ...args
+    ) {
+      // Keyboard frames still render; only the coalesced background frame fails.
+      if (failNext) throw new Error('renderer exploded')
+      return original.apply(this, args)
+    })
+    let failNext = false
+    try {
+      fake.stdin.emit('keypress', '', { name: 'down' })
+      failNext = true
+      stdout.clear()
+      refresh()
+      const rejection = expect(promise).rejects.toThrow('renderer exploded')
+      vi.advanceTimersByTime(16)
+      await rejection
+      expect(stdout.output()).toContain('\x1b[?1049l') // alternate screen released
+      expect(fake.stdin.listenerCount('keypress')).toBe(0)
+      expect(vi.getTimerCount()).toBe(0)
+      // The failed session is inert afterwards.
+      refresh()
+      vi.advanceTimersByTime(16)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      boom.mockRestore()
+    }
   })
 
   it('cancels a scheduled frame if terminal setup falls back', async () => {

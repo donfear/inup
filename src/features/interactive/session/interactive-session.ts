@@ -39,7 +39,7 @@ export async function runInteractiveSession(
   loadingProgress?: PackageLoadProgress,
   attachRefresh?: (refresh: () => void) => void
 ): Promise<PackageSelectionState[]> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const states = selectionStates
     const stateManager = new StateManager(
       0,
@@ -338,7 +338,7 @@ export async function runInteractiveSession(
               filteredStates,
               terminalWidth,
               dataRevision,
-              JSON.stringify([stateManager.getFilterSnapshot(), uiState.filterQuery])
+              JSON.stringify(stateManager.getFilterState())
             ),
           },
           uiState.notice
@@ -353,16 +353,28 @@ export async function runInteractiveSession(
       stateManager.setInitialRender(false)
     }
 
-    // Background results arrive per package. Render once per window without
-    // delaying keyboard input; renderInterface consumes any pending frame.
+    // Background work (package arrivals, audit results, modal loads) renders at
+    // most once per window and never delays keyboard input: renderInterface
+    // consumes any pending frame. A renderer failure here has no caller to
+    // propagate to, so it ends the session the way the synchronous path would.
     const requestBackgroundRender = () => {
-      if (isResolved) return
-      dataRevision++
-      if (backgroundRender !== undefined) return
+      if (isResolved || backgroundRender !== undefined) return
       backgroundRender = setTimeout(() => {
         backgroundRender = undefined
-        renderInterface()
+        try {
+          renderInterface()
+        } catch (error) {
+          teardown()
+          reject(error)
+        }
       }, 16)
+    }
+
+    // Appends are the only mutation that changes column widths; selection,
+    // cursor, audit, and modal updates leave the version columns as they are.
+    const onStatesAppended = () => {
+      dataRevision++
+      requestBackgroundRender()
     }
 
     // Safety net: restore terminal if the process exits without going through finalizeSelection.
@@ -390,16 +402,20 @@ export async function runInteractiveSession(
       process.off('SIGWINCH', handleResize)
     }
 
-    const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
+    const teardown = () => {
       isResolved = true
       cancelBackgroundRender()
       onRefreshViewReady?.(undefined)
       packageInfoModalController.cancel()
-      // Remember the view filters for next launch (best-effort, never throws).
-      configManager.setFilters(stateManager.getFilterSnapshot())
       releaseInteractiveScreen()
       cleanupInteractiveSession()
       process.off('exit', emergencyCleanup)
+    }
+
+    const finalizeSelection = (selectedStates: PackageSelectionState[]) => {
+      // Remember the view filters for next launch (best-effort, never throws).
+      configManager.setFilters(stateManager.getFilterSnapshot())
+      teardown()
       resolve(selectedStates)
     }
 
@@ -442,7 +458,7 @@ export async function runInteractiveSession(
       claimInteractiveScreen()
 
       onRefreshViewReady?.(requestBackgroundRender)
-      attachRefresh?.(requestBackgroundRender)
+      attachRefresh?.(onStatesAppended)
 
       const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
       const previousCleanup = cleanupInteractiveSession
