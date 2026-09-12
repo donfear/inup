@@ -5,7 +5,7 @@ import {
   perfEnv,
   writePerfLog,
 } from '../features/debug'
-import { selectionKey } from '../features/interactive'
+import { SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
@@ -13,7 +13,6 @@ import type {
   PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
-  PackageSelectionState,
   PackageUpgradeChoice,
   UpgradeOptions,
 } from '../shared/types'
@@ -63,7 +62,7 @@ export class UpgradeRunner {
         failed: 0,
         isLoading: true,
       }
-      let selectionStates: PackageSelectionState[] = []
+      let selection = new SelectionList()
       let refreshUI: (() => void) | undefined
       // Packages arrive once each, in scan order; 'complete' installs the
       // detector's final list so post-selection steps never see a partial one.
@@ -80,10 +79,10 @@ export class UpgradeRunner {
           if (event.type === 'initial') {
             syncProgress(event.payload.progress)
 
-            selectionStates = []
+            selection = new SelectionList()
 
             this.ui
-              .selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {
+              .selectPackagesToUpgradeProgressive(selection, progress, (refresh) => {
                 refreshUI = refresh
               })
               .then(resolve)
@@ -94,11 +93,7 @@ export class UpgradeRunner {
             latestPackages.push(...event.payload.packageInfo)
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstResult')
-            this.ui.appendOutdatedPackageToSelectionStates(
-              selectionStates,
-              event.payload.packageInfo,
-              previousSelections
-            )
+            this.ui.insertOutdatedPackage(selection, event.payload.packageInfo, previousSelections)
             refreshUI?.()
           }
 
@@ -166,13 +161,9 @@ export class UpgradeRunner {
           // User pressed N or ESC - go back to selection with current selections preserved
           ConsoleUtils.clearProgress()
           selectedChoices = progress.isLoading
-            ? await this.ui.selectPackagesToUpgradeProgressive(
-                selectionStates,
-                progress,
-                (refresh) => {
-                  refreshUI = refresh
-                }
-              )
+            ? await this.ui.selectPackagesToUpgradeProgressive(selection, progress, (refresh) => {
+                refreshUI = refresh
+              })
             : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
           continue
         }

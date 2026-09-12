@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveUI } from '../../../src/app/interactive-ui'
-import { runInteractiveSession } from '../../../src/features/interactive'
+import { runInteractiveSession, SelectionList } from '../../../src/features/interactive'
 import { TerminalInput } from '../../../src/shared/terminal'
-import type { PackageManagerInfo, PackageSelectionState } from '../../../src/shared/types'
+import type { PackageManagerInfo } from '../../../src/shared/types'
 import { makePackageInfo } from '../../fixtures/package-info-factory'
 import { makeSelectionState } from '../../fixtures/selection-state-factory'
 import { type FakeStdin, installFakeStdin } from '../../helpers/fake-stdin'
@@ -44,9 +44,9 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
 
   it('maps the session result through createUpgradeChoices with prefix preservation', async () => {
     const ui = new InteractiveUI(npmInfo)
-    sessionMock.mockImplementation(async (states: PackageSelectionState[]) => {
-      states[0].selectedOption = 'latest'
-      return states
+    sessionMock.mockImplementation(async (selection: SelectionList) => {
+      selection.items[0].selectedOption = 'latest'
+      return selection.items
     })
 
     const choices = await ui.selectPackagesToUpgrade([makePackageInfo()])
@@ -61,9 +61,9 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
 
   it('writes bare versions when saveExact is enabled', async () => {
     const ui = new InteractiveUI(npmInfo, { saveExact: true })
-    sessionMock.mockImplementation(async (states: PackageSelectionState[]) => {
-      states[0].selectedOption = 'latest'
-      return states
+    sessionMock.mockImplementation(async (selection: SelectionList) => {
+      selection.items[0].selectedOption = 'latest'
+      return selection.items
     })
 
     const choices = await ui.selectPackagesToUpgrade([makePackageInfo()])
@@ -111,62 +111,47 @@ describe('InteractiveUI selection state builders', () => {
   })
 })
 
-describe('InteractiveUI.appendOutdatedPackageToSelectionStates', () => {
+describe('InteractiveUI.insertOutdatedPackage', () => {
   const resolved = (name: string, overrides?: Partial<ReturnType<typeof makePackageInfo>>) => [
     makePackageInfo({ name, ...overrides }),
   ]
 
-  it('appends new outdated packages and audits only the appended rows against the full list', () => {
+  it('inserts outdated rows at their sorted position and audits only those rows', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
-    const selectionStates: PackageSelectionState[] = [makeSelectionState({ name: 'existing' })]
+    const selection = new SelectionList([makeSelectionState({ name: 'm-existing' })])
 
-    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('fresh-pkg'))
+    ui.insertOutdatedPackage(selection, resolved('a-fresh'))
+    ui.insertOutdatedPackage(selection, resolved('z-fresh'))
 
-    expect(selectionStates.map((s) => s.name)).toEqual(['existing', 'fresh-pkg'])
-    expect(audit).toHaveBeenCalledTimes(1)
+    expect(selection.items.map((s) => s.name)).toEqual(['a-fresh', 'm-existing', 'z-fresh'])
+    expect(audit).toHaveBeenCalledTimes(2)
     const [queued, applyTo] = audit.mock.calls[0]
-    expect(queued.map((s) => s.name)).toEqual(['fresh-pkg'])
-    expect(applyTo).toBe(selectionStates)
+    expect(queued.map((s) => s.name)).toEqual(['a-fresh'])
+    expect(applyTo).toBe(selection.items)
   })
 
-  it('skips duplicates already present by name, specifier, and type, and audits nothing', () => {
+  it('skips rows already present by name, specifier, and type, and audits nothing', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
-    const selectionStates = [
+    const selection = new SelectionList([
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
-    ]
+    ])
 
-    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('test-pkg'))
+    ui.insertOutdatedPackage(selection, resolved('test-pkg'))
 
-    expect(selectionStates).toHaveLength(1)
+    expect(selection.length).toBe(1)
     expect(audit).not.toHaveBeenCalled()
-  })
-
-  it('reuses the selection-key index across the per-package appends of one scan', () => {
-    const ui = new InteractiveUI(npmInfo)
-    const selectionStates: PackageSelectionState[] = []
-
-    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-a'))
-    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-b'))
-    // A package already appended by an earlier arrival must not be added twice,
-    // even though the index was not rebuilt for this call.
-    ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('pkg-a'))
-
-    expect(selectionStates.map((s) => s.name)).toEqual(['pkg-a', 'pkg-b'])
   })
 
   it('ignores an up-to-date package and skips the audit', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
-    const selectionStates: PackageSelectionState[] = []
+    const selection = new SelectionList()
 
-    ui.appendOutdatedPackageToSelectionStates(
-      selectionStates,
-      resolved('current-pkg', { isOutdated: false })
-    )
+    ui.insertOutdatedPackage(selection, resolved('current-pkg', { isOutdated: false }))
 
-    expect(selectionStates).toEqual([])
+    expect(selection.items).toEqual([])
     expect(audit).not.toHaveBeenCalled()
   })
 })
@@ -179,10 +164,14 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     const attachRefresh = vi.fn()
     sessionMock.mockResolvedValue(states)
 
-    const choices = await ui.selectPackagesToUpgradeProgressive(states, progress, attachRefresh)
+    const choices = await ui.selectPackagesToUpgradeProgressive(
+      new SelectionList(states),
+      progress,
+      attachRefresh
+    )
 
     expect(sessionMock).toHaveBeenCalledTimes(1)
-    expect(sessionMock.mock.calls[0][0]).toBe(states)
+    expect(sessionMock.mock.calls[0][0].items).toBe(states)
     expect(sessionMock.mock.calls[0][7]).toBe(progress)
     expect(sessionMock.mock.calls[0][8]).toBe(attachRefresh)
     expect(choices[0].targetVersion).toBe('^1.1.0')
@@ -285,9 +274,9 @@ describe('InteractiveUI refresh plumbing', () => {
     const ui = new InteractiveUI(npmInfo)
     const refresh = vi.fn()
     sessionMock.mockImplementation(
-      async (states, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
+      async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
         onRefreshViewReady?.(refresh)
-        return states
+        return selection.items
       }
     )
 
@@ -314,14 +303,14 @@ describe('InteractiveUI refresh plumbing', () => {
     const ui = new InteractiveUI(npmInfo)
     const refresh = vi.fn()
     sessionMock.mockImplementation(
-      async (states, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
+      async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
         onRefreshViewReady?.(refresh)
-        return states
+        return selection.items
       }
     )
 
     const states = [makeSelectionState({ selectedOption: 'range' })]
-    await ui.selectPackagesToUpgradeProgressive(states, {
+    await ui.selectPackagesToUpgradeProgressive(new SelectionList(states), {
       discovered: 1,
       resolved: 1,
       total: 1,

@@ -51,6 +51,8 @@ function makeHarness(states = makeStates()) {
 
   let resolved = false
 
+  // One spy stands in for both render paths: the session's synchronous frame
+  // after an action that returned true, and the coalesced async requestRender.
   const render = vi.fn()
   const ctx: DispatchContext = {
     stateManager,
@@ -60,15 +62,21 @@ function makeHarness(states = makeStates()) {
     vulnerabilityAuditController:
       vulnerabilityAuditController as unknown as VulnerabilityAuditController,
     isResolved: () => resolved,
-    renderInterface: render,
-    requestBackgroundRender: render,
+    // Mirrors the session: a resolved session drops async render requests.
+    requestRender: () => {
+      if (!resolved) render()
+    },
     handleCancel: vi.fn(),
     getInfoModalMaxScrollOffset: () => 5,
     getDebugModalMaxScrollOffset: () => 5,
     getHelpModalMaxScrollOffset: () => 5,
   }
 
-  const dispatch = (action: InputAction) => dispatchAction(action, ctx)
+  const dispatch = (action: InputAction) => {
+    const changed = dispatchAction(action, ctx)
+    if (changed) render()
+    return changed
+  }
 
   return {
     ctx,
@@ -77,7 +85,7 @@ function makeHarness(states = makeStates()) {
     stateManager,
     packageInfoModalController,
     vulnerabilityAuditController,
-    render: ctx.renderInterface as ReturnType<typeof vi.fn>,
+    render,
     handleCancel: ctx.handleCancel as ReturnType<typeof vi.fn>,
     setResolved: (value: boolean) => {
       resolved = value

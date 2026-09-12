@@ -7,7 +7,7 @@ import {
   createUpgradeChoices,
   PackageInfoModalController,
   runInteractiveSession,
-  selectionKey,
+  SelectionList,
   UIRenderer,
 } from '../features/interactive'
 import { CursorUtils, TerminalInput } from '../shared/terminal'
@@ -50,7 +50,6 @@ export class InteractiveUI {
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
-  private readonly selectionKeys = new WeakMap<PackageSelectionState[], Set<string>>()
 
   constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
@@ -73,7 +72,7 @@ export class InteractiveUI {
     }
 
     const selectedStates = await runInteractiveSession(
-      selectionStates,
+      new SelectionList(selectionStates),
       this.packageManager,
       this.renderer,
       this.packageInfoModalController,
@@ -115,12 +114,11 @@ export class InteractiveUI {
   }
 
   /**
-   * Appends the outdated declarations of one streamed package. Called once per
-   * package as results arrive, so membership is tracked per list rather than
-   * rebuilt from the full list each time.
+   * Adds the outdated declarations of one streamed package to the list at
+   * their sorted position and audits just the rows that were new.
    */
-  public appendOutdatedPackageToSelectionStates(
-    selectionStates: PackageSelectionState[],
+  public insertOutdatedPackage(
+    selection: SelectionList,
     packageInfo: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): void {
@@ -129,42 +127,18 @@ export class InteractiveUI {
       previousSelections,
       false
     )
-
-    if (outdatedStates.length === 0) {
-      return
-    }
-
-    let seen = this.selectionKeys.get(selectionStates)
-    if (!seen) {
-      seen = new Set(
-        selectionStates.map((state) =>
-          selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
-        )
-      )
-      this.selectionKeys.set(selectionStates, seen)
-    }
-
-    const appended: PackageSelectionState[] = []
-    for (const state of outdatedStates) {
-      const key = selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
-      if (!seen.has(key)) {
-        selectionStates.push(state)
-        seen.add(key)
-        appended.push(state)
-      }
-    }
-
-    if (appended.length > 0) this.enqueueSecurityAudit(appended, selectionStates)
+    const inserted = selection.insert(outdatedStates)
+    if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
   }
 
   public async selectPackagesToUpgradeProgressive(
-    selectionStates: PackageSelectionState[],
+    selection: SelectionList,
     progress: PackageLoadProgress,
     attachRefresh: (refresh: () => void) => void
   ): Promise<PackageUpgradeChoice[]> {
-    this.enqueueSecurityAudit(selectionStates)
+    this.enqueueSecurityAudit(selection.items)
     const selectedStates = await runInteractiveSession(
-      selectionStates,
+      selection,
       this.packageManager,
       this.renderer,
       this.packageInfoModalController,

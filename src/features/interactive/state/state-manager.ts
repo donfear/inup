@@ -4,7 +4,7 @@ import type {
   RenderableItem,
   VulnerabilityDisplayOptions,
 } from '../../../shared/types'
-import { FilterManager, type FilterState } from './filter-manager'
+import { FilterManager } from './filter-manager'
 import { type InfoModalTab, ModalManager } from './modal-manager'
 import { NavigationManager } from './navigation-manager'
 import { ThemeManager } from './theme-manager'
@@ -152,6 +152,25 @@ export class StateManager {
 
   packageIndexToVisualIndex(packageIndex: number): number {
     return this.navigationManager.packageIndexToVisualIndex(packageIndex)
+  }
+
+  /**
+   * `delta` rows were inserted above the focused row. The cursor (and an open
+   * info modal) follow the same package. A scrolled viewport also shifts so the
+   * focused row stays on the same screen line; a viewport at the top stays at
+   * the top and lets the list grow visibly instead.
+   */
+  shiftRows(delta: number, totalItems: number): void {
+    if (delta === 0 || totalItems === 0) return
+    const nav = this.navigationManager
+    const row = Math.min(totalItems - 1, Math.max(0, nav.getCurrentRow() + delta))
+    nav.setCurrentRow(row)
+    if (nav.getScrollOffset() > 0) {
+      const maxScroll = Math.max(0, totalItems - this.displayState.maxVisibleItems)
+      nav.setScrollOffset(Math.min(maxScroll, Math.max(0, nav.getScrollOffset() + delta)))
+    }
+    nav.resetForResize(totalItems)
+    this.modalManager.shiftRow(delta)
   }
 
   // Selection logic (still in StateManager as it operates on external state)
@@ -416,11 +435,6 @@ export class StateManager {
 
   getFilterSnapshot(): PersistedFilters {
     return this.filterManager.getPersistableState()
-  }
-
-  /** Everything that decides which rows getFilteredStates returns. */
-  getFilterState(): FilterState {
-    return this.filterManager.getState()
   }
 
   // Display and render state management

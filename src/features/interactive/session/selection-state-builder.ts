@@ -31,6 +31,15 @@ export function selectionKey(
   return catalog ? `${base}@catalog:${catalog}` : base
 }
 
+/** List order: scoped packages first, then by name. */
+export function comparePackageNames(a: string, b: string): number {
+  const aIsScoped = a.startsWith('@')
+  const bIsScoped = b.startsWith('@')
+  if (aIsScoped && !bIsScoped) return -1
+  if (!aIsScoped && bIsScoped) return 1
+  return a.localeCompare(b)
+}
+
 export function deduplicatePackages(
   packages: PackageInfo[]
 ): Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }> {
@@ -50,13 +59,9 @@ export function deduplicatePackages(
   }
 
   return new Map(
-    Array.from(uniquePackages.entries()).sort(([, a], [, b]) => {
-      const aIsScoped = a.pkg.name.startsWith('@')
-      const bIsScoped = b.pkg.name.startsWith('@')
-      if (aIsScoped && !bIsScoped) return -1
-      if (!aIsScoped && bIsScoped) return 1
-      return a.pkg.name.localeCompare(b.pkg.name)
-    })
+    Array.from(uniquePackages.entries()).sort(([, a], [, b]) =>
+      comparePackageNames(a.pkg.name, b.pkg.name)
+    )
   )
 }
 

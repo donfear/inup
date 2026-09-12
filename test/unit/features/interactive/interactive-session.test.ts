@@ -3,6 +3,7 @@ import type { VulnerabilityAuditController } from '../../../../src/features/audi
 import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
 import { UIRenderer } from '../../../../src/features/interactive/renderer'
 import { runInteractiveSession } from '../../../../src/features/interactive/session/interactive-session'
+import { SelectionList } from '../../../../src/features/interactive/session/selection-list'
 import { themeNames } from '../../../../src/features/interactive/themes'
 import { configManager } from '../../../../src/shared/config/user-config'
 import { CursorUtils, TerminalInput } from '../../../../src/shared/terminal'
@@ -69,8 +70,9 @@ function startSession(
   } = {}
 ) {
   const controllers = makeControllers()
+  const selection = new SelectionList(states)
   const promise = runInteractiveSession(
-    states,
+    selection,
     npmInfo,
     extras.renderer ?? new UIRenderer(),
     controllers.packageInfoModalController as unknown as PackageInfoModalController,
@@ -80,7 +82,7 @@ function startSession(
     extras.loadingProgress,
     extras.attachRefresh
   )
-  return { promise, ...controllers }
+  return { promise, selection, ...controllers }
 }
 
 let fake: FakeStdin
@@ -494,7 +496,7 @@ describe('progressive rendering', () => {
     const originals = [...states]
     const progress = { discovered: 40, total: 40, resolved: 35, failed: 0, isLoading: true }
     let refresh!: () => void
-    const { promise } = startSession(states, {
+    const { promise, selection } = startSession(states, {
       renderer,
       loadingProgress: progress,
       attachRefresh: (fn) => {
@@ -507,7 +509,7 @@ describe('progressive rendering', () => {
     const scroll = render.mock.lastCall![2]
     expect(scroll).toBeGreaterThan(0)
     for (let i = 35; i < 40; i++) {
-      states.push(makeSelectionState({ name: `pkg-${i}` }))
+      selection.insert([makeSelectionState({ name: `pkg-${i}` })])
       refresh()
     }
     vi.advanceTimersByTime(16)
@@ -528,14 +530,14 @@ describe('progressive rendering', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
-  it('reuses column widths for input but invalidates them on data, filtering, and resize', async () => {
+  it('re-fits column widths only when a wider row arrives or the terminal resizes', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const renderer = new UIRenderer()
     const render = vi.spyOn(renderer, 'renderInterface')
     const widths = () => render.mock.lastCall![14]!.columnWidths
     const states = [makeSelectionState({ selectedOption: 'range' })]
     let refresh!: () => void
-    const { promise, vulnerabilityAuditController } = startSession(states, {
+    const { promise, selection, vulnerabilityAuditController } = startSession(states, {
       renderer,
       attachRefresh: (fn) => {
         refresh = fn
@@ -545,18 +547,25 @@ describe('progressive rendering', () => {
     fake.stdin.emit('keypress', '', { name: 'down' })
     fake.stdin.emit('keypress', '', { name: 'right' })
     expect(widths()).toBe(original)
-    states.push(makeSelectionState({ name: 'z', type: 'devDependencies' }))
+    selection.insert([
+      makeSelectionState({
+        name: 'z',
+        type: 'devDependencies',
+        currentVersionSpecifier: '^16.0.0-preview.10',
+      }),
+    ])
     refresh()
     vi.advanceTimersByTime(16)
-    const appended = widths()
-    expect(appended).not.toBe(original)
+    const widened = widths()
+    expect(widened).not.toBe(original)
+    expect(widened.current).toBeGreaterThan(original.current)
+    // Filtering narrows the rows on screen but never moves the columns.
     fake.stdin.emit('keypress', 'd', { name: 'd' })
-    const filtered = widths()
-    expect(filtered).not.toBe(appended)
+    expect(widths()).toBe(widened)
     Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 120 })
     process.emit('SIGWINCH')
     const resized = widths()
-    expect(resized).not.toBe(filtered)
+    expect(resized).not.toBe(widened)
     // Audit results change badges, never version columns: no remeasure.
     const onAudit = vulnerabilityAuditController.enqueueStates.mock.calls[0][1] as () => void
     onAudit()
@@ -564,6 +573,189 @@ describe('progressive rendering', () => {
     expect(widths()).toBe(resized)
     fake.stdin.emit('keypress', '', { name: 'return' })
     await promise
+  })
+
+  it('keeps the focused package under the cursor, on the same screen line, as rows insert above', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const states = Array.from({ length: 35 }, (_, i) =>
+      makeSelectionState({ name: `pkg-${String(i).padStart(2, '0')}` })
+    )
+    let refresh!: () => void
+    const { promise, selection } = startSession(states, {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    for (let i = 0; i < 28; i++) fake.stdin.emit('keypress', '', { name: 'down' })
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    const focused = render.mock.lastCall![0][render.mock.lastCall![1]]
+    const row = render.mock.lastCall![1]
+    const scroll = render.mock.lastCall![2]
+    expect(focused.name).toBe('pkg-28')
+    expect(scroll).toBeGreaterThan(0)
+
+    // Two rows sort before every pkg-*: both land above the cursor.
+    selection.insert([makeSelectionState({ name: 'aaa-0' }), makeSelectionState({ name: 'aaa-1' })])
+    refresh()
+    vi.advanceTimersByTime(16)
+
+    const [visible, newRow, newScroll] = render.mock.lastCall!
+    expect(visible[newRow]).toBe(focused)
+    expect(newRow).toBe(row + 2)
+    expect(newScroll).toBe(scroll + 2) // same screen line
+    expect(newRow - newScroll).toBe(row - scroll)
+
+    // The next keypress acts on the focused package, not on a stale index.
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    expect(focused.selectedOption).toBe('none')
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    expect(focused.selectedOption).toBe('latest')
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    expect((await promise)[newRow]).toBe(focused)
+  })
+
+  it('lets the list grow visibly while the viewport is at the top', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const states = [
+      makeSelectionState({ name: 'b' }),
+      makeSelectionState({ name: 'c' }),
+      makeSelectionState({ name: 'd' }),
+    ]
+    let refresh!: () => void
+    const { promise, selection } = startSession(states, {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    const focused = render.mock.lastCall![0][2]
+    expect(focused.name).toBe('d')
+
+    selection.insert([makeSelectionState({ name: 'a' })])
+    refresh()
+    vi.advanceTimersByTime(16)
+
+    const [visible, row, scroll] = render.mock.lastCall!
+    expect(visible.map((s) => s.name)).toEqual(['a', 'b', 'c', 'd'])
+    expect(visible[row]).toBe(focused)
+    expect(row).toBe(3)
+    expect(scroll).toBe(0)
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    expect(focused.selectedOption).toBe('latest')
+    await promise
+  })
+
+  it('pins the cursor to the top row until the user touches the keyboard', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    let refresh!: () => void
+    const { promise, selection } = startSession([makeSelectionState({ name: 'm' })], {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+
+    selection.insert([makeSelectionState({ name: 'a' })])
+    refresh()
+    vi.advanceTimersByTime(16)
+
+    const [visible, row] = render.mock.lastCall!
+    expect(row).toBe(0)
+    expect(visible[0].name).toBe('a')
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    expect(visible[0].selectedOption).toBe('latest')
+    await promise
+  })
+
+  it('keeps an open info modal on its package when rows insert above it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const renderer = new UIRenderer()
+    const modal = vi.spyOn(renderer, 'renderPackageInfoModal')
+    const states = [makeSelectionState({ name: 'b' }), makeSelectionState({ name: 'c' })]
+    let refresh!: () => void
+    const { promise, selection } = startSession(states, {
+      renderer,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    fake.stdin.emit('keypress', 'i', { name: 'i' })
+    await Promise.resolve() // hydrate resolves
+    await Promise.resolve()
+    vi.advanceTimersByTime(16)
+    expect(modal.mock.lastCall![0].name).toBe('c')
+
+    selection.insert([makeSelectionState({ name: 'a' })])
+    refresh()
+    vi.advanceTimersByTime(16)
+    expect(modal.mock.lastCall![0].name).toBe('c')
+
+    fake.stdin.emit('keypress', 'i', { name: 'i' })
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    await promise
+  })
+
+  it('writes only the lines that changed once a full frame is on screen', async () => {
+    const states = Array.from({ length: 5 }, (_, i) => makeSelectionState({ name: `pkg-${i}` }))
+    const { promise } = startSession(states)
+    const fullFrame = stdout.output()
+    expect(fullFrame).toContain('\x1b[2J') // first frame clears and paints everything
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: counts cursor-addressing escapes
+    const addressed = (text: string) => text.match(/\x1b\[\d+;1H/g)?.length ?? 0
+    expect(addressed(fullFrame)).toBe(0)
+
+    stdout.clear()
+    fake.stdin.emit('keypress', '', { name: 'down' })
+    const diff = stdout.output()
+    // Two package rows swap highlight and the status line changes; nothing else.
+    expect(addressed(diff)).toBeGreaterThan(0)
+    expect(addressed(diff)).toBeLessThanOrEqual(3)
+    expect(diff).not.toContain('\x1b[2J')
+    expect(diff.length).toBeLessThan(fullFrame.length / 2)
+
+    stdout.clear()
+    fake.stdin.emit('keypress', '', { name: 'up' })
+    fake.stdin.emit('keypress', '', { name: 'up' }) // wraps to the bottom: scroll unchanged, rows differ
+    expect(addressed(stdout.output())).toBeGreaterThan(0)
+
+    // A resize repaints everything.
+    stdout.clear()
+    process.emit('SIGWINCH')
+    expect(stdout.output()).toContain('\x1b[2J')
+    expect(addressed(stdout.output())).toBe(0)
+
+    fake.stdin.emit('keypress', ' ', { name: 'space' })
+    fake.stdin.emit('keypress', '', { name: 'return' })
+    await promise
+  })
+
+  it('rejects the session and restores the terminal when a keyboard frame throws', async () => {
+    const { promise } = startSession([makeSelectionState()])
+    const boom = vi.spyOn(UIRenderer.prototype, 'renderInterface').mockImplementation(() => {
+      throw new Error('renderer exploded on keypress')
+    })
+    try {
+      stdout.clear()
+      fake.stdin.emit('keypress', '', { name: 'down' })
+      await expect(promise).rejects.toThrow('renderer exploded on keypress')
+      expect(stdout.output()).toContain('\x1b[?1049l')
+      expect(fake.stdin.listenerCount('keypress')).toBe(0)
+    } finally {
+      boom.mockRestore()
+    }
   })
 
   it('rejects the session and restores the terminal when a background frame throws', async () => {
