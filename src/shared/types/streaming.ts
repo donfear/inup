@@ -80,5 +80,5 @@ export interface RegistryPackageResult {
   data: ParsedVersions
 }
 
-/** Fires once per package, in request order, as soon as it and every package before it resolve. */
+/** Fires once per package the moment it resolves; completion order, not request order. */
 export type OnPackageReadyCallback = (result: RegistryPackageResult) => void

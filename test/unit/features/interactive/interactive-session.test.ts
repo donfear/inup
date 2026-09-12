@@ -78,11 +78,20 @@ function startSession(
     controllers.packageInfoModalController as unknown as PackageInfoModalController,
     controllers.vulnerabilityAuditController as unknown as VulnerabilityAuditController,
     displayOptions,
-    extras.onRefreshViewReady,
-    extras.loadingProgress,
-    extras.attachRefresh
+    (refresh) => {
+      extras.onRefreshViewReady?.(refresh)
+      // InteractiveUI fans the same hook out to the streaming runner.
+      if (refresh) extras.attachRefresh?.(refresh)
+    },
+    extras.loadingProgress
   )
   return { promise, selection, ...controllers }
+}
+
+/** The last package-list frame the renderer was asked for, by name instead of position. */
+function lastFrame(render: ReturnType<typeof vi.spyOn<UIRenderer, 'renderInterface'>>) {
+  const call = render.mock.lastCall!
+  return { states: call[0], row: call[1], scroll: call[2], options: call[14] }
 }
 
 let fake: FakeStdin
@@ -165,8 +174,10 @@ describe('runInteractiveSession lifecycle', () => {
   })
 
   it('starts a vulnerability audit whose progress callback re-renders until resolved', async () => {
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
     const states = [makeSelectionState({ selectedOption: 'latest' })]
-    const { promise, vulnerabilityAuditController } = startSession(states)
+    const { promise, vulnerabilityAuditController } = startSession(states, { renderer })
 
     expect(vulnerabilityAuditController.enqueueStates).toHaveBeenCalledWith(
       states,
@@ -175,45 +186,46 @@ describe('runInteractiveSession lifecycle', () => {
     const onUpdate = vulnerabilityAuditController.enqueueStates.mock.calls[0][1] as () => void
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const framesBefore = render.mock.calls.length
     stdout.clear()
     onUpdate()
-    expect(stdout.output()).toBe('')
+    expect(render).toHaveBeenCalledTimes(framesBefore) // coalesced, never immediate
     vi.advanceTimersByTime(16)
-    expect(stdout.output()).not.toBe('')
+    expect(render).toHaveBeenCalledTimes(framesBefore + 1)
+    // Nothing on screen changed, so the diffed frame wrote nothing.
+    expect(stdout.output()).toBe('')
     vi.useRealTimers()
 
     await fake.sendKeys('\r')
     await promise
 
-    stdout.clear()
+    const framesAtExit = render.mock.calls.length
     onUpdate() // after resolution the callback must be inert
-    expect(stdout.output()).toBe('')
+    expect(render).toHaveBeenCalledTimes(framesAtExit)
   })
 
-  it('hands out a refresh hook and revokes it on finalize', async () => {
+  it('hands out one refresh hook, shared by arrivals and audits, and revokes it on finalize', async () => {
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
     const refreshCalls: Array<(() => void) | undefined> = []
     const attached: Array<() => void> = []
     const states = [makeSelectionState({ selectedOption: 'latest' })]
 
     const { promise } = startSession(states, {
+      renderer,
       onRefreshViewReady: (refresh) => refreshCalls.push(refresh),
       attachRefresh: (refresh) => attached.push(refresh),
     })
 
     expect(refreshCalls).toHaveLength(1)
     expect(refreshCalls[0]).toBeTypeOf('function')
-    expect(attached).toHaveLength(1)
+    expect(attached).toEqual([refreshCalls[0]])
 
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    stdout.clear()
+    const framesBefore = render.mock.calls.length
     refreshCalls[0]!()
     vi.advanceTimersByTime(16)
-    expect(stdout.output()).not.toBe('')
-
-    stdout.clear()
-    attached[0]()
-    vi.advanceTimersByTime(16)
-    expect(stdout.output()).not.toBe('')
+    expect(render).toHaveBeenCalledTimes(framesBefore + 1)
     vi.useRealTimers()
 
     await fake.sendKeys('\r')
@@ -471,7 +483,7 @@ describe('progressive rendering', () => {
     refresh()
     fake.stdin.emit('keypress', '', { name: 'down' })
     expect(render).toHaveBeenCalledTimes(2)
-    expect(render.mock.lastCall![1]).toBe(1)
+    expect(lastFrame(render).row).toBe(1)
     expect(vi.getTimerCount()).toBe(0)
     vi.advanceTimersByTime(16)
     expect(render).toHaveBeenCalledTimes(2)
@@ -505,16 +517,15 @@ describe('progressive rendering', () => {
     })
     for (let i = 0; i < 28; i++) fake.stdin.emit('keypress', '', { name: 'down' })
     fake.stdin.emit('keypress', ' ', { name: 'space' })
-    const row = render.mock.lastCall![1]
-    const scroll = render.mock.lastCall![2]
+    const { row, scroll } = lastFrame(render)
     expect(scroll).toBeGreaterThan(0)
     for (let i = 35; i < 40; i++) {
       selection.insert([makeSelectionState({ name: `pkg-${i}` })])
       refresh()
     }
     vi.advanceTimersByTime(16)
-    expect(render.mock.lastCall![1]).toBe(row)
-    expect(render.mock.lastCall![2]).toBe(scroll)
+    expect(lastFrame(render).row).toBe(row)
+    expect(lastFrame(render).scroll).toBe(scroll)
     for (const [index, state] of originals.entries()) expect(states[index]).toBe(state)
     expect(states[row].selectedOption).toBe('latest')
 
@@ -534,7 +545,7 @@ describe('progressive rendering', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const renderer = new UIRenderer()
     const render = vi.spyOn(renderer, 'renderInterface')
-    const widths = () => render.mock.lastCall![14]!.columnWidths
+    const widths = () => lastFrame(render).options!.columnWidths
     const states = [makeSelectionState({ selectedOption: 'range' })]
     let refresh!: () => void
     const { promise, selection, vulnerabilityAuditController } = startSession(states, {
@@ -591,9 +602,8 @@ describe('progressive rendering', () => {
     })
     for (let i = 0; i < 28; i++) fake.stdin.emit('keypress', '', { name: 'down' })
     fake.stdin.emit('keypress', ' ', { name: 'space' })
-    const focused = render.mock.lastCall![0][render.mock.lastCall![1]]
-    const row = render.mock.lastCall![1]
-    const scroll = render.mock.lastCall![2]
+    const { states: before, row, scroll } = lastFrame(render)
+    const focused = before[row]
     expect(focused.name).toBe('pkg-28')
     expect(scroll).toBeGreaterThan(0)
 
@@ -602,7 +612,7 @@ describe('progressive rendering', () => {
     refresh()
     vi.advanceTimersByTime(16)
 
-    const [visible, newRow, newScroll] = render.mock.lastCall!
+    const { states: visible, row: newRow, scroll: newScroll } = lastFrame(render)
     expect(visible[newRow]).toBe(focused)
     expect(newRow).toBe(row + 2)
     expect(newScroll).toBe(scroll + 2) // same screen line
@@ -635,14 +645,14 @@ describe('progressive rendering', () => {
     })
     fake.stdin.emit('keypress', '', { name: 'down' })
     fake.stdin.emit('keypress', '', { name: 'down' })
-    const focused = render.mock.lastCall![0][2]
+    const focused = lastFrame(render).states[2]
     expect(focused.name).toBe('d')
 
     selection.insert([makeSelectionState({ name: 'a' })])
     refresh()
     vi.advanceTimersByTime(16)
 
-    const [visible, row, scroll] = render.mock.lastCall!
+    const { states: visible, row, scroll } = lastFrame(render)
     expect(visible.map((s) => s.name)).toEqual(['a', 'b', 'c', 'd'])
     expect(visible[row]).toBe(focused)
     expect(row).toBe(3)
@@ -669,7 +679,7 @@ describe('progressive rendering', () => {
     refresh()
     vi.advanceTimersByTime(16)
 
-    const [visible, row] = render.mock.lastCall!
+    const { states: visible, row } = lastFrame(render)
     expect(row).toBe(0)
     expect(visible[0].name).toBe('a')
     fake.stdin.emit('keypress', ' ', { name: 'space' })

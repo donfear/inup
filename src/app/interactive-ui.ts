@@ -131,6 +131,11 @@ export class InteractiveUI {
     if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
   }
 
+  /**
+   * Runs the session over a list that is still filling. `attachRefresh`
+   * receives the session's refresh hook so the caller can redraw after each
+   * insert; the same hook serves the audit updates.
+   */
   public async selectPackagesToUpgradeProgressive(
     selection: SelectionList,
     progress: PackageLoadProgress,
@@ -146,9 +151,9 @@ export class InteractiveUI {
       this.options,
       (refresh) => {
         this.refreshView = refresh
+        if (refresh) attachRefresh(refresh)
       },
-      progress,
-      attachRefresh
+      progress
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
   }

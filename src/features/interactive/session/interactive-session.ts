@@ -37,8 +37,7 @@ export async function runInteractiveSession(
   vulnerabilityAuditController: VulnerabilityAuditController,
   options: Required<VulnerabilityDisplayOptions>,
   onRefreshViewReady?: (refresh: (() => void) | undefined) => void,
-  loadingProgress?: PackageLoadProgress,
-  attachRefresh?: (refresh: () => void) => void
+  loadingProgress?: PackageLoadProgress
 ): Promise<PackageSelectionState[]> {
   return new Promise((resolve, reject) => {
     const states = selection.items
@@ -224,8 +223,6 @@ export async function runInteractiveSession(
         CursorUtils.clearScreen()
         CursorUtils.hide()
         lastFrame = null
-      } else {
-        CursorUtils.moveToHome()
       }
 
       if (uiState.showThemeModal) {
@@ -503,8 +500,9 @@ export async function runInteractiveSession(
     try {
       claimInteractiveScreen()
 
+      // The one hook every background producer (package arrivals, audit
+      // results) refreshes through; revoked again by teardown.
       onRefreshViewReady?.(requestBackgroundRender)
-      attachRefresh?.(requestBackgroundRender)
 
       const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
       const previousCleanup = cleanupInteractiveSession

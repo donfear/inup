@@ -162,7 +162,14 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     const states = [makeSelectionState({ selectedOption: 'range' })]
     const progress = { discovered: 1, resolved: 1, total: 2, failed: 0, isLoading: true }
     const attachRefresh = vi.fn()
-    sessionMock.mockResolvedValue(states)
+    const hook = vi.fn()
+    sessionMock.mockImplementation(
+      async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
+        onRefreshViewReady?.(hook)
+        onRefreshViewReady?.(undefined)
+        return selection.items
+      }
+    )
 
     const choices = await ui.selectPackagesToUpgradeProgressive(
       new SelectionList(states),
@@ -173,7 +180,10 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     expect(sessionMock).toHaveBeenCalledTimes(1)
     expect(sessionMock.mock.calls[0][0].items).toBe(states)
     expect(sessionMock.mock.calls[0][7]).toBe(progress)
-    expect(sessionMock.mock.calls[0][8]).toBe(attachRefresh)
+    // The session's single hook is fanned out to the streaming caller once,
+    // and the revoke is not forwarded.
+    expect(attachRefresh).toHaveBeenCalledTimes(1)
+    expect(attachRefresh).toHaveBeenCalledWith(hook)
     expect(choices[0].targetVersion).toBe('^1.1.0')
   })
 })
@@ -310,13 +320,13 @@ describe('InteractiveUI refresh plumbing', () => {
     )
 
     const states = [makeSelectionState({ selectedOption: 'range' })]
-    await ui.selectPackagesToUpgradeProgressive(new SelectionList(states), {
-      discovered: 1,
-      resolved: 1,
-      total: 1,
-      failed: 0,
-      isLoading: true,
-    })
+    const attachRefresh = vi.fn()
+    await ui.selectPackagesToUpgradeProgressive(
+      new SelectionList(states),
+      { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: true },
+      attachRefresh
+    )
+    expect(attachRefresh).toHaveBeenCalledWith(refresh)
 
     expect(sessionMock).toHaveBeenCalledTimes(1)
   })
