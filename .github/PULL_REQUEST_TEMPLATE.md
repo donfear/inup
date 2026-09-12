@@ -13,4 +13,5 @@
 - [ ] Tests added or updated (inup keeps 100% coverage)
 - [ ] `npm test` and `npm run typecheck` pass locally
 - [ ] Docs/README updated if behavior or flags changed
+- [ ] `CHANGELOG.md` `[Unreleased]` updated if a user would notice this change ([how](../docs/releasing.md))
 - [ ] Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:` …)
