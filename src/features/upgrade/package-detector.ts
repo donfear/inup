@@ -40,6 +40,7 @@ const SLOW_NETWORK_EWMA_MS = 1000
 
 interface PreparedDependencies {
   allDependencies: DependencyEntry[]
+  dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
 }
@@ -54,7 +55,7 @@ export class PackageDetector {
   private ignoreMajorPackages: string[]
   private maxDepth: number
 
-  private readonly batchSize = 10
+  private readonly batchSize = 1
   private readonly maxConcurrency = 10
   private readonly adaptive: boolean
   /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
@@ -189,7 +190,7 @@ export class PackageDetector {
         const batchItems: StreamOutdatedPackagesBatchItem[] = batch.map((batchItem) => {
           const packageInfo = this.resolvePackageGroup(
             batchItem.packageName,
-            prepared.allDependencies,
+            prepared.dependenciesByName.get(batchItem.packageName) ?? [],
             batchItem.data
           )
           packageLookup.set(batchItem.packageName, packageInfo)
@@ -405,7 +406,11 @@ export class PackageDetector {
     })
 
     const currentVersions = new Map<string, string>()
+    const dependenciesByName = new Map<string, DependencyEntry[]>()
     for (const dep of allDependencies) {
+      const group = dependenciesByName.get(dep.name)
+      if (group) group.push(dep)
+      else dependenciesByName.set(dep.name, [dep])
       if (!currentVersions.has(dep.name)) {
         currentVersions.set(dep.name, dep.version)
       }
@@ -413,6 +418,7 @@ export class PackageDetector {
 
     return {
       allDependencies,
+      dependenciesByName,
       uniquePackages,
       currentVersions,
     }
@@ -420,21 +426,32 @@ export class PackageDetector {
 
   private resolvePackageGroup(
     packageName: string,
-    allDependencies: DependencyEntry[],
+    dependencies: DependencyEntry[],
     packageData: PackageVersionData | undefined
   ): PackageInfo[] {
-    const dependencies = allDependencies.filter((dep) => dep.name === packageName)
     const loggedNoData = new Set<string>()
-    const loggedOutdated = new Set<string>()
+    // Metadata and ignore-major policy are shared by this package group.
+    const resolvedVersions = new Map<string, PackageInfo>()
 
     return dependencies.map((dep) => {
+      const cached = resolvedVersions.get(dep.version)
+      if (cached) {
+        return {
+          ...cached,
+          type: dep.type,
+          packageJsonPath: dep.packageJsonPath,
+          catalog: dep.catalog,
+          catalogEntries: dep.catalogEntries,
+          catalogReferencedBy: dep.catalogReferencedBy,
+        }
+      }
       try {
         if (!packageData || packageData.latestVersion === 'unknown') {
           if (!loggedNoData.has(dep.name)) {
             loggedNoData.add(dep.name)
             debugLog.warn(
               'PackageDetector',
-              `no data returned for ${dep.name} — marking unavailable`
+              `no data returned for ${packageName} — marking unavailable`
             )
           }
 
@@ -510,17 +527,13 @@ export class PackageDetector {
         const isOutdated = hasRangeUpdate || hasMajorUpdate
 
         if (isOutdated) {
-          const outdatedKey = `${dep.name}@${dep.version}`
-          if (!loggedOutdated.has(outdatedKey)) {
-            loggedOutdated.add(outdatedKey)
-            debugLog.info(
-              'PackageDetector',
-              `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${effectiveLatest}`
-            )
-          }
+          debugLog.info(
+            'PackageDetector',
+            `outdated: ${dep.name} ${dep.version} → range:${closestMinorVersion ?? '-'} latest:${effectiveLatest}`
+          )
         }
 
-        return {
+        const info: PackageInfo = {
           name: dep.name,
           currentVersion: dep.version,
           rangeVersion: closestMinorVersion || dep.version,
@@ -538,6 +551,8 @@ export class PackageDetector {
           deprecated: packageData.deprecated,
           enginesNode: packageData.enginesNode,
         }
+        resolvedVersions.set(dep.version, info)
+        return info
       } catch (error) {
         debugLog.error('PackageDetector', `error processing ${dep.name}`, error)
         return this.createFailedPackageInfo(dep)

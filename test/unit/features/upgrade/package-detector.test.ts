@@ -125,7 +125,7 @@ describe('PackageDetector streaming', () => {
         }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options.batchSize).toBe(10)
+        expect(options.batchSize).toBe(1)
         expect(options.maxConcurrency).toBe(10)
         const onBatchReady = options.onBatchReady
 
@@ -204,6 +204,75 @@ describe('PackageDetector streaming', () => {
       latestVersion: 'unknown',
       isOutdated: false,
     })
+  })
+
+  it('resolves each specifier once per scan while preserving workspace and catalog sources', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: () => ({ catalog: 'default', range: '^1.0.0' }),
+      entriesOf: () => [{ name: 'shared', range: '^1.0.0' }],
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'shared',
+        version: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/a/package.json',
+      },
+      {
+        name: 'shared',
+        version: '^1.0.0',
+        type: 'devDependencies',
+        packageJsonPath: '/repo/b/package.json',
+      },
+      {
+        name: 'shared',
+        version: 'catalog:',
+        type: 'optionalDependencies',
+        packageJsonPath: '/repo/c/package.json',
+      },
+      {
+        name: 'shared',
+        version: '^2.0.0',
+        type: 'peerDependencies',
+        packageJsonPath: '/repo/d/package.json',
+      },
+    ])
+    let range = '1.5.0'
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      const data = { latestVersion: '3.0.0', allVersions: [range, '1.0.0'] }
+      options.onBatchReady([{ packageName: 'shared', data }])
+      return new Map([['shared', data]])
+    })
+    mocks.findClosestMinorVersion.mockClear()
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const first = await detector.getOutdatedPackages()
+    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(2)
+    expect(first.map((pkg) => [pkg.packageJsonPath, pkg.type, pkg.catalog])).toEqual([
+      ['/repo/a/package.json', 'dependencies', undefined],
+      ['/repo/b/package.json', 'devDependencies', undefined],
+      ['/repo/pnpm-workspace.yaml', 'optionalDependencies', 'default'],
+      ['/repo/d/package.json', 'peerDependencies', undefined],
+    ])
+    expect(first[2].catalogReferencedBy).toEqual(['/repo/c/package.json'])
+    expect(first[2].catalogEntries).toEqual([{ name: 'shared', range: '^1.0.0' }])
+    expect(first[0]).not.toBe(first[1])
+    expect(first[0].catalogEntries).toBeUndefined()
+    range = '1.6.0'
+    const second = await detector.getOutdatedPackages()
+    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(4)
+    expect(second[0].rangeVersion).toBe('1.6.0')
+    expect(first[0].rangeVersion).toBe('1.5.0')
+  })
+
+  it('ignores unexpected registry results with no corresponding dependency', async () => {
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      options.onBatchReady([
+        { packageName: 'unrequested', data: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } },
+      ])
+      return new Map()
+    })
+    expect(await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()).toEqual([])
   })
 
   it('keeps getOutdatedPackages compatible with the streamed implementation', async () => {
@@ -466,7 +535,7 @@ describe('PackageDetector edge paths', () => {
       cwd: process.cwd(),
       adaptive: true,
       maxConcurrency: 10,
-      batchSize: 10,
+      batchSize: 1,
       poolConnections: expect.any(Number),
       controllerMode: 'hillclimb',
       pinnedConcurrency: null,

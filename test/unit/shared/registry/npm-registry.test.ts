@@ -349,6 +349,44 @@ describe('npm-registry', () => {
     expect(batches).toEqual([10, 15, 20, 5])
   })
 
+  it.each([
+    ['a', 'c', 'b'],
+    ['c', 'b', 'a'],
+  ])('releases only the completed ordered prefix: %s, %s, %s', async (...order) => {
+    const pending = new Map<string, (response: MockResponse) => void>()
+    requestMock.mockImplementation(
+      ({ path }) =>
+        new Promise((resolve) => {
+          pending.set(path, resolve)
+        })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      batchSize: 1,
+      onBatchReady: (batch) => emitted.push(...batch.map((item) => item.packageName)),
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    const completed = new Set<string>()
+    for (const name of order) {
+      pending.get(`/${name}`)!(
+        name === 'b' ? makeErrBody(404) : makeOkBody({ versions: { '1.1.0': {} } })
+      )
+      completed.add(name)
+      await new Promise((resolve) => setImmediate(resolve))
+      const prefix: string[] = []
+      for (const candidate of ['a', 'b', 'c']) {
+        if (!completed.has(candidate)) break
+        prefix.push(candidate)
+      }
+      expect(emitted).toEqual(prefix)
+    }
+    const result = await run
+    expect(result.get('b')?.latestVersion).toBe('unknown')
+    expect(emitted).toEqual(['a', 'b', 'c'])
+  })
+
   describe('adaptive concurrency', () => {
     // Instrument the mock to record the peak number of simultaneously in-flight
     // requests, with a small delay so requests actually overlap.
