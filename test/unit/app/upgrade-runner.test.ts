@@ -156,7 +156,6 @@ describe('UpgradeRunner terminal handoff', () => {
         payload: {
           packageName: 'next',
           packageInfo: [],
-          failed: false,
           progress: {
             discovered: 1,
             resolved: 1,
@@ -306,13 +305,15 @@ describe('UpgradeRunner terminal handoff', () => {
       hasRangeUpdate: true,
       hasMajorUpdate: true,
     }
+    // The detector's final list is authoritative once loading completes.
+    const completed = [streamedPackage, { ...streamedPackage, name: 'zod' }]
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
-      const progress = { discovered: 1, resolved: 0, total: 1, failed: 0, isLoading: true }
+      const progress = { discovered: 2, resolved: 0, total: 2, failed: 0, isLoading: true }
       onEvent({
         type: 'initial',
         payload: {
           allDependencies: [],
-          uniquePackages: ['next'],
+          uniquePackages: ['next', 'zod'],
           currentVersions: new Map([['next', '^1.0.0']]),
           progress,
         },
@@ -322,26 +323,22 @@ describe('UpgradeRunner terminal handoff', () => {
         payload: {
           packageName: 'next',
           packageInfo: [streamedPackage],
-          failed: false,
           progress: { ...progress, resolved: 1 },
         },
       })
-      // A repeated result for the same package replaces the earlier entry
-      // instead of duplicating it.
       onEvent({
         type: 'package',
         payload: {
-          packageName: 'next',
-          packageInfo: [streamedPackage],
-          failed: false,
-          progress: { ...progress, resolved: 1 },
+          packageName: 'zod',
+          packageInfo: [{ ...streamedPackage, name: 'zod' }],
+          progress: { ...progress, resolved: 2 },
         },
       })
       onEvent({
         type: 'complete',
         payload: {
-          packages: [streamedPackage],
-          progress: { ...progress, resolved: 1, isLoading: false },
+          packages: completed,
+          progress: { ...progress, resolved: 2, isLoading: false },
         },
       })
     })
@@ -357,8 +354,12 @@ describe('UpgradeRunner terminal handoff', () => {
     await new UpgradeRunner({ cwd: '/repo' }).run()
 
     expect(mocks.appendOutdatedPackageToSelectionStates).toHaveBeenCalledTimes(2)
+    expect(mocks.appendOutdatedPackageToSelectionStates.mock.calls[1][1]).toEqual([
+      { ...streamedPackage, name: 'zod' },
+    ])
     // Once per package event, once for completion.
     expect(refresh).toHaveBeenCalledTimes(3)
+    expect(mocks.getOutdatedPackagesOnly).toHaveBeenCalledWith(completed)
     logSpy.mockRestore()
   })
 
@@ -407,7 +408,6 @@ describe('UpgradeRunner terminal handoff', () => {
         payload: {
           packageName: 'next',
           packageInfo: [streamedPackage],
-          failed: false,
           progress: { ...progress, resolved: 1 },
         },
       })

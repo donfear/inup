@@ -29,7 +29,7 @@ import {
   parseCurrentVersion,
   toComparableVersion,
 } from '../../shared/versions'
-import { getPerformanceTracker, isPerfLoggingEnabled } from '../debug'
+import { getPerformanceTracker } from '../debug'
 
 // Slow-connection heuristic: the hill-climb controller (HILL_CLIMB_TUNING:
 // floor 3, ceil 24) settling at/below this limit in a down state, or a latency
@@ -42,6 +42,22 @@ interface PreparedDependencies {
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
+}
+
+/** The fields a PackageInfo carries over from where the dependency is declared. */
+function declarationFields(
+  dep: DependencyEntry
+): Pick<
+  PackageInfo,
+  'type' | 'packageJsonPath' | 'catalog' | 'catalogEntries' | 'catalogReferencedBy'
+> {
+  return {
+    type: dep.type,
+    packageJsonPath: dep.packageJsonPath,
+    catalog: dep.catalog,
+    catalogEntries: dep.catalogEntries,
+    catalogReferencedBy: dep.catalogReferencedBy,
+  }
 }
 
 export class PackageDetector {
@@ -169,9 +185,8 @@ export class PackageDetector {
         this.lastControlTick = tick
         performanceTracker.recordControlTick(tick)
       },
-      onPackageTiming: isPerfLoggingEnabled()
-        ? (name, latencyMs) => performanceTracker.recordPackageTiming({ name, latencyMs })
-        : undefined,
+      onPackageTiming: (name, latencyMs) =>
+        performanceTracker.recordPackageTiming({ name, latencyMs }),
       onPackageReady: ({ packageName, data }) => {
         // First-wins in the tracker; headless runs get the phase from here,
         // the interactive runner's own mark becomes a no-op duplicate.
@@ -184,8 +199,7 @@ export class PackageDetector {
         packageLookup.set(packageName, packageInfo)
         resolved++
 
-        const isFailed = data.latestVersion === 'unknown'
-        if (isFailed) {
+        if (data.latestVersion === 'unknown') {
           failed++
           performanceTracker.recordFailedPackage(packageName)
         }
@@ -196,7 +210,6 @@ export class PackageDetector {
           payload: {
             packageName,
             packageInfo,
-            failed: isFailed,
             progress: this.createProgressSnapshot(
               prepared.uniquePackages.length,
               resolved,
@@ -270,8 +283,8 @@ export class PackageDetector {
 
     this.showProgress('🔍 Identifying unique packages...')
     const tFilter = Date.now()
-    const uniquePackageNames = new Set<string>()
     const allDependencies: DependencyEntry[] = []
+    const dependenciesByName = new Map<string, DependencyEntry[]>()
     let ignoredCount = 0
     const seenWorkspaceRefs = new Set<string>()
     const seenIgnored = new Set<string>()
@@ -350,14 +363,16 @@ export class PackageDetector {
       }
 
       allDependencies.push(dep)
-      uniquePackageNames.add(dep.name)
+      const group = dependenciesByName.get(dep.name)
+      if (group) group.push(dep)
+      else dependenciesByName.set(dep.name, [dep])
     }
 
     if (ignoredCount > 0) {
       this.showProgress(`🔍 Skipped ${ignoredCount} ignored package(s)`)
     }
 
-    const uniquePackages = Array.from(uniquePackageNames).sort((a, b) => {
+    const uniquePackages = Array.from(dependenciesByName.keys()).sort((a, b) => {
       const aIsScoped = a.startsWith('@')
       const bIsScoped = b.startsWith('@')
       if (aIsScoped && !bIsScoped) return -1
@@ -376,15 +391,10 @@ export class PackageDetector {
       workspaceRefsSkipped: seenWorkspaceRefs.size,
     })
 
+    // First declaration wins, matching the order dependencies were collected.
     const currentVersions = new Map<string, string>()
-    const dependenciesByName = new Map<string, DependencyEntry[]>()
-    for (const dep of allDependencies) {
-      const group = dependenciesByName.get(dep.name)
-      if (group) group.push(dep)
-      else dependenciesByName.set(dep.name, [dep])
-      if (!currentVersions.has(dep.name)) {
-        currentVersions.set(dep.name, dep.version)
-      }
+    for (const [name, [first]] of dependenciesByName) {
+      currentVersions.set(name, first.version)
     }
 
     return {
@@ -400,36 +410,23 @@ export class PackageDetector {
     dependencies: DependencyEntry[],
     packageData: PackageVersionData | undefined
   ): PackageInfo[] {
-    const loggedNoData = new Set<string>()
-    // Metadata and ignore-major policy are shared by this package group.
-    const resolvedVersions = new Map<string, PackageInfo>()
+    if (!packageData || packageData.latestVersion === 'unknown') {
+      debugLog.warn('PackageDetector', `no data returned for ${packageName} — marking unavailable`)
+      return dependencies.map((dep) => this.createFailedPackageInfo(dep))
+    }
+    const { latestVersion, allVersions, prereleaseVersions } = packageData
+
+    // Registry metadata and the ignore-major policy are shared by the whole
+    // group, so the outcome depends only on the specifier: compute it once per
+    // distinct specifier and re-stamp each declaration's own source fields.
+    const resolvedBySpecifier = new Map<string, PackageInfo>()
 
     return dependencies.map((dep) => {
-      const cached = resolvedVersions.get(dep.version)
+      const cached = resolvedBySpecifier.get(dep.version)
       if (cached) {
-        return {
-          ...cached,
-          type: dep.type,
-          packageJsonPath: dep.packageJsonPath,
-          catalog: dep.catalog,
-          catalogEntries: dep.catalogEntries,
-          catalogReferencedBy: dep.catalogReferencedBy,
-        }
+        return { ...cached, ...declarationFields(dep) }
       }
       try {
-        if (!packageData || packageData.latestVersion === 'unknown') {
-          if (!loggedNoData.has(dep.name)) {
-            loggedNoData.add(dep.name)
-            debugLog.warn(
-              'PackageDetector',
-              `no data returned for ${packageName} — marking unavailable`
-            )
-          }
-
-          return this.createFailedPackageInfo(dep)
-        }
-
-        const { latestVersion, allVersions, prereleaseVersions } = packageData
         const installed = parseCurrentVersion(dep.version)
         const currentIsPrerelease = (installed?.prerelease.length ?? 0) > 0
 
@@ -509,11 +506,7 @@ export class PackageDetector {
           currentVersion: dep.version,
           rangeVersion: closestMinorVersion || dep.version,
           latestVersion: effectiveLatest,
-          type: dep.type,
-          packageJsonPath: dep.packageJsonPath,
-          catalog: dep.catalog,
-          catalogEntries: dep.catalogEntries,
-          catalogReferencedBy: dep.catalogReferencedBy,
+          ...declarationFields(dep),
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
@@ -522,7 +515,7 @@ export class PackageDetector {
           deprecated: packageData.deprecated,
           enginesNode: packageData.enginesNode,
         }
-        resolvedVersions.set(dep.version, info)
+        resolvedBySpecifier.set(dep.version, info)
         return info
       } catch (error) {
         debugLog.error('PackageDetector', `error processing ${dep.name}`, error)
@@ -537,11 +530,7 @@ export class PackageDetector {
       currentVersion: dep.version,
       rangeVersion: 'unknown',
       latestVersion: 'unknown',
-      type: dep.type,
-      packageJsonPath: dep.packageJsonPath,
-      catalog: dep.catalog,
-      catalogEntries: dep.catalogEntries,
-      catalogReferencedBy: dep.catalogReferencedBy,
+      ...declarationFields(dep),
       isOutdated: false,
       hasRangeUpdate: false,
       hasMajorUpdate: false,

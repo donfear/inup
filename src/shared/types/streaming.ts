@@ -30,7 +30,6 @@ export interface StreamOutdatedPackagesInitialPayload {
 export interface StreamedPackage {
   packageName: string
   packageInfo: PackageInfo[]
-  failed: boolean
 }
 
 export type StreamOutdatedPackagesEvent =

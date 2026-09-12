@@ -212,18 +212,24 @@ describe('PackageDetector streaming', () => {
     mocks.performanceTracker.recordCounts.mockClear()
     mocks.performanceTracker.recordFailedPackage.mockClear()
 
-    const seen: Array<[string, boolean, number, number, boolean]> = []
+    const seen: Array<[string, string, number, number, boolean]> = []
     const detector = new PackageDetector({ cwd: '/repo' })
     await detector.streamOutdatedPackages((event) => {
       if (event.type !== 'package') return
-      const { packageName, failed, progress } = event.payload
-      seen.push([packageName, failed, progress.resolved, progress.failed, progress.isLoading])
+      const { packageName, packageInfo, progress } = event.payload
+      seen.push([
+        packageName,
+        packageInfo[0].latestVersion,
+        progress.resolved,
+        progress.failed,
+        progress.isLoading,
+      ])
     })
 
     expect(seen).toEqual([
-      ['a', false, 1, 0, true],
-      ['b', true, 2, 1, true],
-      ['c', false, 3, 1, false],
+      ['a', '2.0.0', 1, 0, true],
+      ['b', 'unknown', 2, 1, true],
+      ['c', '2.0.0', 3, 1, false],
     ])
     expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledTimes(1)
     expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledWith('b')
@@ -570,8 +576,9 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
-  it('records perf callbacks when perf logging is enabled', async () => {
-    mocks.isPerfLoggingEnabled.mockReturnValue(true)
+  it('forwards control ticks and per-package latency to the tracker in every run', async () => {
+    // Not gated on INUP_PERF: the in-app performance modal reads these timings.
+    mocks.isPerfLoggingEnabled.mockReturnValue(false)
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       dep('zod', '^1.0.0'),
       dep('never-resolved', '^1.0.0'),
