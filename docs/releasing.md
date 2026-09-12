@@ -109,27 +109,34 @@ them immediately. The symptom is the useful half.
 ## Cutting a release
 
 1. Finish the `[Unreleased]` section — everything merged since the last tag
-   that passes the contract above. Do this *before* triggering the release,
-   not after.
-2. Rename the heading to `## [x.y.z] - YYYY-MM-DD` (the date the release
-   ships, UTC), and add a fresh empty `## [Unreleased]` above it.
-3. Update the two link definitions at the bottom of the file — repoint
-   `[Unreleased]` at the new tag, and add a line for the release itself.
-   This is what makes each version heading link to its diff:
+   that passes the contract above — and merge it. Do this *before*
+   triggering the release, not after. **This is the only manual step**, and
+   nothing downstream will do it for you.
+2. Run the **Release** workflow (`.github/workflows/release.yml`) with the
+   right bump type. It bumps `package.json`, then runs
+   `scripts/release-changelog.mjs`, which renames `[Unreleased]` to
+   `## [x.y.z] - YYYY-MM-DD`, opens a fresh empty `[Unreleased]` above it,
+   and rewrites the link definitions at the bottom:
 
    ```
    [Unreleased]: https://github.com/donfear/inup/compare/v1.8.0...HEAD
    [1.8.0]: https://github.com/donfear/inup/compare/v1.7.0...v1.8.0
    ```
 
-   The second URL compares against the **previous git tag**, which is not
-   always the previous section in this file — versions with nothing
-   user-facing are skipped here but still exist as tags.
-4. Commit, then run the **Release** workflow
-   (`.github/workflows/release.yml`) with the right bump type. It bumps
-   `package.json`, tags, moves the floating `v1` tag, and publishes to npm
-   via `publish.yml`.
-5. The workflow creates the GitHub Release with auto-generated notes. If
+   The version's URL compares against the **previous git tag**, which is
+   not always the previous section in this file — releases with nothing
+   user-facing are skipped here but still exist as tags, so the script
+   takes the tag from `git describe` rather than reading the file.
+
+   Both changes are committed alongside the version bump, then tagged, the
+   floating `v1` tag is moved, and `publish.yml` pushes to npm.
+
+   If `[Unreleased]` is empty the script leaves the file alone and that
+   version gets no section — the documented behavior for an internal-only
+   release. It is not a safety net: if you forget to write the entries,
+   the release ships silently undocumented. The PR checklist is where that
+   gets caught.
+3. The workflow creates the GitHub Release with auto-generated notes. If
    you want the release page to match this file — worth it for anything
    bigger than a patch — paste the section over them:
 
