@@ -54,14 +54,18 @@ def main() -> None:
         return
 
     header = (
-        f"{'arm':<10} {'n':>3} {'firstBatch':>11} {'regFetch':>9} {'wall':>7} "
+        f"{'arm':<10} {'n':>3} {'firstResult':>11} {'regFetch':>9} {'wall':>7} "
         f"{'pkg p50':>8} {'pkg p95':>8} {'settle':>7} {'downs':>6} {'fail':>5}"
     )
     print(header)
     print("-" * len(header))
     for arm in sorted(groups):
         records = groups[arm]
-        first = [r["snapshot"]["phases"].get("firstBatch") for r in records]
+        # schemaVersion 2 renamed the phase; older records keep "firstBatch".
+        first = [
+            r["snapshot"]["phases"].get("firstResult", r["snapshot"]["phases"].get("firstBatch"))
+            for r in records
+        ]
         first = [v for v in first if v is not None]
         fetch = [r["snapshot"]["phases"].get("registryFetch") for r in records]
         fetch = [v for v in fetch if v is not None]

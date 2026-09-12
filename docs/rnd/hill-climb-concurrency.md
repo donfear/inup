@@ -63,7 +63,7 @@ Prereqs: `pnpm build`; a target project with 100+ unique dependencies.
 
 | Condition | Metric | Target vs `aimd` arm |
 | --- | --- | --- |
-| throttled, cold | `firstBatch` | ≥30% faster |
+| throttled, cold | `firstResult` (`firstBatch` before perf schema 2) | ≥30% faster |
 | throttled, cold | pkg latency p95 | ≥2× lower |
 | throttled, cold | `registryFetch` | ≤ +10% (expect equal or better) |
 | throttled | settled limit | ≤ 8 |
