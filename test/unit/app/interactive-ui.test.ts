@@ -147,6 +147,19 @@ describe('InteractiveUI.appendOutdatedBatchToSelectionStates', () => {
     expect(selectionStates).toHaveLength(1)
   })
 
+  it('reuses the selection-key index across the per-package appends of one scan', () => {
+    const ui = new InteractiveUI(npmInfo)
+    const selectionStates: PackageSelectionState[] = []
+
+    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-a')])
+    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-b')])
+    // A package already appended by an earlier arrival must not be added twice,
+    // even though the index was not rebuilt for this call.
+    ui.appendOutdatedBatchToSelectionStates(selectionStates, [batchItem('pkg-a')])
+
+    expect(selectionStates.map((s) => s.name)).toEqual(['pkg-a', 'pkg-b'])
+  })
+
   it('ignores batches with nothing outdated and skips the audit', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')

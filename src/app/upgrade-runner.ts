@@ -65,7 +65,10 @@ export class UpgradeRunner {
       }
       let selectionStates: PackageSelectionState[] = []
       let refreshUI: (() => void) | undefined
-      let latestPackages: PackageInfo[] = []
+      const packagesByName = new Map<string, PackageInfo[]>()
+      let completedPackages: PackageInfo[] | undefined
+      const getLatestPackages = () =>
+        completedPackages ?? Array.from(packagesByName.values()).flat()
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
       const selectionPromise = new Promise<PackageUpgradeChoice[]>((resolve, reject) => {
@@ -89,9 +92,9 @@ export class UpgradeRunner {
           }
 
           if (event.type === 'batch') {
-            latestPackages = latestPackages
-              .filter((pkg) => !event.payload.batch.some((item) => item.packageName === pkg.name))
-              .concat(event.payload.batch.flatMap((item) => item.packageInfo))
+            for (const item of event.payload.batch) {
+              packagesByName.set(item.packageName, item.packageInfo)
+            }
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstBatch')
             this.ui.appendOutdatedBatchToSelectionStates(
@@ -103,7 +106,7 @@ export class UpgradeRunner {
           }
 
           if (event.type === 'complete') {
-            latestPackages = event.payload.packages
+            completedPackages = event.payload.packages
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstBatch')
             performanceTracker.mark('allLoaded')
@@ -126,7 +129,7 @@ export class UpgradeRunner {
       })
 
       let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
-      const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
+      const outdatedPackages = this.detector.getOutdatedPackagesOnly(getLatestPackages())
       if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
         console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
         return
@@ -142,7 +145,7 @@ export class UpgradeRunner {
         }
 
         // Validate selected choices before confirmation
-        this.validateSelectedChoices(selectedChoices, latestPackages)
+        this.validateSelectedChoices(selectedChoices, getLatestPackages())
 
         // Store current selections (keyed by package name and version specifier)
         // in the format expected by selectPackagesToUpgrade, for potential
@@ -173,7 +176,7 @@ export class UpgradeRunner {
                   refreshUI = refresh
                 }
               )
-            : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
+            : await this.ui.selectPackagesToUpgrade(getLatestPackages(), previousSelections)
           continue
         }
 
@@ -187,7 +190,7 @@ export class UpgradeRunner {
       }
 
       // Perform upgrade
-      await this.upgrader.upgradePackages(selectedChoices, latestPackages)
+      await this.upgrader.upgradePackages(selectedChoices, getLatestPackages())
     } catch (error) {
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)

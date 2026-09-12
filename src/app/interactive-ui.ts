@@ -51,6 +51,7 @@ export class InteractiveUI {
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
+  private readonly selectionKeys = new WeakMap<PackageSelectionState[], Set<string>>()
 
   constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
@@ -129,19 +130,23 @@ export class InteractiveUI {
       return
     }
 
-    const seen = new Set(
-      selectionStates.map((state) =>
-        selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
+    let seen = this.selectionKeys.get(selectionStates)
+    if (!seen) {
+      seen = new Set(
+        selectionStates.map((state) =>
+          selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
+        )
       )
-    )
+      this.selectionKeys.set(selectionStates, seen)
+    }
 
-    outdatedStates.forEach((state) => {
+    for (const state of outdatedStates) {
       const key = selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
       if (!seen.has(key)) {
         selectionStates.push(state)
         seen.add(key)
       }
-    })
+    }
 
     this.enqueueSecurityAudit(selectionStates)
   }
