@@ -144,15 +144,17 @@ export class InteractiveUI {
       this.selectionKeys.set(selectionStates, seen)
     }
 
+    const appended: PackageSelectionState[] = []
     for (const state of outdatedStates) {
       const key = selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
       if (!seen.has(key)) {
         selectionStates.push(state)
         seen.add(key)
+        appended.push(state)
       }
     }
 
-    this.enqueueSecurityAudit(selectionStates)
+    if (appended.length > 0) this.enqueueSecurityAudit(appended, selectionStates)
   }
 
   public async selectPackagesToUpgradeProgressive(
@@ -177,8 +179,11 @@ export class InteractiveUI {
     return createUpgradeChoices(selectedStates, this.saveExact)
   }
 
-  public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {
-    this.vulnerabilityAuditController.enqueueStates(selectionStates, () => this.refreshView?.())
+  public enqueueSecurityAudit(
+    states: PackageSelectionState[],
+    applyTo: PackageSelectionState[] = states
+  ): void {
+    this.vulnerabilityAuditController.enqueueStates(states, () => this.refreshView?.(), applyTo)
   }
 
   public async confirmUpgrade(choices: PackageUpgradeChoice[]): Promise<boolean | null> {

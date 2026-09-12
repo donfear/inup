@@ -116,7 +116,7 @@ describe('InteractiveUI.appendOutdatedPackageToSelectionStates', () => {
     makePackageInfo({ name, ...overrides }),
   ]
 
-  it('appends new outdated packages and audits the combined list', () => {
+  it('appends new outdated packages and audits only the appended rows against the full list', () => {
     const ui = new InteractiveUI(npmInfo)
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selectionStates: PackageSelectionState[] = [makeSelectionState({ name: 'existing' })]
@@ -124,11 +124,15 @@ describe('InteractiveUI.appendOutdatedPackageToSelectionStates', () => {
     ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('fresh-pkg'))
 
     expect(selectionStates.map((s) => s.name)).toEqual(['existing', 'fresh-pkg'])
-    expect(audit).toHaveBeenCalledWith(selectionStates)
+    expect(audit).toHaveBeenCalledTimes(1)
+    const [queued, applyTo] = audit.mock.calls[0]
+    expect(queued.map((s) => s.name)).toEqual(['fresh-pkg'])
+    expect(applyTo).toBe(selectionStates)
   })
 
-  it('skips duplicates already present by name, specifier, and type', () => {
+  it('skips duplicates already present by name, specifier, and type, and audits nothing', () => {
     const ui = new InteractiveUI(npmInfo)
+    const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selectionStates = [
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
     ]
@@ -136,6 +140,7 @@ describe('InteractiveUI.appendOutdatedPackageToSelectionStates', () => {
     ui.appendOutdatedPackageToSelectionStates(selectionStates, resolved('test-pkg'))
 
     expect(selectionStates).toHaveLength(1)
+    expect(audit).not.toHaveBeenCalled()
   })
 
   it('reuses the selection-key index across the per-package appends of one scan', () => {
