@@ -1,5 +1,7 @@
-// Run from the repository root: node --expose-gc test/benchmarks/performance.cjs
+// Run from the repository root: pnpm bench (node --expose-gc test/benchmarks/performance.cjs)
 // Synthetic, offline fixtures. No user config/cache writes or real installs.
+// Every case runs BENCH_RUNS times (default 5); wall and CPU are reported as
+// the median with the min-max spread so a single noisy run cannot mislead.
 const fs = require('node:fs')
 const { performance } = require('node:perf_hooks')
 const ts = require('typescript')
@@ -48,22 +50,48 @@ require('../../src/shared/fs/io.ts').collectAllDependenciesAsync = async () => d
 const { PackageDetector } = require('../../src/features/upgrade/package-detector.ts')
 const list = require('../../src/features/interactive/renderer/package-list/index.ts')
 const { makeSelectionState } = require('../fixtures/selection-state-factory.ts')
+// Present on branches with sorted insertion; the baseline has no such list.
+let SelectionList = null
+try {
+  SelectionList = require('../../src/features/interactive/session/selection-list.ts').SelectionList
+} catch {}
 const { getPerformanceTracker } = require('../../src/features/debug/index.ts')
+const RUNS = Math.max(1, Number(process.env.BENCH_RUNS ?? 5))
 const results = []
+const median = (values) => {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length >>> 1
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+const spread = (values) => Math.max(...values) - Math.min(...values)
 async function measure(label, run) {
-  global.gc?.()
-  const memory = process.memoryUsage()
-  const cpu = process.cpuUsage()
-  const start = performance.now()
-  const details = await run()
-  const usedCpu = process.cpuUsage(cpu)
-  const after = process.memoryUsage()
+  const wall = []
+  const cpuMs = []
+  let details = {}
+  let heapDeltaBytes = 0
+  let rssBytes = 0
+  for (let i = 0; i < RUNS; i++) {
+    global.gc?.()
+    const memory = process.memoryUsage()
+    const cpu = process.cpuUsage()
+    const start = performance.now()
+    details = await run()
+    wall.push(performance.now() - start)
+    const usedCpu = process.cpuUsage(cpu)
+    cpuMs.push((usedCpu.user + usedCpu.system) / 1000)
+    const after = process.memoryUsage()
+    heapDeltaBytes = after.heapUsed - memory.heapUsed
+    rssBytes = after.rss
+  }
   results.push({
     label,
-    wallMs: +(performance.now() - start).toFixed(2),
-    cpuMs: +((usedCpu.user + usedCpu.system) / 1000).toFixed(2),
-    heapDeltaBytes: after.heapUsed - memory.heapUsed,
-    rssBytes: after.rss,
+    runs: RUNS,
+    wallMs: +median(wall).toFixed(2),
+    wallSpreadMs: +spread(wall).toFixed(2),
+    cpuMs: +median(cpuMs).toFixed(2),
+    cpuSpreadMs: +spread(cpuMs).toFixed(2),
+    heapDeltaBytes,
+    rssBytes,
     ...details,
   })
 }
@@ -108,10 +136,9 @@ async function main() {
   }
   for (const size of [100, 1000, 10000]) {
     const states = Array.from({ length: size }, (_, i) => makeSelectionState({ name: `pkg-${i}` }))
-    const cache = list.VersionColumnWidthCache ? new list.VersionColumnWidthCache() : null
-    let revision = 0
+    const layout = list.VersionColumnLayout ? new list.VersionColumnLayout() : null
     const frame = () => {
-      const options = cache ? { columnWidths: cache.get(states, 120, revision, '') } : {}
+      const options = layout ? { columnWidths: layout.get(states, 120) } : {}
       return list.renderInterface(
         states,
         0,
@@ -147,10 +174,53 @@ async function main() {
     await measure(`render-${size}-rows-appending`, () =>
       timed((i) => {
         states.push(makeSelectionState({ name: `late-${i}` }))
-        if (cache) revision++
         frame()
       })
     )
+  }
+  // Sorted insertion of every row in scrambled arrival order.
+  for (const size of SelectionList ? [1000, 10000] : []) {
+    const rows = Array.from({ length: size }, (_, i) =>
+      makeSelectionState({ name: `${i % 5 === 0 ? '@s/' : ''}pkg-${String(i).padStart(5, '0')}` })
+    )
+    for (let i = rows.length - 1; i > 0; i--) {
+      const j = (i * 7919) % (i + 1)
+      ;[rows[i], rows[j]] = [rows[j], rows[i]]
+    }
+    await measure(`insert-sorted-${size}-rows`, () => {
+      const selection = new SelectionList()
+      for (const row of rows) selection.insert([row])
+      return { rows: selection.length }
+    })
+  }
+  if (process.env.BENCH_FORMAT === 'table') {
+    const pad = (value, width) => String(value).padEnd(width)
+    console.log(pad('case', 34), pad('wall ms (±)', 18), pad('cpu ms (±)', 18), 'extra')
+    for (const r of results) {
+      const extra = Object.entries(r)
+        .filter(
+          ([k]) =>
+            ![
+              'label',
+              'runs',
+              'wallMs',
+              'wallSpreadMs',
+              'cpuMs',
+              'cpuSpreadMs',
+              'heapDeltaBytes',
+              'rssBytes',
+            ].includes(k)
+        )
+        .map(([k, v]) => `${k}=${v}`)
+        .join(' ')
+      console.log(
+        pad(r.label, 34),
+        pad(`${r.wallMs} (±${r.wallSpreadMs})`, 18),
+        pad(`${r.cpuMs} (±${r.cpuSpreadMs})`, 18),
+        extra
+      )
+    }
+    return
   }
   console.log(JSON.stringify({ node: process.version, results }, null, 2))
 }
