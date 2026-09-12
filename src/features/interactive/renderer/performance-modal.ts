@@ -71,7 +71,8 @@ function buildSections(snapshot: PerformanceSnapshot): {
   if (packageTimings.length > 0) {
     const sorted = packageTimings.map((t) => t.latencyMs).sort((a, b) => a - b)
     const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length)
-    const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+    // Nearest-rank percentile: the smallest value with >= 95% of samples at or below it.
+    const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1]
     const slowest = packageTimings.reduce((a, b) => (b.latencyMs > a.latencyMs ? b : a))
     bodyRows.push(labelValue('Packages timed', formatCount(sorted.length)))
     bodyRows.push(labelValue('Avg', formatMs(avg)))
@@ -80,7 +81,7 @@ function buildSections(snapshot: PerformanceSnapshot): {
       labelValue('Slowest', `${formatMs(slowest.latencyMs)} ${chalk.gray(`(${slowest.name})`)}`)
     )
   } else {
-    bodyRows.push(chalk.gray('  (set INUP_PERF=1 to record per-package latency)'))
+    bodyRows.push(chalk.gray('  (no registry responses timed yet)'))
   }
 
   bodyRows.push('')
