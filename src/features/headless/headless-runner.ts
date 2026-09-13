@@ -6,6 +6,7 @@ import {
   writePerfLog,
 } from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
+import { ConsoleUtils } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
@@ -50,10 +51,26 @@ export class HeadlessRunner {
       let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
-        if (event.type === 'initial') {
+        if (event.type === 'status') {
+          const { phase, packageJsonFiles, scanningDir } = event.payload.progress
+          const count = packageJsonFiles ?? 0
+          const fileLabel = `package.json file${count === 1 ? '' : 's'}`
+          const message =
+            phase === 'discovering'
+              ? scanningDir
+                ? `Scanning ${scanningDir} (found ${count})`
+                : 'Scanning repository for package.json files…'
+              : phase === 'collecting'
+                ? count > 0
+                  ? `Found ${count} ${fileLabel}`
+                  : 'Identifying unique packages…'
+                : 'Reading dependencies…'
+          ConsoleUtils.showProgress(message)
+        } else if (event.type === 'initial') {
           advisories = fetchVulnerabilities(event.payload.currentVersions)
         } else if (event.type === 'complete') {
           packages = event.payload.packages
+          ConsoleUtils.clearProgress()
         }
       })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)

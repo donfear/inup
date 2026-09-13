@@ -175,7 +175,15 @@ describe('PackageDetector streaming', () => {
       }
     })
 
-    expect(eventTypes).toEqual(['initial', 'package', 'package', 'complete'])
+    expect(eventTypes).toEqual([
+      'status',
+      'status',
+      'status',
+      'initial',
+      'package',
+      'package',
+      'complete',
+    ])
     expect(packageNames).toEqual(['@scope/pkg', 'zod'])
     expect(packages.map((pkg) => pkg.name)).toEqual(['@scope/pkg', 'zod'])
     expect(packages[0]).toMatchObject({
@@ -614,17 +622,20 @@ describe('PackageDetector edge paths', () => {
     })
   })
 
-  it('pluralizes the found-files progress message', async () => {
+  it('emits the found-files count as collection status', async () => {
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue([
       '/repo/package.json',
       '/repo/packages/a/package.json',
     ])
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    await detector.getOutdatedPackages()
+    const statuses: unknown[] = []
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'status') statuses.push(event.payload.progress)
+    })
 
-    expect(vi.mocked(ConsoleUtils.showProgress).mock.calls.flat()).toContain(
-      '🔍 Found 2 package.json files'
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ phase: 'collecting', packageJsonFiles: 2 })
     )
   })
 
@@ -931,7 +942,7 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
-  it('truncates long directory names in scan progress', async () => {
+  it('emits the scanning directory in progress status', async () => {
     const longDir = `/repo/${'deeply-nested/'.repeat(6)}`
     mocks.findAllPackageJsonFilesAsync.mockImplementation(
       async (
@@ -946,11 +957,14 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    await detector.getOutdatedPackages()
+    const statuses: unknown[] = []
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'status') statuses.push(event.payload.progress)
+    })
 
-    const progressCalls = vi.mocked(ConsoleUtils.showProgress).mock.calls.flat()
-    const truncated = progressCalls.find((msg) => String(msg).includes('(found 3)'))
-    expect(truncated).toContain(`...${longDir.slice(-47)}`)
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ scanningDir: longDir, packageJsonFiles: 3 })
+    )
   })
 
   it('warns about package.json-bearing directories the default skip list pruned', async () => {
