@@ -516,7 +516,7 @@ describe('UpgradeRunner terminal handoff', () => {
     expect(mocks.selectPackagesToUpgradeProgressive).toHaveBeenCalledTimes(1)
     expect(mocks.selectPackagesToUpgrade).toHaveBeenCalledTimes(1)
     expect(clearSpy).not.toHaveBeenCalled()
-    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('🚀 inup'))
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('inup'))
     expect(mocks.upgradePackages).not.toHaveBeenCalled()
   })
 })

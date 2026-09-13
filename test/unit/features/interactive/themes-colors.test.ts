@@ -3,12 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ThemeManager } from '../../../../src/features/interactive/state/theme-manager'
 import { themeNames } from '../../../../src/features/interactive/themes'
 import {
-  coloredInupLogo,
   getTerminalBgColorCode,
   getTerminalResetCode,
   getThemeBgColor,
   getThemeColor,
   hexToRgb,
+  inupLogo,
   type ThemeColorKey,
   themeColors,
 } from '../../../../src/features/interactive/themes-colors'
@@ -122,21 +122,18 @@ describe('getThemeBgColor', () => {
   })
 })
 
-describe('coloredInupLogo', () => {
+describe('inupLogo', () => {
   it('spells the package name', () => {
-    expect(stripAnsi(coloredInupLogo())).toBe('inup')
+    expect(stripAnsi(inupLogo())).toBe('inup')
   })
 
-  it('cycles the four brand colors when color is enabled', () => {
+  it('uses the fixed brand green when color is enabled', () => {
     const originalLevel = chalk.level
     chalk.level = 3
     try {
-      const logo = coloredInupLogo()
-      // red, yellow, blue, magenta bold — one per letter of "inup"
-      expect(logo).toContain('\x1b[31m')
-      expect(logo).toContain('\x1b[33m')
-      expect(logo).toContain('\x1b[34m')
-      expect(logo).toContain('\x1b[35m')
+      const logo = inupLogo()
+      expect(logo).toContain('\x1b[38;2;74;222;128m')
+      expect(logo).toContain('\x1b[1m')
     } finally {
       chalk.level = originalLevel
     }

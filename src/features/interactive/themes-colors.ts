@@ -218,12 +218,8 @@ export function getTerminalResetCode(): string {
   return chalk.level === 0 ? '' : '\x1b[0m'
 }
 
-const BRAND_COLORS = [chalk.red, chalk.yellow, chalk.blue, chalk.magenta]
-
-export function coloredInupLogo(): string {
-  return Array.from(PACKAGE_NAME)
-    .map((ch, i) => BRAND_COLORS[i % BRAND_COLORS.length].bold(ch))
-    .join('')
+export function inupLogo(): string {
+  return chalk.hex('#4ade80').bold(PACKAGE_NAME)
 }
 
 export const themeColors = {

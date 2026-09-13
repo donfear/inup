@@ -18,7 +18,7 @@ import { renderHelpModal } from '../renderer/help-modal'
 import { type PackageListRenderOptions, VersionColumnLayout } from '../renderer/package-list'
 import { renderPerformanceModal } from '../renderer/performance-modal'
 import { StateManager } from '../state'
-import { coloredInupLogo, getTerminalBgColorCode, getTerminalResetCode } from '../themes-colors'
+import { getTerminalBgColorCode, getTerminalResetCode, inupLogo } from '../themes-colors'
 import { dispatchAction } from './action-dispatcher'
 import type { SelectionList } from './selection-list'
 
@@ -113,7 +113,7 @@ export async function runInteractiveSession(
     }
 
     const buildModalHeaderLines = (shortcutLabel: string): string[] => [
-      `  ${chalk.bold('🚀 ')}${coloredInupLogo()}`,
+      `  ${inupLogo()}`,
       '',
       `  ${shortcutLabel}`,
       '',
