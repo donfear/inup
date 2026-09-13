@@ -132,10 +132,10 @@ async function paceChunk(bytes: number): Promise<void> {
   if (!(rate > 0)) return
   const now = Date.now()
   paceAllowedAt = Math.max(paceAllowedAt, now) + (bytes / rate) * 1000
-  const wait = paceAllowedAt - now
   // Own timer rather than retry's sleep(): that helper is stubbed to be instant
-  // in tests, and pacing must stay observable there.
-  if (wait > 0) await new Promise<void>((resolve) => setTimeout(resolve, wait))
+  // in tests, and pacing must stay observable there. The deadline is always at
+  // or after `now`, so the wait is never negative.
+  await new Promise<void>((resolve) => setTimeout(resolve, paceAllowedAt - now))
 }
 
 /**

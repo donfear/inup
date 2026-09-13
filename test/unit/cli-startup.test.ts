@@ -1,4 +1,4 @@
-import { getCompileCacheDir } from 'node:module'
+import { constants, enableCompileCache } from 'node:module'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -93,8 +93,13 @@ describe('CLI startup', () => {
   })
 
   it('enables the V8 compile cache when the CLI module loads', () => {
-    // Each test file runs in a fresh worker where the cache starts disabled
-    // (getCompileCacheDir() is undefined); importing the CLI above enabled it.
-    expect(getCompileCacheDir()).toMatch(/node-compile-cache/)
+    // Each test file runs in a fresh worker, so the only earlier call is the
+    // CLI's own at import: enabling again must report ALREADY_ENABLED. Where the
+    // runtime refuses the cache (coverage instrumentation, NODE_DISABLE_COMPILE_CACHE)
+    // both calls report DISABLED/FAILED and there is nothing to assert.
+    const { status } = enableCompileCache()
+    const { ALREADY_ENABLED, DISABLED, FAILED } = constants.compileCacheStatus
+    if (status === DISABLED || status === FAILED) return
+    expect(status).toBe(ALREADY_ENABLED)
   })
 })

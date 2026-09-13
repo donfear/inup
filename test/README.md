@@ -1,5 +1,10 @@
 # Testing Strategy
 
+> **Before pushing:** run `pnpm test:coverage`, not just `pnpm test`. CI's canonical
+> cell runs the coverage command with 100% thresholds, and a test can pass plain but
+> fail under instrumentation. Then `pnpm vitest run badges-readme` (README badges
+> must match the coverage output; refresh with `pnpm docs:badges`).
+
 This directory contains the test suite for `inup`: unit tests, integration tests, and the shared harnesses that make the interactive TUI testable without a real terminal.
 
 ## Test Structure
