@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-09-13
+
 ### Changed
 
 - The interactive picker opens before repository scanning, keeping discovery and loading on one branded screen. Quitting cancels pending registry requests, and scan failures restore the terminal before printing the error.
@@ -409,7 +411,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.7.1...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.7.2...HEAD
+[1.7.2]: https://github.com/donfear/inup/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/donfear/inup/compare/v1.7.0...v1.7.1
 [1.7.0]: https://github.com/donfear/inup/compare/v1.6.11...v1.7.0
 [1.6.11]: https://github.com/donfear/inup/compare/v1.6.10...v1.6.11
