@@ -110,6 +110,27 @@ describe('renderPerformanceModal', () => {
     expect(text).toMatch(/Controller\s+aimd/)
   })
 
+  it('shows bytes goodput in MB/s and flags a fast-link hold', () => {
+    const snapshot = makeSnapshot({
+      controlTicks: [
+        {
+          atMs: 0,
+          limit: 24,
+          ewmaMs: 120,
+          retries: 0,
+          reason: 'hold',
+          state: 'hold',
+          goodputBps: 5_747_126.44,
+          revalidatedRatio: 0,
+          fastLink: true,
+        },
+      ],
+    })
+    const text = stripAnsi(renderPerformanceModal(snapshot, 100, 60).lines.join('\n'))
+    expect(text).toMatch(/State\s+hold \(fast link\)/)
+    expect(text).toMatch(/Last goodput\s+5\.7 MB\/s/)
+  })
+
   it('shows hill-climb state and goodput when the ticks carry them', () => {
     const snapshot = makeSnapshot({
       controlTicks: [

@@ -100,14 +100,20 @@ function buildSections(snapshot: PerformanceSnapshot): {
     bodyRows.push(labelValue('Control ticks', formatCount(controlTicks.length)))
     bodyRows.push(labelValue('Hard back-offs', formatCount(hardDowns)))
     if (isHillClimb) {
-      bodyRows.push(labelValue('State', chalk.cyan(finalTick.state ?? '—')))
+      const state = finalTick.state ?? '—'
       bodyRows.push(
-        labelValue(
-          'Last goodput',
-          finalTick.goodputRps !== undefined
-            ? chalk.yellow(`${finalTick.goodputRps}/s`)
-            : chalk.gray('—')
-        )
+        labelValue('State', chalk.cyan(finalTick.fastLink ? `${state} (fast link)` : state))
+      )
+      // Cold windows are measured in streamed bytes/sec, warm ones in
+      // completions/sec; show whichever the last tick carried.
+      const goodput =
+        finalTick.goodputBps !== undefined
+          ? `${(finalTick.goodputBps / 1_000_000).toFixed(1)} MB/s`
+          : finalTick.goodputRps !== undefined
+            ? `${finalTick.goodputRps}/s`
+            : null
+      bodyRows.push(
+        labelValue('Last goodput', goodput !== null ? chalk.yellow(goodput) : chalk.gray('—'))
       )
     }
   } else {

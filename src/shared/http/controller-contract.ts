@@ -37,6 +37,11 @@ export interface ControlTick {
   state?: ConcurrencyControllerState
   /** Share of ETag-304 revalidations in the window (0..1); hill-climb only. */
   revalidatedRatio?: number
+  /** Window goodput in streamed response bytes/sec, when the window was measured
+   * in bytes (mostly full downloads); hill-climb controller only. */
+  goodputBps?: number
+  /** True while the controller holds the ceiling because the link proved fast. */
+  fastLink?: boolean
 }
 
 export type RequestOutcomeKind = 'success' | 'congested' | 'retryable' | 'transient'
@@ -44,6 +49,8 @@ export type RequestOutcomeKind = 'success' | 'congested' | 'retryable' | 'transi
 export interface RequestOutcomeMeta {
   /** True when the response was an ETag 304 revalidation (tiny and fast even on a slow pipe). */
   revalidated?: boolean
+  /** Compressed response bytes received (0 for a 304). */
+  bytes?: number
 }
 
 /**
@@ -54,6 +61,8 @@ export interface ConcurrencyController {
   getLimit(): number
   record(kind: RequestOutcomeKind, latencyMs?: number, meta?: RequestOutcomeMeta): number | null
   maybeTick(now?: number): number | null
+  /** Account streamed response bytes as they arrive; optional — AIMD ignores it. */
+  recordBytes?(bytes: number): void
   /** Stop making decisions (run tail); optional — AIMD does not need it. */
   freeze?(): void
 }
