@@ -1,4 +1,7 @@
-Output docs/demo/interactive-upgrade.gif
+# record-demo.sh always passes -o with a fresh temporary path, which overrides
+# this line. It stays deliberately generic so a bare `vhs demo-real.tape` run
+# cannot overwrite the tracked demo assets.
+Output recording.gif
 
 Set Shell bash
 Set PlaybackSpeed 1.0
@@ -18,7 +21,10 @@ Set Framerate 30
 
 # Change to clean temp directory (hidden from view)
 Hide
-Type "cd /tmp/my-app"
+Type `cd "$VHS_DEMO_DIR"`
+Enter
+# Bind the exact wrapper inside the recorded shell, independent of its PATH.
+Type `inup() { "$VHS_DEMO_DIR/.bin/inup" "$@"; }`
 Enter
 # Clear CI so inup renders the interactive TUI. GitHub Actions sets CI=true, which
 # the VHS-spawned shell inherits and which would otherwise route inup to its headless
@@ -31,12 +37,12 @@ Type "clear"
 Enter
 Show
 
-# Run inup and hide shell/loading so the demo opens directly on the CLI
-Hide
+# Run inup in full view. The picker mounts before the scan starts, so the
+# recording shows the same branded loading screen a user sees rather than
+# cutting straight to a finished list.
 Type "inup"
 Enter
 Sleep 5s
-Show
 
 # Use 'M' to select all minor updates
 Type "m"
