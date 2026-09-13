@@ -326,6 +326,16 @@ describe('package-list renderer', () => {
 })
 
 describe('renderInterface header', () => {
+  it.each([20, 40, 60, 80, 120])('fits the shortcut footer within %s columns', (terminalWidth) => {
+    const footer = renderPlain([baseState], { terminalWidth }).split('\n')[2]
+    expect(VersionUtils.getVisualLength(footer)).toBeLessThanOrEqual(terminalWidth)
+    if (terminalWidth >= 40) {
+      expect(footer).toContain('? Help')
+      expect(footer).toContain('q Quit')
+    }
+    if (terminalWidth === 60) expect(footer).not.toContain('i Info')
+    if (terminalWidth === 120) expect(footer).toContain('i Info')
+  })
   it('shows the package manager display name when known', () => {
     expect(renderPlain([baseState], { packageManager: npmInfo })).toContain('(npm)')
   })
