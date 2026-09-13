@@ -70,7 +70,7 @@ Review the diff and run your tests after upgrading.
 
 ## One project or a whole monorepo
 
-inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
+inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`; a caching registry proxy (pnpr, Verdaccio, Artifactory) works the same way and makes cold runs LAN-fast. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
 Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/).
 
