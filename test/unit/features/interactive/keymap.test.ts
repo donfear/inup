@@ -45,6 +45,10 @@ describe('keymap', () => {
     const labels = getFooterHints().map((hint) => hint.label)
     expect(labels).toContain('Move')
     expect(labels).toContain('Help')
+    expect(labels).toContain('Quit')
+    expect(labels).toContain('Latest')
+    expect(labels).not.toContain('All')
+    expect(labels.slice(0, 4)).toEqual(['Move', 'Select', 'Quit', 'Help'])
     expect(labels).not.toContain('Toggle')
   })
 

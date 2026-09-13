@@ -124,7 +124,7 @@ describe('getThemeBgColor', () => {
 
 describe('inupLogo', () => {
   it('spells the package name', () => {
-    expect(stripAnsi(inupLogo())).toBe('inup')
+    expect(inupLogo()).toBe('inup')
   })
 
   it('uses the fixed brand green when color is enabled', () => {

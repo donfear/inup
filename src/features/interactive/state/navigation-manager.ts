@@ -142,20 +142,26 @@ export class NavigationManager {
   }
 
   navigatePageUp(totalItems: number): void {
-    this.navigatePage('up', totalItems)
+    this.navigatePage(-this.maxVisibleItems, totalItems)
   }
 
   navigatePageDown(totalItems: number): void {
-    this.navigatePage('down', totalItems)
+    this.navigatePage(this.maxVisibleItems, totalItems)
   }
 
-  private navigatePage(direction: 'up' | 'down', totalItems: number): void {
+  private navigatePage(delta: number, totalItems: number): void {
     if (totalItems === 0) return
     this.state.previousRow = this.state.currentRow
-    for (let step = 0; step < this.maxVisibleItems; step++) {
-      const next = this.findNextPackageIndex(this.state.currentRow, direction, totalItems)
-      if (next === this.state.currentRow) break
-      this.state.currentRow = next
+    const packages = this.renderableItems.filter((item) => item.type === 'package')
+    if (packages.length === 0) {
+      this.state.currentRow = Math.max(0, Math.min(totalItems - 1, this.state.currentRow + delta))
+    } else {
+      const position = Math.max(
+        0,
+        packages.findIndex((item) => item.originalIndex === this.state.currentRow)
+      )
+      const target = Math.max(0, Math.min(packages.length - 1, position + delta))
+      this.state.currentRow = packages[target].originalIndex
     }
     this.ensureVisible(this.state.currentRow, totalItems)
   }

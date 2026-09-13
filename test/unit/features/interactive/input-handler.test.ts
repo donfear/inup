@@ -52,6 +52,35 @@ afterEach(() => {
 })
 
 describe('InputHandler keymap dispatch', () => {
+  it.each([
+    ['q', 'quit'],
+    ['home', 'navigate_top'],
+    ['end', 'navigate_bottom'],
+    ['pageup', 'navigate_page_up'],
+    ['pagedown', 'navigate_page_down'],
+  ])('dispatches %s as %s', (name, type) => {
+    const { handler, actions } = makeHandler()
+    press(handler, '', { name })
+    expect(actions).toEqual([{ type }])
+  })
+
+  it.each([
+    ['showInfoModal', 'toggle_info_modal'],
+    ['showHelpModal', 'toggle_help_modal'],
+    ['showDebugModal', 'toggle_debug_modal'],
+    ['showThemeModal', 'toggle_theme_modal'],
+  ])('q closes %s without quitting', (modal, type) => {
+    const { handler, actions, onCancel } = makeHandler({ [modal]: true })
+    press(handler, 'q', { name: 'q' })
+    expect(actions).toEqual([{ type }])
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('q remains text while searching', () => {
+    const { handler, actions } = makeHandler({ filterMode: true })
+    press(handler, 'q', { name: 'q' })
+    expect(actions).toEqual([{ type: 'filter_input', char: 'q' }])
+  })
   it('Space toggles the current selection', () => {
     const { handler, actions } = makeHandler()
     press(handler, ' ', { name: 'space' })
