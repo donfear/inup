@@ -76,6 +76,8 @@ export function perfEnv(): Record<string, string | undefined> {
   return {
     INUP_ADAPTIVE: process.env.INUP_ADAPTIVE,
     INUP_CONTROLLER: process.env.INUP_CONTROLLER,
+    INUP_FASTLINK: process.env.INUP_FASTLINK,
+    INUP_PACE_BPS: process.env.INUP_PACE_BPS,
     INUP_NET_PROFILE: process.env.INUP_NET_PROFILE,
     INUP_PERF: process.env.INUP_PERF,
     INUP_DEBUG: process.env.INUP_DEBUG,

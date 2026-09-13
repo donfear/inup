@@ -38,6 +38,8 @@ type MockResponse = {
   headers?: Record<string, string>
   /** Optional artificial delay (ms) before the response resolves. */
   delayMs?: number
+  /** When set, the body is also async-iterable and streams exactly these chunks. */
+  chunks?: Buffer[]
 }
 
 const makeOkBody = (json: unknown): MockResponse => ({
@@ -71,6 +73,13 @@ describe('npm-registry', () => {
           arrayBuffer: async () => Buffer.from(response.body, 'utf8'),
           text: async () => response.body,
           dump: async () => {},
+          ...(response.chunks
+            ? {
+                [Symbol.asyncIterator]: async function* () {
+                  for (const chunk of response.chunks!) yield chunk
+                },
+              }
+            : {}),
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any
@@ -655,6 +664,80 @@ describe('npm-registry', () => {
       expect(ticks.filter((t) => t.reason === 'double').length).toBeGreaterThanOrEqual(2)
       expect(Math.max(...ticks.map((t) => t.limit))).toBe(24)
       expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    /** A wide link streaming big packuments: one `bytes`-long chunk per response. */
+    const withStreamedBigBodies = (latencyMs: number, bytes: number) => {
+      const pad = 'x'.repeat(bytes)
+      const json = JSON.stringify({ versions: { '1.0.0': {} }, pad })
+      requestMock.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, latencyMs))
+        return { statusCode: 200, body: json, chunks: [Buffer.from(json, 'utf8')] }
+      })
+    }
+
+    it('streams response bytes into the controller so a wide pipe engages fast link', async () => {
+      // 100 KB per response at 20 fake-ms: 12-completion windows stream ≥ 1.2 MB
+      // in 60 ms — far above the 1 MB/s fast-link bar.
+      withStreamedBigBodies(20, 100_000)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
+
+      expect(result.size).toBe(60)
+      expect(ticks[0]).toMatchObject({ limit: 24, fastLink: true })
+      expect(ticks[0].goodputBps).toBeGreaterThan(1_000_000)
+      expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(false)
+    })
+
+    it('falls back to arrayBuffer() bodies without byte accounting (no fast link)', async () => {
+      withFastLink(20) // plain mock: no async iterator on the body
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
+
+      expect(result.size).toBe(60)
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(ticks.some((t) => t.fastLink)).toBe(false)
+      expect(ticks.every((t) => t.goodputBps === undefined)).toBe(true)
+    })
+
+    it('INUP_FASTLINK=0 disables fast link while keeping the controller on', async () => {
+      vi.stubEnv('INUP_FASTLINK', '0')
+      try {
+        withStreamedBigBodies(20, 100_000)
+        const ticks: ControlTick[] = []
+
+        await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
+
+        expect(ticks.length).toBeGreaterThan(0)
+        expect(ticks.some((t) => t.fastLink)).toBe(false)
+        expect(ticks[0].goodputBps).toBeGreaterThan(1_000_000)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('INUP_PACE_BPS paces streamed chunks at the given bytes per second', async () => {
+      vi.stubEnv('INUP_PACE_BPS', '1000')
+      try {
+        const json = JSON.stringify({ versions: { '1.0.0': {} }, pad: 'x'.repeat(466) })
+        expect(Buffer.byteLength(json)).toBe(500)
+        requestMock.mockResolvedValue({ statusCode: 200, body: json, chunks: [Buffer.from(json)] })
+        let settled = false
+        const done = fetchPackageVersions(['demo-pkg']).then((r) => {
+          settled = true
+          return r
+        })
+
+        await vi.advanceTimersByTimeAsync(400)
+        expect(settled).toBe(false) // 500 bytes at 1000 B/s need 500 ms
+        await vi.advanceTimersByTimeAsync(150)
+        expect(settled).toBe(true)
+        expect((await done).get('demo-pkg')?.latestVersion).toBe('1.0.0')
+      } finally {
+        vi.unstubAllEnvs()
+      }
     })
 
     it('concurrency option pins the limit and disables the controller', async () => {

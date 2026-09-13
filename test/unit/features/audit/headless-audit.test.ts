@@ -89,6 +89,35 @@ describe('auditVulnerabilities', () => {
     })
   })
 
+  it('uses pre-fetched advisories when given and skips its own request', async () => {
+    const advisories = Promise.resolve(
+      new Map([
+        [
+          'axios',
+          {
+            packageName: 'axios',
+            highestSeverity: 'high',
+            vulnerabilities: [
+              {
+                id: 1,
+                title: 'SSRF',
+                severity: 'high',
+                url: 'https://example.test/1',
+                vulnerable_versions: '<1.0.0',
+              },
+            ],
+          },
+        ],
+      ])
+    )
+
+    const result = await auditVulnerabilities([pkg], advisories as any)
+
+    expect(mocks.fetchVulnerabilities).not.toHaveBeenCalled()
+    expect(result.get(pkg)?.count).toBe(1)
+    expect(result.get(pkg)?.fixedByLatest).toBe(true)
+  })
+
   it('omits packages with no advisories', async () => {
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
     const result = await auditVulnerabilities([pkg])

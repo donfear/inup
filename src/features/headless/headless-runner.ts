@@ -8,7 +8,7 @@ import {
 import { PackageManagerDetector } from '../../shared/package-manager'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
-import { auditVulnerabilities } from '../audit'
+import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
 import { PackageDetector, PackageUpgrader } from '../upgrade'
 import { buildHeadlessReport, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
@@ -43,7 +43,19 @@ export class HeadlessRunner {
       const performanceTracker = getPerformanceTracker()
       if (perfEnabled) performanceTracker.start()
 
-      const packages = await this.detector.getOutdatedPackages()
+      // The bulk advisory request needs only name → declared specifier, which the
+      // detector knows before it touches the registry. Start it from the `initial`
+      // event so it overlaps the fetch instead of adding a round-trip at the end.
+      // Best-effort like the audit itself: a failure resolves to an empty map.
+      let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
+      let packages: PackageInfo[] = []
+      await this.detector.streamOutdatedPackages((event) => {
+        if (event.type === 'initial') {
+          advisories = fetchVulnerabilities(event.payload.currentVersions)
+        } else if (event.type === 'complete') {
+          packages = event.payload.packages
+        }
+      })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)
 
       if (perfEnabled) {
@@ -61,7 +73,7 @@ export class HeadlessRunner {
 
       // Audit the current versions (one bulk request, best-effort) and cross-reference each
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
-      const vulnerabilities = await auditVulnerabilities(outdated)
+      const vulnerabilities = await auditVulnerabilities(outdated, advisories)
 
       // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
       const report = buildHeadlessReport(packages, outdated, vulnerabilities)

@@ -75,10 +75,13 @@ const DEFAULT_FIXED_CONCURRENCY = 10
 async function getFreshPackageData(
   packageName: string,
   currentVersion: string | undefined,
-  onAttempt?: AttemptObserver
+  onAttempt?: AttemptObserver,
+  onChunk?: OnChunk
 ): Promise<PackageVersionData> {
   const cacheKey = `${packageName}@${currentVersion ?? ''}`
-  return inFlightLookups.dedupe(cacheKey, () => fetchPackageFromRegistry(packageName, onAttempt))
+  return inFlightLookups.dedupe(cacheKey, () =>
+    fetchPackageFromRegistry(packageName, onAttempt, onChunk)
+  )
 }
 
 const encodeRegistryPath = (packageName: string, pathPrefix: string): string => {
@@ -91,7 +94,14 @@ const encodeRegistryPath = (packageName: string, pathPrefix: string): string => 
 }
 
 type RegistryAttemptOutcome =
-  | { kind: 'success'; data: PackageVersionData; latencyMs: number; revalidated: boolean }
+  | {
+      kind: 'success'
+      data: PackageVersionData
+      latencyMs: number
+      revalidated: boolean
+      /** Compressed body bytes received (0 for a 304). */
+      bytes: number
+    }
   | { kind: 'not-found' }
   | { kind: 'retryable' }
   | { kind: 'congested'; retryAfterMs: number | null }
@@ -105,9 +115,52 @@ type RegistryAttemptOutcome =
  */
 export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 
+/** Called with each body chunk's byte length as it arrives. */
+type OnChunk = (bytes: number) => void
+
+type ResponseBody = {
+  arrayBuffer(): Promise<ArrayBuffer>
+} & Partial<AsyncIterable<Uint8Array>>
+
+// Dev-only link emulation (INUP_PACE_BPS): a process-wide token bucket that
+// paces every streamed chunk to the given bytes/sec, so slow-link behavior can
+// be reproduced without a system-level link conditioner. Read per call so the
+// toggle is testable; never set in normal use.
+let paceAllowedAt = 0
+async function paceChunk(bytes: number): Promise<void> {
+  const rate = Number(process.env.INUP_PACE_BPS)
+  if (!(rate > 0)) return
+  const now = Date.now()
+  paceAllowedAt = Math.max(paceAllowedAt, now) + (bytes / rate) * 1000
+  // Own timer rather than retry's sleep(): that helper is stubbed to be instant
+  // in tests, and pacing must stay observable there. The deadline is always at
+  // or after `now`, so the wait is never negative.
+  await new Promise<void>((resolve) => setTimeout(resolve, paceAllowedAt - now))
+}
+
+/**
+ * Read a response body to a Buffer. Streams chunk by chunk when the body is
+ * async-iterable so the caller can account bytes as they arrive (the adaptive
+ * controller measures cold windows in bytes/sec); falls back to arrayBuffer()
+ * for bodies that are not (test doubles, the offline bench harness).
+ */
+async function readBody(body: ResponseBody, onChunk?: OnChunk): Promise<Buffer> {
+  if (typeof body[Symbol.asyncIterator] !== 'function') {
+    return Buffer.from(await body.arrayBuffer())
+  }
+  const chunks: Buffer[] = []
+  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    await paceChunk(chunk.length)
+    onChunk?.(chunk.length)
+    chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
+  }
+  return Buffer.concat(chunks)
+}
+
 async function attemptRegistryFetch(
   target: RegistryTarget,
-  path: string
+  path: string,
+  onChunk?: OnChunk
 ): Promise<RegistryAttemptOutcome> {
   const startedAt = Date.now()
   // Conditional request: if we have a stored ETag for this packument, ask the
@@ -145,6 +198,7 @@ async function attemptRegistryFetch(
         data: cached.data,
         latencyMs: Date.now() - startedAt,
         revalidated: true,
+        bytes: 0,
       }
     }
 
@@ -162,7 +216,7 @@ async function attemptRegistryFetch(
       return { kind: 'not-found' }
     }
 
-    const raw = Buffer.from(await body.arrayBuffer())
+    const raw = await readBody(body, onChunk)
     const encodingHeader = headers['content-encoding']
     const encoding = (Array.isArray(encodingHeader) ? encodingHeader[0] : encodingHeader)
       ?.toString()
@@ -191,6 +245,7 @@ async function attemptRegistryFetch(
       data,
       latencyMs: Date.now() - startedAt,
       revalidated: false,
+      bytes: raw.length,
     }
   } catch (error) {
     if (isTransientNetworkError(error)) {
@@ -205,11 +260,12 @@ async function attemptRegistryFetch(
 async function fetchFromRegistryWithRetries(
   target: RegistryTarget,
   path: string,
-  onAttempt?: AttemptObserver
+  onAttempt?: AttemptObserver,
+  onChunk?: OnChunk
 ): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
-    const outcome = await attemptRegistryFetch(target, path)
+    const outcome = await attemptRegistryFetch(target, path, onChunk)
     onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
@@ -230,13 +286,14 @@ async function fetchFromRegistryWithRetries(
 
 async function fetchPackageFromRegistry(
   packageName: string,
-  onAttempt?: AttemptObserver
+  onAttempt?: AttemptObserver,
+  onChunk?: OnChunk
 ): Promise<PackageVersionData> {
   // Scoped packages may live on a different registry (with credentials) than
   // unscoped ones — resolved from the npm config chain, memoized per scope.
   const target = registryTargetFor(packageName)
   const path = encodeRegistryPath(packageName, target.pathPrefix)
-  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt)
+  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt, onChunk)
 
   if (outcome.kind === 'success') {
     return outcome.data
@@ -309,6 +366,10 @@ export async function fetchPackageVersions(
       controller = new HillClimbController(total, {
         profile: networkProfile,
         onTick: options.onControlTick,
+        // INUP_FASTLINK=0: A/B toggle that keeps the controller on but never
+        // lets streamed throughput pin the ceiling.
+        tuning:
+          process.env.INUP_FASTLINK === '0' ? { fastLinkBytesPerSec: Number.MAX_VALUE } : undefined,
       })
     } else if (controllerMode === 'aimd' && AdaptiveController.shouldControl(total)) {
       controller = new AdaptiveController(total, options.onControlTick)
@@ -330,6 +391,12 @@ export async function fetchPackageVersions(
 
   let completedCount = 0
 
+  // Streamed body bytes feed the controller's cold-window goodput as they
+  // arrive, not when a response completes — completion order is size-biased.
+  const onChunk: OnChunk | undefined = controller?.recordBytes
+    ? (bytes) => controller?.recordBytes?.(bytes)
+    : undefined
+
   // --- per-attempt observer ---------------------------------------------------
   // Feeds the adaptive controller AND (optionally) reports per-package latency
   // for diagnostics. Built per package so the timing callback knows the name.
@@ -341,6 +408,7 @@ export async function fetchPackageVersions(
         // controller's failed profile validation), so apply any returned limit.
         const next = controller?.record('success', outcome.latencyMs, {
           revalidated: outcome.revalidated,
+          bytes: outcome.bytes,
         })
         if (next != null) semaphore.setLimit(next)
         options.onPackageTiming?.(packageName, outcome.latencyMs)
@@ -364,7 +432,8 @@ export async function fetchPackageVersions(
       const data = await getFreshPackageData(
         packageName,
         options.currentVersions?.get(packageName),
-        observerFor(packageName)
+        observerFor(packageName),
+        onChunk
       )
       packageData.set(packageName, data)
       completedCount++
