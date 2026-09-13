@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Faster startup: the CLI loads only the code path it runs (headless runs no longer load the interactive UI) and enables Node's compile cache, taking about 60 ms off every invocation.
+
 ## [1.7.1] - 2026-09-12
 
 ### Changed
