@@ -5,6 +5,7 @@ import {
   createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
+  type InteractiveSessionHandle,
   PackageInfoModalController,
   runInteractiveSession,
   SelectionList,
@@ -78,8 +79,8 @@ export class InteractiveUI {
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => {
-        this.refreshView = refresh
+      (session) => {
+        this.refreshView = session?.refresh
       }
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
@@ -132,14 +133,13 @@ export class InteractiveUI {
   }
 
   /**
-   * Runs the session over a list that is still filling. `attachRefresh`
-   * receives the session's refresh hook so the caller can redraw after each
-   * insert; the same hook serves the audit updates.
+   * Runs the session over a list that is still filling. The caller receives
+   * a handle for background refreshes and failures, revoked during teardown.
    */
   public async selectPackagesToUpgradeProgressive(
     selection: SelectionList,
     progress: PackageLoadProgress,
-    attachRefresh: (refresh: () => void) => void
+    attachSession: (session: InteractiveSessionHandle | undefined) => void
   ): Promise<PackageUpgradeChoice[]> {
     this.enqueueSecurityAudit(selection.items)
     const selectedStates = await runInteractiveSession(
@@ -149,9 +149,9 @@ export class InteractiveUI {
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => {
-        this.refreshView = refresh
-        if (refresh) attachRefresh(refresh)
+      (session) => {
+        this.refreshView = session?.refresh
+        attachSession(session)
       },
       progress
     )

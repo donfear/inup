@@ -171,12 +171,14 @@ describe('HeadlessRunner.run', () => {
   })
 
   it.each([true, false])('renders ordered scan status only on a TTY (%s)', async (isTTY) => {
+    vi.stubEnv('CI', '')
     const tty = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY')
     const columns = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
     Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: isTTY })
     Object.defineProperty(process.stderr, 'columns', { configurable: true, value: 60 })
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     mocks.streamOutdatedPackages.mockImplementation(
       async (onEvent: StreamOutdatedPackagesCallback) => {
         const status = (
@@ -204,6 +206,7 @@ describe('HeadlessRunner.run', () => {
         status('resolving')
         status('discovering', { scanningDir: `/repo/${'日本語/'.repeat(30)}`, packageJsonFiles: 3 })
         status('done')
+        onEvent({ type: 'warning', payload: { message: 'Skipped directory' } })
         onEvent({
           type: 'complete',
           payload: {
@@ -223,6 +226,7 @@ describe('HeadlessRunner.run', () => {
     )
     try {
       await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+      expect(warn).toHaveBeenCalledWith('Skipped directory')
       expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).schemaVersion).toBe(1)
       const messages = write.mock.calls.map(([chunk]) => String(chunk).split('\r').at(-1)!)
       if (isTTY) {
@@ -247,6 +251,8 @@ describe('HeadlessRunner.run', () => {
       else delete process.stderr.columns
       write.mockRestore()
       log.mockRestore()
+      warn.mockRestore()
+      vi.unstubAllEnvs()
     }
   })
 

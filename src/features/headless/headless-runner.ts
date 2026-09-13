@@ -51,7 +51,9 @@ export class HeadlessRunner {
       let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
-        if (event.type === 'status') {
+        if (event.type === 'warning') {
+          console.warn(chalk.yellow(event.payload.message))
+        } else if (event.type === 'status') {
           const { phase, packageJsonFiles, scanningDir } = event.payload.progress
           const count = packageJsonFiles ?? 0
           const showProgress = (message: string) =>

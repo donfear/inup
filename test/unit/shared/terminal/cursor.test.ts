@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConsoleUtils, CursorUtils } from '../../../../src/shared/terminal'
 import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../../../src/shared/terminal/cursor'
 import { installFakeStdin } from '../../../helpers/fake-stdin'
@@ -9,6 +9,10 @@ import { captureStdout } from '../../../helpers/terminal-capture'
 describe('ConsoleUtils progress output hygiene', () => {
   const originalIsTTY = process.stderr.isTTY
 
+  beforeEach(() => {
+    vi.stubEnv('CI', '')
+  })
+
   const setStderrTTY = (value: boolean) =>
     Object.defineProperty(process.stderr, 'isTTY', { value, configurable: true })
 
@@ -18,6 +22,7 @@ describe('ConsoleUtils progress output hygiene', () => {
       configurable: true,
     })
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
   it('writes progress to stderr and never to stdout when stderr is a TTY', () => {
@@ -30,6 +35,17 @@ describe('ConsoleUtils progress output hygiene', () => {
 
     expect(errSpy).toHaveBeenCalled()
     expect(outSpy).not.toHaveBeenCalled()
+  })
+
+  it('suppresses progress in CI even when stderr is a TTY', () => {
+    vi.stubEnv('CI', '1')
+    setStderrTTY(true)
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    ConsoleUtils.showProgress('scanning')
+    ConsoleUtils.clearProgress()
+
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('suppresses progress entirely when stderr is not a TTY', () => {

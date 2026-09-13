@@ -970,6 +970,30 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
+  it('stops discovery before collecting dependencies when cancelled', async () => {
+    const controller = new AbortController()
+    const cancelled = new Error('cancelled scan')
+    mocks.findAllPackageJsonFilesAsync.mockImplementation(
+      async (
+        _cwd: string,
+        _exclude: string[],
+        _depth: number,
+        onProgress: (dir: string, found: number) => void
+      ) => {
+        controller.abort(cancelled)
+        onProgress('/repo', 1)
+        return ['/repo/package.json']
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await expect(detector.streamOutdatedPackages(() => {}, controller.signal)).rejects.toThrow(
+      'cancelled scan'
+    )
+    expect(mocks.collectAllDependenciesAsync).not.toHaveBeenCalled()
+    expect(mocks.fetchPackageVersions).not.toHaveBeenCalled()
+  })
+
   it('warns about package.json-bearing directories the default skip list pruned', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {

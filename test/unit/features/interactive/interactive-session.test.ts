@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { VulnerabilityAuditController } from '../../../../src/features/audit'
 import type { PackageInfoModalController } from '../../../../src/features/interactive/controllers'
 import { UIRenderer } from '../../../../src/features/interactive/renderer'
-import { runInteractiveSession } from '../../../../src/features/interactive/session/interactive-session'
+import {
+  type InteractiveSessionHandle,
+  runInteractiveSession,
+} from '../../../../src/features/interactive/session/interactive-session'
 import { SelectionList } from '../../../../src/features/interactive/session/selection-list'
 import { themeNames } from '../../../../src/features/interactive/themes'
 import { configManager } from '../../../../src/shared/config/user-config'
@@ -64,6 +67,7 @@ function startSession(
   states: PackageSelectionState[],
   extras: {
     onRefreshViewReady?: (refresh: (() => void) | undefined) => void
+    onSessionReady?: (session: InteractiveSessionHandle | undefined) => void
     attachRefresh?: (refresh: () => void) => void
     loadingProgress?: PackageLoadProgress
     renderer?: UIRenderer
@@ -78,7 +82,9 @@ function startSession(
     controllers.packageInfoModalController as unknown as PackageInfoModalController,
     controllers.vulnerabilityAuditController as unknown as VulnerabilityAuditController,
     displayOptions,
-    (refresh) => {
+    (session) => {
+      extras.onSessionReady?.(session)
+      const refresh = session?.refresh
       extras.onRefreshViewReady?.(refresh)
       // InteractiveUI fans the same hook out to the streaming runner.
       if (refresh) extras.attachRefresh?.(refresh)
@@ -118,6 +124,53 @@ afterEach(() => {
 })
 
 describe('runInteractiveSession lifecycle', () => {
+  it.each(['discovering', 'collecting'] as const)(
+    'renders %s before any package arrives and quits cleanly',
+    async (phase) => {
+      const { promise } = startSession([], {
+        loadingProgress: {
+          phase,
+          packageJsonFiles: 3,
+          discovered: 0,
+          resolved: 0,
+          total: 0,
+          failed: 0,
+          isLoading: true,
+        },
+      })
+      const frame = stripAnsi(stdout.output())
+      expect(frame).toContain('inup')
+      expect(frame).toContain(
+        phase === 'discovering' ? 'Scanning for package.json' : 'Reading dependencies from 3'
+      )
+      expect(frame).not.toContain('Showing all 0 packages')
+      await fake.sendKeys('\r')
+      expect(fake.stdin.listenerCount('keypress')).toBeGreaterThan(0)
+      await fake.sendKeys('q')
+      expect(await promise).toEqual([])
+      expect(stdout.output()).toContain('\x1b[?1049l')
+      expect(fake.stdin.listenerCount('keypress')).toBe(0)
+    }
+  )
+
+  it('abort releases the terminal, revokes the handle, and rejects once', async () => {
+    const handles: Array<InteractiveSessionHandle | undefined> = []
+    const { promise } = startSession([], { onSessionReady: (handle) => handles.push(handle) })
+    const handle = handles[0]!
+    const error = new Error('scan failed')
+    const rejected = expect(promise).rejects.toBe(error)
+    handle.refresh()
+    handle.abort(error)
+    await rejected
+    expect(handles).toEqual([handle, undefined])
+    expect(stdout.output()).toContain('\x1b[?1049l')
+    expect(fake.stdin.listenerCount('keypress')).toBe(0)
+    expect(fake.stdin.setRawMode).toHaveBeenLastCalledWith(false)
+    stdout.clear()
+    handle.abort(new Error('late failure'))
+    handle.refresh()
+    expect(stdout.output()).toBe('')
+  })
   it('confirms a pre-selected package on Enter and restores the terminal', async () => {
     const states = [makeSelectionState({ selectedOption: 'latest' })]
     const { promise } = startSession(states)
@@ -322,6 +375,17 @@ describe('runInteractiveSession modals', () => {
 })
 
 describe('runInteractiveSession fallback', () => {
+  it('rejects initial rendering failures after restoring raw mode and the alternate screen', async () => {
+    const renderer = new UIRenderer()
+    vi.spyOn(renderer, 'renderInterface').mockImplementation(() => {
+      throw new Error('first frame failed')
+    })
+    const { promise } = startSession([], { renderer })
+    await expect(promise).rejects.toThrow('first frame failed')
+    expect(fake.stdin.listenerCount('keypress')).toBe(0)
+    expect(fake.stdin.setRawMode).toHaveBeenLastCalledWith(false)
+    expect(stdout.output()).toContain('\x1b[?1049l')
+  })
   it('resolves immediately with the original states when raw mode is unavailable', async () => {
     const startSpy = vi.spyOn(TerminalInput, 'startKeypressSession').mockImplementation(() => {
       throw new Error('raw mode unavailable')

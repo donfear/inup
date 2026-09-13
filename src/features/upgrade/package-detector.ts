@@ -132,6 +132,7 @@ export class PackageDetector {
     const packages: PackageInfo[] = []
 
     await this.streamOutdatedPackages((event) => {
+      if (event.type === 'warning') console.warn(chalk.yellow(event.payload.message))
       if (event.type === 'package') {
         packages.push(...event.payload.packageInfo)
       } else if (event.type === 'complete') {
@@ -143,8 +144,14 @@ export class PackageDetector {
   }
 
   public async streamOutdatedPackages(
-    onEvent: StreamOutdatedPackagesCallback
+    callback: StreamOutdatedPackagesCallback,
+    signal?: AbortSignal
   ): Promise<PackageInfo[]> {
+    signal?.throwIfAborted()
+    const onEvent: StreamOutdatedPackagesCallback = (event) => {
+      signal?.throwIfAborted()
+      callback(event)
+    }
     if (!this.packageJson) {
       throw new Error('No package.json found in current directory')
     }
@@ -171,6 +178,7 @@ export class PackageDetector {
     debugLog.info('PackageDetector', 'fetching version data via npm registry')
 
     await fetchPackageVersions(prepared.uniquePackages, {
+      signal,
       currentVersions: prepared.currentVersions,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
@@ -618,7 +626,7 @@ export class PackageDetector {
             timeoutId.unref?.()
           }),
         ])
-        this.warnSkippedPackageDirs(skippedPackageDirs)
+        this.warnSkippedPackageDirs(skippedPackageDirs, onEvent)
         return files
       } finally {
         if (timeoutId) {
@@ -637,20 +645,25 @@ export class PackageDetector {
    * default skip list pruned, so the user can re-include them via `.inuprc`'s `scanDirs`.
    * Emitted after scanning so it does not corrupt the progress spinner output.
    */
-  private warnSkippedPackageDirs(skippedPackageDirs: Set<string>): void {
+  private warnSkippedPackageDirs(
+    skippedPackageDirs: Set<string>,
+    onEvent: StreamOutdatedPackagesCallback
+  ): void {
     if (skippedPackageDirs.size === 0) {
       return
     }
     const list = Array.from(skippedPackageDirs).sort()
-    console.warn(
-      chalk.yellow(
-        `⚠️  Skipped ${list.length} package.json-bearing director${
-          list.length === 1 ? 'y' : 'ies'
-        } matching the default ignore list:\n` +
+    onEvent({
+      type: 'warning',
+      payload: {
+        message:
+          `⚠️  Skipped ${list.length} package.json-bearing director${
+            list.length === 1 ? 'y' : 'ies'
+          } matching the default ignore list:\n` +
           list.map((dir) => `   - ${dir}`).join('\n') +
-          `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`
-      )
-    )
+          `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
+      },
+    })
   }
 
   /**
