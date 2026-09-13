@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { brotliDecompress, gunzip, inflate } from 'node:zlib'
 import { Pool } from 'undici'
@@ -76,8 +77,12 @@ async function getFreshPackageData(
   packageName: string,
   currentVersion: string | undefined,
   onAttempt?: AttemptObserver,
-  onChunk?: OnChunk
+  onChunk?: OnChunk,
+  signal?: AbortSignal
 ): Promise<PackageVersionData> {
+  // A cancellable run owns its request; cancelling it must not abort another
+  // caller's deduplicated lookup of the same package.
+  if (signal) return fetchPackageFromRegistry(packageName, onAttempt, onChunk, signal)
   const cacheKey = `${packageName}@${currentVersion ?? ''}`
   return inFlightLookups.dedupe(cacheKey, () =>
     fetchPackageFromRegistry(packageName, onAttempt, onChunk)
@@ -160,7 +165,8 @@ async function readBody(body: ResponseBody, onChunk?: OnChunk): Promise<Buffer> 
 async function attemptRegistryFetch(
   target: RegistryTarget,
   path: string,
-  onChunk?: OnChunk
+  onChunk?: OnChunk,
+  signal?: AbortSignal
 ): Promise<RegistryAttemptOutcome> {
   const startedAt = Date.now()
   // Conditional request: if we have a stored ETag for this packument, ask the
@@ -188,6 +194,7 @@ async function attemptRegistryFetch(
       headersTimeout: 30_000,
       bodyTimeout: 0,
       blocking: false,
+      signal,
     })
 
     // Registry confirmed our cached copy is current — reuse it, skip the download.
@@ -248,6 +255,7 @@ async function attemptRegistryFetch(
       bytes: raw.length,
     }
   } catch (error) {
+    signal?.throwIfAborted()
     if (isTransientNetworkError(error)) {
       return { kind: 'transient' }
     }
@@ -261,11 +269,13 @@ async function fetchFromRegistryWithRetries(
   target: RegistryTarget,
   path: string,
   onAttempt?: AttemptObserver,
-  onChunk?: OnChunk
+  onChunk?: OnChunk,
+  signal?: AbortSignal
 ): Promise<RegistryAttemptOutcome> {
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
-    const outcome = await attemptRegistryFetch(target, path, onChunk)
+    signal?.throwIfAborted()
+    const outcome = await attemptRegistryFetch(target, path, onChunk, signal)
     onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
@@ -278,7 +288,8 @@ async function fetchFromRegistryWithRetries(
         outcome.kind === 'congested' && outcome.retryAfterMs !== null ? outcome.retryAfterMs : null
       const backoff =
         congestedWait ?? RETRY_BACKOFF_MS[Math.min(attempt, RETRY_BACKOFF_MS.length - 1)]
-      await sleep(backoff)
+      if (signal) await delay(backoff, undefined, { signal })
+      else await sleep(backoff)
     }
   }
   return lastOutcome
@@ -287,13 +298,14 @@ async function fetchFromRegistryWithRetries(
 async function fetchPackageFromRegistry(
   packageName: string,
   onAttempt?: AttemptObserver,
-  onChunk?: OnChunk
+  onChunk?: OnChunk,
+  signal?: AbortSignal
 ): Promise<PackageVersionData> {
   // Scoped packages may live on a different registry (with credentials) than
   // unscoped ones — resolved from the npm config chain, memoized per scope.
   const target = registryTargetFor(packageName)
   const path = encodeRegistryPath(packageName, target.pathPrefix)
-  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt, onChunk)
+  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt, onChunk, signal)
 
   if (outcome.kind === 'success') {
     return outcome.data
@@ -429,12 +441,15 @@ export async function fetchPackageVersions(
     const packageName = packageNames[index]
     await semaphore.acquire()
     try {
+      options.signal?.throwIfAborted()
       const data = await getFreshPackageData(
         packageName,
         options.currentVersions?.get(packageName),
         observerFor(packageName),
-        onChunk
+        onChunk,
+        options.signal
       )
+      options.signal?.throwIfAborted()
       packageData.set(packageName, data)
       completedCount++
       options.onPackageReady?.({ packageName, data })

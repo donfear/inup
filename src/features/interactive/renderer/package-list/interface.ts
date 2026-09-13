@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { truncatePlainText } from '../../../../shared/terminal'
 import type {
   AuditProgress,
   PackageInfo,
@@ -18,6 +19,20 @@ import {
   renderSectionHeader,
   renderSpacer,
 } from './rows'
+
+function scanLabel(progress: PackageLoadProgress | undefined, width: number): string | undefined {
+  if (progress?.phase === 'discovering') {
+    const label = 'Scanning for package.json files…'
+    const detail = progress.scanningDir
+      ? ` ${progress.scanningDir} (found ${progress.packageJsonFiles ?? 0})`
+      : ''
+    return VersionUtils.getVisualLength(label + detail) <= width ? label + detail : label
+  }
+  if (progress?.phase === 'collecting') {
+    return `Reading dependencies from ${progress.packageJsonFiles ?? 0} package.json files…`
+  }
+  return undefined
+}
 
 export function renderInterface(
   states: PackageSelectionState[],
@@ -80,6 +95,7 @@ export function renderInterface(
   }
 
   const totalPackages = states.length
+  const scanStatus = scanLabel(loadingProgress, terminalWidth - 2)
   const totalBeforeFilter = totalPackagesBeforeFilter || totalPackages
   const totalVisualItems =
     renderableItems && renderableItems.length > 0 ? renderableItems.length : totalPackages
@@ -142,6 +158,8 @@ export function renderInterface(
     }
   }
 
+  if (totalPackages === 0 && scanStatus) statusLine = getThemeColor('textSecondary')(scanStatus)
+
   if (auditProgress && auditProgress.total > 0) {
     const auditLabel = auditProgress.isRunning
       ? `Audit ${auditProgress.completed}/${auditProgress.total}`
@@ -152,7 +170,7 @@ export function renderInterface(
   // A one-shot notice (e.g. "nothing selected") replaces the status line for a
   // single render so the layout height stays constant.
   const statusContent = notice ? getThemeColor('warning')(notice) : statusLine
-  const statusLineFull = `  ${statusContent}`
+  const statusLineFull = truncatePlainText(`  ${statusContent}`, terminalWidth)
   const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
   output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
@@ -198,8 +216,10 @@ export function renderInterface(
     }
   }
 
-  if (loadingProgress?.isLoading) {
-    const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
+  if (loadingProgress?.isLoading && !(totalPackages === 0 && scanStatus)) {
+    const loadingLabel =
+      scanStatus ??
+      `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
     const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
     const slowLabel = loadingProgress.slowNetwork ? ' — slow connection, reduced parallelism' : ''
     let loadingLine =
@@ -214,6 +234,7 @@ export function renderInterface(
     ) {
       loadingLine += chalk.dim(slowLabel)
     }
+    loadingLine = truncatePlainText(loadingLine, terminalWidth)
     const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }

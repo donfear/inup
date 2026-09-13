@@ -162,7 +162,7 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     const states = [makeSelectionState({ selectedOption: 'range' })]
     const progress = { discovered: 1, resolved: 1, total: 2, failed: 0, isLoading: true }
     const attachRefresh = vi.fn()
-    const hook = vi.fn()
+    const hook = { refresh: vi.fn(), abort: vi.fn() }
     sessionMock.mockImplementation(
       async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
         onRefreshViewReady?.(hook)
@@ -181,8 +181,9 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     expect(sessionMock.mock.calls[0][0].items).toBe(states)
     expect(sessionMock.mock.calls[0][7]).toBe(progress)
     // The session's single hook is fanned out to the streaming caller once,
-    // and the revoke is not forwarded.
-    expect(attachRefresh).toHaveBeenCalledTimes(1)
+    // and revoked so the runner cannot retain a stale session.
+    expect(attachRefresh).toHaveBeenCalledTimes(2)
+    expect(attachRefresh).toHaveBeenLastCalledWith(undefined)
     expect(attachRefresh).toHaveBeenCalledWith(hook)
     expect(choices[0].targetVersion).toBe('^1.1.0')
   })
@@ -285,7 +286,7 @@ describe('InteractiveUI refresh plumbing', () => {
     const refresh = vi.fn()
     sessionMock.mockImplementation(
       async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
-        onRefreshViewReady?.(refresh)
+        onRefreshViewReady?.({ refresh, abort: vi.fn() })
         return selection.items
       }
     )
@@ -314,7 +315,7 @@ describe('InteractiveUI refresh plumbing', () => {
     const refresh = vi.fn()
     sessionMock.mockImplementation(
       async (selection, _pm, _renderer, _modal, _audit, _opts, onRefreshViewReady) => {
-        onRefreshViewReady?.(refresh)
+        onRefreshViewReady?.({ refresh, abort: vi.fn() })
         return selection.items
       }
     )
@@ -326,7 +327,7 @@ describe('InteractiveUI refresh plumbing', () => {
       { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: true },
       attachRefresh
     )
-    expect(attachRefresh).toHaveBeenCalledWith(refresh)
+    expect(attachRefresh).toHaveBeenCalledWith({ refresh, abort: expect.any(Function) })
 
     expect(sessionMock).toHaveBeenCalledTimes(1)
   })

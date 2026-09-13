@@ -5,7 +5,7 @@ import {
   perfEnv,
   writePerfLog,
 } from '../features/debug'
-import { SelectionList, selectionKey } from '../features/interactive'
+import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
@@ -47,6 +47,12 @@ export class UpgradeRunner {
   }
 
   public async run(): Promise<void> {
+    const scanController = new AbortController()
+    let scanError: { error: unknown } | undefined
+    const warnings: string[] = []
+    const printWarnings = () => {
+      for (const message of warnings.splice(0)) console.warn(chalk.yellow(message))
+    }
     try {
       // Check prerequisites
       this.checkPrerequisites()
@@ -63,8 +69,8 @@ export class UpgradeRunner {
         failed: 0,
         isLoading: true,
       }
-      let selection = new SelectionList()
-      let refreshUI: (() => void) | undefined
+      const selection = new SelectionList()
+      let session: InteractiveSessionHandle | undefined
       // Packages arrive once each, in scan order; 'complete' installs the
       // detector's final list so post-selection steps never see a partial one.
       let latestPackages: PackageInfo[] = []
@@ -76,22 +82,23 @@ export class UpgradeRunner {
         // slowNetwork once).
         const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
 
+        this.ui
+          .selectPackagesToUpgradeProgressive(selection, progress, (handle) => {
+            session = handle
+          })
+          .then(resolve)
+          .catch(reject)
+
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
+          if (event.type === 'warning') warnings.push(event.payload.message)
           if (event.type === 'status') {
             syncProgress(event.payload.progress)
-            refreshUI?.()
+            session?.refresh()
           }
           if (event.type === 'initial') {
             syncProgress(event.payload.progress)
 
-            selection = new SelectionList()
-
-            this.ui
-              .selectPackagesToUpgradeProgressive(selection, progress, (refresh) => {
-                refreshUI = refresh
-              })
-              .then(resolve)
-              .catch(reject)
+            session?.refresh()
           }
 
           if (event.type === 'package') {
@@ -99,7 +106,7 @@ export class UpgradeRunner {
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstResult')
             this.ui.insertOutdatedPackage(selection, event.payload.packageInfo, previousSelections)
-            refreshUI?.()
+            session?.refresh()
           }
 
           if (event.type === 'complete') {
@@ -118,16 +125,22 @@ export class UpgradeRunner {
                 performanceTracker.snapshot()
               )
             }
-            refreshUI?.()
+            session?.refresh()
           }
-        })
+        }, scanController.signal)
 
-        streamPromise.catch(reject)
+        streamPromise.catch((error) => {
+          if (scanController.signal.aborted) return
+          scanError = { error }
+          session?.abort(error)
+          reject(error)
+        })
       })
 
       let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
+      printWarnings()
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
-      if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
+      if (!progress.isLoading && outdatedPackages.length === 0 && selectedChoices.length === 0) {
         console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
         return
       }
@@ -161,13 +174,14 @@ export class UpgradeRunner {
 
         // Confirm upgrade
         shouldProceed = await this.ui.confirmUpgrade(selectedChoices)
+        if (scanError) throw scanError.error
 
         if (shouldProceed === null) {
           // User pressed N or ESC - go back to selection with current selections preserved
           ConsoleUtils.clearProgress()
           selectedChoices = progress.isLoading
-            ? await this.ui.selectPackagesToUpgradeProgressive(selection, progress, (refresh) => {
-                refreshUI = refresh
+            ? await this.ui.selectPackagesToUpgradeProgressive(selection, progress, (handle) => {
+                session = handle
               })
             : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
           continue
@@ -185,8 +199,11 @@ export class UpgradeRunner {
       // Perform upgrade
       await this.upgrader.upgradePackages(selectedChoices, latestPackages)
     } catch (error) {
+      printWarnings()
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)
+    } finally {
+      scanController.abort()
     }
   }
 

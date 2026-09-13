@@ -29,6 +29,11 @@ function getTerminalHeight(): number {
   return 24
 }
 
+export interface InteractiveSessionHandle {
+  refresh: () => void
+  abort: (error: unknown) => void
+}
+
 export async function runInteractiveSession(
   selection: SelectionList,
   packageManager: PackageManagerInfo,
@@ -36,7 +41,7 @@ export async function runInteractiveSession(
   packageInfoModalController: PackageInfoModalController,
   vulnerabilityAuditController: VulnerabilityAuditController,
   options: Required<VulnerabilityDisplayOptions>,
-  onRefreshViewReady?: (refresh: (() => void) | undefined) => void,
+  onSessionReady?: (session: InteractiveSessionHandle | undefined) => void,
   loadingProgress?: PackageLoadProgress
 ): Promise<PackageSelectionState[]> {
   return new Promise((resolve, reject) => {
@@ -48,6 +53,7 @@ export async function runInteractiveSession(
     )
     let isResolved = false
     let ownsAlternateScreen = false
+    let inputReady = false
     let backgroundRender: ReturnType<typeof setTimeout> | undefined
     const columnLayout = new VersionColumnLayout()
     // The package under the cursor, tracked by identity so rows inserted above
@@ -434,7 +440,7 @@ export async function runInteractiveSession(
     const teardown = () => {
       isResolved = true
       cancelBackgroundRender()
-      onRefreshViewReady?.(undefined)
+      onSessionReady?.(undefined)
       packageInfoModalController.cancel()
       releaseInteractiveScreen()
       cleanupInteractiveSession()
@@ -502,9 +508,17 @@ export async function runInteractiveSession(
 
       // The one hook every background producer (package arrivals, audit
       // results) refreshes through; revoked again by teardown.
-      onRefreshViewReady?.(requestBackgroundRender)
+      onSessionReady?.({
+        refresh: requestBackgroundRender,
+        abort: (error) => {
+          if (isResolved) return
+          teardown()
+          reject(error)
+        },
+      })
 
       const keypressSession = TerminalInput.startKeypressSession(keypressHandler)
+      inputReady = true
       const previousCleanup = cleanupInteractiveSession
       cleanupInteractiveSession = () => {
         keypressSession.close()
@@ -526,13 +540,12 @@ export async function runInteractiveSession(
 
       renderInterface()
       vulnerabilityAuditController.enqueueStates(states, requestBackgroundRender)
-    } catch {
-      isResolved = true
-      cancelBackgroundRender()
-      onRefreshViewReady?.(undefined)
-      process.off('exit', emergencyCleanup)
-      releaseInteractiveScreen()
-      process.stdout.write(getTerminalResetCode())
+    } catch (error) {
+      teardown()
+      if (inputReady) {
+        reject(error)
+        return
+      }
       console.log(chalk.yellow('Raw mode not available, using fallback interface...'))
       resolve(states)
     }

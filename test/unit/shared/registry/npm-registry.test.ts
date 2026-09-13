@@ -120,6 +120,49 @@ describe('npm-registry', () => {
     })
   })
 
+  it('cancels active requests and skips queued packages without retrying', async () => {
+    const controller = new AbortController()
+    poolRequestSpy.mockImplementationOnce(
+      (opts: any) =>
+        new Promise((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true })
+          controller.abort(new Error('cancelled'))
+        }) as any
+    )
+    const pending = fetchPackageVersions(['active', 'queued'], {
+      concurrency: 1,
+      signal: controller.signal,
+    })
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(poolRequestSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a retry wait instead of retrying the package', async () => {
+    const controller = new AbortController()
+    requestMock.mockImplementation(async () => {
+      setImmediate(() => controller.abort(new Error('cancel retry')))
+      return makeErrBody(503)
+    })
+    await expect(fetchPackageVersions(['retry'], { signal: controller.signal })).rejects.toThrow()
+    expect(requestMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves cancellable requests normally and never publishes a result after cancellation', async () => {
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+    const controller = new AbortController()
+    const result = await fetchPackageVersions(['first'], { signal: controller.signal })
+    expect(result.get('first')?.latestVersion).toBe('1.0.0')
+    const ready = vi.fn()
+    await expect(
+      fetchPackageVersions(['second'], {
+        signal: controller.signal,
+        onPackageTiming: () => controller.abort(new Error('cancel before publication')),
+        onPackageReady: ready,
+      })
+    ).rejects.toThrow('cancel before publication')
+    expect(ready).not.toHaveBeenCalled()
+  })
+
   it('sends no authorization header when the registry has no credentials', async () => {
     requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
 

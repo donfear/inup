@@ -36,6 +36,7 @@ export interface StreamedPackage {
 }
 
 export type StreamOutdatedPackagesEvent =
+  | { type: 'warning'; payload: { message: string } }
   | { type: 'status'; payload: { progress: PackageLoadProgress } }
   | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
   | { type: 'package'; payload: StreamedPackage & { progress: PackageLoadProgress } }
@@ -44,6 +45,8 @@ export type StreamOutdatedPackagesEvent =
 export type StreamOutdatedPackagesCallback = (event: StreamOutdatedPackagesEvent) => void
 
 export interface FetchPackageVersionsOptions {
+  /** Cancels queued requests, active downloads, and retry waits for this run. */
+  signal?: AbortSignal
   /**
    * In-flight registry fetches at any moment. When `adaptive` is false this is
    * the fixed cap (the A/B control arm); when adaptive it is the legacy fallback

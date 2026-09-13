@@ -326,6 +326,51 @@ describe('package-list renderer', () => {
 })
 
 describe('renderInterface header', () => {
+  it.each(['discovering', 'collecting'] as const)(
+    'renders one %s status for the empty first frame',
+    (phase) => {
+      const text = renderPlain([], {
+        loadingProgress: {
+          phase,
+          discovered: 0,
+          resolved: 0,
+          total: 0,
+          failed: 0,
+          isLoading: true,
+          packageJsonFiles: 2,
+        },
+      })
+      expect(text).toContain(
+        phase === 'discovering'
+          ? 'Scanning for package.json files…'
+          : 'Reading dependencies from 2 package.json files…'
+      )
+      expect(text).not.toContain('Confirm')
+      expect(text).not.toContain('Loading packages')
+      expect(text.trimEnd().split('\n')).toHaveLength(4)
+    }
+  )
+
+  it('includes scan details only when they fit and truncates the base label on tiny screens', () => {
+    const loadingProgress = {
+      phase: 'discovering' as const,
+      discovered: 0,
+      resolved: 0,
+      total: 0,
+      failed: 0,
+      isLoading: true,
+      scanningDir: 'packages/api',
+    }
+    expect(renderPlain([], { loadingProgress })).toContain('packages/api (found 0)')
+    const narrow = renderPlain([], { terminalWidth: 40, loadingProgress })
+    expect(narrow).not.toContain('packages/api')
+    const tiny = renderPlain([], { terminalWidth: 20, loadingProgress })
+    expect(tiny.split('\n').every((line) => line.length <= 20)).toBe(true)
+    const collecting = { ...loadingProgress, phase: 'collecting' as const }
+    expect(renderPlain([baseState], { loadingProgress: collecting })).toContain(
+      'Reading dependencies from 0 package.json files…'
+    )
+  })
   it.each([20, 40, 60, 80, 120])('fits the shortcut footer within %s columns', (terminalWidth) => {
     const footer = renderPlain([baseState], { terminalWidth }).split('\n')[2]
     expect(VersionUtils.getVisualLength(footer)).toBeLessThanOrEqual(terminalWidth)
