@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - `--json` and `--check` start the vulnerability audit as soon as the dependency list is known, overlapping it with the registry fetch instead of adding its round-trip (~300 ms) after the last package resolves. The audit now covers every declared dependency's current version; the report still lists advisories for outdated packages only.
+- Faster startup: the CLI loads only the code path it runs (headless runs no longer load the interactive UI) and enables Node's compile cache, taking about 60 ms off every invocation.
 
 ### Fixed
 
