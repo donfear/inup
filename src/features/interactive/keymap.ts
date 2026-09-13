@@ -33,6 +33,7 @@ export interface KeyBinding {
   group: KeyGroup
   /** Short footer hint; omit to keep the key out of the compact footer line. */
   footer?: { keyLabel: string; label: string }
+  footerOrder?: number
 }
 
 export const KEY_BINDINGS: KeyBinding[] = [
@@ -44,6 +45,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     help: 'Move up',
     group: 'Navigation',
     footer: { keyLabel: '↑/↓', label: 'Move' },
+    footerOrder: 1,
   },
   {
     tokens: ['down', 'j'],
@@ -53,17 +55,31 @@ export const KEY_BINDINGS: KeyBinding[] = [
     group: 'Navigation',
   },
   {
-    tokens: ['g'],
+    tokens: ['g', 'home'],
     action: { type: 'navigate_top' },
-    displayKeys: 'g',
+    displayKeys: 'g / Home',
     help: 'Jump to the first package',
     group: 'Navigation',
   },
   {
-    tokens: ['G'],
+    tokens: ['G', 'end'],
     action: { type: 'navigate_bottom' },
-    displayKeys: 'G',
+    displayKeys: 'G / End',
     help: 'Jump to the last package',
+    group: 'Navigation',
+  },
+  {
+    tokens: ['pageup'],
+    action: { type: 'navigate_page_up' },
+    displayKeys: 'PgUp',
+    help: 'Move up one page',
+    group: 'Navigation',
+  },
+  {
+    tokens: ['pagedown'],
+    action: { type: 'navigate_page_down' },
+    displayKeys: 'PgDn',
+    help: 'Move down one page',
     group: 'Navigation',
   },
 
@@ -75,6 +91,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     help: 'Cycle selection left (none → range → latest)',
     group: 'Selection',
     footer: { keyLabel: '←/→', label: 'Select' },
+    footerOrder: 2,
   },
   {
     tokens: ['right'],
@@ -96,7 +113,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 'm',
     help: 'Select all minor/patch updates',
     group: 'Selection',
-    footer: { keyLabel: 'M', label: 'Minor' },
+    footer: { keyLabel: 'm', label: 'Minor' },
   },
   {
     tokens: ['l'],
@@ -104,7 +121,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 'l',
     help: 'Select all latest updates (including major)',
     group: 'Selection',
-    footer: { keyLabel: 'L', label: 'All' },
+    footer: { keyLabel: 'l', label: 'Latest' },
   },
   {
     tokens: ['u'],
@@ -112,7 +129,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 'u',
     help: 'Unselect all packages',
     group: 'Selection',
-    footer: { keyLabel: 'U', label: 'None' },
+    footer: { keyLabel: 'u', label: 'None' },
   },
   {
     displayKeys: 'Enter',
@@ -133,7 +150,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 'd',
     help: 'Toggle devDependencies',
     group: 'Filtering',
-    footer: { keyLabel: 'D/P/O', label: 'Filter' },
+    footer: { keyLabel: 'd/p/o', label: 'Filter' },
   },
   {
     tokens: ['p'],
@@ -155,7 +172,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 's',
     help: 'Run the vulnerability audit',
     group: 'Filtering',
-    footer: { keyLabel: 'S', label: 'Audit' },
+    footer: { keyLabel: 's', label: 'Audit' },
   },
   {
     tokens: ['v'],
@@ -177,7 +194,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     displayKeys: 'i',
     help: 'View package details and changelog',
     group: 'View',
-    footer: { keyLabel: 'I', label: 'Info' },
+    footer: { keyLabel: 'i', label: 'Info' },
   },
   {
     tokens: ['t'],
@@ -191,11 +208,21 @@ export const KEY_BINDINGS: KeyBinding[] = [
     help: 'Show this help',
     group: 'View',
     footer: { keyLabel: '?', label: 'Help' },
+    footerOrder: 4,
   },
   {
     displayKeys: '!',
     help: 'Show the performance/debug panel',
     group: 'View',
+  },
+  {
+    tokens: ['q'],
+    action: { type: 'quit' },
+    displayKeys: 'q',
+    help: 'Quit without changes',
+    group: 'View',
+    footer: { keyLabel: 'q', label: 'Quit' },
+    footerOrder: 3,
   },
 ]
 
@@ -215,9 +242,12 @@ export function findBinding(token: string): KeyBinding | undefined {
 }
 
 // Computed once at module load — KEY_BINDINGS is static so these never change.
-const _footerHints: Array<{ keyLabel: string; label: string }> = KEY_BINDINGS.flatMap((binding) =>
-  binding.footer ? [binding.footer] : []
+const _footerHints: Array<{ keyLabel: string; label: string }> = KEY_BINDINGS.flatMap(
+  (binding, index) =>
+    binding.footer ? [{ ...binding.footer, order: binding.footerOrder ?? index }] : []
 )
+  .sort((a, b) => a.order - b.order)
+  .map(({ keyLabel, label }) => ({ keyLabel, label }))
 const _helpGroups: Array<{ group: KeyGroup; bindings: KeyBinding[] }> = KEY_GROUPS.map((group) => ({
   group,
   bindings: KEY_BINDINGS.filter((b) => b.group === group),

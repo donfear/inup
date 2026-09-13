@@ -10,6 +10,8 @@ const INTERACTIVE_ACTIONS = new Set([
   'navigate_down',
   'navigate_top',
   'navigate_bottom',
+  'navigate_page_up',
+  'navigate_page_down',
   'select_left',
   'select_right',
   'toggle_selection',
@@ -84,6 +86,12 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       break
     case 'navigate_bottom':
       stateManager.navigateBottom(filteredStates.length)
+      break
+    case 'navigate_page_up':
+      stateManager.navigatePageUp(filteredStates.length)
+      break
+    case 'navigate_page_down':
+      stateManager.navigatePageDown(filteredStates.length)
       break
     case 'select_left':
       stateManager.updateSelection(filteredStates, 'left')
@@ -245,6 +253,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       auditOrToggleVulnerable()
       break
     case 'cancel':
+    case 'quit':
       packageInfoModalController.cancel()
       handleCancel()
       return false

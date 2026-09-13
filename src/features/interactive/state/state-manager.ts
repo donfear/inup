@@ -150,6 +150,14 @@ export class StateManager {
     this.navigationManager.navigateBottom(totalItems)
   }
 
+  navigatePageUp(totalItems: number): void {
+    this.navigationManager.navigatePageUp(totalItems)
+  }
+
+  navigatePageDown(totalItems: number): void {
+    this.navigationManager.navigatePageDown(totalItems)
+  }
+
   packageIndexToVisualIndex(packageIndex: number): number {
     return this.navigationManager.packageIndexToVisualIndex(packageIndex)
   }

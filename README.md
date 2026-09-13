@@ -44,8 +44,10 @@ Review the diff and run your tests after upgrading.
 |-----|--------|
 | `↑ / k` | Move up |
 | `↓ / j` | Move down |
-| `g` | Jump to the first package |
-| `G` | Jump to the last package |
+| `g / Home` | Jump to the first package |
+| `G / End` | Jump to the last package |
+| `PgUp` | Move up one page |
+| `PgDn` | Move down one page |
 | `←` | Cycle selection left (none → range → latest) |
 | `→` | Cycle selection right (none → range → latest) |
 | `Space` | Toggle the current package on/off |
@@ -64,6 +66,7 @@ Review the diff and run your tests after upgrading.
 | `t` | Change the color theme |
 | `?` | Show this help |
 | `!` | Show the performance/debug panel |
+| `q` | Quit without changes |
 <!-- KEYS:END -->
 
 </details>
@@ -133,7 +136,7 @@ No telemetry or tracking. inup contacts your package registry for metadata, npm 
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1345_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1396_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

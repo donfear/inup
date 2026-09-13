@@ -92,13 +92,14 @@ export function renderInterface(
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
   } else {
-    const hintLine = getFooterHints()
-      .map(
-        ({ keyLabel, label }) =>
-          chalk.bold.white(`${keyLabel} `) + getThemeColor('textSecondary')(label)
-      )
-      .join('  ')
-    output.push(`  ${hintLine}`)
+    let hintLine = '  '
+    for (const { keyLabel, label } of getFooterHints()) {
+      const hint = chalk.bold.white(`${keyLabel} `) + getThemeColor('textSecondary')(label)
+      const separator = hintLine === '  ' ? '' : '  '
+      if (VersionUtils.getVisualLength(hintLine + separator + hint) > terminalWidth) break
+      hintLine += separator + hint
+    }
+    output.push(hintLine)
   }
 
   const totalPackages = states.length
