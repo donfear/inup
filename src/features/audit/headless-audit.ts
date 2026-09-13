@@ -2,7 +2,11 @@ import * as semver from 'semver'
 import type { PackageInfo, VulnerabilitySeverity } from '../../shared/types'
 import { toComparableVersion } from '../../shared/versions'
 import type { HeadlessAdvisory, HeadlessVulnerability } from './types'
-import { fetchVulnerabilities, type VulnerabilityInfo } from './vulnerability-checker'
+import {
+  fetchVulnerabilities,
+  type PackageVulnerabilities,
+  type VulnerabilityInfo,
+} from './vulnerability-checker'
 
 /**
  * Audit the outdated packages' currently-installed versions (one bulk request, matching the
@@ -11,20 +15,28 @@ import { fetchVulnerabilities, type VulnerabilityInfo } from './vulnerability-ch
  *
  * Best-effort: `fetchVulnerabilities` swallows network errors and returns an empty map, so a
  * failed audit never blocks the report. Returns only the vulnerable packages, keyed by package.
+ *
+ * `prefetched` lets a caller that already started the bulk request (e.g. from the dependency
+ * set, before the registry fetch) hand over its result instead of paying the round-trip again.
  */
 export async function auditVulnerabilities(
-  outdated: PackageInfo[]
+  outdated: PackageInfo[],
+  prefetched?: Promise<Map<string, PackageVulnerabilities>>
 ): Promise<Map<PackageInfo, HeadlessVulnerability>> {
   const result = new Map<PackageInfo, HeadlessVulnerability>()
   if (outdated.length === 0) return result
 
-  // The bulk advisory API is keyed by package name (one version per name), so dedupe by name.
-  const versions = new Map<string, string>()
-  for (const pkg of outdated) {
-    if (!versions.has(pkg.name)) versions.set(pkg.name, pkg.currentVersion)
+  let advisories: Map<string, PackageVulnerabilities>
+  if (prefetched) {
+    advisories = await prefetched
+  } else {
+    // The bulk advisory API is keyed by package name (one version per name), so dedupe by name.
+    const versions = new Map<string, string>()
+    for (const pkg of outdated) {
+      if (!versions.has(pkg.name)) versions.set(pkg.name, pkg.currentVersion)
+    }
+    advisories = await fetchVulnerabilities(versions)
   }
-
-  const advisories = await fetchVulnerabilities(versions)
   if (advisories.size === 0) return result
 
   for (const pkg of outdated) {

@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `--json` and `--check` start the vulnerability audit as soon as the dependency list is known, overlapping it with the registry fetch instead of adding its round-trip (~300 ms) after the last package resolves. The audit now covers every declared dependency's current version; the report still lists advisories for outdated packages only.
+
 ### Fixed
 
 - Cold runs (empty ETag cache) no longer take 2–5× longer than they should. The adaptive controller judged goodput by completions per second, and since full packuments range from a few KB to several MB, a window that happened to contain big packages looked like a stalled link: parallelism collapsed to 3 and stayed there. Download-heavy windows are now measured in streamed bytes per second, and a link that proves wide is held at the full pool for the run. On a 190-package project a cold run went from 5–24 s to a steady ~5 s, matching a pinned `--concurrency 24`; warm runs are unchanged.
