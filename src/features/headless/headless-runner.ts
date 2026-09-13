@@ -6,7 +6,7 @@ import {
   writePerfLog,
 } from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
-import { ConsoleUtils } from '../../shared/terminal'
+import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
@@ -54,18 +54,26 @@ export class HeadlessRunner {
         if (event.type === 'status') {
           const { phase, packageJsonFiles, scanningDir } = event.payload.progress
           const count = packageJsonFiles ?? 0
-          const fileLabel = `package.json file${count === 1 ? '' : 's'}`
-          const message =
-            phase === 'discovering'
-              ? scanningDir
-                ? `Scanning ${scanningDir} (found ${count})`
-                : 'Scanning repository for package.json files…'
-              : phase === 'collecting'
-                ? count > 0
-                  ? `Found ${count} ${fileLabel}`
-                  : 'Identifying unique packages…'
-                : 'Reading dependencies…'
-          ConsoleUtils.showProgress(message)
+          const showProgress = (message: string) =>
+            ConsoleUtils.showProgress(truncatePlainText(message, process.stderr.columns || 80))
+          switch (phase) {
+            case 'discovering':
+              showProgress(
+                scanningDir
+                  ? `Scanning ${scanningDir} (found ${count})`
+                  : 'Scanning repository for package.json files…'
+              )
+              break
+            case 'collecting':
+              showProgress(`Found ${count} package.json file${count === 1 ? '' : 's'}`)
+              showProgress('Reading dependencies…')
+              break
+            case 'resolving':
+              showProgress('Identifying unique packages…')
+              break
+            case 'done':
+              break
+          }
         } else if (event.type === 'initial') {
           advisories = fetchVulnerabilities(event.payload.currentVersions)
         } else if (event.type === 'complete') {

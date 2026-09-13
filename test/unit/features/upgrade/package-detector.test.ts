@@ -163,10 +163,13 @@ describe('PackageDetector streaming', () => {
 
       if (event.type === 'package') {
         packageNames.push(event.payload.packageName)
+        expect(event.payload.progress.phase).toBe('resolving')
+        expect(event.payload.progress.isLoading).toBe(true)
       }
 
       if (event.type === 'complete') {
         expect(event.payload.progress).toMatchObject({
+          phase: 'done',
           total: 2,
           resolved: 2,
           failed: 1,
@@ -237,7 +240,7 @@ describe('PackageDetector streaming', () => {
     expect(seen).toEqual([
       ['a', '2.0.0', 1, 0, true],
       ['b', 'unknown', 2, 1, true],
-      ['c', '2.0.0', 3, 1, false],
+      ['c', '2.0.0', 3, 1, true],
     ])
     expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledTimes(1)
     expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledWith('b')

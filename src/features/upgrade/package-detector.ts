@@ -157,13 +157,7 @@ export class PackageDetector {
       allDependencies: prepared.allDependencies,
       uniquePackages: prepared.uniquePackages,
       currentVersions: prepared.currentVersions,
-      progress: this.createProgressSnapshot(
-        prepared.uniquePackages.length,
-        0,
-        0,
-        true,
-        'resolving'
-      ),
+      progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
     }
 
     onEvent({ type: 'initial', payload: initialPayload })
@@ -215,13 +209,11 @@ export class PackageDetector {
           payload: {
             packageName,
             packageInfo,
-            progress: this.createProgressSnapshot(
-              prepared.uniquePackages.length,
+            progress: this.createProgressSnapshot('resolving', {
+              total: prepared.uniquePackages.length,
               resolved,
               failed,
-              resolved < prepared.uniquePackages.length,
-              'resolving'
-            ),
+            }),
           },
         })
       },
@@ -237,13 +229,11 @@ export class PackageDetector {
     const finalPackages = prepared.uniquePackages.flatMap(
       (packageName) => packageLookup.get(packageName) ?? []
     )
-    const progress = this.createProgressSnapshot(
-      prepared.uniquePackages.length,
+    const progress = this.createProgressSnapshot('done', {
+      total: prepared.uniquePackages.length,
       resolved,
       failed,
-      false,
-      'done'
-    )
+    })
 
     debugLog.perf(
       'PackageDetector',
@@ -269,7 +259,7 @@ export class PackageDetector {
 
     onEvent({
       type: 'status',
-      payload: { progress: this.createProgressSnapshot(0, 0, 0, true, 'discovering') },
+      payload: { progress: this.createProgressSnapshot('discovering') },
     })
     const tScan = Date.now()
     const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000, onEvent)
@@ -281,14 +271,9 @@ export class PackageDetector {
     onEvent({
       type: 'status',
       payload: {
-        progress: this.createProgressSnapshot(
-          0,
-          0,
-          0,
-          true,
-          'collecting',
-          allPackageJsonFiles.length
-        ),
+        progress: this.createProgressSnapshot('collecting', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
       },
     })
     const tDeps = Date.now()
@@ -303,14 +288,9 @@ export class PackageDetector {
     onEvent({
       type: 'status',
       payload: {
-        progress: this.createProgressSnapshot(
-          0,
-          0,
-          0,
-          true,
-          'collecting',
-          allPackageJsonFiles.length
-        ),
+        progress: this.createProgressSnapshot('resolving', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
       },
     })
     const tFilter = Date.now()
@@ -565,13 +545,19 @@ export class PackageDetector {
   }
 
   private createProgressSnapshot(
-    total: number,
-    resolved: number,
-    failed: number,
-    isLoading: boolean,
     phase: PackageLoadProgress['phase'],
-    packageJsonFiles?: number,
-    scanningDir?: string
+    {
+      total = 0,
+      resolved = 0,
+      failed = 0,
+      packageJsonFiles,
+      scanningDir,
+    }: Partial<
+      Pick<
+        PackageLoadProgress,
+        'total' | 'resolved' | 'failed' | 'packageJsonFiles' | 'scanningDir'
+      >
+    > = {}
   ): PackageLoadProgress {
     return {
       phase,
@@ -579,7 +565,7 @@ export class PackageDetector {
       resolved,
       total,
       failed,
-      isLoading,
+      isLoading: phase !== 'done',
       slowNetwork: this.isSlowNetwork(),
       packageJsonFiles,
       scanningDir,
@@ -597,7 +583,7 @@ export class PackageDetector {
 
   private async findPackageJsonFilesWithTimeout(
     timeoutMs: number,
-    onEvent?: StreamOutdatedPackagesCallback
+    onEvent: StreamOutdatedPackagesCallback
   ): Promise<string[]> {
     const skippedPackageDirs = new Set<string>()
     try {
@@ -610,18 +596,13 @@ export class PackageDetector {
             this.excludePatterns,
             this.maxDepth,
             (currentDir: string, foundCount: number) => {
-              onEvent?.({
+              onEvent({
                 type: 'status',
                 payload: {
-                  progress: this.createProgressSnapshot(
-                    0,
-                    0,
-                    0,
-                    true,
-                    'discovering',
-                    foundCount,
-                    currentDir
-                  ),
+                  progress: this.createProgressSnapshot('discovering', {
+                    packageJsonFiles: foundCount,
+                    scanningDir: currentDir,
+                  }),
                 },
               })
             },
