@@ -121,6 +121,14 @@ describe('dispatchAction navigation and selection', () => {
     expect(stateManager.getUIState().currentRow).toBe(0)
   })
 
+  it('moves by a page and quits without rendering', () => {
+    const { dispatch, handleCancel } = makeHarness()
+    expect(dispatch({ type: 'navigate_page_down' })).toBe(true)
+    expect(dispatch({ type: 'navigate_page_up' })).toBe(true)
+    expect(dispatch({ type: 'quit' })).toBe(false)
+    expect(handleCancel).toHaveBeenCalledOnce()
+  })
+
   it('changes the selection with left/right', () => {
     const { dispatch, states } = makeHarness()
 

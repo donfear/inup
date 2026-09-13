@@ -7,10 +7,10 @@ import DocsLayout from '../../layouts/DocsLayout.astro';
 import { keys } from '../../lib/readme';
 
 const groups = [
-  { heading: 'Navigation', match: /^(↑|↓|g$|G$)/ },
+  { heading: 'Navigation', match: /^(↑|↓|g\b|G\b|PgUp|PgDn)/ },
   { heading: 'Selecting upgrades', match: /^(←|→|Space|m$|l$|u$|Enter)/ },
   { heading: 'Filtering & search', match: /^(\/|d$|p$|o$|Esc|v$)/ },
-  { heading: 'Insight & tools', match: /^(s$|i$|t$|\?|!)/ },
+  { heading: 'Insight & tools', match: /^(s$|i$|t$|q$|\?|!)/ },
 ];
 
 const grouped = groups.map((g) => ({
