@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- `--json` and `--check` start the vulnerability audit as soon as the dependency list is known, overlapping it with the registry fetch instead of adding its round-trip (~300 ms) after the last package resolves. The audit now covers every declared dependency's current version; the report still lists advisories for outdated packages only.
+
 ## [1.7.1] - 2026-09-12
 
 ### Changed

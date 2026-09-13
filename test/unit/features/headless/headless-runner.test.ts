@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getOutdatedPackages: vi.fn(),
+  streamOutdatedPackages: vi.fn(),
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
   fetchVulnerabilities: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
     getOutdatedPackages = mocks.getOutdatedPackages
+    streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
     getPerfConfig = vi.fn().mockReturnValue({
@@ -124,6 +126,22 @@ describe('HeadlessRunner.run', () => {
       pkgs.filter((p) => p.isOutdated)
     )
     mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, UP_TO_DATE])
+    // The streaming form the runner uses: an `initial` event carrying every
+    // declared dependency's specifier, then `complete` with the resolved set.
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {
+      const packages = await mocks.getOutdatedPackages()
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: packages.map((p: any) => p.name),
+          currentVersions: new Map(packages.map((p: any) => [p.name, p.currentVersion])),
+          progress: {},
+        },
+      })
+      onEvent({ type: 'complete', payload: { packages, progress: {} } })
+      return packages
+    })
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
   })
 
@@ -173,8 +191,14 @@ describe('HeadlessRunner.run', () => {
 
     await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
 
-    // The audit checks the currently-installed specifier.
-    expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(new Map([['axios', '^0.27.0']]))
+    // The audit checks the currently-installed specifier of every declared
+    // dependency (it starts before the registry says which are outdated).
+    expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(
+      new Map([
+        ['axios', '^0.27.0'],
+        ['left-pad', '^1.3.0'],
+      ])
+    )
 
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
     expect(report.summary.vulnerable).toBe(1)
@@ -188,6 +212,37 @@ describe('HeadlessRunner.run', () => {
       ],
     })
 
+    logSpy.mockRestore()
+  })
+
+  it('starts the advisory request from the initial dependency set, before packages resolve', async () => {
+    let auditCallsBeforeComplete = -1
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: ['axios', 'left-pad'],
+          currentVersions: new Map([
+            ['axios', '^0.27.0'],
+            ['left-pad', '^1.3.0'],
+          ]),
+          progress: {},
+        },
+      })
+      // Registry still "in flight" here: the bulk audit must already be on its way.
+      auditCallsBeforeComplete = mocks.fetchVulnerabilities.mock.calls.length
+      onEvent({ type: 'complete', payload: { packages: [OUTDATED, UP_TO_DATE], progress: {} } })
+      return [OUTDATED, UP_TO_DATE]
+    })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+    expect(auditCallsBeforeComplete).toBe(1)
+    expect(mocks.fetchVulnerabilities).toHaveBeenCalledTimes(1)
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report.outdated.map((p: any) => p.name)).toEqual(['axios'])
     logSpy.mockRestore()
   })
 
