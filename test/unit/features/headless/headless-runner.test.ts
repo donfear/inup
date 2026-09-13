@@ -46,6 +46,11 @@ vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
 }))
 
 import { HeadlessRunner } from '../../../../src/features/headless'
+import { getVisualLength } from '../../../../src/shared/terminal'
+import type {
+  PackageLoadProgress,
+  StreamOutdatedPackagesCallback,
+} from '../../../../src/shared/types'
 
 const OUTDATED = {
   name: 'axios',
@@ -163,6 +168,86 @@ describe('HeadlessRunner.run', () => {
     expect('vulnerability' in report.outdated[0]).toBe(false)
 
     logSpy.mockRestore()
+  })
+
+  it.each([true, false])('renders ordered scan status only on a TTY (%s)', async (isTTY) => {
+    const tty = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY')
+    const columns = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
+    Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: isTTY })
+    Object.defineProperty(process.stderr, 'columns', { configurable: true, value: 60 })
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    mocks.streamOutdatedPackages.mockImplementation(
+      async (onEvent: StreamOutdatedPackagesCallback) => {
+        const status = (
+          phase: PackageLoadProgress['phase'],
+          detail: Partial<PackageLoadProgress> = {}
+        ) =>
+          onEvent({
+            type: 'status',
+            payload: {
+              progress: {
+                phase,
+                discovered: 0,
+                resolved: 0,
+                failed: 0,
+                total: 0,
+                isLoading: phase !== 'done',
+                ...detail,
+              },
+            },
+          })
+        status('discovering')
+        status('discovering', { scanningDir: '/repo/packages/api', packageJsonFiles: 1 })
+        status('collecting', { packageJsonFiles: 1 })
+        status('collecting', { packageJsonFiles: 2 })
+        status('resolving')
+        status('discovering', { scanningDir: `/repo/${'日本語/'.repeat(30)}`, packageJsonFiles: 3 })
+        status('done')
+        onEvent({
+          type: 'complete',
+          payload: {
+            packages: [],
+            progress: {
+              phase: 'done',
+              discovered: 0,
+              resolved: 0,
+              failed: 0,
+              total: 0,
+              isLoading: false,
+            },
+          },
+        })
+        return []
+      }
+    )
+    try {
+      await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).schemaVersion).toBe(1)
+      const messages = write.mock.calls.map(([chunk]) => String(chunk).split('\r').at(-1)!)
+      if (isTTY) {
+        expect(messages.slice(0, 7)).toEqual([
+          'Scanning repository for package.json files…',
+          'Scanning /repo/packages/api (found 1)',
+          'Found 1 package.json file',
+          'Reading dependencies…',
+          'Found 2 package.json files',
+          'Reading dependencies…',
+          'Identifying unique packages…',
+        ])
+        expect(messages.every((message) => getVisualLength(message) <= 60)).toBe(true)
+        expect(messages.at(-1)).toBe('')
+      } else {
+        expect(write).not.toHaveBeenCalled()
+      }
+    } finally {
+      if (tty) Object.defineProperty(process.stderr, 'isTTY', tty)
+      else delete process.stderr.isTTY
+      if (columns) Object.defineProperty(process.stderr, 'columns', columns)
+      else delete process.stderr.columns
+      write.mockRestore()
+      log.mockRestore()
+    }
   })
 
   it('--json cross-references advisories against the upgrade targets', async () => {

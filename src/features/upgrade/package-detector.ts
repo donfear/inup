@@ -12,7 +12,6 @@ import {
 import type { ControlTick } from '../../shared/http/controller-contract'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
-import { ConsoleUtils } from '../../shared/terminal'
 import type {
   DependencyEntry,
   NetworkProfile,
@@ -153,12 +152,12 @@ export class PackageDetector {
     const t0 = Date.now()
     debugLog.info('PackageDetector', `Starting scan in ${this.cwd}`)
 
-    const prepared = await this.prepareDependencies()
+    const prepared = await this.prepareDependencies(onEvent)
     const initialPayload: StreamOutdatedPackagesInitialPayload = {
       allDependencies: prepared.allDependencies,
       uniquePackages: prepared.uniquePackages,
       currentVersions: prepared.currentVersions,
-      progress: this.createProgressSnapshot(prepared.uniquePackages.length, 0, 0, true),
+      progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
     }
 
     onEvent({ type: 'initial', payload: initialPayload })
@@ -210,12 +209,11 @@ export class PackageDetector {
           payload: {
             packageName,
             packageInfo,
-            progress: this.createProgressSnapshot(
-              prepared.uniquePackages.length,
+            progress: this.createProgressSnapshot('resolving', {
+              total: prepared.uniquePackages.length,
               resolved,
               failed,
-              resolved < prepared.uniquePackages.length
-            ),
+            }),
           },
         })
       },
@@ -231,12 +229,11 @@ export class PackageDetector {
     const finalPackages = prepared.uniquePackages.flatMap(
       (packageName) => packageLookup.get(packageName) ?? []
     )
-    const progress = this.createProgressSnapshot(
-      prepared.uniquePackages.length,
+    const progress = this.createProgressSnapshot('done', {
+      total: prepared.uniquePackages.length,
       resolved,
       failed,
-      false
-    )
+    })
 
     debugLog.perf(
       'PackageDetector',
@@ -252,26 +249,33 @@ export class PackageDetector {
       },
     })
 
-    ConsoleUtils.clearProgress()
     return finalPackages
   }
 
-  private async prepareDependencies(): Promise<PreparedDependencies> {
+  private async prepareDependencies(
+    onEvent: StreamOutdatedPackagesCallback
+  ): Promise<PreparedDependencies> {
     const performanceTracker = getPerformanceTracker()
 
-    this.showProgress('🔍 Scanning repository for package.json files...')
+    onEvent({
+      type: 'status',
+      payload: { progress: this.createProgressSnapshot('discovering') },
+    })
     const tScan = Date.now()
-    const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000)
+    const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000, onEvent)
     debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
       files: allPackageJsonFiles,
     })
     performanceTracker.recordPhaseDuration('discovery', Date.now() - tScan)
     performanceTracker.recordCounts({ packageJsonFiles: allPackageJsonFiles.length })
-    this.showProgress(
-      `🔍 Found ${allPackageJsonFiles.length} package.json file${allPackageJsonFiles.length === 1 ? '' : 's'}`
-    )
-
-    this.showProgress('🔍 Reading dependencies from package.json files...')
+    onEvent({
+      type: 'status',
+      payload: {
+        progress: this.createProgressSnapshot('collecting', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
+      },
+    })
     const tDeps = Date.now()
     const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, {
       includePeerDeps: true,
@@ -281,7 +285,14 @@ export class PackageDetector {
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
     performanceTracker.recordCounts({ rawDependencies: allDepsRaw.length })
 
-    this.showProgress('🔍 Identifying unique packages...')
+    onEvent({
+      type: 'status',
+      payload: {
+        progress: this.createProgressSnapshot('resolving', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
+      },
+    })
     const tFilter = Date.now()
     const allDependencies: DependencyEntry[] = []
     const dependenciesByName = new Map<string, DependencyEntry[]>()
@@ -366,10 +377,6 @@ export class PackageDetector {
       const group = dependenciesByName.get(dep.name)
       if (group) group.push(dep)
       else dependenciesByName.set(dep.name, [dep])
-    }
-
-    if (ignoredCount > 0) {
-      this.showProgress(`🔍 Skipped ${ignoredCount} ignored package(s)`)
     }
 
     const uniquePackages = Array.from(dependenciesByName.keys()).sort((a, b) => {
@@ -538,18 +545,30 @@ export class PackageDetector {
   }
 
   private createProgressSnapshot(
-    total: number,
-    resolved: number,
-    failed: number,
-    isLoading: boolean
+    phase: PackageLoadProgress['phase'],
+    {
+      total = 0,
+      resolved = 0,
+      failed = 0,
+      packageJsonFiles,
+      scanningDir,
+    }: Partial<
+      Pick<
+        PackageLoadProgress,
+        'total' | 'resolved' | 'failed' | 'packageJsonFiles' | 'scanningDir'
+      >
+    > = {}
   ): PackageLoadProgress {
     return {
+      phase,
       discovered: total,
       resolved,
       total,
       failed,
-      isLoading,
+      isLoading: phase !== 'done',
       slowNetwork: this.isSlowNetwork(),
+      packageJsonFiles,
+      scanningDir,
     }
   }
 
@@ -562,7 +581,10 @@ export class PackageDetector {
     return settledLow || tick.ewmaMs > SLOW_NETWORK_EWMA_MS
   }
 
-  private async findPackageJsonFilesWithTimeout(timeoutMs: number): Promise<string[]> {
+  private async findPackageJsonFilesWithTimeout(
+    timeoutMs: number,
+    onEvent: StreamOutdatedPackagesCallback
+  ): Promise<string[]> {
     const skippedPackageDirs = new Set<string>()
     try {
       let timeoutId: NodeJS.Timeout | undefined
@@ -574,9 +596,15 @@ export class PackageDetector {
             this.excludePatterns,
             this.maxDepth,
             (currentDir: string, foundCount: number) => {
-              const truncatedDir =
-                currentDir.length > 50 ? `...${currentDir.slice(-47)}` : currentDir
-              this.showProgress(`🔍 Scanning ${truncatedDir} (found ${foundCount})`)
+              onEvent({
+                type: 'status',
+                payload: {
+                  progress: this.createProgressSnapshot('discovering', {
+                    packageJsonFiles: foundCount,
+                    scanningDir: currentDir,
+                  }),
+                },
+              })
             },
             {
               scanDirs: this.scanDirs,
@@ -646,10 +674,6 @@ export class PackageDetector {
       version.startsWith('http:') ||
       version.startsWith('https:')
     )
-  }
-
-  private showProgress(message: string): void {
-    ConsoleUtils.showProgress(message)
   }
 
   public getOutdatedPackagesOnly(packages: PackageInfo[]): PackageInfo[] {

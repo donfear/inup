@@ -86,12 +86,15 @@ describe('UpgradeRunner terminal handoff', () => {
 
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
+        phase: 'resolving',
         discovered: 1,
         resolved: 0,
         total: 1,
         failed: 0,
         isLoading: true,
       }
+
+      onEvent({ type: 'status', payload: { progress: { ...progress, phase: 'discovering' } } })
 
       onEvent({
         type: 'initial',
@@ -103,6 +106,7 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
 
+      onEvent({ type: 'status', payload: { progress } })
       onEvent({
         type: 'complete',
         payload: {

@@ -6,6 +6,7 @@ import {
   writePerfLog,
 } from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
+import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
@@ -50,10 +51,34 @@ export class HeadlessRunner {
       let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
-        if (event.type === 'initial') {
+        if (event.type === 'status') {
+          const { phase, packageJsonFiles, scanningDir } = event.payload.progress
+          const count = packageJsonFiles ?? 0
+          const showProgress = (message: string) =>
+            ConsoleUtils.showProgress(truncatePlainText(message, process.stderr.columns || 80))
+          switch (phase) {
+            case 'discovering':
+              showProgress(
+                scanningDir
+                  ? `Scanning ${scanningDir} (found ${count})`
+                  : 'Scanning repository for package.json files…'
+              )
+              break
+            case 'collecting':
+              showProgress(`Found ${count} package.json file${count === 1 ? '' : 's'}`)
+              showProgress('Reading dependencies…')
+              break
+            case 'resolving':
+              showProgress('Identifying unique packages…')
+              break
+            case 'done':
+              break
+          }
+        } else if (event.type === 'initial') {
           advisories = fetchVulnerabilities(event.payload.currentVersions)
         } else if (event.type === 'complete') {
           packages = event.payload.packages
+          ConsoleUtils.clearProgress()
         }
       })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)

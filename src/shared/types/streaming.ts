@@ -2,6 +2,7 @@ import type { ParsedVersions } from '../versions'
 import type { DependencyEntry, NetworkProfile, PackageInfo } from './domain'
 
 export interface PackageLoadProgress {
+  phase: 'discovering' | 'collecting' | 'resolving' | 'done'
   discovered: number
   resolved: number
   total: number
@@ -10,6 +11,8 @@ export interface PackageLoadProgress {
   /** The concurrency controller settled low / latency is high: tell the user
    * the wait is the connection, not a hang. */
   slowNetwork?: boolean
+  packageJsonFiles?: number
+  scanningDir?: string
 }
 
 export interface AuditProgress {
@@ -33,6 +36,7 @@ export interface StreamedPackage {
 }
 
 export type StreamOutdatedPackagesEvent =
+  | { type: 'status'; payload: { progress: PackageLoadProgress } }
   | { type: 'initial'; payload: StreamOutdatedPackagesInitialPayload }
   | { type: 'package'; payload: StreamedPackage & { progress: PackageLoadProgress } }
   | { type: 'complete'; payload: { packages: PackageInfo[]; progress: PackageLoadProgress } }

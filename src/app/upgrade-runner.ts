@@ -56,6 +56,7 @@ export class UpgradeRunner {
       performanceTracker.setPackageManager(this.packageManager.name)
 
       const progress: PackageLoadProgress = {
+        phase: 'discovering',
         discovered: 0,
         resolved: 0,
         total: 0,
@@ -76,6 +77,10 @@ export class UpgradeRunner {
         const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
 
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
+          if (event.type === 'status') {
+            syncProgress(event.payload.progress)
+            refreshUI?.()
+          }
           if (event.type === 'initial') {
             syncProgress(event.payload.progress)
 
