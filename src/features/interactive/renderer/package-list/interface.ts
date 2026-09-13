@@ -1,5 +1,4 @@
 import chalk from 'chalk'
-import { PACKAGE_NAME } from '../../../../shared/config'
 import type {
   AuditProgress,
   PackageInfo,
@@ -9,7 +8,7 @@ import type {
   RenderableItem,
 } from '../../../../shared/types'
 import { getFooterHints } from '../../keymap'
-import { coloredInupLogo, getThemeColor } from '../../themes-colors'
+import { getThemeColor, inupLogo } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
 import {
   computeVersionColumnWidths,
@@ -40,39 +39,17 @@ export function renderInterface(
 ): string[] {
   const output: string[] = []
 
-  if (packageManager) {
-    const colorMap: { [key: string]: (text: string) => string } = {
-      npm: chalk.red,
-      yarn: chalk.blue,
-      pnpm: chalk.yellow,
-      bun: chalk.magenta,
-    }
-    const pmColor = colorMap[packageManager.name] || packageManager.color
-    const headerLine =
-      '  ' +
-      chalk.bold(pmColor('🚀')) +
-      ' ' +
-      coloredInupLogo() +
-      getThemeColor('textSecondary')(` (${packageManager.displayName})`)
-
-    const fullHeaderLine = activeFilterLabel
-      ? headerLine +
-        getThemeColor('textSecondary')(' - ') +
-        getThemeColor('primary')(activeFilterLabel)
-      : headerLine
-    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
-    output.push(fullHeaderLine + ' '.repeat(headerPadding))
-  } else {
-    const headerLine = `  ${chalk.bold.blue('🚀 ')}${coloredInupLogo()}`
-
-    const fullHeaderLine = activeFilterLabel
-      ? headerLine +
-        getThemeColor('textSecondary')(' - ') +
-        getThemeColor('primary')(activeFilterLabel)
-      : headerLine
-    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
-    output.push(fullHeaderLine + ' '.repeat(headerPadding))
-  }
+  const headerLine =
+    '  ' +
+    inupLogo() +
+    (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '')
+  const fullHeaderLine = activeFilterLabel
+    ? headerLine +
+      getThemeColor('textSecondary')(' - ') +
+      getThemeColor('primary')(activeFilterLabel)
+    : headerLine
+  const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
+  output.push(fullHeaderLine + ' '.repeat(headerPadding))
   output.push('')
 
   if (filterMode) {
@@ -255,5 +232,5 @@ export function renderPackagesTable(packages: PackageInfo[]): string {
     return chalk.green('✅ All packages are up to date!')
   }
 
-  return chalk.bold.blue(`🚀 ${PACKAGE_NAME}\n`)
+  return `${inupLogo()}\n`
 }
