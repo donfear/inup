@@ -1,4 +1,7 @@
-Output docs/demo/interactive-upgrade.gif
+# record-demo.sh always passes -o with a fresh temporary path, which overrides
+# this line. It stays deliberately generic so a bare `vhs demo-real.tape` run
+# cannot overwrite the tracked demo assets.
+Output recording.gif
 
 Set Shell bash
 Set PlaybackSpeed 1.0
@@ -18,7 +21,10 @@ Set Framerate 30
 
 # Change to clean temp directory (hidden from view)
 Hide
-Type "cd /tmp/my-app"
+Type `cd "$VHS_DEMO_DIR"`
+Enter
+# Bind the exact wrapper inside the recorded shell, independent of its PATH.
+Type `inup() { "$VHS_DEMO_DIR/.bin/inup" "$@"; }`
 Enter
 # Clear CI so inup renders the interactive TUI. GitHub Actions sets CI=true, which
 # the VHS-spawned shell inherits and which would otherwise route inup to its headless
@@ -29,14 +35,23 @@ Type `export PS1='$ '`
 Enter
 Type "clear"
 Enter
-Show
 
-# Run inup and hide shell/loading so the demo opens directly on the CLI
-Hide
+# Stay hidden through launch and resume the instant the picker paints, so the
+# demo opens on the UI rather than on a shell prompt and node's startup. The
+# picker mounts before the scan, so this still shows the real loading screen
+# with rows streaming in, rather than cutting to an already-finished list.
 Type "inup"
 Enter
-Sleep 5s
+Wait+Screen@30s /q Quit/
 Show
+
+# Every package resolved (the audit counter tracks resolved packages), so the
+# first keypress can never land on a half-loaded list no matter how slow the
+# runner or the registry is. If this times out the recording fails loudly
+# instead of publishing a half-scanned demo.
+# ('.' stands in for the slash: the tape lexer ends the pattern at a literal /.)
+Wait+Screen@60s /Audit 35.35/
+Sleep 700ms
 
 # Use 'M' to select all minor updates
 Type "m"

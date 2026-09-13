@@ -26,9 +26,9 @@ The original `interactive-upgrade.tape` file manually types fake output, which:
 
 **Setup:**
 
-1. Install VHS if you haven't:
+1. Install [VHS 0.10.0](https://github.com/charmbracelet/vhs/releases/tag/v0.10.0) and FFmpeg (including `ffprobe`). CI pins that VHS release. On macOS, install FFmpeg with:
    ```bash
-   brew install vhs
+   brew install ffmpeg
    ```
 
 2. Build the project and record:
@@ -36,16 +36,28 @@ The original `interactive-upgrade.tape` file manually types fake output, which:
    pnpm demo:record
    ```
 
-3. The GIF will be generated at `docs/demo/interactive-upgrade.gif`
+   Check `vhs --version`. VHS 0.12.0 cancels its recording context before rendering, so FFmpeg never starts and `vhs` still exits 0 without writing a GIF. The script records to a fresh path and fails on missing, empty or wrongly sized output, so a broken VHS can no longer leave the previous assets in place and have them republished as new.
+
+3. Outputs are `docs/demo/interactive-upgrade.gif` and `docs/demo/interactive-upgrade.mp4`.
 
 **How it works:**
 
 The recording script (`record-demo.sh`) automatically:
-- Creates a temporary directory at `/tmp/my-app` with the demo `package.json`
-- Links your latest built CLI globally
-- Runs the actual CLI and performs real upgrades
-- Cleans up temp directory and unlinks the package after recording
-- This ensures clean paths in the demo (no file system exposure) and genuine functionality
+- Builds this checkout and logs its commit and CLI entry path.
+- Copies the demo monorepo into `/tmp/my-app`, kept short because inup prints
+  resolved project paths in its on-screen upgrade report.
+- Binds `inup` inside the recorded shell to a wrapper that directly runs this checkout's `dist/cli.js`; no global installation is used.
+- Records to a per-run scratch directory, checks the fresh GIF's dimensions against the tape, and converts both assets before replacing the tracked files.
+- Cleans up both directories on success or failure. A missing recording or failed conversion leaves the existing assets untouched.
+
+The tape keeps the launch hidden and uses `Wait+Screen` twice: once for the
+picker's first paint, so the recording opens on the UI instead of a shell
+prompt, and once for `Audit 35/35`, so no keystroke lands on a half-loaded
+list. The second pattern hardcodes this demo project's package count — if you
+change `docs/demo-project`, update it, or the recording fails on the timeout
+rather than publishing a half-scanned demo.
+
+The workflow checks out the dispatch's exact commit and includes that SHA in the generated recording PR. Review the generated frames before merging that PR.
 
 **Adjusting the Recording:**
 
