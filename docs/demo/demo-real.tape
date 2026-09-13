@@ -35,14 +35,23 @@ Type `export PS1='$ '`
 Enter
 Type "clear"
 Enter
-Show
 
-# Run inup in full view. The picker mounts before the scan starts, so the
-# recording shows the same branded loading screen a user sees rather than
-# cutting straight to a finished list.
+# Stay hidden through launch and resume the instant the picker paints, so the
+# demo opens on the UI rather than on a shell prompt and node's startup. The
+# picker mounts before the scan, so this still shows the real loading screen
+# with rows streaming in, rather than cutting to an already-finished list.
 Type "inup"
 Enter
-Sleep 5s
+Wait+Screen@30s /q Quit/
+Show
+
+# Every package resolved (the audit counter tracks resolved packages), so the
+# first keypress can never land on a half-loaded list no matter how slow the
+# runner or the registry is. If this times out the recording fails loudly
+# instead of publishing a half-scanned demo.
+# ('.' stands in for the slash: the tape lexer ends the pattern at a literal /.)
+Wait+Screen@60s /Audit 35.35/
+Sleep 700ms
 
 # Use 'M' to select all minor updates
 Type "m"

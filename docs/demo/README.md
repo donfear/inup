@@ -50,6 +50,13 @@ The recording script (`record-demo.sh`) automatically:
 - Records to a per-run scratch directory, checks the fresh GIF's dimensions against the tape, and converts both assets before replacing the tracked files.
 - Cleans up both directories on success or failure. A missing recording or failed conversion leaves the existing assets untouched.
 
+The tape keeps the launch hidden and uses `Wait+Screen` twice: once for the
+picker's first paint, so the recording opens on the UI instead of a shell
+prompt, and once for `Audit 35/35`, so no keystroke lands on a half-loaded
+list. The second pattern hardcodes this demo project's package count — if you
+change `docs/demo-project`, update it, or the recording fails on the timeout
+rather than publishing a half-scanned demo.
+
 The workflow checks out the dispatch's exact commit and includes that SHA in the generated recording PR. Review the generated frames before merging that PR.
 
 **Adjusting the Recording:**
