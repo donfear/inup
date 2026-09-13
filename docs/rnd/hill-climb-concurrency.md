@@ -102,3 +102,49 @@ Prereqs: `pnpm build`; a target project with 100+ unique dependencies.
 - `ControlTick` exists in two structural copies
   (`src/shared/http/adaptive-controller.ts` and `src/features/debug/types.ts`);
   edit both.
+
+## Cold-run collapse and the bytes metric (2026-09-12)
+
+Field finding on a fast link (~110 Mbit/s), 190-package project, empty ETag
+cache: adaptive runs took 8.7 / 9.2 / 13.5 / 20.5 / 24.2 s where
+`--concurrency 24` took 4.4–4.7 s and a bare download of the same 47.5 MB of
+brotli packuments at 24 connections took 3.6 s. The limit went 8 → 4 → 3 and
+stayed there in 5 of 5 runs.
+
+Cause: goodput was completions per second over 12-completion windows, but cold
+responses span 0 KB–4.2 MB (p50 79 KB; the ten largest packages carry 55% of the
+bytes). The measured windows held 0.7 MB, then 5.6 MB, then 16.5 MB of body:
+completions/sec fell 7 → 5.5 → 4.2 purely because bigger packages finished
+later, so the doubling was "reverted" and the count-down began. In bytes/sec
+the same windows read 0.4 → 2.6 → 5.7 MB/s. Warm windows are uniform 304s,
+which is why the original experiment never saw it.
+
+Fix (`HillClimbController`):
+
+- Response bodies are streamed and their bytes fed to the controller as they
+  arrive (`recordBytes`). A window with < 50% revalidations is measured in
+  bytes/sec; a mostly-304 window keeps completions/sec. A metric switch
+  between consecutive windows is non-comparable, like a cache-mix shift.
+- **Fast link:** whenever a clean window streams ≥ `fastLinkBytesPerSec`
+  (1 MB/s, 8× the 1 Mbit/s profile above), the limit is held at the ceiling
+  for the run and no goodput decision is made. Soft-down (errors) and
+  hard-down (429/503) clear it and suppress re-engagement for 2 and 6 windows
+  respectively, so a registry back-off is honored.
+- `INUP_FASTLINK=0` disables the rule; `INUP_PACE_BPS=<bytes/s>` paces chunks
+  in-process, replacing the Link Conditioner prerequisite for the throttled
+  arms above (bandwidth sharing only — not RTT or loss).
+
+Prototype results before landing (medians of interleaved runs):
+
+| condition | before | after | pinned 24 |
+| --- | --- | --- | --- |
+| cold, 190 pkgs | 8.7–24.2 s | 4.9–5.1 s | 4.4–4.7 s |
+| half-warm (50% of ETag entries) | 3.4 / 5.9 s | 3.0 / 3.4 s | – |
+| warm | 1.6–2.1 s | 1.6–1.8 s | – |
+| cold, 164 pkgs | 3.9 / 6.2 s | 3.9 / 4.4 s | 4.05 s |
+| `INUP_PACE_BPS=500000`, cold | 103 s, first result 1.4 s, settled 4 | 101 s, first result 0.5 s, settled 8 | – |
+
+Known limitation: on a bandwidth-bound pipe bytes/sec is flat, so HOLD never
+counts down and the knee lands near 8 rather than 4 (p95 latency higher than
+the accidental collapse, total time equal). A probe-down in HOLD would close
+that; evaluate with the pacer.

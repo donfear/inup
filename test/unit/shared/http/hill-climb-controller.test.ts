@@ -749,3 +749,122 @@ describe('HillClimbController clock and mix safety (review fixes)', () => {
     expect(h.c.getSettledProfile(5_000_000)?.sampleCount).toBe(47)
   })
 })
+
+/**
+ * Cold-run behaviour: full packument downloads vary 200× in size, so a
+ * completions/sec window tracks which packages happened to finish, not the
+ * limit. These windows are measured in streamed bytes/sec instead, and a link
+ * that is demonstrably fast is held at the ceiling.
+ */
+describe('HillClimbController cold windows (bytes goodput + fast link)', () => {
+  const MB = 1_000_000
+  /** Close a window that also streamed `bytes` of response body. */
+  const closeBytesWindow = (
+    h: Harness,
+    elapsedMs: number,
+    bytes: number,
+    opts: { revalidatedCount?: number; retryable?: boolean } = {}
+  ): number | null => {
+    if (opts.retryable) h.c.record('retryable')
+    feed(h.c, T.windowCompletions, 100, opts.revalidatedCount ?? 0)
+    h.c.recordBytes(bytes)
+    return h.c.maybeTick(h.clock.advance(elapsedMs))
+  }
+  const noFastLink = { fastLinkBytesPerSec: 1e15 }
+  const makeNoFastLink = (): Harness => {
+    const ticks: ControlTick[] = []
+    const clock = makeClock()
+    const c = new HillClimbController(300, {
+      onTick: (t) => ticks.push(t),
+      startedAt: START_AT,
+      tuning: noFastLink,
+    })
+    return { c, ticks, clock }
+  }
+
+  it('keeps doubling when completions/sec falls but streamed bytes/sec rises (the 2026-09-12 collapse)', () => {
+    // Measured windows from a real cold run: 0.7 MB, 5.6 MB, 16.5 MB with
+    // completions/sec 7 → 5.5 → 4.2. Completions goodput reads as a plateau
+    // and used to revert 8 → 4; bytes goodput reads 0.4 → 2.6 → 5.7 MB/s.
+    const h = makeNoFastLink()
+    expect(closeBytesWindow(h, 1714, 0.7 * MB)).toBe(8)
+    expect(closeBytesWindow(h, 2162, 5.6 * MB)).toBe(16)
+    expect(closeBytesWindow(h, 2871, 16.5 * MB)).toBe(24)
+    expect(reasons(h)).toEqual(['double', 'double', 'double'])
+    expect(h.ticks.map((t) => t.goodputBps)).toEqual([408_401.4, 2_590_194.26, 5_747_126.44])
+    expect(h.ticks.every((t) => t.goodputRps === undefined)).toBe(true)
+  })
+
+  it('engages fast link at ≥ 1 MB/s streamed and holds the ceiling through noisy windows', () => {
+    const h = makeController({})
+    expect(closeBytesWindow(h, 1000, 1.2 * MB)).toBe(24)
+    expect(h.ticks[0]).toMatchObject({ reason: 'hold', fastLink: true, state: 'hold', limit: 24 })
+    // A window of tiny packages (0.1 MB/s) must not read as degradation.
+    expect(closeBytesWindow(h, 1000, 0.1 * MB)).toBe(null)
+    expect(closeBytesWindow(h, 1000, 0.1 * MB)).toBe(null)
+    expect(h.c.getLimit()).toBe(24)
+    expect(reasons(h)).toEqual(['hold', 'hold', 'hold'])
+  })
+
+  it('detects a fast link even on a mostly-304 window', () => {
+    const h = makeController({})
+    // 9 of 12 revalidated: completions metric would apply, but the three full
+    // downloads alone prove the pipe is wide.
+    expect(closeBytesWindow(h, 1000, 3 * MB, { revalidatedCount: 9 })).toBe(24)
+    expect(h.ticks[0].fastLink).toBe(true)
+  })
+
+  it('stays off on a narrow pipe and still climbs down to the knee', () => {
+    const h = makeController({})
+    expect(closeBytesWindow(h, 1000, 0.12 * MB)).toBe(8) // blind double
+    // Same bytes/sec at twice the sockets: bandwidth-bound → revert.
+    expect(closeBytesWindow(h, 1000, 0.12 * MB)).toBe(4)
+    expect(h.ticks.some((t) => t.fastLink)).toBe(false)
+    expect(h.c.getState()).toBe('climb-down')
+  })
+
+  it('treats a metric switch (bytes ↔ completions) as a non-comparable window', () => {
+    const h = makeNoFastLink()
+    // 5/12 revalidated → bytes metric; blind double to 8.
+    expect(closeBytesWindow(h, 1000, 0.5 * MB, { revalidatedCount: 5 })).toBe(8)
+    // 7/12 revalidated → completions metric; ratio delta 0.17 is within the
+    // cache-mix guard, but the metrics are not comparable: decide nothing.
+    expect(closeBytesWindow(h, 1000, 0.5 * MB, { revalidatedCount: 7 })).toBe(null)
+    expect(reasons(h)).toEqual(['double', 'hold'])
+    expect(h.ticks[1].goodputRps).toBe(12)
+    expect(h.ticks[1].goodputBps).toBeUndefined()
+  })
+
+  it('a soft-down clears fast link and suppresses re-engagement for two clean windows', () => {
+    const h = makeController({})
+    expect(closeBytesWindow(h, 1000, 2 * MB)).toBe(24)
+    expect(closeBytesWindow(h, 1000, 2 * MB, { retryable: true })).toBe(17) // ×0.7
+    expect(h.ticks.at(-1)).toMatchObject({ reason: 'soft-down' })
+    for (let i = 0; i < 2; i++) {
+      expect(closeBytesWindow(h, 1000, 2 * MB)).not.toBe(24) // suppressed
+      expect(h.ticks.at(-1)?.fastLink).toBeUndefined()
+    }
+    expect(h.c.getLimit()).toBeLessThanOrEqual(17)
+    expect(closeBytesWindow(h, 1000, 2 * MB)).toBe(24) // re-engages
+    expect(h.ticks.at(-1)?.fastLink).toBe(true)
+  })
+
+  it('a congestion hard-down clears fast link and suppresses it for reprobeAfterWindows windows', () => {
+    const h = makeController({})
+    expect(closeBytesWindow(h, 1000, 2 * MB)).toBe(24)
+    expect(h.c.record('congested')).toBe(12)
+    for (let i = 0; i < T.reprobeAfterWindows; i++) {
+      expect(closeBytesWindow(h, 1000, 2 * MB)).not.toBe(24)
+      expect(h.ticks.at(-1)?.fastLink).toBeUndefined()
+    }
+    expect(closeBytesWindow(h, 1000, 2 * MB)).toBe(24)
+    expect(h.ticks.at(-1)?.fastLink).toBe(true)
+  })
+
+  it('never engages when the threshold is disabled via tuning', () => {
+    const h = makeNoFastLink()
+    closeBytesWindow(h, 1000, 50 * MB)
+    closeBytesWindow(h, 1000, 50 * MB)
+    expect(h.ticks.some((t) => t.fastLink)).toBe(false)
+  })
+})

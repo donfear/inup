@@ -86,6 +86,8 @@ export interface HillClimbTuning {
   /** A better regime needs the same ratio AND at least this much absolute
    * improvement — two fast states differing by a few ms are the same regime. */
   regimeBetterMinDeltaMs: number
+  /** Streamed bytes/sec at or above which the link is held at the ceiling. */
+  fastLinkBytesPerSec: number
 }
 
 export const HILL_CLIMB_TUNING: HillClimbTuning = {
@@ -112,10 +114,17 @@ export const HILL_CLIMB_TUNING: HillClimbTuning = {
   regimeWorseFactor: 3,
   regimeWorseMinMs: 500,
   regimeBetterMinDeltaMs: 200,
+  // 8 Mbit/s: 8× the 1 Mbit/s profile this controller exists for, and a pipe
+  // that wide is never hurt by 24 sockets. Below it, goodput decides.
+  fastLinkBytesPerSec: 1_000_000,
 }
 
 /** Runs below this size cannot close two windows plus a tail — skip control. */
 const MIN_CONTROLLED_TOTAL = 30
+
+/** What a window's goodput counts: completions (warm, 304-dominated) or
+ * streamed bytes (cold, download-dominated). */
+type WindowMetric = 'bytes' | 'completions'
 
 /** Full (non-304) fetches needed before a latency baseline is worth persisting.
  * A 304 is header-sized and fast on any link; a baseline diluted by 304s would
@@ -177,6 +186,16 @@ export class HillClimbController implements ConcurrencyController {
   private completionsSinceTick = 0
   private retriesSinceTick = 0
   private revalidatedSinceTick = 0
+  /** Compressed response bytes streamed during the current window. Full
+   * downloads vary ~200× in size, so cold windows are measured in bytes, not
+   * completions — see tick(). */
+  private bytesSinceWindow = 0
+  private prevMetric: WindowMetric | null = null
+  /** Holding the ceiling because streamed throughput proved the link is wide. */
+  private fastLink = false
+  /** Window index before which fast link may not (re-)engage — set by the
+   * error paths so a registry back-off is honored, not immediately undone. */
+  private fastLinkSuppressedUntilWindow = 0
   /** Successful completions (attempts that failed do not count as evidence). */
   private totalCompletions = 0
   private windowStartedAt: number
@@ -278,6 +297,11 @@ export class HillClimbController implements ConcurrencyController {
     return null
   }
 
+  /** Account streamed response bytes for the current window. */
+  recordBytes(bytes: number): void {
+    this.bytesSinceWindow += bytes
+  }
+
   /**
    * Call after each completion. Closes the goodput window when due and returns
    * the new limit if the decision changed it; otherwise null.
@@ -361,6 +385,11 @@ export class HillClimbController implements ConcurrencyController {
     this.prevRatio = null
     this.blindDoubleArmed = false
     this.lastHardDownWindow = this.windowIndex
+    // The registry asked us to slow down: a fast pipe is no excuse. Re-learn,
+    // and do not let fast link snap the limit back for a while.
+    this.fastLink = false
+    this.prevMetric = null
+    this.fastLinkSuppressedUntilWindow = this.windowIndex + this.tuning.reprobeAfterWindows
     this.emit('hard-down')
     // Reset the window counters so we don't immediately move again. record()
     // has no clock to restart the window timer, so the current window's
@@ -390,6 +419,11 @@ export class HillClimbController implements ConcurrencyController {
       this.probePending = false
       this.prevGoodput = null
       this.prevRatio = null
+      this.prevMetric = null
+      // Errors in the window outrank a fast-link hold: drop it and keep it off
+      // for two clean windows so the soft decrease actually takes effect.
+      this.fastLink = false
+      this.fastLinkSuppressedUntilWindow = this.windowIndex + 3
       // The pre-error revert point is stale now — a later plateau must step
       // ±1 from the post-soft-down limit, never snap back across it.
       this.limitBeforeIncrease = null
@@ -411,8 +445,41 @@ export class HillClimbController implements ConcurrencyController {
 
     this.windowIndex++
     const elapsedSec = (now - this.windowStartedAt) / 1000
-    const goodput = this.completionsSinceTick / elapsedSec
     const ratio = this.revalidatedSinceTick / this.completionsSinceTick
+    const bytesPerSec = this.bytesSinceWindow / elapsedSec
+
+    // Fast link: streamed throughput this high means the pipe is not narrow,
+    // and a wide pipe is never hurt by the full pool. Hold the ceiling and stop
+    // deciding — every clean window, whatever its 304 share — until an error
+    // path clears it. Checked before the goodput metric so a 75%-304 window
+    // with three big downloads still counts.
+    if (
+      this.fastLink ||
+      (this.windowIndex >= this.fastLinkSuppressedUntilWindow &&
+        bytesPerSec >= t.fastLinkBytesPerSec)
+    ) {
+      if (!this.fastLink) {
+        this.fastLink = true
+        this.limit = t.ceil
+        this.enterHold(bytesPerSec)
+      }
+      this.prevGoodput = null
+      this.prevRatio = null
+      this.prevMetric = null
+      this.emit('hold', now, bytesPerSec, ratio, 'bytes')
+      this.resetWindow(now)
+      return this.limit === before ? null : this.limit
+    }
+
+    // A 304 is header-sized while a full packument can be megabytes, so
+    // completions/sec only measures a window whose responses are alike. Warm
+    // (mostly-304) windows count completions; cold windows count bytes — when
+    // the caller streams them (a body read without accounting stays on
+    // completions rather than reading as zero throughput).
+    const metric: WindowMetric = ratio < 0.5 && this.bytesSinceWindow > 0 ? 'bytes' : 'completions'
+    const goodput = metric === 'bytes' ? bytesPerSec : this.completionsSinceTick / elapsedSec
+    const metricChanged = this.prevMetric !== null && this.prevMetric !== metric
+    this.prevMetric = metric
 
     let reason: ControlTickReason
     if (this.phase === 'validating') {
@@ -429,9 +496,9 @@ export class HillClimbController implements ConcurrencyController {
       reason = 'hold'
     } else if (
       this.prevRatio !== null &&
-      Math.abs(ratio - this.prevRatio) > t.revalidatedComparableDelta
+      (metricChanged || Math.abs(ratio - this.prevRatio) > t.revalidatedComparableDelta)
     ) {
-      // Cache-mix shift: windows not comparable. Decide nothing, but roll the
+      // Cache-mix shift (or bytes ↔ completions switch): windows not comparable. Decide nothing, but roll the
       // baseline so the next same-mix window is comparable again.
       if (this.probePending) {
         this.probePending = false
@@ -448,7 +515,7 @@ export class HillClimbController implements ConcurrencyController {
       this.prevRatio = ratio
     }
 
-    this.emit(reason, now, goodput, ratio)
+    this.emit(reason, now, goodput, ratio, metric)
     this.resetWindow(now)
     return this.limit === before ? null : this.limit
   }
@@ -602,7 +669,8 @@ export class HillClimbController implements ConcurrencyController {
     reason: ControlTickReason,
     now: number = Date.now(),
     goodput?: number,
-    ratio?: number
+    ratio?: number,
+    metric: WindowMetric = 'completions'
   ): void {
     this.onTick?.({
       atMs: now,
@@ -612,8 +680,14 @@ export class HillClimbController implements ConcurrencyController {
       reason,
       state: this.phase,
       ...(goodput !== undefined && ratio !== undefined
-        ? { goodputRps: round2(goodput), revalidatedRatio: roundTo(ratio, 3) }
+        ? {
+            ...(metric === 'bytes'
+              ? { goodputBps: round2(goodput) }
+              : { goodputRps: round2(goodput) }),
+            revalidatedRatio: roundTo(ratio, 3),
+          }
         : {}),
+      ...(this.fastLink ? { fastLink: true } : {}),
     })
   }
 
@@ -621,6 +695,7 @@ export class HillClimbController implements ConcurrencyController {
     this.completionsSinceTick = 0
     this.retriesSinceTick = 0
     this.revalidatedSinceTick = 0
+    this.bytesSinceWindow = 0
     this.windowStartedAt = now
   }
 }
