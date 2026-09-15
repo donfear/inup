@@ -70,10 +70,10 @@
     "@biomejs/biome": "^2.5.13",
     "@types/node": "^26.5.1",
     "@types/semver": "^7.8.0",
-    "@vitest/coverage-v8": "^5.0.0",
-    "dependency-cruiser": "^18.2.0",
+    "@vitest/coverage-v8": "^5.0.1",
+    "dependency-cruiser": "^18.3.1",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.1"
   },
   "dependencies": {
     "chalk": "^6.0.0",
@@ -86,7 +86,7 @@
     "string-width": "^8.2.2",
     "undici": "^8.10.2",
     "wrap-ansi": "^10.0.1",
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.1"
   },
   "engines": {
     "node": ">=22.19.0"
