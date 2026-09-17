@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Experimental native core, written in Rust, for fetching and parsing registry data: about half the CPU and a quarter less memory on large projects, with the list staying responsive while packages load. Turn it on with `--native` or `"native": true` in `.inuprc`; `--no-native` turns it off for one run. inup downloads the core for your platform once, verifies it against the registry checksum, and falls back to the standard core wherever it can't be used.
+
 ## [1.7.3] - 2026-09-17
 
 ### Changed
