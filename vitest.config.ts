@@ -13,6 +13,7 @@ export default defineConfig({
         'dist/**',
         'docs/**',
         'native/**', // Rust crate + build output; covered by cargo test and the parity suite
+        'scripts/**', // release tooling; pure helpers are unit-tested, publishing runs in CI dry runs
         'test/**', // helpers/fixtures are test infrastructure, not product code
         '**/*.config.ts',
         '**/types.ts',
