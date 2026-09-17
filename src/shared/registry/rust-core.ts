@@ -8,7 +8,8 @@ import { downloadNativeCore, nativeCoreFile } from './native-download'
 
 /**
  * Optional Rust implementation of the registry hot path, prebuilt per platform
- * as the `inup-<abi>` npm packages. See native/README.md.
+ * as per-platform npm packages (`inup-darwin-arm64`, `inup-windows-x64`, …).
+ * See native/README.md.
  *
  * Off unless the user opts in (`--native` or `"native": true` in .inuprc), and
  * nothing native is downloaded until then. When on, resolution happens once
@@ -117,7 +118,7 @@ const ABIS: Partial<Record<NodeJS.Platform, Partial<Record<string, string>>>> = 
 
 /**
  * The napi-rs platform suffix of the prebuilt addon for a host (the package is
- * `inup-<abi>`), or null when none is published for it.
+ * `nativePackageName(abi)`), or null when none is published for it.
  */
 export function nativeAbi({ platform, arch, isMusl }: HostInfo): string | null {
   const abi = ABIS[platform]?.[arch]

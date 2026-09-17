@@ -30,6 +30,7 @@ import {
   extractTarEntry,
   NativeDownloadError,
   nativeCoreFile,
+  nativePackageName,
   verifyIntegrity,
 } from '../../../../src/shared/registry/native-download'
 
@@ -85,6 +86,22 @@ describe('extractTarEntry', () => {
       extractTarEntry(tar([{ name: 'dir', content: Buffer.alloc(0), type: '5' }]), 'dir')
     ).toBeNull()
     expect(extractTarEntry(Buffer.alloc(100), 'anything')).toBeNull()
+  })
+})
+
+describe('nativePackageName', () => {
+  it.each([
+    ['darwin-arm64', 'inup-darwin-arm64'],
+    ['darwin-x64', 'inup-darwin-x64'],
+    ['linux-x64-gnu', 'inup-linux-x64-gnu'],
+    ['linux-arm64-gnu', 'inup-linux-arm64-gnu'],
+    ['linux-x64-musl', 'inup-linux-x64-musl'],
+    ['linux-arm64-musl', 'inup-linux-arm64-musl'],
+    // npm's spam detection rejects the win32-*-msvc package names.
+    ['win32-x64-msvc', 'inup-windows-x64'],
+    ['win32-arm64-msvc', 'inup-windows-arm64'],
+  ])('maps %s to %s', (abi, name) => {
+    expect(nativePackageName(abi)).toBe(name)
   })
 })
 
@@ -188,6 +205,29 @@ describe('downloadNativeCore', () => {
     publish({ tarball: `${origin}/tarballs/addon.tgz`, integrity: sri(tarball) })
     await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })
     expect(seen.map((r) => r.authorization)).toEqual(['Bearer secret', undefined])
+  })
+
+  it('fetches Windows addons from the inup-windows-<arch> package', async () => {
+    const winAbi = 'win32-x64-msvc'
+    const winTarball = gzipSync(tar([{ name: `package/inup.${winAbi}.node`, content: ADDON }]))
+    routes.set('/tarballs/win.tgz', (_req, res) => res.writeHead(200).end(winTarball))
+    routes.set('/inup-windows-x64', (_req, res) =>
+      res.writeHead(200).end(
+        JSON.stringify({
+          versions: {
+            [VERSION]: {
+              dist: { tarball: `${origin}/tarballs/win.tgz`, integrity: sri(winTarball) },
+            },
+          },
+        })
+      )
+    )
+
+    const file = await downloadNativeCore({ cacheRoot, version: VERSION, abi: winAbi })
+
+    expect(file).toBe(nativeCoreFile(cacheRoot, VERSION, winAbi))
+    expect(readFileSync(file)).toEqual(ADDON)
+    expect(seen[0].url).toBe('/inup-windows-x64')
   })
 
   it('gives up after too many redirects', async () => {

@@ -11,10 +11,11 @@ import { registryTargetFor } from './registry-config'
  * opts in (`--native` or `"native": true` in .inuprc). Nothing native is part
  * of inup's own npm install.
  *
- * The addon for this platform is the `inup-<abi>` package at inup's own
- * version. It is fetched from the configured npm registry, verified against
- * the registry's published sha512 integrity (the same check npm install
- * performs), and extracted into the user cache so later runs load it directly.
+ * The addon comes from this platform's package (see nativePackageName) at
+ * inup's own version. It is fetched from the configured npm registry, verified
+ * against the registry's published sha512 integrity (the same check npm
+ * install performs), and extracted into the user cache so later runs load it
+ * directly.
  */
 
 const gunzipAsync = promisify(gunzip)
@@ -26,6 +27,17 @@ const MAX_TARBALL_BYTES = 64 * 1024 * 1024
 
 export class NativeDownloadError extends Error {
   override readonly name = 'NativeDownloadError'
+}
+
+/**
+ * npm package holding the addon for a napi-rs platform suffix. Windows
+ * packages cannot use the `win32-*-msvc` suffix: npm's spam detection rejects
+ * those names, so they are published as `inup-windows-<arch>`. The addon file
+ * inside keeps the napi-rs name (`inup.win32-x64-msvc.node`).
+ */
+export function nativePackageName(abi: string): string {
+  const windows = /^win32-(x64|arm64)-msvc$/.exec(abi)
+  return windows ? `inup-windows-${windows[1]}` : `inup-${abi}`
 }
 
 /** Where the addon for `version`/`abi` is cached. */
@@ -143,7 +155,7 @@ export async function downloadNativeCore(options: {
   version: string
   abi: string
 }): Promise<string> {
-  const name = `inup-${options.abi}`
+  const name = nativePackageName(options.abi)
   const { tarball, integrity, headers } = await resolveTarball(name, options.version)
   const archive = await readAll(await get(tarball, headers))
   verifyIntegrity(archive, integrity)

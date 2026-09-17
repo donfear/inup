@@ -18,7 +18,7 @@ Default runs never load or download anything native. With native enabled, `src/s
 
 1. **Local build:** `native/out/inup.<abi>.node` from `pnpm native:build` (source checkouts).
 2. **Cached download:** `<user cache>/native/<inup version>/inup.<abi>.node` from an earlier run.
-3. **Neither:** this run uses TypeScript. `src/shared/registry/native-download.ts` fetches the `inup-<abi>` package at inup's own version from the configured npm registry, in the background:
+3. **Neither:** this run uses TypeScript. `src/shared/registry/native-download.ts` fetches the platform package at inup's own version from the configured npm registry, in the background:
    - Registry auth is sent only to the registry origin, including across redirects.
    - The tarball is checked against the registry's sha512 `dist.integrity`.
    - The addon is extracted, written to the cache atomically, and older cached versions are removed.
@@ -41,6 +41,17 @@ What happens when something goes wrong:
 - **Cancellation:** the TUI's abort signal cancels in-flight native requests.
 - **Dev link emulation** (`INUP_PACE_BPS`) always uses the JS transport.
 - **Logging:** `inup --debug` logs whether native is enabled, the decoder and transport in use, downloads, and every fallback.
+
+## Platform packages
+
+| Platform | npm package | Addon file inside |
+|---|---|---|
+| macOS arm64 / x64 | `inup-darwin-arm64` / `inup-darwin-x64` | `inup.darwin-<arch>.node` |
+| Linux glibc arm64 / x64 | `inup-linux-arm64-gnu` / `inup-linux-x64-gnu` | `inup.linux-<arch>-gnu.node` |
+| Linux musl arm64 / x64 | `inup-linux-arm64-musl` / `inup-linux-x64-musl` | `inup.linux-<arch>-musl.node` |
+| Windows arm64 / x64 | `inup-windows-arm64` / `inup-windows-x64` | `inup.win32-<arch>-msvc.node` |
+
+Windows packages don't follow the napi-rs `win32-<arch>-msvc` suffix: npm's spam detection rejects those names. `nativePackageName()` maps the platform suffix to the package name; the addon file keeps the napi-rs name.
 
 ## Layout
 
