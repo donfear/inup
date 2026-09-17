@@ -29,12 +29,25 @@ vi.mock('../../../../src/shared/http/http-request', async (importOriginal) => ({
   httpRequest: (origin: string, opts: object) => requestSpy({ origin, ...opts }),
 }))
 
+// The optional Rust core is off unless a test hands out a decoder.
+const { packumentDecoderMock } = vi.hoisted(() => ({
+  packumentDecoderMock: vi.fn((): unknown => null),
+}))
+vi.mock('../../../../src/shared/registry/rust-core', () => ({
+  packumentDecoder: packumentDecoderMock,
+}))
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
+import { debugLog } from '../../../../src/shared/debug-logger'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
+import {
+  readEtag,
+  setEtagCacheEnabled,
+  setEtagCacheRoot,
+} from '../../../../src/shared/http/etag-store'
 import {
   clearPackageCache,
   fetchPackageVersions,
@@ -997,6 +1010,80 @@ describe('npm-registry', () => {
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
         prereleaseVersions: [],
+      })
+    })
+
+    describe('with the Rust core enabled', () => {
+      const parsed = { latestVersion: '3.0.0', allVersions: ['3.0.0'], prereleaseVersions: [] }
+      const okWithEtag = (etag?: string) =>
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+          headers: { 'content-encoding': 'identity', ...(etag ? { etag } : {}) },
+        }))
+
+      afterEach(() => {
+        packumentDecoderMock.mockReset()
+        packumentDecoderMock.mockReturnValue(null)
+      })
+
+      it('hands the body and the ETag cache target to the Rust decoder', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+        okWithEtag('W/"rust"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')).toEqual(parsed)
+        const [request] = decode.mock.calls[0] as [
+          { raw: Buffer; encoding: string; cache: { file: string; etag: string } | null },
+        ]
+        expect(request.raw.toString('utf8')).toBe('{"versions":{"1.0.0":{}}}')
+        expect(request.encoding).toBe('identity')
+        expect(request.cache?.etag).toBe('W/"rust"')
+        expect(request.cache?.file.startsWith(etagTestRoot)).toBe(true)
+        // Writing the entry is the decoder's job on this path.
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')).toBeNull()
+      })
+
+      it('asks for no cache write without an ETag or with the store disabled; encoding defaults to empty', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        }))
+        await fetchPackageVersions(['no-etag'])
+        expect((decode.mock.calls[0][0] as { encoding: string }).encoding).toBe('')
+        setEtagCacheEnabled(false)
+        okWithEtag('W/"x"')
+        clearPackageCache()
+        await fetchPackageVersions(['store-off'])
+
+        expect(decode.mock.calls.map(([r]) => (r as { cache: unknown }).cache)).toEqual([
+          null,
+          null,
+        ])
+      })
+
+      it('falls back to the TypeScript decoder when the Rust decoder fails', async () => {
+        const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+        packumentDecoderMock.mockReturnValue(async () => {
+          throw new Error('boom')
+        })
+        okWithEtag('W/"fallback"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')?.etag).toBe('W/"fallback"')
+        expect(warn).toHaveBeenCalledWith(
+          'npm-registry',
+          expect.stringContaining('falling back'),
+          expect.any(Error)
+        )
+        warn.mockRestore()
       })
     })
 

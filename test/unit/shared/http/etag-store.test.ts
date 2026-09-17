@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   etagCacheDir,
+  etagFileFor,
   readEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
@@ -62,6 +63,27 @@ describe('etag-store', () => {
     // writing an invalid entry shape.
     writeEtag('/pkg', 'etag2', data) // valid again
     expect(readEtag('/pkg')?.etag).toBe('etag2')
+  })
+
+  it('resolves entry files that a writer outside the store can fill in', () => {
+    const file = etagFileFor('/pkg')
+    expect(file?.startsWith(etagCacheDir())).toBe(true)
+    expect(etagFileFor('/pkg')).toBe(file)
+    expect(etagFileFor('/other-pkg')).not.toBe(file)
+
+    writeFileSync(file as string, JSON.stringify({ etag: 'W/"ext"', data }))
+    expect(readEtag('/pkg')).toEqual({ etag: 'W/"ext"', data })
+  })
+
+  it('has no entry file when disabled or when the cache dir cannot be created', () => {
+    setEtagCacheEnabled(false)
+    expect(etagFileFor('/pkg')).toBeNull()
+    setEtagCacheEnabled(true)
+
+    const blocker = join(testRoot, 'not-a-dir')
+    writeFileSync(blocker, '')
+    setEtagCacheRoot(blocker)
+    expect(etagFileFor('/pkg')).toBeNull()
   })
 
   it('resolves the cache dir under the configured root', () => {

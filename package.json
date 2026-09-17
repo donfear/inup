@@ -21,6 +21,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
     "bench": "node --expose-gc test/benchmarks/performance.cjs",
+    "native:build": "napi build --platform --release --no-js --manifest-path native/napi/Cargo.toml --output-dir native/out",
+    "native:check": "cargo fmt --manifest-path native/Cargo.toml --all --check && cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings && cargo test --manifest-path native/Cargo.toml --workspace --release",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
     "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme",
@@ -68,6 +70,7 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
+    "@napi-rs/cli": "^3.10.1",
     "@types/node": "^26.5.1",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^5.0.0",
@@ -89,6 +92,19 @@
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "napi": {
+    "binaryName": "inup",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl"
+    ]
   },
   "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c"
 }

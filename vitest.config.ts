@@ -12,6 +12,7 @@ export default defineConfig({
       exclude: [
         'dist/**',
         'docs/**',
+        'native/**', // Rust crate + build output; covered by cargo test and the parity suite
         'test/**', // helpers/fixtures are test infrastructure, not product code
         '**/*.config.ts',
         '**/types.ts',
