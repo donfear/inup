@@ -4,9 +4,13 @@ import { debugLog } from '../debug-logger'
 import type { ParsedVersions } from '../versions'
 
 /**
- * Rust implementation of the registry hot path (decompress, parse, write the
- * ETag cache entry), shipped as prebuilt Node-API addons in the optional
- * `inup-<abi>` packages. See native/README.md.
+ * Rust implementation of the registry hot path, shipped as prebuilt Node-API
+ * addons in the optional `inup-<abi>` packages. See native/README.md.
+ *
+ * Two capabilities, each optional:
+ * - transport: a whole registry attempt (cache lookup, HTTP, decode, cache
+ *   write) off the JS thread — `nativeTransport()`
+ * - decoder: decode a body the TypeScript transport fetched — `packumentDecoder()`
  *
  * Resolution, once per process: the installed platform package, then a local
  * `pnpm native:build` output (source checkouts), then the TypeScript path.
@@ -37,7 +41,7 @@ export interface HostInfo {
 }
 
 /** Result shape of the addon; Rust `None` arrives as null. */
-interface RawParsed {
+export interface RawParsed {
   latestVersion: string
   allVersions: string[]
   prereleaseVersions: string[]
@@ -45,8 +49,49 @@ interface RawParsed {
   enginesNode?: string | null
 }
 
+/** One native registry attempt, as `fetchPackument` reports it. */
+export interface NativeFetchOutcome {
+  kind: 'success' | 'not-found' | 'retryable' | 'congested' | 'transient' | 'cancelled' | 'fallback'
+  /** success only: `ParsedVersions` as JSON text. */
+  dataJson?: string | null
+  revalidated: boolean
+  /** Compressed body bytes of a 200. */
+  bytes: number
+  latencyMs: number
+  status: number
+  retryAfter?: string | null
+  /** transient / fallback only: tls | connect | timeout | io | decode | internal */
+  errorClass?: string | null
+  error?: string | null
+}
+
+export interface NativeFetchRequest {
+  url: string
+  authorization?: string
+  /** ETag cache entry to revalidate against and write; null skips the cache. */
+  cacheFile: string | null
+  /** Overrides the 30 s headers timeout (tests). */
+  headersTimeoutMs?: number
+}
+
+export interface NativeTransport {
+  fetch(request: NativeFetchRequest, signal?: AbortSignal): Promise<NativeFetchOutcome>
+  /** Body bytes received since the last call, for the concurrency controller. */
+  takeReceivedBytes(): number
+}
+
 interface NativeModule {
   abiVersion(): number
+  /** Absent fields map to Rust `None`; napi rejects explicit nulls. */
+  fetchPackument?(request: {
+    url: string
+    requestId: number
+    authorization?: string
+    cacheFile?: string
+    headersTimeoutMs?: number
+  }): Promise<NativeFetchOutcome>
+  cancelFetch?(requestId: number): void
+  takeReceivedBytes?(): number
   /** Runs on the libuv thread pool; writes the cache entry when given a file. */
   decodePackument(
     raw: Buffer,
@@ -109,7 +154,15 @@ interface Environment {
 const defaultEnvironment = (): Environment => ({ host: () => detectHost(), load: nodeRequire })
 
 let environment = defaultEnvironment()
-let resolved: { core: CoreName; decoder: PackumentDecoder | null } | null = null
+interface Resolved {
+  core: CoreName
+  decoder: PackumentDecoder | null
+  transport: NativeTransport | null
+}
+
+const JS_ONLY: Resolved = { core: 'js', decoder: null, transport: null }
+
+let resolved: Resolved | null = null
 
 /** Test hook: override host detection and module loading (null restores both). */
 export function setRustCoreEnvironment(
@@ -129,22 +182,28 @@ export function packumentDecoder(): PackumentDecoder | null {
   return resolve().decoder
 }
 
-/** Which implementation decodes registry responses in this process. */
+/** The native registry transport, or null when requests go through undici. */
+export function nativeTransport(): NativeTransport | null {
+  return resolve().transport
+}
+
+/** Which implementation handles registry responses in this process. */
 export function activeCore(): CoreName {
   return resolve().core
 }
 
-function resolve(): { core: CoreName; decoder: PackumentDecoder | null } {
+function resolve(): Resolved {
   if (!resolved) {
-    resolved = process.env.INUP_CORE === 'js' ? { core: 'js', decoder: null } : loadNative()
-    debugLog.info('rust-core', `registry decoder: ${resolved.core}`)
+    resolved = process.env.INUP_CORE === 'js' ? JS_ONLY : loadNative()
+    const transport = resolved.transport ? 'native' : 'undici'
+    debugLog.info('rust-core', `registry decoder: ${resolved.core}, transport: ${transport}`)
   }
   return resolved
 }
 
-function loadNative(): { core: CoreName; decoder: PackumentDecoder | null } {
+function loadNative(): Resolved {
   const abi = nativeAbi(environment.host())
-  if (!abi) return { core: 'js', decoder: null }
+  if (!abi) return JS_ONLY
 
   const failures: string[] = []
   for (const id of [`inup-${abi}`, join(DEV_BUILD_DIR, `inup.${abi}.node`)]) {
@@ -155,14 +214,64 @@ function loadNative(): { core: CoreName; decoder: PackumentDecoder | null } {
       } else if (typeof mod.decodePackument !== 'function') {
         failures.push(`${id}: missing decodePackument`)
       } else {
-        return { core: 'native', decoder: nativeDecoder(mod as NativeModule) }
+        const native = mod as NativeModule
+        return {
+          core: 'native',
+          decoder: nativeDecoder(native),
+          transport: transportOf(native),
+        }
       }
     } catch (error) {
       failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
   debugLog.warn('rust-core', `no usable native core for ${abi}, using TypeScript`, failures)
-  return { core: 'js', decoder: null }
+  return JS_ONLY
+}
+
+let nextRequestId = 1
+
+/** Request ids stay in 1..2^32-2: the addon stores them as u32. */
+export function followingRequestId(id: number): number {
+  return id >= 0xffff_fffe ? 1 : id + 1
+}
+
+/** The transport, when the addon exports all of it (decode-only builds do not). */
+function transportOf(mod: NativeModule): NativeTransport | null {
+  const { fetchPackument, cancelFetch, takeReceivedBytes } = mod
+  if (
+    typeof fetchPackument !== 'function' ||
+    typeof cancelFetch !== 'function' ||
+    typeof takeReceivedBytes !== 'function'
+  ) {
+    return null
+  }
+  return {
+    takeReceivedBytes: () => takeReceivedBytes.call(mod),
+    fetch: async (request, signal) => {
+      const requestId = nextRequestId
+      nextRequestId = followingRequestId(nextRequestId)
+      // napi maps absent object fields to Rust `None`, but rejects explicit
+      // nulls: send only the fields that have a value.
+      const { url, authorization, cacheFile, headersTimeoutMs } = request
+      const pending = fetchPackument.call(mod, {
+        url,
+        requestId,
+        ...(authorization ? { authorization } : {}),
+        ...(cacheFile ? { cacheFile } : {}),
+        ...(headersTimeoutMs ? { headersTimeoutMs } : {}),
+      })
+      if (!signal) return pending
+      const cancel = () => cancelFetch.call(mod, requestId)
+      if (signal.aborted) cancel()
+      else signal.addEventListener('abort', cancel, { once: true })
+      try {
+        return await pending
+      } finally {
+        signal.removeEventListener('abort', cancel)
+      }
+    },
+  }
 }
 
 function nativeDecoder(mod: NativeModule): PackumentDecoder {
@@ -173,7 +282,7 @@ function nativeDecoder(mod: NativeModule): PackumentDecoder {
 }
 
 /** Same keys, in the same order, as parseVersions returns. */
-function toParsedVersions(parsed: RawParsed): ParsedVersions {
+export function toParsedVersions(parsed: RawParsed): ParsedVersions {
   return {
     latestVersion: parsed.latestVersion,
     allVersions: parsed.allVersions,

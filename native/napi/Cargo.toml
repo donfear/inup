@@ -9,8 +9,12 @@ crate-type = ["cdylib"]
 
 [dependencies]
 inup-core = { path = "../core" }
-napi = { version = "3", default-features = false, features = ["napi4"] }
+napi = { version = "3", default-features = false, features = ["napi4", "async"] }
 napi-derive = "3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["time", "fs", "sync", "macros", "rt"] }
 
 [build-dependencies]
 napi-build = "2"

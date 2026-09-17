@@ -1,7 +1,13 @@
 //! Node-API addon, loaded by src/shared/registry/rust-core.ts.
 //!
-//! Exports exactly what the loader uses: `abiVersion()` for the compatibility
-//! handshake and `decodePackument()` for the work itself.
+//! Exports what the loader uses: `abiVersion()` for the compatibility
+//! handshake, `decodePackument()` for decoding a body fetched by JS, and the
+//! native transport in `http.rs` (`fetchPackument`, `cancelFetch`,
+//! `takeReceivedBytes`).
+
+// napi-rs registers exports only outside `cfg(test)`, so they look unused there.
+#[cfg_attr(test, allow(dead_code))]
+mod http;
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 

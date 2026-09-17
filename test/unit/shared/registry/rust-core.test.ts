@@ -4,8 +4,10 @@ import {
   activeCore,
   CORE_ABI_VERSION,
   detectHost,
+  followingRequestId,
   type HostInfo,
   nativeAbi,
+  nativeTransport,
   type PackumentDecodeRequest,
   packumentDecoder,
   setRustCoreEnvironment,
@@ -158,7 +160,7 @@ describe('core selection', () => {
     expect(packumentDecoder()).toBe(first)
     expect(activeCore()).toBe('native')
     expect(load).toHaveBeenCalledTimes(1)
-    expect(info).toHaveBeenCalledWith('rust-core', 'registry decoder: native')
+    expect(info).toHaveBeenCalledWith('rust-core', 'registry decoder: native, transport: undici')
   })
 
   it('uses real host detection and require by default without throwing', () => {
@@ -219,3 +221,113 @@ describe('native decoder', () => {
 function throwString(): never {
   throw 'not an Error object'
 }
+
+describe('native transport', () => {
+  const transportAddon = (overrides: Record<string, unknown> = {}) =>
+    fakeAddon({
+      fetchPackument: vi.fn(async (request: { requestId: number }) => ({
+        kind: 'success',
+        requestId: request.requestId,
+      })),
+      cancelFetch: vi.fn(),
+      takeReceivedBytes: vi.fn(() => 512),
+      ...overrides,
+    })
+
+  const transportWith = (addon: ReturnType<typeof transportAddon>) => {
+    setRustCoreEnvironment({ host: MAC, load: () => addon })
+    const transport = nativeTransport()
+    if (!transport) throw new Error('expected the native transport')
+    return transport
+  }
+
+  it('is available only when the addon exports the whole transport', () => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    setRustCoreEnvironment({ host: MAC, load: () => transportAddon() })
+    expect(nativeTransport()).not.toBeNull()
+    expect(info).toHaveBeenCalledWith('rust-core', 'registry decoder: native, transport: native')
+
+    for (const missing of ['fetchPackument', 'cancelFetch', 'takeReceivedBytes']) {
+      setRustCoreEnvironment({ host: MAC, load: () => transportAddon({ [missing]: undefined }) })
+      expect(nativeTransport()).toBeNull()
+      expect(activeCore()).toBe('native')
+    }
+
+    process.env.INUP_CORE = 'js'
+    setRustCoreEnvironment({ host: MAC, load: () => transportAddon() })
+    expect(nativeTransport()).toBeNull()
+  })
+
+  it('forwards the request with a fresh id and passes byte counts through', async () => {
+    const addon = transportAddon()
+    const transport = transportWith(addon)
+    const request = { url: 'https://registry.npmjs.org/a', cacheFile: null }
+
+    await transport.fetch(request)
+    await transport.fetch(request)
+
+    const ids = addon.fetchPackument.mock.calls.map(([r]) => r.requestId)
+    expect(ids[1]).toBe(ids[0] + 1)
+    // Null fields are left out: napi maps absent fields to None but rejects null.
+    expect(addon.fetchPackument.mock.calls[0][0]).toEqual({ url: request.url, requestId: ids[0] })
+
+    await transport.fetch({
+      url: 'https://registry.npmjs.org/b',
+      authorization: 'Bearer t',
+      cacheFile: '/cache/b.json',
+      headersTimeoutMs: 100,
+    })
+    expect(addon.fetchPackument.mock.calls[2][0]).toEqual({
+      url: 'https://registry.npmjs.org/b',
+      requestId: ids[1] + 1,
+      authorization: 'Bearer t',
+      cacheFile: '/cache/b.json',
+      headersTimeoutMs: 100,
+    })
+    expect(transport.takeReceivedBytes()).toBe(512)
+  })
+
+  it('cancels the native request when the signal aborts, then stops listening', async () => {
+    let finish: (value: unknown) => void = () => {}
+    const addon = transportAddon({
+      fetchPackument: vi.fn(
+        (request: { requestId: number }) =>
+          new Promise((resolve) => {
+            finish = () => resolve({ kind: 'cancelled', requestId: request.requestId })
+          })
+      ),
+    })
+    const transport = transportWith(addon)
+    const controller = new AbortController()
+    const removed = vi.spyOn(controller.signal, 'removeEventListener')
+
+    const pending = transport.fetch({ url: 'u', cacheFile: null }, controller.signal)
+    controller.abort()
+    finish(undefined)
+    await pending
+
+    const id = addon.fetchPackument.mock.calls[0][0].requestId
+    expect(addon.cancelFetch).toHaveBeenCalledWith(id)
+    expect(removed).toHaveBeenCalledWith('abort', expect.any(Function))
+  })
+
+  it('cancels immediately when the signal is already aborted', async () => {
+    const addon = transportAddon()
+    const transport = transportWith(addon)
+    await transport.fetch({ url: 'u', cacheFile: null }, AbortSignal.abort())
+    expect(addon.cancelFetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not cancel requests that finish normally', async () => {
+    const addon = transportAddon()
+    const transport = transportWith(addon)
+    await transport.fetch({ url: 'u', cacheFile: null }, new AbortController().signal)
+    expect(addon.cancelFetch).not.toHaveBeenCalled()
+  })
+
+  it('wraps request ids before they leave the u32 range', () => {
+    expect(followingRequestId(1)).toBe(2)
+    expect(followingRequestId(0xffff_fffd)).toBe(0xffff_fffe)
+    expect(followingRequestId(0xffff_fffe)).toBe(1)
+  })
+})

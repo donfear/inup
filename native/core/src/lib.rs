@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::io::Read;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use packument::parse_versions;
 
@@ -59,6 +59,27 @@ pub fn decompress<'a>(raw: &'a [u8], encoding: &str) -> Result<Cow<'a, [u8]>, Er
   };
   result.map_err(|e| Error(format!("failed to decompress {encoding} body: {e}")))?;
   Ok(Cow::Owned(out))
+}
+
+/// A stored ETag cache entry, as writeEtag / cache_entry_json write it. `data`
+/// stays raw JSON: it is handed back to JS as-is on a 304.
+#[derive(Debug, Deserialize)]
+pub struct CacheEntry {
+  pub etag: String,
+  pub data: Box<serde_json::value::RawValue>,
+}
+
+/// Read a cache entry the way readEtag does: anything unreadable, malformed or
+/// missing its etag / object data is simply "no entry".
+pub fn read_cache_entry(file: &str) -> Option<CacheEntry> {
+  let bytes = std::fs::read(file).ok()?;
+  let entry = serde_json::from_slice::<CacheEntry>(&bytes).ok()?;
+  entry.data.get().starts_with('{').then_some(entry)
+}
+
+/// `JSON.stringify(parsed)`: the version data as JSON text for JS to parse.
+pub fn parsed_json(parsed: &Parsed) -> String {
+  serde_json::to_string(parsed).expect("a struct of strings always serializes to JSON")
 }
 
 /// Decompress + parse in one call.
