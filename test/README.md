@@ -142,7 +142,7 @@ suites:
 - **Network clients** (`github-client.test.ts`, `npm-registry-client.test.ts`,
   `vulnerability-checker.test.ts`) — `vi.stubGlobal('fetch', …)`; abort errors
   must rethrow, everything else degrades to null.
-- **Registry** (`npm-registry.test.ts`) — undici pool mocking with retry,
+- **Registry** (`npm-registry.test.ts`) — `httpRequest` mocking with retry,
   ETag, and adaptive-concurrency paths.
 - **Filesystem** (`filesystem.test.ts`, `io.test.ts`, `paths.test.ts`) — real
   temp dirs via `mkdtempSync`, cleaned up in `afterEach`.

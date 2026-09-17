@@ -1,7 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { brotliDecompress, gunzip, inflate } from 'node:zlib'
-import { Pool } from 'undici'
 
 const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
@@ -12,6 +11,7 @@ import { AdaptiveController } from '../http/adaptive-controller'
 import type { ConcurrencyController, ControlTick } from '../http/controller-contract'
 import { readEtag, writeEtag } from '../http/etag-store'
 import { HillClimbController } from '../http/hill-climb-controller'
+import { httpRequest } from '../http/http-request'
 import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
 import {
@@ -31,39 +31,11 @@ export type PackageVersionData = ParsedVersions
 
 const inFlightLookups = new InflightMap<PackageVersionData>()
 
-// One pool per registry origin: scoped packages may resolve to different
-// registries (`@scope:registry` in .npmrc), and each origin keeps its own
-// keep-alive connections. Most runs still touch a single origin.
-//
-// Connection count is kept == the adaptive controller's ceiling (POOL_CONNECTIONS)
-// so the controller is never silently throttled below its chosen limit. Idle
-// keep-alive connections are cheap.
-//
-// `headersTimeout` is intentionally non-zero (unlike the rest, where we tolerate
-// slow bodies): a stalled connection that never sends headers would otherwise be
-// consumed forever and stay invisible to the completion-based adaptive
-// controller. With a headers timeout, a stall surfaces as a transient error the
-// controller can react to (and retry handles). `bodyTimeout` stays 0 — large
-// packuments legitimately stream slowly.
-const poolByOrigin = new Map<string, Pool>()
-
-function poolFor(origin: string): Pool {
-  let pool = poolByOrigin.get(origin)
-  if (!pool) {
-    pool = new Pool(origin, {
-      connections: POOL_CONNECTIONS,
-      pipelining: 1,
-      keepAliveTimeout: 30_000,
-      keepAliveMaxTimeout: 600_000,
-      headersTimeout: 30_000,
-      bodyTimeout: 0,
-      connectTimeout: 15_000,
-      allowH2: false,
-    })
-    poolByOrigin.set(origin, pool)
-  }
-  return pool
-}
+// Time allowed until a registry response's headers arrive. A stalled connection
+// that never answers would otherwise stay invisible to the completion-based
+// adaptive controller; with the timeout it surfaces as a transient error the
+// controller reacts to and the retry loop handles. Bodies have no timeout.
+const HEADERS_TIMEOUT_MS = 30_000
 
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
@@ -123,10 +95,6 @@ export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 /** Called with each body chunk's byte length as it arrives. */
 type OnChunk = (bytes: number) => void
 
-type ResponseBody = {
-  arrayBuffer(): Promise<ArrayBuffer>
-} & Partial<AsyncIterable<Uint8Array>>
-
 // Dev-only link emulation (INUP_PACE_BPS): a process-wide token bucket that
 // paces every streamed chunk to the given bytes/sec, so slow-link behavior can
 // be reproduced without a system-level link conditioner. Read per call so the
@@ -144,17 +112,13 @@ async function paceChunk(bytes: number): Promise<void> {
 }
 
 /**
- * Read a response body to a Buffer. Streams chunk by chunk when the body is
- * async-iterable so the caller can account bytes as they arrive (the adaptive
- * controller measures cold windows in bytes/sec); falls back to arrayBuffer()
- * for bodies that are not (test doubles, the offline bench harness).
+ * Read a response body to a Buffer chunk by chunk, so the caller can account
+ * bytes as they arrive (the adaptive controller measures cold windows in
+ * bytes/sec).
  */
-async function readBody(body: ResponseBody, onChunk?: OnChunk): Promise<Buffer> {
-  if (typeof body[Symbol.asyncIterator] !== 'function') {
-    return Buffer.from(await body.arrayBuffer())
-  }
+async function readBody(body: AsyncIterable<Uint8Array>, onChunk?: OnChunk): Promise<Buffer> {
   const chunks: Buffer[] = []
-  for await (const chunk of body as AsyncIterable<Uint8Array>) {
+  for await (const chunk of body) {
     await paceChunk(chunk.length)
     onChunk?.(chunk.length)
     chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
@@ -187,13 +151,10 @@ async function attemptRegistryFetch(
       requestHeaders['if-none-match'] = cached.etag
     }
 
-    const { statusCode, headers, body } = await poolFor(target.origin).request({
+    const { statusCode, headers, body } = await httpRequest(target.origin, {
       path,
-      method: 'GET',
       headers: requestHeaders,
-      headersTimeout: 30_000,
-      bodyTimeout: 0,
-      blocking: false,
+      headersTimeoutMs: HEADERS_TIMEOUT_MS,
       signal,
     })
 
