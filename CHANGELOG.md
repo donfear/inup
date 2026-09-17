@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Smaller install: inup no longer depends on `undici`, which was about 40% of its installed size. Registry requests now use Node's built-in HTTP client, with the same connection limits and timeouts.
+
 ## [1.7.2] - 2026-09-13
 
 ### Changed
