@@ -116,3 +116,60 @@ jobs:
         with:
           name: coverage-report
           path: coverage/
+
+  # Rust checks plus the native core built and smoke-tested on all 8 platforms.
+  native:
+    name: Native
+    uses: ./.github/workflows/native-build.yml
+
+  # The real addon through inup's loader, against parseVersions/writeEtag and a
+  # local HTTP server, on each OS family. INUP_PARITY_REQUIRED turns a missing
+  # addon into a failure instead of a skip.
+  native-parity:
+    name: Native parity (${{ matrix.abi }})
+    needs: native
+    runs-on: ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: linux-x64-gnu, host: ubuntu-latest }
+          - { abi: darwin-arm64, host: macos-latest }
+          - { abi: win32-x64-msvc, host: windows-latest }
+    steps:
+      - uses: actions/checkout@v6
+      - run: corepack enable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: bindings-${{ matrix.abi }}
+          path: native/out
+      - name: Parity tests
+        env:
+          INUP_PARITY_REQUIRED: '1'
+        run: pnpm vitest run test/unit/shared/registry/rust-core.parity.test.ts test/unit/shared/registry/rust-transport.parity.test.ts
+
+  # Assemble all 8 platform packages exactly as publish.yml would, without publishing.
+  native-packages:
+    name: Native packages (dry run)
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: corepack enable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bindings-*
+          path: native/artifacts
+      - name: Assemble and dry-run publish
+        run: node scripts/publish-native.mjs --artifacts native/artifacts --dry-run
