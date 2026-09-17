@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Assemble and publish the per-platform native core packages for this inup
 // version, from the addons the native-build workflow produced.
 //
