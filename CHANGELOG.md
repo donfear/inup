@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Faster project scan on large repositories.
+- `__fixtures__` and `__mocks__` directories are no longer scanned, so test fixture manifests no longer show up as unavailable packages. Add them to `scanDirs` in `.inuprc` to scan them again.
+
 ## [1.8.0] - 2026-09-17
 
 ### Added
