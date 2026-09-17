@@ -36,11 +36,18 @@ const versions = Object.fromEntries([
   ...Array.from({ length: 50 }, (_, i) => [`1.${i}.0`, {}]),
 ])
 const body = Buffer.from(JSON.stringify({ versions }))
-require('undici').Pool = class {
-  async request({ path }) {
-    const delay = responseDelay(path)
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
-    return { statusCode: 200, headers: {}, body: { arrayBuffer: async () => body } }
+require('../../src/shared/http/http-request.ts').httpRequest = async (_origin, { path }) => {
+  const delay = responseDelay(path)
+  if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
+  return {
+    statusCode: 200,
+    headers: {},
+    body: {
+      dump: async () => {},
+      [Symbol.asyncIterator]: async function* () {
+        yield body
+      },
+    },
   }
 }
 require('../../src/shared/fs/scan.ts').findAllPackageJsonFilesAsync = async () => [

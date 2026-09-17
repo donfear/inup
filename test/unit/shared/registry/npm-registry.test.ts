@@ -1,4 +1,3 @@
-import { Pool } from 'undici'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Keep retry classification real, but make backoff instant so retry-exhaustion
@@ -19,6 +18,15 @@ const { registryTargetMock } = vi.hoisted(() => ({
 vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../src/shared/registry/registry-config')>()),
   registryTargetFor: registryTargetMock,
+}))
+
+// Every registry request goes through this mock (see poolRequestSpy below).
+const { requestSpy } = vi.hoisted(() => ({
+  requestSpy: vi.fn<(opts: unknown) => Promise<unknown>>(),
+}))
+vi.mock('../../../../src/shared/http/http-request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/http/http-request')>()),
+  httpRequest: (origin: string, opts: object) => requestSpy({ origin, ...opts }),
 }))
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -47,6 +55,13 @@ const makeOkBody = (json: unknown): MockResponse => ({
   body: JSON.stringify(json),
 })
 
+/** A streamed response body yielding `buffer` as one chunk (none when empty). */
+const streamOf = (buffer: Buffer) => ({
+  [Symbol.asyncIterator]: async function* () {
+    if (buffer.length > 0) yield buffer
+  },
+})
+
 const makeErrBody = (statusCode: number): MockResponse => ({
   statusCode,
   body: '',
@@ -55,35 +70,27 @@ const makeErrBody = (statusCode: number): MockResponse => ({
 describe('npm-registry', () => {
   const requestMock = vi.fn<(opts: { path: string }) => Promise<MockResponse>>()
 
-  const poolRequestSpy = vi
-    .spyOn(Pool.prototype, 'request')
-    .mockImplementation(async (opts: unknown) => {
-      const { path } = opts as { path: string }
-      const response = await requestMock({ path })
-      if (response.delayMs) {
-        await new Promise((resolve) => setTimeout(resolve, response.delayMs))
-      }
-      return {
-        statusCode: response.statusCode,
-        headers: response.headers ?? {},
-        trailers: {},
-        opaque: null,
-        context: {},
-        body: {
-          arrayBuffer: async () => Buffer.from(response.body, 'utf8'),
-          text: async () => response.body,
-          dump: async () => {},
-          ...(response.chunks
-            ? {
-                [Symbol.asyncIterator]: async function* () {
-                  for (const chunk of response.chunks!) yield chunk
-                },
-              }
-            : {}),
+  // Responses have the shape httpRequest resolves: status, headers and a
+  // streamed body (the test's chunks, or the whole body as one chunk).
+  const poolRequestSpy = requestSpy
+  poolRequestSpy.mockImplementation(async (opts: unknown) => {
+    const { path } = opts as { path: string }
+    const response = await requestMock({ path })
+    if (response.delayMs) {
+      await new Promise((resolve) => setTimeout(resolve, response.delayMs))
+    }
+    const chunks = response.chunks ?? [Buffer.from(response.body, 'utf8')]
+    return {
+      statusCode: response.statusCode,
+      headers: response.headers ?? {},
+      body: {
+        dump: async () => {},
+        [Symbol.asyncIterator]: async function* () {
+          for (const chunk of chunks) yield chunk
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any
-    })
+      },
+    }
+  })
 
   beforeEach(() => {
     clearPackageCache()
@@ -314,11 +321,8 @@ describe('npm-registry', () => {
       return {
         statusCode: 404,
         headers: {},
-        trailers: {},
-        opaque: null,
-        context: {},
         body: {
-          arrayBuffer: async () => Buffer.alloc(0),
+          ...streamOf(Buffer.alloc(0)),
           dump: async () => {
             throw new Error('drain failed')
           },
@@ -345,12 +349,9 @@ describe('npm-registry', () => {
       poolRequestSpy.mockImplementationOnce(async () => {
         return {
           statusCode: 200,
-          // Array-valued header: undici surfaces repeated headers as arrays.
+          // Array-valued header: repeated headers can arrive as arrays.
           headers: { 'content-encoding': [encoding] },
-          trailers: {},
-          opaque: null,
-          context: {},
-          body: { arrayBuffer: async () => buffer, dump: async () => {} },
+          body: { ...streamOf(buffer), dump: async () => {} },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
       })
@@ -733,18 +734,6 @@ describe('npm-registry', () => {
       expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(false)
     })
 
-    it('falls back to arrayBuffer() bodies without byte accounting (no fast link)', async () => {
-      withFastLink(20) // plain mock: no async iterator on the body
-      const ticks: ControlTick[] = []
-
-      const result = await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
-
-      expect(result.size).toBe(60)
-      expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks.some((t) => t.fastLink)).toBe(false)
-      expect(ticks.every((t) => t.goodputBps === undefined)).toBe(true)
-    })
-
     it('INUP_FASTLINK=0 disables fast link while keeping the controller on', async () => {
       vi.stubEnv('INUP_FASTLINK', '0')
       try {
@@ -996,10 +985,7 @@ describe('npm-registry', () => {
         return {
           statusCode: 304,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
-          body: { arrayBuffer: async () => Buffer.alloc(0), dump: async () => {} },
+          body: { ...streamOf(Buffer.alloc(0)), dump: async () => {} },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
       })
@@ -1033,12 +1019,10 @@ describe('npm-registry', () => {
         return {
           statusCode: 200,
           headers: { etag: ['W/"array-form"'] },
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () =>
-              Buffer.from(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }), 'utf8'),
+            ...streamOf(
+              Buffer.from(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }), 'utf8')
+            ),
             dump: async () => {},
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1055,11 +1039,8 @@ describe('npm-registry', () => {
         return {
           statusCode: 304,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () => Buffer.alloc(0),
+            ...streamOf(Buffer.alloc(0)),
             // Draining the empty 304 body may itself fail; the cached data
             // must still be served.
             dump: async () => {
@@ -1102,12 +1083,8 @@ describe('npm-registry', () => {
         return {
           statusCode: 200,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () =>
-              Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8'),
+            ...streamOf(Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8')),
             dump: async () => {},
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
