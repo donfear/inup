@@ -59,10 +59,11 @@ Requirements: a Rust toolchain (`rustup`), then `pnpm install`.
 ```sh
 pnpm native:check    # cargo fmt --check, clippy -D warnings, cargo test
 pnpm native:build    # native/out/inup.<abi>.node for this machine
+pnpm build:all       # native addon + CLI (dist/) in one go
 pnpm test            # includes the parity suite once the addon is built
 ```
 
-To test the opt-in flow from a source checkout, build first (`pnpm native:build`) and run `node dist/cli.js --native`.
+To test the opt-in flow from a source checkout, run `pnpm build:all`, then `node dist/cli.js --native`.
 
 To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src/lib.rs` and `CORE_ABI_VERSION` in `rust-core.ts` together.
 

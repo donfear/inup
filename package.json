@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc",
+    "build:all": "pnpm native:build && pnpm build",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "prepare": "npm run build",
