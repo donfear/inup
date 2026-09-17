@@ -52,7 +52,8 @@ jobs:
           git config --local user.name "${{ secrets.GH_USERNAME }}"
 
           # The tag is created below, after CHANGELOG.md is stamped, so both land in one commit.
-          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*')"
+          # Release candidates (v1.8.0-rc.0) are not changelog baselines.
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' --exclude 'v*-*')"
           pnpm version ${{ github.event.inputs.version_type }} --no-git-tag-version
 
           VERSION="$(node -p "require('./package.json').version")"          # e.g. 1.6.3
