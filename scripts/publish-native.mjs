@@ -111,7 +111,9 @@ async function main() {
     const manifest = platformManifest({ abi, version: root.version, name, repository: root.repository })
     writeFileSync(join(dir, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 
-    if (!values['dry-run'] && isPublished(name, root.version)) {
+    // Checked in dry runs too: npm refuses even a dry-run publish of an existing
+    // version, and CI dry-runs every push to main, including the release commit.
+    if (isPublished(name, root.version)) {
       console.log(`skip ${name}@${root.version} (already published)`)
       continue
     }
