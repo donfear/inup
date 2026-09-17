@@ -3,10 +3,12 @@ import { debugLog } from '../../../../src/shared/debug-logger'
 import {
   activeCore,
   CORE_ABI_VERSION,
+  configureNativeCore,
   detectHost,
   followingRequestId,
   type HostInfo,
   nativeAbi,
+  nativeCoreDownload,
   nativeTransport,
   type PackumentDecodeRequest,
   packumentDecoder,
@@ -34,12 +36,22 @@ const fakeAddon = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-const originalCore = process.env.INUP_CORE
+const CACHED = /cache[/\\]native[/\\]9\.9\.9[/\\]inup\.darwin-arm64\.node$/
+const DEV_BUILD = /native[/\\]out[/\\]inup\.darwin-arm64\.node$/
+
+/** Opt in and load addons through `load`, with a stubbed download. */
+const useAddon = (
+  load: (id: string) => unknown,
+  download = vi.fn(async (_options: unknown) => '/cache/native/9.9.9/inup.darwin-arm64.node')
+) => {
+  configureNativeCore({ enabled: true })
+  setRustCoreEnvironment({ host: MAC, load, cacheRoot: '/cache', version: '9.9.9', download })
+  return download
+}
 
 afterEach(() => {
+  configureNativeCore({ enabled: false })
   setRustCoreEnvironment(null)
-  if (originalCore === undefined) delete process.env.INUP_CORE
-  else process.env.INUP_CORE = originalCore
   vi.restoreAllMocks()
 })
 
@@ -98,81 +110,144 @@ describe('detectHost', () => {
 })
 
 describe('core selection', () => {
-  it('prefers the installed platform package', () => {
-    const load = vi.fn((_id: string) => fakeAddon())
-    setRustCoreEnvironment({ host: MAC, load })
-    expect(activeCore()).toBe('native')
-    expect(packumentDecoder()).not.toBeNull()
-    expect(load.mock.calls.map(([id]) => id)).toEqual(['inup-darwin-arm64'])
+  it('is off by default and never loads or downloads anything', () => {
+    const load = vi.fn()
+    const download = vi.fn()
+    setRustCoreEnvironment({ host: MAC, load, download })
+    expect(activeCore()).toBe('js')
+    expect(nativeTransport()).toBeNull()
+    expect(load).not.toHaveBeenCalled()
+    expect(download).not.toHaveBeenCalled()
+    expect(nativeCoreDownload()).toBeNull()
   })
 
-  it('falls back to a local dev build when the package is not installed', () => {
+  it('prefers a local dev build when opted in', () => {
+    const load = vi.fn((_id: string) => fakeAddon())
+    const download = useAddon(load)
+    expect(activeCore()).toBe('native')
+    expect(load.mock.calls.map(([id]) => id)).toEqual([expect.stringMatching(DEV_BUILD)])
+    expect(download).not.toHaveBeenCalled()
+  })
+
+  it('uses the addon cached by an earlier run', () => {
     const load = vi.fn((id: string) => {
-      if (id === 'inup-darwin-arm64') throw new Error("Cannot find module 'inup-darwin-arm64'")
+      if (DEV_BUILD.test(id)) throw new Error('Cannot find module')
       return fakeAddon()
     })
-    setRustCoreEnvironment({ host: MAC, load })
+    const download = useAddon(load)
     expect(activeCore()).toBe('native')
-    expect(load.mock.calls[1][0]).toMatch(/native[/\\]out[/\\]inup\.darwin-arm64\.node$/)
+    expect(load.mock.calls[1][0]).toMatch(CACHED)
+    expect(download).not.toHaveBeenCalled()
+  })
+
+  it('downloads in the background when nothing is available, staying on TypeScript this run', async () => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    const download = useAddon(() => {
+      throw new Error('Cannot find module')
+    })
+
+    expect(activeCore()).toBe('js')
+    expect(packumentDecoder()).toBeNull()
+    await nativeCoreDownload()
+
+    expect(download).toHaveBeenCalledTimes(1)
+    expect(download).toHaveBeenCalledWith({
+      cacheRoot: '/cache',
+      version: '9.9.9',
+      abi: 'darwin-arm64',
+    })
+    expect(info).toHaveBeenCalledWith(
+      'rust-core',
+      'native core downloaded to /cache/native/9.9.9/inup.darwin-arm64.node; used from the next run'
+    )
+  })
+
+  it('downloads at most once per process', () => {
+    const download = useAddon(() => null)
+    activeCore()
+    configureNativeCore({ enabled: true })
+    activeCore()
+    expect(download).toHaveBeenCalledTimes(1)
+  })
+
+  it('stays on TypeScript with a warning when the download fails', async () => {
+    const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+    useAddon(
+      () => null,
+      vi.fn(async () => {
+        throw new Error('offline')
+      })
+    )
+    expect(activeCore()).toBe('js')
+    await expect(nativeCoreDownload()).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledWith(
+      'rust-core',
+      'native core download failed, staying on TypeScript',
+      expect.any(Error)
+    )
   })
 
   it.each([
     [
-      'nothing loads',
+      'it cannot be loaded',
       () => {
         throw new Error('dlopen: wrong architecture')
       },
     ],
     ['it throws something other than an Error', () => throwString()],
-    ['the addon is from another ABI', () => fakeAddon({ abiVersion: () => 2 })],
-    ['the addon predates abiVersion', () => ({ decodePackument: async () => parsed })],
-    ['the export is missing', () => fakeAddon({ decodePackument: undefined })],
+    ['it is from another ABI', () => fakeAddon({ abiVersion: () => 2 })],
+    ['it predates abiVersion', () => ({ decodePackument: async () => parsed })],
+    ['its decodePackument export is missing', () => fakeAddon({ decodePackument: undefined })],
     ['the module is empty', () => null],
-  ])('uses TypeScript when %s', (_label, load) => {
-    const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
-    setRustCoreEnvironment({ host: MAC, load })
+  ])('skips an addon when %s', (_label, load) => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    useAddon(load)
     expect(activeCore()).toBe('js')
-    expect(packumentDecoder()).toBeNull()
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(warn.mock.calls[0][2]).toHaveLength(2)
+    const skipped = info.mock.calls.find(([, message]) =>
+      String(message).startsWith('native core not available')
+    )
+    expect(skipped?.[2]).toHaveLength(2)
   })
 
-  it('does not try to load anything on hosts without a prebuilt addon', () => {
+  it('never loads anything on hosts without a prebuilt addon', () => {
+    const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
     const load = vi.fn()
+    configureNativeCore({ enabled: true })
     setRustCoreEnvironment({ host: { platform: 'freebsd', arch: 'x64', isMusl: false }, load })
     expect(activeCore()).toBe('js')
     expect(load).not.toHaveBeenCalled()
-  })
-
-  it('INUP_CORE=js forces TypeScript without loading the addon', () => {
-    process.env.INUP_CORE = 'js'
-    const load = vi.fn()
-    setRustCoreEnvironment({ host: MAC, load })
-    expect(activeCore()).toBe('js')
-    expect(load).not.toHaveBeenCalled()
+    expect(nativeCoreDownload()).toBeNull()
+    expect(warn).toHaveBeenCalled()
   })
 
   it('resolves once per process and logs the choice', () => {
     const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
     const load = vi.fn((_id: string) => fakeAddon())
-    setRustCoreEnvironment({ host: MAC, load })
+    useAddon(load)
     const first = packumentDecoder()
     expect(packumentDecoder()).toBe(first)
     expect(activeCore()).toBe('native')
     expect(load).toHaveBeenCalledTimes(1)
-    expect(info).toHaveBeenCalledWith('rust-core', 'registry decoder: native, transport: undici')
+    expect(info).toHaveBeenCalledWith(
+      'rust-core',
+      'native core enabled; registry decoder: native, transport: js'
+    )
   })
 
-  it('uses real host detection and require by default without throwing', () => {
+  it('uses real host detection, require and cache paths by default', async () => {
+    vi.spyOn(debugLog, 'info').mockImplementation(() => {})
     vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+    configureNativeCore({ enabled: true })
+    setRustCoreEnvironment({ download: vi.fn(async () => '/unused') })
     // A dev checkout may have native/out built, CI does not: both must resolve cleanly.
     expect(['native', 'js']).toContain(activeCore())
+    await nativeCoreDownload()
   })
 })
 
 describe('native decoder', () => {
   const decoderWith = (decodePackument: (...args: unknown[]) => Promise<unknown>) => {
-    setRustCoreEnvironment({ host: MAC, load: () => fakeAddon({ decodePackument }) })
+    useAddon(() => fakeAddon({ decodePackument }))
     const decoder = packumentDecoder()
     if (!decoder) throw new Error('expected the native decoder')
     return decoder
@@ -235,7 +310,7 @@ describe('native transport', () => {
     })
 
   const transportWith = (addon: ReturnType<typeof transportAddon>) => {
-    setRustCoreEnvironment({ host: MAC, load: () => addon })
+    useAddon(() => addon)
     const transport = nativeTransport()
     if (!transport) throw new Error('expected the native transport')
     return transport
@@ -243,18 +318,21 @@ describe('native transport', () => {
 
   it('is available only when the addon exports the whole transport', () => {
     const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
-    setRustCoreEnvironment({ host: MAC, load: () => transportAddon() })
+    useAddon(() => transportAddon())
     expect(nativeTransport()).not.toBeNull()
-    expect(info).toHaveBeenCalledWith('rust-core', 'registry decoder: native, transport: native')
+    expect(info).toHaveBeenCalledWith(
+      'rust-core',
+      'native core enabled; registry decoder: native, transport: native'
+    )
 
     for (const missing of ['fetchPackument', 'cancelFetch', 'takeReceivedBytes']) {
-      setRustCoreEnvironment({ host: MAC, load: () => transportAddon({ [missing]: undefined }) })
+      useAddon(() => transportAddon({ [missing]: undefined }))
       expect(nativeTransport()).toBeNull()
       expect(activeCore()).toBe('native')
     }
 
-    process.env.INUP_CORE = 'js'
-    setRustCoreEnvironment({ host: MAC, load: () => transportAddon() })
+    useAddon(() => transportAddon())
+    configureNativeCore({ enabled: false })
     expect(nativeTransport()).toBeNull()
   })
 

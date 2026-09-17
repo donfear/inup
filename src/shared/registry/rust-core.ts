@@ -1,21 +1,29 @@
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import envPaths from 'env-paths'
+import { PACKAGE_NAME, PACKAGE_VERSION } from '../config'
 import { debugLog } from '../debug-logger'
 import type { ParsedVersions } from '../versions'
+import { downloadNativeCore, nativeCoreFile } from './native-download'
 
 /**
- * Rust implementation of the registry hot path, shipped as prebuilt Node-API
- * addons in the optional `inup-<abi>` packages. See native/README.md.
+ * Optional Rust implementation of the registry hot path, prebuilt per platform
+ * as the `inup-<abi>` npm packages. See native/README.md.
  *
- * Two capabilities, each optional:
- * - transport: a whole registry attempt (cache lookup, HTTP, decode, cache
- *   write) off the JS thread — `nativeTransport()`
+ * Off unless the user opts in (`--native` or `"native": true` in .inuprc), and
+ * nothing native is downloaded until then. When on, resolution happens once
+ * per process:
+ * 1. a local `pnpm native:build` output (source checkouts)
+ * 2. the addon cached by an earlier opt-in run
+ * 3. neither: this run uses TypeScript while the addon for this platform is
+ *    downloaded (verified against the registry's sha512) for the next run
+ *
+ * Two capabilities, each optional in an addon:
+ * - transport: a whole registry attempt off the JS thread — `nativeTransport()`
  * - decoder: decode a body the TypeScript transport fetched — `packumentDecoder()`
  *
- * Resolution, once per process: the installed platform package, then a local
- * `pnpm native:build` output (source checkouts), then the TypeScript path.
- * Nothing here throws: a missing, foreign or incompatible addon only leaves a
- * debug-log warning. INUP_CORE=js forces TypeScript (development only).
+ * Nothing here throws: a missing, foreign or incompatible addon, or a failed
+ * download, only leaves a debug-log warning.
  */
 
 /** Must equal inup_core::ABI_VERSION in native/core/src/lib.rs. */
@@ -149,11 +157,19 @@ const nodeRequire = createRequire(__filename)
 interface Environment {
   host: () => HostInfo
   load: (id: string) => unknown
+  cacheRoot: () => string
+  version: string
+  download: typeof downloadNativeCore
 }
 
-const defaultEnvironment = (): Environment => ({ host: () => detectHost(), load: nodeRequire })
+const defaultEnvironment = (): Environment => ({
+  host: () => detectHost(),
+  load: nodeRequire,
+  cacheRoot: () => envPaths(PACKAGE_NAME).cache,
+  version: PACKAGE_VERSION,
+  download: downloadNativeCore,
+})
 
-let environment = defaultEnvironment()
 interface Resolved {
   core: CoreName
   decoder: PackumentDecoder | null
@@ -162,19 +178,43 @@ interface Resolved {
 
 const JS_ONLY: Resolved = { core: 'js', decoder: null, transport: null }
 
+let environment = defaultEnvironment()
+let enabled = false
 let resolved: Resolved | null = null
+let download: Promise<void> | null = null
 
-/** Test hook: override host detection and module loading (null restores both). */
+/** Opt in to (or out of) the native core for this process. */
+export function configureNativeCore(options: { enabled: boolean }): void {
+  enabled = options.enabled
+  resolved = null
+}
+
+/** Test hook: override host, loading, cache location, version and download. */
 export function setRustCoreEnvironment(
-  env: { host?: HostInfo; load?: (id: string) => unknown } | null
+  env:
+    | (Partial<Omit<Environment, 'host' | 'cacheRoot'>> & {
+        host?: HostInfo
+        cacheRoot?: string
+      })
+    | null
 ): void {
   const defaults = defaultEnvironment()
   const host = env?.host
+  const cacheRoot = env?.cacheRoot
   environment = {
     host: host ? () => host : defaults.host,
     load: env?.load ?? defaults.load,
+    cacheRoot: cacheRoot ? () => cacheRoot : defaults.cacheRoot,
+    version: env?.version ?? defaults.version,
+    download: env?.download ?? defaults.download,
   }
   resolved = null
+  download = null
+}
+
+/** The download started by this process, if any (settles, never rejects). */
+export function nativeCoreDownload(): Promise<void> | null {
+  return download
 }
 
 /** The Rust decoder, or null when this process uses the TypeScript path. */
@@ -182,7 +222,7 @@ export function packumentDecoder(): PackumentDecoder | null {
   return resolve().decoder
 }
 
-/** The native registry transport, or null when requests go through undici. */
+/** The native registry transport, or null when requests go through the JS transport. */
 export function nativeTransport(): NativeTransport | null {
   return resolve().transport
 }
@@ -194,19 +234,26 @@ export function activeCore(): CoreName {
 
 function resolve(): Resolved {
   if (!resolved) {
-    resolved = process.env.INUP_CORE === 'js' ? JS_ONLY : loadNative()
-    const transport = resolved.transport ? 'native' : 'undici'
-    debugLog.info('rust-core', `registry decoder: ${resolved.core}, transport: ${transport}`)
+    resolved = enabled ? loadNative() : JS_ONLY
+    const transport = resolved.transport ? 'native' : 'js'
+    debugLog.info(
+      'rust-core',
+      `native core ${enabled ? 'enabled' : 'off'}; registry decoder: ${resolved.core}, transport: ${transport}`
+    )
   }
   return resolved
 }
 
 function loadNative(): Resolved {
   const abi = nativeAbi(environment.host())
-  if (!abi) return JS_ONLY
+  if (!abi) {
+    debugLog.warn('rust-core', `no prebuilt native core for ${process.platform}/${process.arch}`)
+    return JS_ONLY
+  }
 
+  const cached = nativeCoreFile(environment.cacheRoot(), environment.version, abi)
   const failures: string[] = []
-  for (const id of [`inup-${abi}`, join(DEV_BUILD_DIR, `inup.${abi}.node`)]) {
+  for (const id of [join(DEV_BUILD_DIR, `inup.${abi}.node`), cached]) {
     try {
       const mod = environment.load(id) as Partial<NativeModule> | null
       if (typeof mod?.abiVersion !== 'function' || mod.abiVersion() !== CORE_ABI_VERSION) {
@@ -225,8 +272,23 @@ function loadNative(): Resolved {
       failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
-  debugLog.warn('rust-core', `no usable native core for ${abi}, using TypeScript`, failures)
+  debugLog.info('rust-core', `native core not available yet for ${abi}`, failures)
+  startDownload(abi)
   return JS_ONLY
+}
+
+/** Fetch the addon in the background; this run stays on TypeScript. */
+function startDownload(abi: string): void {
+  if (download) return
+  const { cacheRoot, version } = environment
+  download = environment
+    .download({ cacheRoot: cacheRoot(), version, abi })
+    .then((file) => {
+      debugLog.info('rust-core', `native core downloaded to ${file}; used from the next run`)
+    })
+    .catch((error: unknown) => {
+      debugLog.warn('rust-core', `native core download failed, staying on TypeScript`, error)
+    })
 }
 
 let nextRequestId = 1

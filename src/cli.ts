@@ -53,6 +53,7 @@ export interface CliOptions {
   apply?: boolean
   target?: string
   concurrency?: string
+  native?: boolean
 }
 
 /**
@@ -196,6 +197,13 @@ export async function runCli(options: CliOptions): Promise<void> {
     packageManager = options.packageManager as PackageManager
   }
 
+  // Experimental native core: flag (--native / --no-native) > .inuprc > off.
+  // Loaded only when on, so default runs never touch it.
+  if (options.native ?? projectConfig.native ?? false) {
+    const { configureNativeCore } = await import('./shared/registry/rust-core')
+    configureNativeCore({ enabled: true })
+  }
+
   const runnerOptions: UpgradeOptions = {
     cwd,
     excludePatterns,
@@ -290,6 +298,11 @@ program
     '--concurrency <n>',
     'pin registry-fetch parallelism (1-24) and disable adaptive ramping — for slow or metered connections'
   )
+  .option(
+    '--native',
+    'experimental: use the native (Rust) registry core; downloads it for this platform on first use'
+  )
+  .option('--no-native', 'use the TypeScript registry core even if .inuprc enables native')
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .option(

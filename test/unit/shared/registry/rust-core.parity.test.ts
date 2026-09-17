@@ -6,6 +6,7 @@ import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   activeCore,
+  configureNativeCore,
   detectHost,
   nativeAbi,
   packumentDecoder,
@@ -74,11 +75,14 @@ const tmp = mkdtempSync(join(tmpdir(), 'inup-rust-parity-'))
 afterAll(() => rmSync(tmp, { recursive: true, force: true }))
 
 describe.skipIf(!built && !required)('native core parity', () => {
-  afterAll(() => setRustCoreEnvironment(null))
+  afterAll(() => {
+    configureNativeCore({ enabled: false })
+    setRustCoreEnvironment(null)
+  })
 
   const decoder = () => {
-    // Skip any installed inup-<abi> package so the fresh local build is tested.
-    setRustCoreEnvironment({ load: (id) => (id.startsWith('inup-') ? null : testRequire(id)) })
+    configureNativeCore({ enabled: true })
+    setRustCoreEnvironment({ load: testRequire, download: async () => 'unused' })
     expect(activeCore()).toBe('native')
     const decode = packumentDecoder()
     if (!decode) throw new Error('native core failed to load')

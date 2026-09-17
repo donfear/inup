@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
+  configureNativeCore,
   detectHost,
   type NativeTransport,
   nativeAbi,
@@ -47,7 +48,8 @@ describe.skipIf(!built && !required)('native transport parity', () => {
   let transport: NativeTransport
 
   beforeAll(async () => {
-    setRustCoreEnvironment({ load: (id) => (id.startsWith('inup-') ? null : testRequire(id)) })
+    configureNativeCore({ enabled: true })
+    setRustCoreEnvironment({ load: testRequire, download: async () => 'unused' })
     const loaded = nativeTransport()
     if (!loaded) throw new Error('native transport failed to load')
     transport = loaded
@@ -64,6 +66,7 @@ describe.skipIf(!built && !required)('native transport parity', () => {
   })
 
   afterAll(async () => {
+    configureNativeCore({ enabled: false })
     setRustCoreEnvironment(null)
     server.closeAllConnections()
     await new Promise((resolve) => server.close(resolve))
