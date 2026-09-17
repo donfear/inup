@@ -59,6 +59,11 @@ export function buildConfigTemplate(): string {
   // Pin registry-fetch parallelism (integer 1-24) and disable adaptive
   // ramping — an escape hatch for slow or metered connections.
   // "concurrency": 4
+
+  // Experimental: fetch and parse registry data with inup's native (Rust)
+  // core. The first run downloads the prebuilt core for this platform once
+  // (about 1.5 MB, verified against the registry's checksum).
+  // "native": true
 }
 `
 }

@@ -3,18 +3,28 @@ name: Publish to npm
 on:
   push:
     tags:
-      # Match full version tags (v1.2.3) only — NOT the floating major tag (v1), which the
-      # tag-major workflow force-moves on each release. Without this, moving v1 would re-trigger
-      # a duplicate npm publish of the same version.
+      # Match full version tags (v1.2.3, v1.8.0-rc.0) only — NOT the floating major tag (v1),
+      # which the tag-major workflow force-moves on each release. Without this, moving v1 would
+      # re-trigger a duplicate npm publish of the same version.
       - 'v*.*.*'
 
 jobs:
+  # The native core for every platform, built and smoke-tested before anything is published.
+  native:
+    name: Native build
+    uses: ./.github/workflows/native-build.yml
+    permissions:
+      contents: read
+
   publish:
     name: Publish to npm
+    needs: native
     runs-on: ubuntu-latest
     permissions:
       contents: read      # checkout
-      id-token: write     # npm provenance (OIDC)
+      id-token: write     # npm trusted publishing + provenance (OIDC)
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -32,8 +42,43 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Tag matches package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Prereleases (1.8.0-rc.0) go to `next` so `latest` users never get them.
+          if [[ "$version" == *-* ]]; then echo "tag=next" >> "$GITHUB_OUTPUT"; else echo "tag=latest" >> "$GITHUB_OUTPUT"; fi
+
       - name: Build
         run: pnpm build
 
-      - name: Publish to npm
-        run: pnpm publish --provenance --no-git-checks
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; the platform packages publish with npm.
+      - name: Update npm
+        run: npm install -g npm@^11.5.1 && npm --version
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bindings-*
+          path: native/artifacts
+
+      # Platform packages first, so inup is never live without its native cores. Already
+      # published versions are skipped, so a failed run can simply be re-run.
+      - name: Publish native platform packages
+        run: node scripts/publish-native.mjs --artifacts native/artifacts
+
+      - name: Publish inup
+        run: pnpm publish --provenance --no-git-checks --tag ${{ steps.version.outputs.tag }}
+
+  verify:
+    name: Verify published packages
+    needs: publish
+    uses: ./.github/workflows/verify-published.yml
+    permissions:
+      contents: read
+    with:
+      version: ${{ needs.publish.outputs.version }}

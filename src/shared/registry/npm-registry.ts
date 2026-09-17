@@ -7,9 +7,10 @@ const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 
 import { POOL_CONNECTIONS } from '../config'
+import { debugLog } from '../debug-logger'
 import { AdaptiveController } from '../http/adaptive-controller'
 import type { ConcurrencyController, ControlTick } from '../http/controller-contract'
-import { readEtag, writeEtag } from '../http/etag-store'
+import { etagFileFor, readEtag, writeEtag } from '../http/etag-store'
 import { HillClimbController } from '../http/hill-climb-controller'
 import { httpRequest } from '../http/http-request'
 import { InflightMap } from '../http/inflight'
@@ -25,6 +26,14 @@ import { clamp } from '../math'
 import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
 import { type RegistryTarget, registryTargetFor } from './registry-config'
+import {
+  type NativeTransport,
+  nativeTransport,
+  type PackumentDecodeRequest,
+  packumentDecoder,
+  type RawParsed,
+  toParsedVersions,
+} from './rust-core'
 
 // Aliased so the registry payload can never drift from what parseVersions emits.
 export type PackageVersionData = ParsedVersions
@@ -126,7 +135,124 @@ async function readBody(body: AsyncIterable<Uint8Array>, onChunk?: OnChunk): Pro
   return Buffer.concat(chunks)
 }
 
+/** Decompress a response body according to its content-encoding. */
+async function decompressBody(raw: Buffer, encoding: string | undefined): Promise<Buffer> {
+  if (encoding === 'gzip') return gunzipAsync(raw)
+  if (encoding === 'br') return brotliDecompressAsync(raw)
+  if (encoding === 'deflate') return inflateAsync(raw)
+  return raw
+}
+
+/**
+ * Turn a 200 body into version data and persist its ETag entry for the next
+ * run's conditional request. Uses the Rust core when one is enabled
+ * (INUP_CORE, dev only); if it fails, the TypeScript path handles the body.
+ */
+async function decodePackument(
+  raw: Buffer,
+  encoding: string | undefined,
+  cacheKey: string,
+  etag: string | undefined
+): Promise<PackageVersionData> {
+  const rustDecode = packumentDecoder()
+  if (rustDecode) {
+    let cache: PackumentDecodeRequest['cache'] = null
+    if (etag) {
+      const file = etagFileFor(cacheKey)
+      if (file) cache = { file, etag }
+    }
+    try {
+      return await rustDecode({ raw, encoding: encoding ?? '', cache })
+    } catch (error) {
+      debugLog.warn('npm-registry', 'Rust decoder failed, falling back to TypeScript', error)
+    }
+  }
+  const data = parseVersions((await decompressBody(raw, encoding)).toString('utf8'))
+  if (etag) {
+    writeEtag(cacheKey, etag, data)
+  }
+  return data
+}
+
+// Origins where the native transport failed in a way Node's own stack might not
+// (TLS trust, an internal error): the rest of this run uses the JS transport.
+const jsOnlyOrigins = new Set<string>()
+
+/** The native transport for an origin, or null to use the JS transport. */
+function nativeTransportFor(origin: string): NativeTransport | null {
+  // INUP_PACE_BPS (dev link emulation) paces the JS transport's chunk stream.
+  if (process.env.INUP_PACE_BPS || jsOnlyOrigins.has(origin)) return null
+  return nativeTransport()
+}
+
+/**
+ * One registry attempt through the native transport. Resolves to null when the
+ * attempt should be redone with the JS transport (the origin is then pinned to it).
+ */
+async function attemptNative(
+  transport: NativeTransport,
+  target: RegistryTarget,
+  path: string,
+  signal?: AbortSignal
+): Promise<RegistryAttemptOutcome | null> {
+  const result = await transport.fetch(
+    {
+      url: `${target.origin}${path}`,
+      authorization: target.authHeader,
+      cacheFile: etagFileFor(`${target.origin}${path}`),
+    },
+    signal
+  )
+  const latencyMs = Math.round(result.latencyMs)
+  switch (result.kind) {
+    case 'success':
+      // A success always carries data; the guard only satisfies the types.
+      /* v8 ignore next */
+      if (!result.dataJson) return { kind: 'transient' }
+      return {
+        kind: 'success',
+        data: toParsedVersions(JSON.parse(result.dataJson) as RawParsed),
+        latencyMs,
+        revalidated: result.revalidated,
+        bytes: result.bytes,
+      }
+    case 'not-found':
+      return { kind: 'not-found' }
+    case 'retryable':
+      return { kind: 'retryable' }
+    case 'congested':
+      return { kind: 'congested', retryAfterMs: parseRetryAfterMs(result.retryAfter ?? undefined) }
+    case 'transient':
+      return { kind: 'transient' }
+    case 'cancelled':
+      signal?.throwIfAborted()
+      return { kind: 'transient' }
+    default:
+      jsOnlyOrigins.add(target.origin)
+      debugLog.warn(
+        'npm-registry',
+        `native transport unavailable for ${target.origin} (${result.errorClass}), using the JS transport`,
+        result.error
+      )
+      return null
+  }
+}
+
 async function attemptRegistryFetch(
+  target: RegistryTarget,
+  path: string,
+  onChunk?: OnChunk,
+  signal?: AbortSignal
+): Promise<RegistryAttemptOutcome> {
+  const transport = nativeTransportFor(target.origin)
+  if (transport) {
+    const outcome = await attemptNative(transport, target, path, signal)
+    if (outcome) return outcome
+  }
+  return attemptWithNodeHttp(target, path, onChunk, signal)
+}
+
+async function attemptWithNodeHttp(
   target: RegistryTarget,
   path: string,
   onChunk?: OnChunk,
@@ -189,24 +315,9 @@ async function attemptRegistryFetch(
     const encoding = (Array.isArray(encodingHeader) ? encodingHeader[0] : encodingHeader)
       ?.toString()
       .toLowerCase()
-    let decoded: Buffer
-    if (encoding === 'gzip') {
-      decoded = await gunzipAsync(raw)
-    } else if (encoding === 'br') {
-      decoded = await brotliDecompressAsync(raw)
-    } else if (encoding === 'deflate') {
-      decoded = await inflateAsync(raw)
-    } else {
-      decoded = raw
-    }
-    const data = parseVersions(decoded.toString('utf8'))
-
-    // Persist the ETag for next run's conditional request.
     const etagHeader = headers.etag
-    const etag = Array.isArray(etagHeader) ? etagHeader[0] : etagHeader
-    if (etag) {
-      writeEtag(cacheKey, etag.toString(), data)
-    }
+    const etag = (Array.isArray(etagHeader) ? etagHeader[0] : etagHeader)?.toString()
+    const data = await decodePackument(raw, encoding, cacheKey, etag)
 
     return {
       kind: 'success',
@@ -421,6 +532,9 @@ export async function fetchPackageVersions(
         if (total - completedCount < 2 * controller.getLimit()) {
           controller.freeze?.()
         }
+        // Bytes streamed by the native transport since the last completion.
+        const nativeBytes = nativeTransport()?.takeReceivedBytes() ?? 0
+        if (nativeBytes > 0) onChunk?.(nativeBytes)
         const next = controller.maybeTick()
         if (next !== null) semaphore.setLimit(next)
       }
@@ -456,4 +570,5 @@ export async function fetchPackageVersions(
  */
 export function clearPackageCache(): void {
   inFlightLookups.clear()
+  jsOnlyOrigins.clear()
 }

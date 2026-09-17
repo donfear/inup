@@ -60,6 +60,7 @@ describe('perfEnv', () => {
       'INUP_FASTLINK',
       'INUP_PACE_BPS',
       'INUP_NET_PROFILE',
+      'INUP_CORE',
       'INUP_PERF',
       'INUP_DEBUG',
       'CI',

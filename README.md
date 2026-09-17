@@ -116,6 +116,19 @@ If you need the PR to trigger CI, pass a personal access token through the actio
 
 </details>
 
+## Native core (experimental)
+
+inup can fetch and parse registry data with a native core written in Rust: on large projects it uses about half the CPU and a quarter less memory, and the list stays responsive while packages load. It's off by default, and inup installs no native code until you turn it on.
+
+```bash
+npx inup --native     # this run
+npx inup --no-native  # this run, even if .inuprc turns it on
+```
+
+To keep it on for a project, add `"native": true` to [`.inuprc`](https://donfear.github.io/inup/docs/configuration/#native).
+
+The first run with native on downloads the core for your platform (about 1.5 MB), verifies it against your registry's checksum and caches it; from the next run on, inup uses it. Supported on macOS, Linux and Windows (x64 and arm64). If it can't be used, inup quietly falls back to the standard core.
+
 ## Using it in scripts?
 
 ```bash
@@ -136,7 +149,7 @@ No telemetry or tracking. inup contacts your package registry for metadata, npm 
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1431_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1529_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

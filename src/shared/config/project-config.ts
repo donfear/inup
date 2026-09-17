@@ -50,6 +50,13 @@ export interface InupProjectConfig {
    * flag overrides this.
    */
   concurrency?: number
+
+  /**
+   * Use the native (Rust) registry core for this project. Experimental and off
+   * by default; the first run downloads the prebuilt addon for this platform
+   * once. The --native / --no-native flags override this.
+   */
+  native?: boolean
 }
 
 const CONFIG_FILES = [
@@ -202,6 +209,10 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
 
   if (typeof config.showOptionalDependencyVulnerabilities === 'boolean') {
     normalized.showOptionalDependencyVulnerabilities = config.showOptionalDependencyVulnerabilities
+  }
+
+  if (typeof config.native === 'boolean') {
+    normalized.native = config.native
   }
 
   if (config.concurrency !== undefined) {

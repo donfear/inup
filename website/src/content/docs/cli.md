@@ -22,6 +22,8 @@ inup [options]
 | `--init` | Create a commented `.inuprc` template documenting every option (asks before overwriting) |
 | `--package-manager <name>` | Force the package manager: `npm`, `yarn`, `pnpm` or `bun` |
 | `--concurrency <n>` | Pin registry-fetch parallelism (1–24) and disable adaptive ramping — for slow or metered connections |
+| `--native` | Experimental: use the [native core](../configuration/#native) for this run (downloads it on first use) |
+| `--no-native` | Use the standard core for this run, even if `.inuprc` enables native |
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation) |

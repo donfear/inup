@@ -166,6 +166,18 @@ describe('project-config', () => {
     })
   })
 
+  describe('native field', () => {
+    it.each([true, false])('loads native: %s', (native) => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ native }))
+      expect(loadProjectConfig(testDir).native).toBe(native)
+    })
+
+    it.each(['yes', 1, null])('ignores a non-boolean native value (%s)', (native) => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ native }))
+      expect(loadProjectConfig(testDir).native).toBeUndefined()
+    })
+  })
+
   describe('concurrency field', () => {
     it('accepts an integer concurrency within the pool range', () => {
       writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ concurrency: 8 }))

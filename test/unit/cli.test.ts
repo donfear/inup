@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getGitWorkingTreeState: vi.fn(),
   promptForImmediateConfirmation: vi.fn(),
   upgradeRunnerOptions: [] as unknown[],
+  configureNativeCore: vi.fn(),
 }))
 
 vi.mock('../../src/index', () => ({
@@ -38,6 +39,10 @@ vi.mock('../../src/shared/config', async (importOriginal) => {
 
 vi.mock('../../src/shared/registry/version-checker', () => ({
   checkForUpdateAsync: mocks.checkForUpdateAsync,
+}))
+
+vi.mock('../../src/shared/registry/rust-core', () => ({
+  configureNativeCore: mocks.configureNativeCore,
 }))
 
 vi.mock('../../src/shared/git', () => ({
@@ -281,6 +286,26 @@ describe('CLI concurrency flag', () => {
     mocks.loadProjectConfig.mockReturnValue({ concurrency: 4 })
     await runCli({ ...baseOptions, concurrency: '2' })
     expect(runnerOptions().concurrency).toBe(2)
+  })
+
+  describe('native core opt-in', () => {
+    beforeEach(() => mocks.configureNativeCore.mockClear())
+
+    it.each([
+      ['off by default', {}, undefined, false],
+      ['on with --native', { native: true }, undefined, true],
+      ['on with "native": true in .inuprc', {}, { native: true }, true],
+      ['off with --no-native despite .inuprc', { native: false }, { native: true }, false],
+      ['off when .inuprc says false', {}, { native: false }, false],
+    ] as const)('is %s', async (_label, flags, config, expected) => {
+      if (config) mocks.loadProjectConfig.mockReturnValue(config)
+      await runCli({ ...baseOptions, ...flags })
+      if (expected) {
+        expect(mocks.configureNativeCore).toHaveBeenCalledWith({ enabled: true })
+      } else {
+        expect(mocks.configureNativeCore).not.toHaveBeenCalled()
+      }
+    })
   })
 
   it.each(['0', 'abc', '99', '7.5'])('rejects invalid --concurrency %s', async (raw) => {

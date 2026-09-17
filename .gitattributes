@@ -1,0 +1,5 @@
+# Scripts run on Windows runners too, where checkouts default to CRLF: bash
+# rejects CRLF scripts and a CRLF shebang line breaks module parsing. Keep LF.
+*.sh  text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf

@@ -152,6 +152,33 @@ them immediately. The symptom is the useful half.
    The website's changelog page renders GitHub Releases, not this file, so
    that paste is what makes the published notes human-written too.
 
+## Native core packages
+
+Every release also publishes inup's native core for 8 platforms. `publish.yml` does all of it; there is nothing to do by hand once the packages exist.
+
+1. **Build.** `native-build.yml` builds the addon for each platform and smoke-tests it on that platform: real arm64 runners, x64 under Rosetta, and Alpine containers for musl. It also checks that Linux builds need at most glibc 2.28.
+2. **Platform packages.** `scripts/publish-native.mjs` publishes one package per platform at inup's version.
+   - The packages are `inup-darwin-arm64`, `inup-darwin-x64`, `inup-linux-{x64,arm64}-{gnu,musl}`, `inup-windows-x64` and `inup-windows-arm64`. npm's spam detection rejects `inup-win32-*` names.
+   - It refuses to publish anything if any platform's addon is missing.
+   - It skips versions already on npm, so a failed publish job can be **re-run** safely.
+3. **inup.** Published only after the platform packages. `inup` does not depend on them: `inup --native` downloads the one it needs.
+4. **Verify.** `verify-published.yml` installs the published version with npm, pnpm and bun on Linux, macOS, Windows and Alpine (x64 and arm64). On each it requires the first `--native` run to download the core and the next to use it. You can also run it by hand from the Actions tab for any version.
+
+**Release candidates.** Anything that changes `native/` ships as an RC first:
+
+```bash
+pnpm version 1.8.0-rc.0 --no-git-tag-version
+git commit -am "release: v1.8.0-rc.0"
+git tag v1.8.0-rc.0
+git push origin HEAD v1.8.0-rc.0
+```
+
+A version with a `-` publishes under the `next` dist-tag, so users on `latest` are unaffected. RC tags don't move the floating `v1` tag and are ignored as changelog baselines. Try it with `npx inup@next --native` (twice). When it's good, run the Release workflow as usual: `minor` or `patch` from `1.8.0-rc.N` both give `1.8.0`.
+
+**If a stable release is broken,** point `latest` back while you fix it: `npm dist-tag add inup@<previous> latest`. The native core is opt-in and falls back to TypeScript whenever it can't be used, so native problems cost speed, not correctness.
+
+**Trusted publishing** is configured on npmjs.com for `inup` and all 8 platform packages: repository `donfear/inup`, workflow `publish.yml`, no environment, "Allow npm publish" ticked. A new platform package needs a one-time `0.0.0` placeholder publish before that setting exists.
+
 ## Drafting with an LLM
 
 Hand a model the commit range *and the diffs*, not just the subjects, and

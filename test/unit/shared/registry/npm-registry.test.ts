@@ -20,7 +20,7 @@ vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal
   registryTargetFor: registryTargetMock,
 }))
 
-// Every registry request goes through this mock (see poolRequestSpy below).
+// Every JS-transport request goes through this mock (see requestSpy below).
 const { requestSpy } = vi.hoisted(() => ({
   requestSpy: vi.fn<(opts: unknown) => Promise<unknown>>(),
 }))
@@ -29,12 +29,29 @@ vi.mock('../../../../src/shared/http/http-request', async (importOriginal) => ({
   httpRequest: (origin: string, opts: object) => requestSpy({ origin, ...opts }),
 }))
 
+// The optional Rust core is off unless a test hands out a decoder or transport.
+const { packumentDecoderMock, nativeTransportMock } = vi.hoisted(() => ({
+  packumentDecoderMock: vi.fn((): unknown => null),
+  nativeTransportMock: vi.fn((): unknown => null),
+}))
+vi.mock('../../../../src/shared/registry/rust-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/registry/rust-core')>()),
+  packumentDecoder: packumentDecoderMock,
+  nativeTransport: nativeTransportMock,
+}))
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
+import { debugLog } from '../../../../src/shared/debug-logger'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
+import {
+  readEtag,
+  setEtagCacheEnabled,
+  setEtagCacheRoot,
+} from '../../../../src/shared/http/etag-store'
+import { sleep } from '../../../../src/shared/http/retry'
 import {
   clearPackageCache,
   fetchPackageVersions,
@@ -73,7 +90,7 @@ describe('npm-registry', () => {
   // Responses have the shape httpRequest resolves: status, headers and a
   // streamed body (the test's chunks, or the whole body as one chunk).
   const poolRequestSpy = requestSpy
-  poolRequestSpy.mockImplementation(async (opts: unknown) => {
+  const defaultRequest = async (opts: unknown) => {
     const { path } = opts as { path: string }
     const response = await requestMock({ path })
     if (response.delayMs) {
@@ -90,7 +107,8 @@ describe('npm-registry', () => {
         },
       },
     }
-  })
+  }
+  poolRequestSpy.mockImplementation(defaultRequest)
 
   beforeEach(() => {
     clearPackageCache()
@@ -997,6 +1015,271 @@ describe('npm-registry', () => {
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
         prereleaseVersions: [],
+      })
+    })
+
+    describe('with the native transport', () => {
+      type Outcome = Record<string, unknown>
+      const data = {
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0', '1.0.0'],
+        prereleaseVersions: [],
+      }
+      const outcome = (overrides: Outcome): Outcome => ({
+        kind: 'success',
+        dataJson: JSON.stringify({ ...data, deprecated: null, enginesNode: null }),
+        revalidated: false,
+        bytes: 1234,
+        latencyMs: 12.6,
+        status: 200,
+        ...overrides,
+      })
+      const useTransport = (...results: Outcome[]) => {
+        const fetch = vi.fn(async (_request: unknown, _signal?: AbortSignal) => {
+          const next = results.length > 1 ? results.shift() : results[0]
+          return next as Outcome
+        })
+        const takeReceivedBytes = vi.fn(() => 0)
+        nativeTransportMock.mockReturnValue({ fetch, takeReceivedBytes })
+        return { fetch, takeReceivedBytes }
+      }
+
+      afterEach(() => {
+        nativeTransportMock.mockReset()
+        nativeTransportMock.mockReturnValue(null)
+        delete process.env.INUP_PACE_BPS
+      })
+
+      it('sends the whole attempt to Rust: URL, credentials and the cache file', async () => {
+        registryTargetMock.mockReturnValueOnce({
+          origin: 'https://npm.example.com',
+          pathPrefix: '/artifactory/api/npm',
+          authHeader: 'Bearer secret',
+        })
+        const { fetch } = useTransport(outcome({}))
+        requestMock.mockImplementation(async () => {
+          throw new Error('the JS transport must not be used')
+        })
+
+        const result = await fetchPackageVersions(['@scope/pkg'])
+
+        expect(result.get('@scope/pkg')).toEqual({
+          ...data,
+          deprecated: undefined,
+          enginesNode: undefined,
+        })
+        const [request] = fetch.mock.calls[0] as [Record<string, string>]
+        expect(request.url).toBe('https://npm.example.com/artifactory/api/npm/@scope/pkg')
+        expect(request.authorization).toBe('Bearer secret')
+        expect(request.cacheFile.startsWith(etagTestRoot)).toBe(true)
+        expect(requestMock).not.toHaveBeenCalled()
+      })
+
+      it('skips the cache file when the ETag store is disabled', async () => {
+        setEtagCacheEnabled(false)
+        const { fetch } = useTransport(outcome({}))
+        await fetchPackageVersions(['demo-pkg'])
+        expect((fetch.mock.calls[0][0] as { cacheFile: unknown }).cacheFile).toBeNull()
+      })
+
+      it('retries congested and retryable native outcomes, honoring Retry-After', async () => {
+        vi.mocked(sleep).mockClear()
+        const { fetch } = useTransport(
+          outcome({ kind: 'congested', status: 429, retryAfter: '2' }),
+          outcome({ kind: 'retryable', status: 500 }),
+          outcome({ kind: 'success', revalidated: true, bytes: 0, status: 304 })
+        )
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(fetch).toHaveBeenCalledTimes(3)
+        expect(vi.mocked(sleep).mock.calls[0]).toEqual([2000])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+      })
+
+      it('uses the default backoff when a congested response has no Retry-After', async () => {
+        vi.mocked(sleep).mockClear()
+        useTransport(
+          outcome({ kind: 'congested', status: 503, retryAfter: null }),
+          outcome({ kind: 'success' })
+        )
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(vi.mocked(sleep).mock.calls[0]).toEqual([500])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+      })
+
+      it('reports not-found and exhausted transient outcomes as unavailable', async () => {
+        const notFound = useTransport(outcome({ kind: 'not-found', status: 404 }))
+        const missing = await fetchPackageVersions(['missing-pkg'])
+        expect(notFound.fetch).toHaveBeenCalledTimes(1)
+
+        const transient = useTransport(outcome({ kind: 'transient', errorClass: 'connect' }))
+        const down = await fetchPackageVersions(['down-pkg'])
+        expect(transient.fetch).toHaveBeenCalledTimes(3)
+
+        expect(missing.get('missing-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+        expect(down.get('down-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      })
+
+      it('reports native success latency, rounded', async () => {
+        const seen: number[] = []
+        useTransport(outcome({ latencyMs: 40.4 }))
+        await fetchPackageVersions(['demo-pkg'], {
+          onPackageTiming: (_name, latencyMs) => seen.push(latencyMs),
+        })
+        expect(seen).toEqual([40])
+      })
+
+      it('redoes the attempt with the JS transport and pins the origin after a fallback outcome', async () => {
+        const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+        const { fetch } = useTransport(
+          outcome({ kind: 'fallback', errorClass: 'tls', error: 'UnknownIssuer' })
+        )
+        requestMock.mockImplementation(async () => makeOkBody({ versions: { '1.0.0': {} } }))
+
+        const first = await fetchPackageVersions(['demo-pkg'])
+        const second = await fetchPackageVersions(['other-pkg'])
+
+        expect(first.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+        expect(second.get('other-pkg')?.latestVersion).toBe('1.0.0')
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(requestMock).toHaveBeenCalledTimes(2)
+        expect(warn).toHaveBeenCalledWith(
+          'npm-registry',
+          expect.stringContaining('(tls), using the JS transport'),
+          'UnknownIssuer'
+        )
+        warn.mockRestore()
+      })
+
+      it('turns a cancelled attempt into the abort error of the run', async () => {
+        const controller = new AbortController()
+        const { fetch } = useTransport(outcome({ kind: 'cancelled' }))
+        fetch.mockImplementationOnce(async () => {
+          controller.abort()
+          return outcome({ kind: 'cancelled' })
+        })
+        await expect(
+          fetchPackageVersions(['demo-pkg'], { signal: controller.signal })
+        ).rejects.toThrow()
+        expect(fetch.mock.calls[0][1]).toBe(controller.signal)
+      })
+
+      it('treats a cancel without an aborted signal as a transient failure', async () => {
+        useTransport(outcome({ kind: 'cancelled' }))
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('unknown')
+      })
+
+      it('keeps the JS transport when dev link pacing is on', async () => {
+        process.env.INUP_PACE_BPS = '0'
+        const { fetch } = useTransport(outcome({}))
+        requestMock.mockImplementation(async () => makeOkBody({ versions: { '4.0.0': {} } }))
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(fetch).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')?.latestVersion).toBe('4.0.0')
+      })
+
+      it('feeds natively streamed bytes to the adaptive controller', async () => {
+        // Virtual time, as in the hill-climb wiring tests: the controller
+        // discards zero-length windows, which instant fakes would produce.
+        vi.useFakeTimers()
+        try {
+          const { fetch, takeReceivedBytes } = useTransport(outcome({}))
+          fetch.mockImplementation(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 5))
+            return outcome({})
+          })
+          takeReceivedBytes.mockReturnValue(4096)
+          const ticks: ControlTick[] = []
+
+          const done = fetchPackageVersions(
+            Array.from({ length: 60 }, (_, i) => `pkg-${i + 1}`),
+            { onControlTick: (tick) => ticks.push(tick) }
+          )
+          await vi.runAllTimersAsync()
+          await done
+
+          expect(takeReceivedBytes).toHaveBeenCalled()
+          expect(ticks.length).toBeGreaterThan(0)
+          // Cold windows are measured in streamed bytes/sec: the native bytes arrived.
+          expect(ticks[0].goodputBps).toBeGreaterThan(0)
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+    })
+
+    describe('with the Rust core enabled', () => {
+      const parsed = { latestVersion: '3.0.0', allVersions: ['3.0.0'], prereleaseVersions: [] }
+      const okWithEtag = (etag?: string) =>
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+          headers: { 'content-encoding': 'identity', ...(etag ? { etag } : {}) },
+        }))
+
+      afterEach(() => {
+        packumentDecoderMock.mockReset()
+        packumentDecoderMock.mockReturnValue(null)
+      })
+
+      it('hands the body and the ETag cache target to the Rust decoder', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+        okWithEtag('W/"rust"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')).toEqual(parsed)
+        const [request] = decode.mock.calls[0] as [
+          { raw: Buffer; encoding: string; cache: { file: string; etag: string } | null },
+        ]
+        expect(request.raw.toString('utf8')).toBe('{"versions":{"1.0.0":{}}}')
+        expect(request.encoding).toBe('identity')
+        expect(request.cache?.etag).toBe('W/"rust"')
+        expect(request.cache?.file.startsWith(etagTestRoot)).toBe(true)
+        // Writing the entry is the decoder's job on this path.
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')).toBeNull()
+      })
+
+      it('asks for no cache write without an ETag or with the store disabled; encoding defaults to empty', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        }))
+        await fetchPackageVersions(['no-etag'])
+        expect((decode.mock.calls[0][0] as { encoding: string }).encoding).toBe('')
+        setEtagCacheEnabled(false)
+        okWithEtag('W/"x"')
+        clearPackageCache()
+        await fetchPackageVersions(['store-off'])
+
+        expect(decode.mock.calls.map(([r]) => (r as { cache: unknown }).cache)).toEqual([
+          null,
+          null,
+        ])
+      })
+
+      it('falls back to the TypeScript decoder when the Rust decoder fails', async () => {
+        const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+        packumentDecoderMock.mockReturnValue(async () => {
+          throw new Error('boom')
+        })
+        okWithEtag('W/"fallback"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')?.etag).toBe('W/"fallback"')
+        expect(warn).toHaveBeenCalledWith(
+          'npm-registry',
+          expect.stringContaining('falling back'),
+          expect.any(Error)
+        )
+        warn.mockRestore()
       })
     })
 

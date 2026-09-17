@@ -41,6 +41,8 @@ describe('buildConfigTemplate', () => {
     expect(config.showOptionalDependencyVulnerabilities).toBe(false)
     // concurrency ships commented out — enabling it would pin parallelism.
     expect(config.concurrency).toBeUndefined()
+    // native ships commented out — the core stays opt-in.
+    expect(config.native).toBeUndefined()
     warn.mockRestore()
   })
 
@@ -54,6 +56,7 @@ describe('buildConfigTemplate', () => {
       showPeerDependencyVulnerabilities: true,
       showOptionalDependencyVulnerabilities: true,
       concurrency: true,
+      native: true,
     }
     const template = buildConfigTemplate()
     for (const field of Object.keys(documentedFields)) {

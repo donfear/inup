@@ -1,0 +1,80 @@
+name: Verify published packages
+
+# Install inup@<version> from the registry the way users do, on every platform the
+# native core ships for, and require `--native` to work: the first opt-in run
+# downloads and verifies the core, the next one must use it.
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'inup version to verify (e.g. 1.8.0-rc.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: npm linux-x64-gnu, host: ubuntu-latest, pm: npm }
+          - { name: pnpm linux-x64-gnu, host: ubuntu-latest, pm: pnpm }
+          - { name: bun linux-x64-gnu, host: ubuntu-latest, pm: bun }
+          - { name: npm linux-arm64-gnu, host: ubuntu-24.04-arm, pm: npm }
+          - { name: npm linux-x64-musl, host: ubuntu-latest, pm: npm, alpine: true }
+          - { name: npm linux-arm64-musl, host: ubuntu-24.04-arm, pm: npm, alpine: true }
+          - { name: npm darwin-arm64, host: macos-latest, pm: npm }
+          - { name: npm win32-x64-msvc, host: windows-latest, pm: npm }
+          - { name: npm win32-arm64-msvc, host: windows-11-arm, pm: npm }
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/setup-node@v6
+        if: ${{ !matrix.alpine }}
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.pm == 'bun'
+
+      # npm's metadata lags publishes by a minute or two, and the native core download
+      # reads the platform package's metadata: wait until every package lists this version.
+      - name: Wait for the registry
+        run: |
+          packages="inup inup-darwin-arm64 inup-darwin-x64 inup-linux-x64-gnu inup-linux-arm64-gnu inup-linux-x64-musl inup-linux-arm64-musl inup-windows-x64 inup-windows-arm64"
+          for i in $(seq 60); do
+            missing=""
+            for name in $packages; do
+              npm view "$name@$VERSION" version >/dev/null 2>&1 || missing="$missing $name"
+            done
+            [ -z "$missing" ] && exit 0
+            echo "waiting for:$missing"
+            sleep 10
+          done
+          echo "not visible on the registry after 10 minutes:$missing"
+          exit 1
+
+      - name: Install and verify (host)
+        if: ${{ !matrix.alpine }}
+        run: bash .github/scripts/verify-native.sh "$VERSION" ${{ matrix.pm }}
+
+      - name: Install and verify (Alpine)
+        if: matrix.alpine
+        run: |
+          docker run --rm -e VERSION -v "$PWD/.github/scripts:/scripts:ro" node:24-alpine \
+            sh -c 'apk add --no-cache bash >/dev/null && bash /scripts/verify-native.sh "$VERSION" npm'

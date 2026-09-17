@@ -150,6 +150,20 @@ export function readEtag(key: string): EtagEntry | null {
   }
 }
 
+/**
+ * The file an entry for `key` lives in, or null when the store is disabled or
+ * the directory is unusable. Lets the optional Rust core write the entry off
+ * the main thread; its content must match writeEtag's JSON.stringify({ etag, data }).
+ */
+export function etagFileFor(key: string): string | null {
+  if (!enabled) return null
+  try {
+    return fileFor(key)
+  } catch {
+    return null
+  }
+}
+
 /** Persist an entry. Best-effort; failures are ignored. */
 export function writeEtag(key: string, etag: string, data: PackageVersionData): void {
   if (!enabled || !etag) return
