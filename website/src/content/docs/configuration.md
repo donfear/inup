@@ -62,7 +62,7 @@ Directory patterns to skip while discovering `package.json` files, as regular ex
 
 ### `scanDirs`
 
-Directory names to scan even though they are on the default skip list (`node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, `cjs`). Use this when a real package lives under e.g. `lib/`.
+Directory names to scan even though they are on the default skip list (`node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, `cjs`, `__fixtures__`, `__mocks__`). Use this when a real package lives under e.g. `lib/`.
 
 ### `showPeerDependencyVulnerabilities`
 

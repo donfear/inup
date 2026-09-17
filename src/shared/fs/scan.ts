@@ -41,6 +41,9 @@ const SKIP_DIRS = new Set([
   'es',
   'esm',
   'cjs',
+  // Test data: manifests here name packages that are not on the registry.
+  '__fixtures__',
+  '__mocks__',
 ])
 
 /**

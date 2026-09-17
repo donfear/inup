@@ -451,6 +451,21 @@ describe('filesystem utils', () => {
       expect(skipped).toHaveLength(0)
     })
 
+    it('skips test fixture and mock dirs, whose manifests are not real packages', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      for (const dir of ['__fixtures__', '__mocks__']) {
+        const pkg = join(testDir, 'src', dir, 'monorepo')
+        mkdirSync(pkg, { recursive: true })
+        writeFileSync(join(pkg, 'package.json'), '{}')
+      }
+      const skipped: string[] = []
+      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(result).toEqual([join(testDir, 'package.json')])
+      expect(skipped).toHaveLength(0)
+    })
+
     it('does not warn for node_modules or build-output dirs even when they hold a package.json', () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
       // node_modules always holds package.json files — warning here would be pure noise
