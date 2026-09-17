@@ -87,6 +87,12 @@ To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src
   - It is skipped when the addon isn't built.
   - `INUP_PARITY_REQUIRED=1` turns that skip into a failure.
 
+## CI and release
+
+- **Pull requests** (`ci.yml`) run the Rust checks and build the addon for all 8 platforms via `native-build.yml`. Each build is smoke-tested on its own platform by `native/scripts/smoke.cjs`, which covers decoding, the cache write, a real request through the Rust HTTP stack, and TLS-failure classification. Linux builds are checked to need at most glibc 2.28. The parity suites then run against the real addons on Linux, macOS and Windows, and all 8 platform packages are assembled in a publish dry run.
+- **Releases** (`publish.yml`) repeat the build, publish the platform packages, then `inup`, then run `verify-published.yml`, which installs the release on every platform and requires `--native` to download and then use the core.
+- **Procedure:** release candidates, retries and rollback are in [docs/releasing.md](../docs/releasing.md#native-core-packages).
+
 ## Measured impact
 
 Apple Silicon, Node 24, a 17-workspace public monorepo (319 dependencies), `inup --json`, median of 3 interleaved runs:
