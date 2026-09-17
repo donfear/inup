@@ -52,13 +52,21 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         if: matrix.pm == 'bun'
 
+      # npm's metadata lags publishes by a minute or two, and the native core download
+      # reads the platform package's metadata: wait until every package lists this version.
       - name: Wait for the registry
         run: |
-          for i in $(seq 30); do
-            npm view "inup@$VERSION" version >/dev/null 2>&1 && exit 0
+          packages="inup inup-darwin-arm64 inup-darwin-x64 inup-linux-x64-gnu inup-linux-arm64-gnu inup-linux-x64-musl inup-linux-arm64-musl inup-windows-x64 inup-windows-arm64"
+          for i in $(seq 60); do
+            missing=""
+            for name in $packages; do
+              npm view "$name@$VERSION" version >/dev/null 2>&1 || missing="$missing $name"
+            done
+            [ -z "$missing" ] && exit 0
+            echo "waiting for:$missing"
             sleep 10
           done
-          echo "inup@$VERSION not visible on the registry after 5 minutes"
+          echo "not visible on the registry after 10 minutes:$missing"
           exit 1
 
       - name: Install and verify (host)
