@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-09-17
+
 ### Added
 
 - Experimental native core, written in Rust, for fetching and parsing registry data: about half the CPU and a quarter less memory on large projects, with the list staying responsive while packages load. Turn it on with `--native` or `"native": true` in `.inuprc`; `--no-native` turns it off for one run. inup downloads the core for your platform once, verifies it against the registry checksum, and falls back to the standard core wherever it can't be used.
@@ -421,7 +423,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.7.3...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/donfear/inup/compare/v1.7.3...v1.8.0
 [1.7.3]: https://github.com/donfear/inup/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/donfear/inup/compare/v1.7.1...v1.7.2
 [1.7.1]: https://github.com/donfear/inup/compare/v1.7.0...v1.7.1
