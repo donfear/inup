@@ -1,4 +1,5 @@
 import {
+  type Dirent,
   existsSync,
   promises as fsPromises,
   readdirSync,
@@ -178,10 +179,11 @@ export function findAllPackageJsonFiles(
         reportProgress(dir, true)
       }
 
-      const files = readdirSync(dir)
+      const entries = readdirSync(dir, { withFileTypes: true })
 
-      for (const file of files) {
+      for (const entry of entries) {
         reportProgress(dir)
+        const file = entry.name
         const fullPath = join(dir, file)
         const relativePath = relative(rootDir, fullPath)
 
@@ -189,19 +191,20 @@ export function findAllPackageJsonFiles(
           continue
         }
 
-        let stat: Stats
+        // The dirent type comes free with readdir; only symlinks need a stat to follow them.
+        let target: Dirent | Stats
         try {
-          stat = statSync(fullPath)
+          target = entry.isSymbolicLink() ? statSync(fullPath) : entry
         } catch {
           // Skip files/dirs we can't stat (broken symlinks, permission issues)
           continue
         }
 
-        if (stat.isDirectory()) {
+        if (target.isDirectory()) {
           if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
             traverseDirectory(fullPath, depth + 1)
           }
-        } else if (file === 'package.json' && stat.isFile()) {
+        } else if (file === 'package.json' && target.isFile()) {
           packageJsonFiles.push(fullPath)
         }
       }
@@ -293,16 +296,17 @@ export async function findAllPackageJsonFilesAsync(
       reportProgress(dir, true)
     }
 
-    let files: string[]
+    let entries: Dirent[]
     try {
-      files = await fsPromises.readdir(dir)
+      entries = await fsPromises.readdir(dir, { withFileTypes: true })
     } catch {
       return
     }
 
-    for (const file of files) {
+    for (const entry of entries) {
       reportProgress(dir)
 
+      const file = entry.name
       const fullPath = join(dir, file)
       const relativePath = relative(rootDir, fullPath)
 
@@ -310,18 +314,18 @@ export async function findAllPackageJsonFilesAsync(
         continue
       }
 
-      let stat: Stats
+      let target: Dirent | Stats
       try {
-        stat = await fsPromises.stat(fullPath)
+        target = entry.isSymbolicLink() ? await fsPromises.stat(fullPath) : entry
       } catch {
         continue
       }
 
-      if (stat.isDirectory()) {
+      if (target.isDirectory()) {
         if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
           schedule(fullPath, depth + 1)
         }
-      } else if (file === 'package.json' && stat.isFile()) {
+      } else if (file === 'package.json' && target.isFile()) {
         packageJsonFiles.push(fullPath)
       }
     }
