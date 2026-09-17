@@ -1180,15 +1180,32 @@ describe('npm-registry', () => {
       })
 
       it('feeds natively streamed bytes to the adaptive controller', async () => {
-        const { takeReceivedBytes } = useTransport(outcome({}))
-        takeReceivedBytes.mockReturnValue(4096)
-        const ticks: ControlTick[] = []
-        await fetchPackageVersions(
-          Array.from({ length: 60 }, (_, i) => `pkg-${i + 1}`),
-          { onControlTick: (tick) => ticks.push(tick) }
-        )
-        expect(takeReceivedBytes).toHaveBeenCalled()
-        expect(ticks.length).toBeGreaterThan(0)
+        // Virtual time, as in the hill-climb wiring tests: the controller
+        // discards zero-length windows, which instant fakes would produce.
+        vi.useFakeTimers()
+        try {
+          const { fetch, takeReceivedBytes } = useTransport(outcome({}))
+          fetch.mockImplementation(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 5))
+            return outcome({})
+          })
+          takeReceivedBytes.mockReturnValue(4096)
+          const ticks: ControlTick[] = []
+
+          const done = fetchPackageVersions(
+            Array.from({ length: 60 }, (_, i) => `pkg-${i + 1}`),
+            { onControlTick: (tick) => ticks.push(tick) }
+          )
+          await vi.runAllTimersAsync()
+          await done
+
+          expect(takeReceivedBytes).toHaveBeenCalled()
+          expect(ticks.length).toBeGreaterThan(0)
+          // Cold windows are measured in streamed bytes/sec: the native bytes arrived.
+          expect(ticks[0].goodputBps).toBeGreaterThan(0)
+        } finally {
+          vi.useRealTimers()
+        }
       })
     })
 
