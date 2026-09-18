@@ -1,5 +1,6 @@
 import type {
   CatalogEntrySummary,
+  CooldownHold,
   DependencyType,
   PackageLoadState,
   VulnerabilitySummary,
@@ -29,6 +30,7 @@ export interface PackageSelectionState {
   license?: string // Package license
   deprecated?: string // npm deprecation message for the latest version (loaded on demand)
   enginesNode?: string // declared engines.node range for the latest version (loaded on demand)
+  heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions (for release notes version range)
   releaseNotesVersions?: string[] // Versions between current and target (newest first)

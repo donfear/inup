@@ -195,6 +195,47 @@ describe('buildPackageInfoSections (info tab)', () => {
     expect(text).toContain('Hold: requires Node >=99')
   })
 
+  it('names the version the cooldown withheld', () => {
+    // The row badge can only say [HELD]; the modal is where a user goes to find
+    // out which version is being held and how close it is to becoming eligible.
+    const state = makeSelectionState({
+      heldByCooldown: {
+        version: '6.0.0',
+        publishedAt: '2026-07-26T14:51:07.269Z',
+        ageMinutes: 7981,
+        count: 1,
+      },
+    })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
+
+    expect(text).toContain('Cooldown: 6.0.0 published 5d ago')
+    expect(text).toContain('withheld by minimumReleaseAge')
+    expect(text).not.toContain('more withheld')
+  })
+
+  it('counts the other withheld versions when more than one is held', () => {
+    const state = makeSelectionState({
+      heldByCooldown: {
+        version: '6.0.0',
+        publishedAt: '2026-07-26T14:51:07.269Z',
+        ageMinutes: 30,
+        count: 4,
+      },
+    })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
+
+    expect(text).toContain('published 30m ago')
+    expect(text).toContain('(+3 more withheld)')
+  })
+
+  it('omits the cooldown line entirely when nothing was held', () => {
+    const text = plain(buildPackageInfoSections(makeSelectionState(), MODAL_WIDTH, 'info'))
+
+    expect(text).not.toContain('Cooldown:')
+  })
+
   it('shows homepage, description, and repository links when present', () => {
     const state = makeSelectionState({
       homepage: 'https://example.com/home',

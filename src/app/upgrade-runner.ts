@@ -21,6 +21,26 @@ import { InteractiveUI } from './interactive-ui'
 /**
  * Main orchestrator for the inup upgrade process
  */
+/**
+ * Packages whose newer versions were ALL withheld by the release-age cooldown.
+ *
+ * These are invisible in the picker — it lists outdated packages only, and a package with no
+ * reachable upgrade target is not outdated. Counted separately so the header can say so.
+ * Partially-held packages (an in-range bump is still available) do appear as rows and carry
+ * their own `[HELD]` badge, so they are excluded here to avoid double-reporting.
+ *
+ * Counted by unique name: the scan yields one entry per (package, file, dependency type), so
+ * a workspace repo depending on the same package five times would otherwise report "5 held"
+ * for a single withheld release.
+ */
+function countHiddenCooldownHolds(packages: PackageInfo[]): number {
+  const names = new Set<string>()
+  for (const pkg of packages) {
+    if (pkg.heldByCooldown !== undefined && !pkg.isOutdated) names.add(pkg.name)
+  }
+  return names.size
+}
+
 export class UpgradeRunner {
   private detector: PackageDetector
   private ui: InteractiveUI
@@ -44,6 +64,16 @@ export class UpgradeRunner {
       saveExact: options?.saveExact ?? false,
     })
     this.upgrader = new PackageUpgrader(this.packageManager)
+  }
+
+  /**
+   * Whether a configured cooldown is doing nothing because the registry returned no publish
+   * times. The policy fails open on missing data, so without saying this the picker would look
+   * identical whether the cooldown was satisfied or completely inert.
+   */
+  private isCooldownInert(): boolean {
+    const cooldown = this.detector.getCooldownDiagnostics()
+    return cooldown !== null && !cooldown.publishTimesAvailable
   }
 
   public async run(): Promise<void> {
@@ -106,6 +136,8 @@ export class UpgradeRunner {
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstResult')
             this.ui.insertOutdatedPackage(selection, event.payload.packageInfo, previousSelections)
+            this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
+            this.ui.setCooldownUnsupported(this.isCooldownInert())
             session?.refresh()
           }
 
@@ -114,6 +146,8 @@ export class UpgradeRunner {
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstResult')
             performanceTracker.mark('allLoaded')
+            this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
+            this.ui.setCooldownUnsupported(this.isCooldownInert())
             if (isPerfLoggingEnabled()) {
               writePerfLog(
                 {
@@ -142,6 +176,16 @@ export class UpgradeRunner {
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
       if (!progress.isLoading && outdatedPackages.length === 0 && selectedChoices.length === 0) {
         console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
+        // Saying "up to date" and stopping there would hide the fact that newer
+        // versions exist and were deliberately withheld.
+        const held = countHiddenCooldownHolds(latestPackages)
+        if (held > 0) {
+          console.log(
+            chalk.yellow(
+              `⏳ ${held} package(s) have a newer version held by the release-age cooldown.`
+            )
+          )
+        }
         return
       }
 

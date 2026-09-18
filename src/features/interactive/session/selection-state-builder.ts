@@ -101,6 +101,7 @@ export function createSelectionStates(
       catalogReferencedBy: pkg.catalogReferencedBy,
       deprecated: pkg.deprecated,
       enginesNode: pkg.enginesNode,
+      heldByCooldown: pkg.heldByCooldown,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
       allVersions: pkg.allVersions,
     }

@@ -54,15 +54,26 @@ export function renderInterface(
 ): string[] {
   const output: string[] = []
 
+  // Appended to the header: the list shows only outdated packages, so a fully-held
+  // package has no row to carry a badge. Without this the cooldown would be silent,
+  // which is the one thing a security control must never be.
+  const heldCount = options.cooldownHeldCount ?? 0
+  const heldSuffix = options.cooldownUnsupported
+    ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
+    : heldCount > 0
+      ? getThemeColor('warning')(`  ${heldCount} held by cooldown`)
+      : ''
+
   const headerLine =
     '  ' +
     inupLogo() +
     (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '')
-  const fullHeaderLine = activeFilterLabel
-    ? headerLine +
-      getThemeColor('textSecondary')(' - ') +
-      getThemeColor('primary')(activeFilterLabel)
-    : headerLine
+  const fullHeaderLine =
+    (activeFilterLabel
+      ? headerLine +
+        getThemeColor('textSecondary')(' - ') +
+        getThemeColor('primary')(activeFilterLabel)
+      : headerLine) + heldSuffix
   const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
   output.push(fullHeaderLine + ' '.repeat(headerPadding))
   output.push('')

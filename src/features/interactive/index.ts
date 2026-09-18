@@ -9,6 +9,7 @@ export {
   type InteractiveSessionHandle,
   runInteractiveSession,
   SelectionList,
+  type SessionDisplayOptions,
   selectionKey,
 } from './session'
 export { StateManager } from './state'

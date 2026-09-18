@@ -9,6 +9,7 @@ import {
   PackageInfoModalController,
   runInteractiveSession,
   SelectionList,
+  type SessionDisplayOptions,
   UIRenderer,
 } from '../features/interactive'
 import { CursorUtils, TerminalInput } from '../shared/terminal'
@@ -47,6 +48,30 @@ export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
   private readonly options: Required<VulnerabilityDisplayOptions>
+  /**
+   * Packages the cooldown withheld a version from that never reach the list, because the
+   * list holds only outdated packages. Rendered as a header count so the cooldown is never
+   * silent. Set by the runner, which sees the full pre-filter set.
+   */
+  private cooldownHeldCount = 0
+  /** The configured cooldown could not act — the registry returned no publish times. */
+  private cooldownUnsupported = false
+
+  public setCooldownHeldCount(count: number): void {
+    this.cooldownHeldCount = count
+  }
+
+  public setCooldownUnsupported(unsupported: boolean): void {
+    this.cooldownUnsupported = unsupported
+  }
+
+  private sessionOptions(): SessionDisplayOptions {
+    return {
+      ...this.options,
+      cooldownHeldCount: this.cooldownHeldCount,
+      cooldownUnsupported: this.cooldownUnsupported,
+    }
+  }
   private readonly saveExact: boolean
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
@@ -78,7 +103,7 @@ export class InteractiveUI {
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
-      this.options,
+      this.sessionOptions(),
       (session) => {
         this.refreshView = session?.refresh
       }
@@ -148,7 +173,7 @@ export class InteractiveUI {
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
-      this.options,
+      this.sessionOptions(),
       (session) => {
         this.refreshView = session?.refresh
         attachSession(session)

@@ -11,6 +11,19 @@ import { VersionUtils } from '../version-format'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
   columnWidths?: VersionColumnWidths
+  /**
+   * Packages the release-age cooldown withheld a version from that are NOT in the list.
+   * The list only holds outdated packages, so a package whose every newer version is
+   * inside the cooldown window would otherwise be indistinguishable from up to date.
+   * Surfaced in the header instead of as a row: there is nothing to select.
+   */
+  cooldownHeldCount?: number
+  /**
+   * The configured cooldown could not act — the registry returned no publish times.
+   * Shown in the header because the policy fails open, so an inert cooldown otherwise
+   * looks exactly like a satisfied one.
+   */
+  cooldownUnsupported?: boolean
 }
 
 export interface VersionColumnWidths {

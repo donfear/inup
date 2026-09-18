@@ -81,7 +81,29 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     expect(options).toEqual({
       showPeerDependencyVulnerabilities: true,
       showOptionalDependencyVulnerabilities: false,
+      cooldownHeldCount: 0,
+      cooldownUnsupported: false,
     })
+  })
+
+  it('passes the inert-cooldown flag set by the runner into the session', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    ui.setCooldownUnsupported(true)
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldownUnsupported: true })
+  })
+
+  it('passes the cooldown held count set by the runner into the session', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    ui.setCooldownHeldCount(3)
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldownHeldCount: 3 })
   })
 })
 

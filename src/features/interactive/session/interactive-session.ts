@@ -29,6 +29,16 @@ function getTerminalHeight(): number {
   return 24
 }
 
+/**
+ * Display options for a session: the vulnerability toggles, plus the count of packages the
+ * release-age cooldown withheld a version from that are absent from the list (the list holds
+ * only outdated packages, so those would otherwise leave no trace at all).
+ */
+export type SessionDisplayOptions = Required<VulnerabilityDisplayOptions> & {
+  cooldownHeldCount?: number
+  cooldownUnsupported?: boolean
+}
+
 export interface InteractiveSessionHandle {
   refresh: () => void
   abort: (error: unknown) => void
@@ -40,7 +50,7 @@ export async function runInteractiveSession(
   renderer: UIRenderer,
   packageInfoModalController: PackageInfoModalController,
   vulnerabilityAuditController: VulnerabilityAuditController,
-  options: Required<VulnerabilityDisplayOptions>,
+  options: SessionDisplayOptions,
   onSessionReady?: (session: InteractiveSessionHandle | undefined) => void,
   loadingProgress?: PackageLoadProgress
 ): Promise<PackageSelectionState[]> {
@@ -103,6 +113,8 @@ export async function runInteractiveSession(
     const packageListRenderOptions: PackageListRenderOptions = {
       showPeerDependencyVulnerabilities: options.showPeerDependencyVulnerabilities,
       showOptionalDependencyVulnerabilities: options.showOptionalDependencyVulnerabilities,
+      cooldownHeldCount: options.cooldownHeldCount,
+      cooldownUnsupported: options.cooldownUnsupported,
     }
 
     const key = (text: string) => chalk.bold.white(text)
