@@ -41,10 +41,15 @@ const SKIP_DIRS = new Set([
   'es',
   'esm',
   'cjs',
-  // Test data: manifests here name packages that are not on the registry.
-  '__fixtures__',
-  '__mocks__',
 ])
+
+/**
+ * `__fixtures__`, `__mocks__`, `__tests__`, `__snapshots__`, `__generated__`: the dunder prefix is a
+ * tooling convention for directories that hold test data and generated code, the same way a dot
+ * prefix marks a tool's own directory. Manifests under them name packages that are not on the
+ * registry, so scanning them costs a wasted request and offers an upgrade nobody wants.
+ */
+const TOOLING_DIR_PREFIX = '__'
 
 /**
  * Skip dirs that are ambiguous source-vs-build directories where a real package may legitimately
@@ -53,23 +58,17 @@ const SKIP_DIRS = new Set([
  */
 const WARN_SKIP_DIRS = new Set(['lib', 'es', 'esm', 'cjs'])
 
-/** Effective skip set: the defaults minus any directory the caller opted back into via `scanDirs`. */
-function buildSkipSet(scanDirs?: string[]): Set<string> {
-  if (!scanDirs || scanDirs.length === 0) {
-    return SKIP_DIRS
-  }
-  const skip = new Set(SKIP_DIRS)
-  for (const dir of scanDirs) {
-    skip.delete(dir)
-  }
-  return skip
+/** Names the caller opted back into via `scanDirs`, which outrank every default skip rule. */
+function buildScanSet(scanDirs?: string[]): Set<string> {
+  return new Set(scanDirs ?? [])
 }
 
 type SkipReason = null | 'hidden' | 'skip-dir'
 
-function classifyDirectory(name: string, skipSet: Set<string>): SkipReason {
+function classifyDirectory(name: string, scanSet: Set<string>): SkipReason {
+  if (scanSet.has(name)) return null
   if (name.startsWith('.')) return 'hidden'
-  if (skipSet.has(name)) return 'skip-dir'
+  if (SKIP_DIRS.has(name) || name.startsWith(TOOLING_DIR_PREFIX)) return 'skip-dir'
   return null
 }
 
@@ -110,10 +109,10 @@ function shouldTraverse(
   name: string,
   fullPath: string,
   relativePath: string,
-  skipSet: Set<string>,
+  scanSet: Set<string>,
   onSkippedPackageDir?: (relativePath: string) => void
 ): boolean {
-  const reason = classifyDirectory(name, skipSet)
+  const reason = classifyDirectory(name, scanSet)
   if (reason === null) {
     return true
   }
@@ -140,7 +139,7 @@ export function findAllPackageJsonFiles(
   let directoriesScanned = 0
   let lastProgressAt = 0
   const progressIntervalMs = 250
-  const skipSet = buildSkipSet(options.scanDirs)
+  const scanSet = buildScanSet(options.scanDirs)
 
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
@@ -204,7 +203,7 @@ export function findAllPackageJsonFiles(
         }
 
         if (target.isDirectory()) {
-          if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
+          if (shouldTraverse(file, fullPath, relativePath, scanSet, options.onSkippedPackageDir)) {
             traverseDirectory(fullPath, depth + 1)
           }
         } else if (file === 'package.json' && target.isFile()) {
@@ -233,7 +232,7 @@ export async function findAllPackageJsonFilesAsync(
   let lastProgressAt = 0
   const progressIntervalMs = 250
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 16, 64))
-  const skipSet = buildSkipSet(options.scanDirs)
+  const scanSet = buildScanSet(options.scanDirs)
 
   const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
 
@@ -325,7 +324,7 @@ export async function findAllPackageJsonFilesAsync(
       }
 
       if (target.isDirectory()) {
-        if (shouldTraverse(file, fullPath, relativePath, skipSet, options.onSkippedPackageDir)) {
+        if (shouldTraverse(file, fullPath, relativePath, scanSet, options.onSkippedPackageDir)) {
           schedule(fullPath, depth + 1)
         }
       } else if (file === 'package.json' && target.isFile()) {
