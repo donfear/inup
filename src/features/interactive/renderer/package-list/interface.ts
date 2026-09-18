@@ -61,6 +61,11 @@ export function renderInterface(
   // a bare number beside a short list reads as a contradiction and a number nobody can act
   // on is worse than no number at all.
   //
+  // "fully held" because rows in the list carry `[HELD]` too, and those are a different
+  // thing: they have an upgrade you can take AND something newer that was withheld. These
+  // have nothing left to take at all. Without the word, the count reads as a claim that
+  // held packages are not listed, which every badge on screen contradicts.
+  //
   // It disappears once they ARE listed. Its job is done at that point, and it counts unique
   // package NAMES while the list counts rows — one per (name, specifier, dependency type),
   // so a package declared twice is two rows. Both numbers are right and side by side they
@@ -69,7 +74,7 @@ export function renderInterface(
   const heldSuffix = options.cooldown?.unsupported
     ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
     : heldCount > 0 && !options.cooldownHeldShown
-      ? getThemeColor('warning')(`  ${heldCount} held by cooldown, not listed — press c`)
+      ? getThemeColor('warning')(`  ${heldCount} fully held by cooldown, not listed — press c`)
       : ''
 
   const headerLine =

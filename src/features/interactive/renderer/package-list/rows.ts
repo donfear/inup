@@ -297,7 +297,9 @@ export function renderPackageLine(
     // so `[HELD]` on the row is answerable without opening the modal. `◌` rather than `○`
     // for the same reason it marks loading and unavailable rows: this is not a choice.
     latestDot = getThemeColor('dotEmpty')('◌')
-    latestVersionText = getThemeColor('textSecondary')(
+    // Amber, the same colour as the `[HELD]` badge: this column otherwise means "a version
+    // you can pick", and `◌` against `○` is too thin a distinction to carry that alone.
+    latestVersionText = getThemeColor('warning')(
       fitColumn(
         VersionUtils.applyVersionPrefix(
           state.currentVersionSpecifier,

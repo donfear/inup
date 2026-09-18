@@ -54,7 +54,7 @@ describe('UIRenderer', () => {
       undefined,
       { cooldown: { heldCount: 3, unsupported: false } }
     )
-    expect(stripAnsi(withPm.join('\n'))).toContain('3 held by cooldown')
+    expect(stripAnsi(withPm.join('\n'))).toContain('3 fully held by cooldown')
 
     const withoutPm = renderer.renderInterface(
       [makeSelectionState()],
@@ -73,7 +73,7 @@ describe('UIRenderer', () => {
       undefined,
       { cooldown: { heldCount: 2, unsupported: false } }
     )
-    expect(stripAnsi(withoutPm.join('\n'))).toContain('2 held by cooldown')
+    expect(stripAnsi(withoutPm.join('\n'))).toContain('2 fully held by cooldown')
   })
 
   it('says so in the header when the cooldown could not act at all', () => {
@@ -121,7 +121,7 @@ describe('UIRenderer', () => {
     )
     const text = stripAnsi(lines.join('\n'))
     expect(text).toContain('cooldown inactive')
-    expect(text).not.toContain('3 held by cooldown')
+    expect(text).not.toContain('3 fully held by cooldown')
   })
 
   it('names the key that reveals the held packages, and drops the count once they are shown', () => {
@@ -146,7 +146,7 @@ describe('UIRenderer', () => {
       undefined,
       { cooldown: { heldCount: 5, unsupported: false } }
     )
-    expect(stripAnsi(hidden.join('\n'))).toContain('5 held by cooldown, not listed — press c')
+    expect(stripAnsi(hidden.join('\n'))).toContain('5 fully held by cooldown, not listed — press c')
 
     const shown = renderer.renderInterface(
       [makeSelectionState()],
@@ -211,6 +211,47 @@ describe('UIRenderer', () => {
     // `◌`, not the selectable `○`: pressing -> on this row does nothing, and the marker
     // should not promise otherwise.
     expect(text).toContain('◌ ^4.1.13')
+  })
+
+  it('keeps a real upgrade in the latest column even when that row also has a hold', () => {
+    // A partially-held row has BOTH: something you can take, and something newer that was
+    // withheld. The column shows what you can act on; the hold is on the badge and in the
+    // modal. Showing the withheld version here would offer a version that was refused.
+    const partiallyHeld = makeSelectionState({
+      name: 'baseline-browser-mapping',
+      currentVersionSpecifier: '^2.11.22',
+      latestVersion: '2.11.24',
+      hasMajorUpdate: true,
+      heldByCooldown: {
+        version: '2.11.25',
+        publishedAt: '2026-09-17T23:00:00.000Z',
+        ageMinutes: 780,
+        count: 1,
+      },
+    })
+
+    const text = stripAnsi(
+      renderer
+        .renderInterface(
+          [partiallyHeld],
+          0,
+          0,
+          10,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          140
+        )
+        .join('\n')
+    )
+
+    expect(text).toContain('[HELD]')
+    expect(text).toContain('^2.11.24')
+    expect(text).not.toContain('2.11.25')
   })
 
   it('omits the cooldown header note when nothing is held', () => {
