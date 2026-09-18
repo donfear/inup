@@ -1,5 +1,6 @@
 import path from 'node:path'
 import chalk from 'chalk'
+import { formatAge } from '../../../../shared/duration'
 import { checkNodeEngineCompatibility } from '../../../../shared/engines'
 import { getVisualLength, truncatePlainText, wrapPlainText } from '../../../../shared/terminal'
 import type { PackageSelectionState } from '../../../../shared/types'
@@ -161,6 +162,24 @@ export function buildPackageInfoSections(
   const engineWarning = checkNodeEngineCompatibility(state.enginesNode)
   if (engineWarning) {
     warningRows.push(getThemeColor('warning')(`Hold: ${engineWarning}`))
+  }
+  if (state.heldByCooldown) {
+    // The row badge can only say [HELD]; this is where a user goes to find out
+    // WHICH version is being withheld and how close it is to becoming eligible.
+    const hold = state.heldByCooldown
+    const others = hold.count > 1 ? ` (+${hold.count - 1} more withheld)` : ''
+    // "so when can I have it?" is the next question the hold raises, and the reader should
+    // not have to subtract the age from a window somebody else configured.
+    const clears =
+      hold.eligibleInMinutes > 0
+        ? `, ${formatAge(hold.eligibleInMinutes)} left`
+        : ', clears on the next run'
+    for (const line of wrapPlainText(
+      `Cooldown: ${hold.version} published ${formatAge(hold.ageMinutes)} ago — withheld by minimumReleaseAge${clears}${others}`,
+      warningContentWidth
+    )) {
+      warningRows.push(getThemeColor('warning')(line))
+    }
   }
   if (warningRows.length > 0) {
     sections.push({

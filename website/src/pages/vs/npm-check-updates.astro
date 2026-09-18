@@ -49,6 +49,19 @@ import { base } from '../../lib/url';
       vulnerable range. ncu doesn't do vulnerability checks at all.
     </li>
     <li>
+      <strong>The cooldown survives into machine-readable output.</strong> Both
+      tools can skip versions published fewer than N days ago
+      (<code>inup --minimum-release-age</code>, <code>ncu --cooldown</code>),
+      and both name the held version in the terminal. But
+      <code>ncu --jsonUpgraded</code> emits only the resolved versions, so a CI
+      job or agent reading it cannot tell a hold happened. inup's
+      <code>--json</code> carries a <code>heldByCooldown</code> entry with the
+      withheld version, its publish time and its age — and a
+      <code>cooldown.publishTimesAvailable</code> flag, so a cooldown that
+      could not act (a registry exposing no publish times) is distinguishable
+      from one that found nothing to hold.
+    </li>
+    <li>
       <strong>pnpm catalog fidelity.</strong> Both tools understand
       <code>catalog:</code>, but ncu currently rewrites
       <code>pnpm-workspace.yaml</code> and drops comments and formatting
@@ -63,11 +76,6 @@ import { base } from '../../lib/url';
         <strong>Doctor mode.</strong> <code>ncu --doctor</code> applies
         upgrades one by one, runs your tests, and identifies the exact upgrade
         that breaks them. inup has nothing comparable.
-      </li>
-      <li>
-        <strong>Cooldown.</strong> <code>ncu --cooldown</code> skips versions
-        published fewer than N days ago — a practical defence against
-        supply-chain attacks that inup currently lacks.
       </li>
       <li>
         <strong>Fine-grained policy.</strong> Per-package target functions and

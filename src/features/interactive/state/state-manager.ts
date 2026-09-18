@@ -437,6 +437,16 @@ export class StateManager {
     return this.filterManager.isVulnerableFilterActive()
   }
 
+  toggleCooldownHeldFilter(): void {
+    this.filterManager.toggleCooldownHeldFilter()
+    this.navigationManager.setCurrentRow(0)
+    this.navigationManager.setScrollOffset(0)
+  }
+
+  isCooldownHeldFilterActive(): boolean {
+    return this.filterManager.isCooldownHeldFilterActive()
+  }
+
   getActiveFilterLabel(): string {
     return this.filterManager.getActiveFilterLabel()
   }

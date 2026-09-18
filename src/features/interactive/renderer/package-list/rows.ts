@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import type {
+  CooldownRenderStatus,
   PackageInfo,
   PackageSelectionState,
   VulnerabilityDisplayOptions,
@@ -11,6 +12,17 @@ import { VersionUtils } from '../version-format'
 
 export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
   columnWidths?: VersionColumnWidths
+  /**
+   * Live cooldown status for the header, held by reference rather than copied.
+   *
+   * The session is mounted before scanning starts, so these numbers are still zero when
+   * the first frame renders and only become true partway through the run. A snapshot
+   * taken at mount time would stay zero for the whole session — the same reason
+   * `loadingProgress` is a single mutable object the runner writes through.
+   */
+  cooldown?: CooldownRenderStatus
+  /** The held rows are currently revealed (`c`), so the header must stop saying "not listed". */
+  cooldownHeldShown?: boolean
 }
 
 export interface VersionColumnWidths {

@@ -182,6 +182,13 @@ export const KEY_BINDINGS: KeyBinding[] = [
     group: 'Filtering',
   },
   {
+    tokens: ['c'],
+    action: { type: 'toggle_cooldown_held_filter' },
+    displayKeys: 'c',
+    help: 'Show packages held back by the release-age cooldown',
+    group: 'Filtering',
+  },
+  {
     displayKeys: 'Esc',
     help: 'Clear the active search filter',
     group: 'Filtering',

@@ -54,15 +54,39 @@ export function renderInterface(
 ): string[] {
   const output: string[] = []
 
+  // Appended to the header. These packages are not outdated any more — every version newer
+  // than the installed one is inside the window — so the default list has no row for them
+  // and the cooldown would otherwise be silent, which is the one thing a security control
+  // must never be. The count says "not listed" and names the key that reveals them, because
+  // a bare number beside a short list reads as a contradiction and a number nobody can act
+  // on is worse than no number at all.
+  //
+  // "fully held" because rows in the list carry `[HELD]` too, and those are a different
+  // thing: they have an upgrade you can take AND something newer that was withheld. These
+  // have nothing left to take at all. Without the word, the count reads as a claim that
+  // held packages are not listed, which every badge on screen contradicts.
+  //
+  // It disappears once they ARE listed. Its job is done at that point, and it counts unique
+  // package NAMES while the list counts rows — one per (name, specifier, dependency type),
+  // so a package declared twice is two rows. Both numbers are right and side by side they
+  // look like a bug.
+  const heldCount = options.cooldown?.heldCount ?? 0
+  const heldSuffix = options.cooldown?.unsupported
+    ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
+    : heldCount > 0 && !options.cooldownHeldShown
+      ? getThemeColor('warning')(`  ${heldCount} fully held by cooldown, not listed — press c`)
+      : ''
+
   const headerLine =
     '  ' +
     inupLogo() +
     (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '')
-  const fullHeaderLine = activeFilterLabel
-    ? headerLine +
-      getThemeColor('textSecondary')(' - ') +
-      getThemeColor('primary')(activeFilterLabel)
-    : headerLine
+  const fullHeaderLine =
+    (activeFilterLabel
+      ? headerLine +
+        getThemeColor('textSecondary')(' - ') +
+        getThemeColor('primary')(activeFilterLabel)
+      : headerLine) + heldSuffix
   const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
   output.push(fullHeaderLine + ' '.repeat(headerPadding))
   output.push('')

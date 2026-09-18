@@ -41,6 +41,10 @@ When inup finds applicable upgrades, the workflow commits the changed manifest/l
 
 Catalog-sourced upgrades (pnpm `catalog:` deps) are applied to `pnpm-workspace.yaml` and marked `catalog:<name>` in the PR body so reviewers know which file the diff touches.
 
+With `minimum-release-age` set, the PR body also gets a **Held by release-age cooldown** table listing versions that exist but were deliberately not applied, and how old each one is. A cooldown that skipped silently would read to a reviewer as "nothing newer available" — the opposite of what the control means.
+
+If the registry returns no publish times, the cooldown cannot act at all — it fails open, so every version stays eligible. The PR body carries a prominent warning in that case rather than letting an inert guard look like a satisfied one.
+
 ## Commit as you, not the bot
 
 By default the upgrade commit is authored by `github-actions[bot]`. To attribute it to **you**, store your name/email as repo secrets and pass `committer`/`author`:
@@ -57,6 +61,7 @@ By default the upgrade commit is authored by `github-actions[bot]`. To attribute
 | Input | Default | Description |
 | --- | --- | --- |
 | `target` | `minor` | How far to bump: `minor` (in-range), `patch`, or `latest` (includes majors) |
+| `minimum-release-age` | _(off)_ | Supply-chain cooldown in minutes: only upgrade to versions published at least this long ago (`10080` = 7 days) |
 | `directory` | `.` | Directory to run in |
 | `package-manager` | _(auto)_ | Force `npm`/`yarn`/`pnpm`/`bun`; empty auto-detects from the lockfile |
 | `node-version` | `22` | Node.js version for the run (minimum `22.19`) |

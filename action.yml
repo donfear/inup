@@ -10,6 +10,13 @@ inputs:
     description: 'How far to bump: minor (in-range only, default), patch (same major.minor only), or latest (includes majors).'
     required: false
     default: 'minor'
+  minimum-release-age:
+    description: >-
+      Supply-chain cooldown in minutes: only upgrade to versions published at least this long ago.
+      Freshly published versions are the ones most likely to be a compromised release nobody has
+      caught yet. Empty or 0 disables it. Example: 10080 = 7 days.
+    required: false
+    default: ''
   directory:
     description: 'Directory to run inup in.'
     required: false
@@ -83,8 +90,17 @@ runs:
       env:
         TARGET: ${{ inputs.target }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        MINIMUM_RELEASE_AGE: ${{ inputs.minimum-release-age }}
       run: |
         set -euo pipefail
+        case "$MINIMUM_RELEASE_AGE" in
+          ''|*[!0-9]*)
+            if [ -n "$MINIMUM_RELEASE_AGE" ]; then
+              echo "::error title=inup: invalid minimum-release-age::'$MINIMUM_RELEASE_AGE' is not valid. Use a non-negative whole number of minutes (e.g. 10080), or leave empty to disable."
+              exit 1
+            fi
+            ;;
+        esac
         case "$TARGET" in
           minor|patch|latest) ;;
           *)
@@ -121,12 +137,16 @@ runs:
         TARGET: ${{ inputs.target }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}
         INUP_VERSION: ${{ inputs.inup-version }}
+        MINIMUM_RELEASE_AGE: ${{ inputs.minimum-release-age }}
       run: |
         set -euo pipefail
 
         ARGS=(--apply --target "$TARGET" --json)
         if [ -n "$PACKAGE_MANAGER" ]; then
           ARGS+=(--package-manager "$PACKAGE_MANAGER")
+        fi
+        if [ -n "$MINIMUM_RELEASE_AGE" ]; then
+          ARGS+=(--minimum-release-age "$MINIMUM_RELEASE_AGE")
         fi
 
         # Prefer an `inup` already on PATH (globally linked / workspace-installed build) so a

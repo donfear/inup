@@ -11,6 +11,7 @@ import {
   isVersionOutdated,
   parseCurrentVersion,
   parseVersions,
+  partitionVersionsByReleaseAge,
   toComparableVersion,
   versionIdentity,
 } from '../../../src/shared/versions'
@@ -38,6 +39,49 @@ describe('version utils', () => {
       expect(result.latestVersion).toBe('1.1.0')
       expect(result.deprecated).toBeUndefined()
       expect(result.enginesNode).toBeUndefined()
+      // The abbreviated packument has no `time` field.
+      expect(result.publishTimes).toBeUndefined()
+    })
+
+    it('extracts publish times for tracked versions from a full packument', () => {
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: {
+          created: '2020-01-01T00:00:00.000Z',
+          modified: '2024-01-02T00:00:00.000Z',
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+          '2.0.0-beta.1': '2024-06-01T00:00:00.000Z',
+        },
+      })
+
+      const result = parseVersions(raw)
+      // Only entries for versions in allVersions — no created/modified/prerelease keys.
+      expect(result.publishTimes).toEqual({
+        '1.0.0': '2020-01-01T00:00:00.000Z',
+        '1.1.0': '2024-01-02T00:00:00.000Z',
+      })
+    })
+
+    it('reports no publish times at all when no tracked version got a usable one', () => {
+      // `time` was present but carried nothing we can use. An empty map would read as
+      // "times available, nothing to hold" — the exact confusion the cooldown's
+      // publishTimesAvailable diagnostic exists to prevent.
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: { '1.0.0': 12345 },
+      })
+
+      expect(parseVersions(raw).publishTimes).toBeUndefined()
+    })
+
+    it('reports no publish times when `time` holds only created/modified', () => {
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {} },
+        time: { created: '2020-01-01T00:00:00.000Z', modified: '2024-01-01T00:00:00.000Z' },
+      })
+
+      expect(parseVersions(raw).publishTimes).toBeUndefined()
     })
 
     it('keeps prereleases out of allVersions but collects them separately, descending', () => {
@@ -94,6 +138,60 @@ describe('version utils', () => {
       // Health signals resolve against the prerelease latest too
       expect(result.deprecated).toBe('rc line abandoned')
       expect(result.enginesNode).toBe('>=22')
+    })
+  })
+
+  describe('partitionVersionsByReleaseAge()', () => {
+    const NOW = Date.parse('2026-07-06T12:00:00.000Z')
+    const minutesAgo = (n: number) => new Date(NOW - n * 60_000).toISOString()
+
+    it('withholds versions younger than the cooldown window, with their timestamps', () => {
+      const times = {
+        '1.0.0': minutesAgo(10_000),
+        '1.1.0': minutesAgo(100),
+        '1.2.0': minutesAgo(5),
+      }
+
+      const result = partitionVersionsByReleaseAge(['1.2.0', '1.1.0', '1.0.0'], times, 60, NOW)
+
+      expect(result.eligible).toEqual(['1.1.0', '1.0.0'])
+      // The timestamp travels with the withheld version so reporting never re-looks it up.
+      expect(result.withheld).toEqual([{ version: '1.2.0', publishedAt: minutesAgo(5) }])
+    })
+
+    it('treats a version published exactly at the cutoff as eligible', () => {
+      const times = { '1.0.0': minutesAgo(60) }
+
+      const result = partitionVersionsByReleaseAge(['1.0.0'], times, 60, NOW)
+
+      expect(result.eligible).toEqual(['1.0.0'])
+      expect(result.withheld).toEqual([])
+    })
+
+    it('is a no-op when the registry exposes no publish times', () => {
+      // Fail open: acting on absent evidence would hide every version.
+      const result = partitionVersionsByReleaseAge(['1.0.0', '2.0.0'], undefined, 10_000, NOW)
+
+      expect(result.eligible).toEqual(['1.0.0', '2.0.0'])
+      expect(result.withheld).toEqual([])
+    })
+
+    it('keeps versions with a missing or unparsable timestamp eligible', () => {
+      const times = { '1.0.0': 'not-a-date', '1.2.0': minutesAgo(5) }
+
+      const result = partitionVersionsByReleaseAge(['1.2.0', '1.1.0', '1.0.0'], times, 60, NOW)
+
+      expect(result.eligible).toEqual(['1.1.0', '1.0.0'])
+      expect(result.withheld).toEqual([{ version: '1.2.0', publishedAt: minutesAgo(5) }])
+    })
+
+    it('keeps everything when the window is zero', () => {
+      const times = { '1.0.0': minutesAgo(0) }
+
+      const result = partitionVersionsByReleaseAge(['1.0.0'], times, 0, NOW)
+
+      expect(result.eligible).toEqual(['1.0.0'])
+      expect(result.withheld).toEqual([])
     })
   })
 

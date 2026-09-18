@@ -61,6 +61,7 @@ Review the diff and run your tests after upgrading.
 | `o` | Toggle optionalDependencies |
 | `s` | Run the vulnerability audit |
 | `v` | Show only vulnerable packages |
+| `c` | Show packages held back by the release-age cooldown |
 | `Esc` | Clear the active search filter |
 | `i` | View package details and changelog |
 | `t` | Change the color theme |
@@ -76,6 +77,20 @@ Review the diff and run your tests after upgrading.
 inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
 Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/).
+
+## Let a release age before you take it
+
+A version published an hour ago is the one most likely to be a compromised release nobody has caught yet. Give releases a cooldown and inup stops offering anything younger — in the picker, in reports, and in `--apply`:
+
+```bash
+npx inup --minimum-release-age 10080   # nothing published in the last 7 days
+```
+
+Keep it in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
+
+inup tells you what it held back rather than quietly showing you fewer updates, so a package waiting out its cooldown never looks the same as a package that is up to date.
+
+Registries that don't publish release times are unaffected — the cooldown only acts on evidence it actually has.
 
 ## GitHub Action: one PR, kept up to date
 
@@ -149,7 +164,7 @@ No telemetry or tracking. inup contacts your package registry for metadata, npm 
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1529_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1723_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

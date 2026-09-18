@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import * as semver from 'semver'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
 import { configManager } from '../../shared/config/user-config'
+import { applyReleaseAgeCooldown } from '../../shared/cooldown'
 import { debugLog } from '../../shared/debug-logger'
 import {
   collectAllDependenciesAsync,
@@ -13,6 +14,7 @@ import type { ControlTick } from '../../shared/http/controller-contract'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import type {
+  CooldownHold,
   DependencyEntry,
   NetworkProfile,
   PackageInfo,
@@ -68,6 +70,8 @@ export class PackageDetector {
   private ignorePackages: string[]
   private ignoreMajorPackages: string[]
   private maxDepth: number
+  private minimumReleaseAge: number
+  private minimumReleaseAgeExclude: string[]
 
   private readonly maxConcurrency = 10
   private readonly adaptive: boolean
@@ -92,6 +96,8 @@ export class PackageDetector {
     this.controllerMode = process.env.INUP_CONTROLLER === 'aimd' ? 'aimd' : 'hillclimb'
     this.profilePersistenceEnabled = process.env.INUP_NET_PROFILE !== '0'
     this.networkProfile = this.profilePersistenceEnabled ? configManager.getNetworkProfile() : null
+    this.minimumReleaseAge = options?.minimumReleaseAge ?? 0
+    this.minimumReleaseAgeExclude = options?.minimumReleaseAgeExclude ?? []
     this.packageJsonPath = findPackageJson(this.cwd)
     if (this.packageJsonPath) {
       this.packageJson = readPackageJson(this.packageJsonPath)
@@ -182,6 +188,9 @@ export class PackageDetector {
       currentVersions: prepared.currentVersions,
       maxConcurrency: this.maxConcurrency,
       adaptive: this.adaptive,
+      // Publish times live only in the full packument; fetch it only when the
+      // release-age policy actually needs them.
+      fullMetadata: this.minimumReleaseAge > 0,
       concurrency: this.concurrency,
       controllerMode: this.controllerMode,
       networkProfile: this.networkProfile,
@@ -425,11 +434,12 @@ export class PackageDetector {
     dependencies: DependencyEntry[],
     packageData: PackageVersionData | undefined
   ): PackageInfo[] {
+    this.recordCooldownSupport(packageData)
     if (!packageData || packageData.latestVersion === 'unknown') {
       debugLog.warn('PackageDetector', `no data returned for ${packageName} — marking unavailable`)
       return dependencies.map((dep) => this.createFailedPackageInfo(dep))
     }
-    const { latestVersion, allVersions, prereleaseVersions } = packageData
+    const { latestVersion } = packageData
 
     // Registry metadata and the ignore-major policy are shared by the whole
     // group, so the outcome depends only on the specifier: compute it once per
@@ -453,16 +463,22 @@ export class PackageDetector {
           return this.createFailedPackageInfo(dep)
         }
 
+        // Versions still inside the release-age window are never offered, on
+        // either channel, and the pools below are the gated ones.
+        const { data: gated, held } = this.applyReleaseAgePolicy(dep, packageData, installed)
+        const gatedStable = gated.allVersions
+        const gatedPrereleases = gated.prereleaseVersions
+
         // Stable installs see the stable pool untouched; prerelease installs
         // also see prereleases on their own major.minor.patch tuple (npm range
         // semantics: ^1.0.0-beta.2 satisfies 1.0.0-rc.3).
-        const candidateVersions = buildRangeCandidates(installed, allVersions, prereleaseVersions)
+        const candidateVersions = buildRangeCandidates(installed, gatedStable, gatedPrereleases)
         const closestMinorVersion = findClosestMinorVersion(dep.version, candidateVersions)
         // On the prerelease channel "latest" is the newest publish on any
         // channel — a beta user is told about the rc and about the final.
         const effectiveLatest = currentIsPrerelease
-          ? (highestOverallVersion(allVersions, prereleaseVersions) ?? latestVersion)
-          : latestVersion
+          ? (highestOverallVersion(gatedStable, gatedPrereleases) ?? gated.latestVersion)
+          : gated.latestVersion
 
         const installedClean = installed?.version || dep.version
         const minorClean = closestMinorVersion
@@ -527,8 +543,12 @@ export class PackageDetector {
           hasMajorUpdate,
           majorIgnored,
           allVersions: candidateVersions,
-          deprecated: packageData.deprecated,
-          enginesNode: packageData.enginesNode,
+          // The cooldown drops these when it moves the latest: they describe the
+          // true latest, and misattributing them to an older version is worse
+          // than staying silent.
+          deprecated: gated.deprecated,
+          enginesNode: gated.enginesNode,
+          heldByCooldown: held,
         }
         resolvedBySpecifier.set(dep.version, info)
         return info
@@ -537,6 +557,86 @@ export class PackageDetector {
         return this.createFailedPackageInfo(dep)
       }
     })
+  }
+
+  /**
+   * Enforce the release-age cooldown (`minimumReleaseAge`, minutes): versions published more
+   * recently than the window are treated as if they don't exist yet, so neither the TUI nor
+   * --apply can pick them. Freshly published versions are the most likely to be a compromised
+   * release nobody has caught yet.
+   *
+   * When the true latest is gated away, the health signals tied to it (deprecation, engines)
+   * are dropped rather than misattributed to the older effective latest. If EVERY version is
+   * too young (brand-new package), the installed version becomes the effective latest — the
+   * package simply reports "nothing to upgrade to (yet)".
+   */
+  private applyReleaseAgePolicy(
+    dep: DependencyEntry,
+    packageData: PackageVersionData,
+    installed: semver.SemVer | null
+  ): { data: PackageVersionData; held?: CooldownHold } {
+    if (this.minimumReleaseAge <= 0) return { data: packageData }
+    if (
+      this.minimumReleaseAgeExclude.length > 0 &&
+      isPackageIgnored(dep.name, this.minimumReleaseAgeExclude)
+    ) {
+      return { data: packageData }
+    }
+
+    const { data, held, withheldTotal } = applyReleaseAgeCooldown(packageData, {
+      minimumReleaseAgeMinutes: this.minimumReleaseAge,
+      installed,
+      specifier: dep.version,
+    })
+    if (withheldTotal === 0) return { data }
+
+    // One line per (package, specifier), because `resolvePackageGroup` evaluates the policy
+    // once per distinct specifier and re-stamps the rest: a monorepo declaring the same
+    // dependency in five manifests describes one gate, not five.
+    debugLog.info(
+      'PackageDetector',
+      `release-age gate: ${withheldTotal} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${data.latestVersion})`
+    )
+
+    return { data, held }
+  }
+
+  /** Cooldown support probe: packages whose data arrived, and whether any carried `time`. */
+  private cooldownPackagesResolved = 0
+  private cooldownPublishTimesSeen = false
+
+  /**
+   * Note whether this packument actually carried publish times, so a cooldown that could
+   * not act is never mistaken for a cooldown that found nothing to hold.
+   *
+   * The policy deliberately fails open on missing `time` data, which means a registry that
+   * doesn't expose it produces an empty held list — identical to "every version is old
+   * enough". That is the one reading a supply-chain control must never invite, so the
+   * distinction is tracked here and reported by the callers.
+   */
+  private recordCooldownSupport(packageData: PackageVersionData | undefined): void {
+    if (this.minimumReleaseAge <= 0) return
+    if (!packageData || packageData.latestVersion === 'unknown') return
+    this.cooldownPackagesResolved++
+    if (packageData.publishTimes !== undefined) this.cooldownPublishTimesSeen = true
+  }
+
+  /**
+   * What the release-age cooldown was able to do this run, or null when it was disabled.
+   * `publishTimesAvailable: false` means the registry never returned a `time` field, so the
+   * cooldown was inert regardless of the configured window.
+   */
+  public getCooldownDiagnostics(): {
+    minimumReleaseAge: number
+    publishTimesAvailable: boolean
+  } | null {
+    if (this.minimumReleaseAge <= 0) return null
+    return {
+      minimumReleaseAge: this.minimumReleaseAge,
+      // No packages resolved at all (empty project, total fetch failure) is not evidence
+      // the registry lacks publish times, so it is not reported as unsupported.
+      publishTimesAvailable: this.cooldownPackagesResolved === 0 || this.cooldownPublishTimesSeen,
+    }
   }
 
   private createFailedPackageInfo(dep: DependencyEntry): PackageInfo {

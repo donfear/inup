@@ -4,6 +4,7 @@ import { configManager } from '../../../shared/config/user-config'
 import { ConsoleUtils, CursorUtils, TerminalInput } from '../../../shared/terminal'
 import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../../shared/terminal/cursor'
 import type {
+  CooldownRenderStatus,
   PackageLoadProgress,
   PackageManagerInfo,
   PackageSelectionState,
@@ -29,6 +30,16 @@ function getTerminalHeight(): number {
   return 24
 }
 
+/**
+ * Display options for a session: the vulnerability toggles, plus the count of packages the
+ * release-age cooldown withheld a version from that are absent from the list (the list holds
+ * only outdated packages, so those would otherwise leave no trace at all).
+ */
+export type SessionDisplayOptions = Required<VulnerabilityDisplayOptions> & {
+  /** Held by reference so the header tracks the scan instead of freezing at mount time. */
+  cooldown?: CooldownRenderStatus
+}
+
 export interface InteractiveSessionHandle {
   refresh: () => void
   abort: (error: unknown) => void
@@ -40,7 +51,7 @@ export async function runInteractiveSession(
   renderer: UIRenderer,
   packageInfoModalController: PackageInfoModalController,
   vulnerabilityAuditController: VulnerabilityAuditController,
-  options: Required<VulnerabilityDisplayOptions>,
+  options: SessionDisplayOptions,
   onSessionReady?: (session: InteractiveSessionHandle | undefined) => void,
   loadingProgress?: PackageLoadProgress
 ): Promise<PackageSelectionState[]> {
@@ -103,6 +114,7 @@ export async function runInteractiveSession(
     const packageListRenderOptions: PackageListRenderOptions = {
       showPeerDependencyVulnerabilities: options.showPeerDependencyVulnerabilities,
       showOptionalDependencyVulnerabilities: options.showOptionalDependencyVulnerabilities,
+      cooldown: options.cooldown,
     }
 
     const key = (text: string) => chalk.bold.white(text)
@@ -374,6 +386,7 @@ export async function runInteractiveSession(
           auditProgress,
           {
             ...packageListRenderOptions,
+            cooldownHeldShown: stateManager.isCooldownHeldFilterActive(),
             columnWidths: columnLayout.get(selection.arrivals, terminalWidth),
           },
           uiState.notice

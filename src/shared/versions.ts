@@ -29,10 +29,20 @@ export interface ParsedVersions {
   prereleaseVersions?: string[]
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
+  /**
+   * ISO publish timestamp per version, from the packument's `time` field. Only present when the
+   * FULL packument was fetched (the abbreviated install-v1 format has no `time`), i.e. when a
+   * release-age policy is active. Restricted to the versions in `allVersions` and
+   * `prereleaseVersions`.
+   */
+  publishTimes?: Record<string, string>
 }
 
 export function parseVersions(raw: string): ParsedVersions {
-  const data = JSON.parse(raw) as { versions?: Record<string, unknown> }
+  const data = JSON.parse(raw) as {
+    versions?: Record<string, unknown>
+    time?: Record<string, string>
+  }
   const versions = data.versions || {}
   const versionKeys = Object.keys(versions)
   // Stable versions only — prereleases are kept in their own list so they are
@@ -52,6 +62,25 @@ export function parseVersions(raw: string): ParsedVersions {
         ? prereleaseVersions[0]
         : 'unknown'
 
+  // Publish times exist only in the full packument; keep just the entries for versions we track
+  // (`time` also carries 'created'/'modified' and prerelease keys).
+  //
+  // Stays UNDEFINED when no tracked version got a usable timestamp, even if `time` itself was
+  // present. An empty map is not "publish times we happen to have none of" — it is no publish
+  // times at all, and the release-age cooldown keys both its fail-open shortcut and its
+  // "could this control act?" diagnostic off this field being absent.
+  let publishTimes: Record<string, string> | undefined
+  if (data.time) {
+    const collected: Record<string, string> = {}
+    for (const version of [...allVersions, ...prereleaseVersions]) {
+      const publishedAt = data.time[version]
+      if (typeof publishedAt === 'string') {
+        collected[version] = publishedAt
+      }
+    }
+    if (Object.keys(collected).length > 0) publishTimes = collected
+  }
+
   // Surface health signals for the latest version straight from the abbreviated
   // packument we already fetched — no extra request. Both fields are optional.
   const latestManifest = versions[latestVersion] as
@@ -60,7 +89,7 @@ export function parseVersions(raw: string): ParsedVersions {
   const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 
-  return { latestVersion, allVersions, prereleaseVersions, deprecated, enginesNode }
+  return { latestVersion, allVersions, prereleaseVersions, deprecated, enginesNode, publishTimes }
 }
 
 /**
@@ -137,6 +166,52 @@ export function highestOverallVersion(
   if (stable === null) return pre
   if (pre === null) return stable
   return semver.gt(pre, stable) ? pre : stable
+}
+
+/** A version the cooldown withheld, carrying the timestamp that caused it to be withheld. */
+export interface WithheldVersion {
+  version: string
+  publishedAt: string
+}
+
+export interface ReleaseAgePartition {
+  eligible: string[]
+  withheld: WithheldVersion[]
+}
+
+/**
+ * Split versions into those old enough to offer and those still inside the cooldown window
+ * (`minimumReleaseAge`, minutes).
+ *
+ * This is a supply-chain guard: freshly published versions are the ones most likely to be a
+ * compromised release nobody has caught yet. Versions without a parsable publish timestamp
+ * stay ELIGIBLE — the policy only acts on positive evidence, so a registry that doesn't
+ * expose `time` degrades to a no-op rather than hiding every version.
+ *
+ * Withheld entries carry their timestamp rather than requiring a second lookup, so callers
+ * reporting what was held cannot end up re-checking a value already known to exist.
+ */
+export function partitionVersionsByReleaseAge(
+  versions: string[],
+  publishTimes: Record<string, string> | undefined,
+  minimumReleaseAgeMinutes: number,
+  now: number = Date.now()
+): ReleaseAgePartition {
+  if (!publishTimes) return { eligible: versions, withheld: [] }
+
+  const cutoff = now - minimumReleaseAgeMinutes * 60_000
+  const eligible: string[] = []
+  const withheld: WithheldVersion[] = []
+  for (const version of versions) {
+    const publishedAt = publishTimes[version]
+    const timestamp = publishedAt === undefined ? Number.NaN : Date.parse(publishedAt)
+    if (publishedAt === undefined || Number.isNaN(timestamp) || timestamp <= cutoff) {
+      eligible.push(version)
+    } else {
+      withheld.push({ version, publishedAt })
+    }
+  }
+  return { eligible, withheld }
 }
 
 /**

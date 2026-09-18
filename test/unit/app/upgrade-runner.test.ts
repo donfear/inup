@@ -5,13 +5,16 @@ const mocks = vi.hoisted(() => ({
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
   getPerfConfig: vi.fn(),
+  getCooldownDiagnostics: vi.fn(() => null),
   selectPackagesToUpgradeProgressive: vi.fn(),
   selectPackagesToUpgrade: vi.fn(),
   confirmUpgrade: vi.fn(),
   upgradePackages: vi.fn(),
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
-  insertOutdatedPackage: vi.fn(),
+  insertResolvedPackages: vi.fn(),
+  setCooldownHeldCount: vi.fn(),
+  setCooldownUnsupported: vi.fn(),
   isPerfLoggingEnabled: vi.fn(() => false),
   writePerfLog: vi.fn(),
   performanceTracker: {
@@ -28,6 +31,7 @@ vi.mock('../../../src/features/upgrade/package-detector', () => ({
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
     getPerfConfig = mocks.getPerfConfig
+    getCooldownDiagnostics = mocks.getCooldownDiagnostics
   },
 }))
 
@@ -43,7 +47,9 @@ vi.mock('../../../src/app/interactive-ui', () => ({
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
-    insertOutdatedPackage = mocks.insertOutdatedPackage
+    insertResolvedPackages = mocks.insertResolvedPackages
+    setCooldownHeldCount = mocks.setCooldownHeldCount
+    setCooldownUnsupported = mocks.setCooldownUnsupported
   },
 }))
 
@@ -83,7 +89,7 @@ describe('UpgradeRunner terminal handoff', () => {
       color: null,
     })
     mocks.getOutdatedPackagesOnly.mockImplementation((packages: any[]) => packages)
-    mocks.insertOutdatedPackage.mockImplementation(() => {})
+    mocks.insertResolvedPackages.mockImplementation(() => {})
 
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
@@ -134,6 +140,160 @@ describe('UpgradeRunner terminal handoff', () => {
     })
   })
 
+  it('names cooldown-held packages instead of stopping at "up to date"', async () => {
+    // A package whose every newer version is inside the window is not outdated,
+    // so it never reaches the picker. Saying only "up to date" would hide it.
+    const heldPackage = {
+      name: 'axios',
+      currentVersion: '^1.0.0',
+      rangeVersion: '1.0.0',
+      latestVersion: '1.0.0',
+      type: 'dependencies',
+      packageJsonPath: '/repo/package.json',
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      heldByCooldown: {
+        version: '1.1.0',
+        publishedAt: '2024-06-01T00:00:00.000Z',
+        ageMinutes: 12,
+        count: 1,
+      },
+    }
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({
+        type: 'complete',
+        payload: {
+          packages: [heldPackage],
+          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: false },
+        },
+      })
+    })
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('up to date'))
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('1 package(s) have a newer version held by the release-age cooldown')
+    )
+    // Fully-held packages are absent from the list, so the header carries the count.
+    expect(mocks.setCooldownHeldCount).toHaveBeenCalledWith(1)
+    logSpy.mockRestore()
+  })
+
+  it('counts a workspace-wide hold once in the header, not once per location', async () => {
+    const held = {
+      version: '1.1.0',
+      publishedAt: '2024-06-01T00:00:00.000Z',
+      ageMinutes: 12,
+      count: 1,
+    }
+    const inWorkspace = (packageJsonPath: string) => ({
+      name: 'axios',
+      currentVersion: '^1.0.0',
+      rangeVersion: '1.0.0',
+      latestVersion: '1.0.0',
+      type: 'dependencies',
+      packageJsonPath,
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      heldByCooldown: held,
+    })
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({
+        type: 'complete',
+        payload: {
+          packages: [
+            inWorkspace('/repo/package.json'),
+            inWorkspace('/repo/apps/web/package.json'),
+            inWorkspace('/repo/apps/api/package.json'),
+          ],
+          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: false },
+        },
+      })
+    })
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+
+    expect(mocks.setCooldownHeldCount).toHaveBeenCalledWith(1)
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('1 package(s) have a newer'))
+    logSpy.mockRestore()
+  })
+
+  it('excludes partially-held packages from the header count (they have their own row)', async () => {
+    const partiallyHeld = {
+      name: 'axios',
+      currentVersion: '^1.0.0',
+      rangeVersion: '1.1.0',
+      latestVersion: '1.1.0',
+      type: 'dependencies',
+      packageJsonPath: '/repo/package.json',
+      isOutdated: true,
+      hasRangeUpdate: true,
+      hasMajorUpdate: false,
+      heldByCooldown: {
+        version: '2.0.0',
+        publishedAt: '2024-06-01T00:00:00.000Z',
+        ageMinutes: 12,
+        count: 1,
+      },
+    }
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({
+        type: 'package',
+        payload: {
+          packageName: 'axios',
+          packageInfo: [partiallyHeld],
+          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: true },
+        },
+      })
+    })
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+
+    expect(mocks.setCooldownHeldCount).toHaveBeenCalledWith(0)
+    logSpy.mockRestore()
+  })
+
+  it('tells the picker when the cooldown could not act', async () => {
+    // Fails open on missing publish times, so the picker must distinguish an inert
+    // cooldown from a satisfied one.
+    mocks.getCooldownDiagnostics.mockReturnValue({
+      minimumReleaseAge: 10080,
+      publishTimesAvailable: false,
+    })
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+
+    expect(mocks.setCooldownUnsupported).toHaveBeenCalledWith(true)
+    logSpy.mockRestore()
+  })
+
+  it('reports the cooldown as active when the registry supplies publish times', async () => {
+    mocks.getCooldownDiagnostics.mockReturnValue({
+      minimumReleaseAge: 10080,
+      publishTimesAvailable: true,
+    })
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+
+    expect(mocks.setCooldownUnsupported).toHaveBeenCalledWith(false)
+    logSpy.mockRestore()
+  })
+
   it('propagates the slowNetwork flag into the live progress object', async () => {
     let seenProgress: { slowNetwork?: boolean } | undefined
     const snapshotsAtPackage: (boolean | undefined)[] = []
@@ -143,7 +303,7 @@ describe('UpgradeRunner terminal handoff', () => {
         return []
       }
     )
-    mocks.insertOutdatedPackage.mockImplementation(() => {
+    mocks.insertResolvedPackages.mockImplementation(() => {
       snapshotsAtPackage.push(seenProgress?.slowNetwork)
     })
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
@@ -502,8 +662,8 @@ describe('UpgradeRunner terminal handoff', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
 
-    expect(mocks.insertOutdatedPackage).toHaveBeenCalledTimes(2)
-    expect(mocks.insertOutdatedPackage.mock.calls[1][1]).toEqual([
+    expect(mocks.insertResolvedPackages).toHaveBeenCalledTimes(2)
+    expect(mocks.insertResolvedPackages.mock.calls[1][1]).toEqual([
       { ...streamedPackage, name: 'zod' },
     ])
     // Once per package event, once for completion.

@@ -22,6 +22,7 @@ export class FilterManager {
       showPeerDependencies: initial?.showPeerDependencies ?? true,
       showOptionalDependencies: initial?.showOptionalDependencies ?? true,
       showOnlyVulnerable: initial?.showOnlyVulnerable ?? false,
+      showCooldownHeld: initial?.showCooldownHeld ?? false,
     }
   }
 
@@ -33,6 +34,7 @@ export class FilterManager {
       showPeerDependencies: this.state.showPeerDependencies,
       showOptionalDependencies: this.state.showOptionalDependencies,
       showOnlyVulnerable: this.state.showOnlyVulnerable,
+      showCooldownHeld: this.state.showCooldownHeld,
     }
   }
 
@@ -99,6 +101,19 @@ export class FilterManager {
     this.state.showOnlyVulnerable = !this.state.showOnlyVulnerable
   }
 
+  /**
+   * Reveal the packages the release-age cooldown emptied out. They carry no selectable
+   * upgrade, so they stay out of the list by default — but a header count nobody can act
+   * on is worse than no header count, and this is how you reach them.
+   */
+  toggleCooldownHeldFilter(): void {
+    this.state.showCooldownHeld = !this.state.showCooldownHeld
+  }
+
+  isCooldownHeldFilterActive(): boolean {
+    return this.state.showCooldownHeld
+  }
+
   isVulnerableFilterActive(): boolean {
     return this.state.showOnlyVulnerable
   }
@@ -111,8 +126,10 @@ export class FilterManager {
     if (this.state.showOptionalDependencies) activeTypes.push('Optional')
 
     if (activeTypes.length === 0) return 'None'
-    const label = activeTypes.join(', ')
-    return this.state.showOnlyVulnerable ? `${label} (vulnerable only)` : label
+    let label = activeTypes.join(', ')
+    if (this.state.showOnlyVulnerable) label = `${label} (vulnerable only)`
+    if (this.state.showCooldownHeld) label = `${label} (+ cooldown held)`
+    return label
   }
 
   getFilteredStates(
@@ -142,6 +159,12 @@ export class FilterManager {
           return true
       }
     })
+
+    // Hide rows that exist only to report a hold, unless they were asked for. The list
+    // means "things you can upgrade"; a row with nothing to select dilutes that.
+    if (!this.state.showCooldownHeld) {
+      filtered = filtered.filter((state) => !state.heldOnly)
+    }
 
     // Apply vulnerability filter
     if (this.state.showOnlyVulnerable) {

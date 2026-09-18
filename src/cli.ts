@@ -54,6 +54,7 @@ export interface CliOptions {
   target?: string
   concurrency?: string
   native?: boolean
+  minimumReleaseAge?: string
 }
 
 /**
@@ -119,6 +120,26 @@ export async function runCli(options: CliOptions): Promise<void> {
     console.error(chalk.red(`Invalid target: ${options.target}`))
     console.error(chalk.yellow('Valid options: minor, patch, latest'))
     process.exit(1)
+  }
+
+  // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc"; an
+  // explicit 0 means "disable the configured cooldown for this run", so presence is what
+  // counts, not truthiness. Number() rather than parseInt: parseInt('7.5') is 7, and a
+  // security control must reject input it cannot honor instead of quietly rounding it.
+  let cliMinimumReleaseAge: number | undefined
+  if (options.minimumReleaseAge !== undefined) {
+    cliMinimumReleaseAge = Number(options.minimumReleaseAge)
+    if (
+      options.minimumReleaseAge.trim() === '' ||
+      !Number.isInteger(cliMinimumReleaseAge) ||
+      cliMinimumReleaseAge < 0
+    ) {
+      console.error(chalk.red(`Invalid minimum release age: ${options.minimumReleaseAge}`))
+      console.error(
+        chalk.yellow('Expected a non-negative number of minutes, e.g. --minimum-release-age 10080')
+      )
+      process.exit(1)
+    }
   }
 
   // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
@@ -217,6 +238,9 @@ export async function runCli(options: CliOptions): Promise<void> {
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
+    // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
+    minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,
+    minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
     // Adaptive concurrency defaults ON; INUP_ADAPTIVE=0 disables it (fixed
     // limit, A/B baseline). Related dev toggles read further down the stack:
     // INUP_CONTROLLER=aimd|hillclimb picks the controller arm and
@@ -308,6 +332,10 @@ program
   .option(
     '--apply',
     'non-interactively write upgrades to package.json and run install (honors .inuprc ignore/exclude)'
+  )
+  .option(
+    '--minimum-release-age <minutes>',
+    'only offer versions published at least this many minutes ago (supply-chain cooldown; also via .inuprc)'
   )
   .option(
     '--target <level>',

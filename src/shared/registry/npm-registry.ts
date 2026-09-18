@@ -57,16 +57,19 @@ const DEFAULT_FIXED_CONCURRENCY = 10
 async function getFreshPackageData(
   packageName: string,
   currentVersion: string | undefined,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver,
   onChunk?: OnChunk,
   signal?: AbortSignal
 ): Promise<PackageVersionData> {
   // A cancellable run owns its request; cancelling it must not abort another
   // caller's deduplicated lookup of the same package.
-  if (signal) return fetchPackageFromRegistry(packageName, onAttempt, onChunk, signal)
-  const cacheKey = `${packageName}@${currentVersion ?? ''}`
+  if (signal) return fetchPackageFromRegistry(packageName, fullMetadata, onAttempt, onChunk, signal)
+  // Abbreviated and full responses parse to different shapes, so they must never
+  // share an in-flight entry.
+  const cacheKey = `${packageName}@${currentVersion ?? ''}${fullMetadata ? '#full' : ''}`
   return inFlightLookups.dedupe(cacheKey, () =>
-    fetchPackageFromRegistry(packageName, onAttempt, onChunk)
+    fetchPackageFromRegistry(packageName, fullMetadata, onAttempt, onChunk)
   )
 }
 
@@ -147,14 +150,19 @@ async function decompressBody(raw: Buffer, encoding: string | undefined): Promis
  * Turn a 200 body into version data and persist its ETag entry for the next
  * run's conditional request. Uses the Rust core when one is enabled
  * (INUP_CORE, dev only); if it fails, the TypeScript path handles the body.
+ *
+ * The Rust decoder reads only the fields of the abbreviated document and drops
+ * `time`, so a full-packument body is always decoded in TypeScript — otherwise
+ * the publish times the release-age policy needs would vanish silently.
  */
 async function decodePackument(
   raw: Buffer,
   encoding: string | undefined,
   cacheKey: string,
-  etag: string | undefined
+  etag: string | undefined,
+  fullMetadata: boolean
 ): Promise<PackageVersionData> {
-  const rustDecode = packumentDecoder()
+  const rustDecode = fullMetadata ? null : packumentDecoder()
   if (rustDecode) {
     let cache: PackumentDecodeRequest['cache'] = null
     if (etag) {
@@ -241,20 +249,25 @@ async function attemptNative(
 async function attemptRegistryFetch(
   target: RegistryTarget,
   path: string,
+  fullMetadata: boolean,
   onChunk?: OnChunk,
   signal?: AbortSignal
 ): Promise<RegistryAttemptOutcome> {
-  const transport = nativeTransportFor(target.origin)
+  // The native transport asks for — and its decoder keeps — only the abbreviated
+  // document, which carries no `time`. A run that needs publish times takes the
+  // JS path instead of silently losing the field the policy depends on.
+  const transport = fullMetadata ? null : nativeTransportFor(target.origin)
   if (transport) {
     const outcome = await attemptNative(transport, target, path, signal)
     if (outcome) return outcome
   }
-  return attemptWithNodeHttp(target, path, onChunk, signal)
+  return attemptWithNodeHttp(target, path, fullMetadata, onChunk, signal)
 }
 
 async function attemptWithNodeHttp(
   target: RegistryTarget,
   path: string,
+  fullMetadata: boolean,
   onChunk?: OnChunk,
   signal?: AbortSignal
 ): Promise<RegistryAttemptOutcome> {
@@ -263,11 +276,15 @@ async function attemptWithNodeHttp(
   // registry to validate it. Unchanged → 304 (no body) and we reuse stored data.
   // This still hits the registry every run, so data is never served stale.
   // Keys are origin-qualified so two registries can never collide on a path.
-  const cacheKey = `${target.origin}${path}`
+  // Full-packument responses parse to richer data (publish times), so they get
+  // their own cache entry — a 304 must never revive an abbreviated-format body.
+  const cacheKey = `${target.origin}${path}${fullMetadata ? '#full' : ''}`
   const cached = readEtag(cacheKey)
   try {
     const requestHeaders: Record<string, string> = {
-      accept: 'application/vnd.npm.install-v1+json',
+      // The abbreviated install-v1 format is much smaller but has no `time` field;
+      // release-age policies need publish times, hence the full packument.
+      accept: fullMetadata ? 'application/json' : 'application/vnd.npm.install-v1+json',
       'accept-encoding': 'gzip, deflate, br',
     }
     if (target.authHeader) {
@@ -317,7 +334,7 @@ async function attemptWithNodeHttp(
       .toLowerCase()
     const etagHeader = headers.etag
     const etag = (Array.isArray(etagHeader) ? etagHeader[0] : etagHeader)?.toString()
-    const data = await decodePackument(raw, encoding, cacheKey, etag)
+    const data = await decodePackument(raw, encoding, cacheKey, etag, fullMetadata)
 
     return {
       kind: 'success',
@@ -340,6 +357,7 @@ async function attemptWithNodeHttp(
 async function fetchFromRegistryWithRetries(
   target: RegistryTarget,
   path: string,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver,
   onChunk?: OnChunk,
   signal?: AbortSignal
@@ -347,7 +365,7 @@ async function fetchFromRegistryWithRetries(
   let lastOutcome: RegistryAttemptOutcome = { kind: 'transient' }
   for (let attempt = 0; attempt < MAX_REGISTRY_ATTEMPTS; attempt++) {
     signal?.throwIfAborted()
-    const outcome = await attemptRegistryFetch(target, path, onChunk, signal)
+    const outcome = await attemptRegistryFetch(target, path, fullMetadata, onChunk, signal)
     onAttempt?.(outcome)
     if (outcome.kind === 'success' || outcome.kind === 'not-found') {
       return outcome
@@ -369,6 +387,7 @@ async function fetchFromRegistryWithRetries(
 
 async function fetchPackageFromRegistry(
   packageName: string,
+  fullMetadata: boolean,
   onAttempt?: AttemptObserver,
   onChunk?: OnChunk,
   signal?: AbortSignal
@@ -377,7 +396,14 @@ async function fetchPackageFromRegistry(
   // unscoped ones — resolved from the npm config chain, memoized per scope.
   const target = registryTargetFor(packageName)
   const path = encodeRegistryPath(packageName, target.pathPrefix)
-  const outcome = await fetchFromRegistryWithRetries(target, path, onAttempt, onChunk, signal)
+  const outcome = await fetchFromRegistryWithRetries(
+    target,
+    path,
+    fullMetadata,
+    onAttempt,
+    onChunk,
+    signal
+  )
 
   if (outcome.kind === 'success') {
     return outcome.data
@@ -427,6 +453,11 @@ export async function fetchPackageVersions(
     onControlTick?: (tick: ControlTick) => void
     /** Per-package successful round-trip latency, for perf diagnostics. */
     onPackageTiming?: (name: string, latencyMs: number) => void
+    /**
+     * Fetch the FULL packument instead of the abbreviated install-v1 format. Larger payloads,
+     * but includes per-version publish times — required by release-age policies. Default: false.
+     */
+    fullMetadata?: boolean
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
@@ -517,6 +548,7 @@ export async function fetchPackageVersions(
       const data = await getFreshPackageData(
         packageName,
         options.currentVersions?.get(packageName),
+        options.fullMetadata ?? false,
         observerFor(packageName),
         onChunk,
         options.signal

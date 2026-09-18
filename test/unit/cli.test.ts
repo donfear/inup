@@ -322,6 +322,92 @@ describe('CLI concurrency flag', () => {
   })
 })
 
+describe('CLI release-age cooldown flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    setInteractive(true)
+    delete process.env.CI
+
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+  const runnerOptions = () =>
+    mocks.upgradeRunnerOptions[0] as {
+      minimumReleaseAge?: number
+      minimumReleaseAgeExclude?: string[]
+    }
+
+  it('is off — not merely absent — when neither flag nor config sets it', async () => {
+    await runCli(baseOptions)
+    expect(runnerOptions().minimumReleaseAge).toBe(0)
+  })
+
+  it('passes --minimum-release-age through to the runner options', async () => {
+    await runCli({ ...baseOptions, minimumReleaseAge: '10080' })
+    expect(runnerOptions().minimumReleaseAge).toBe(10080)
+  })
+
+  it('falls back to the .inuprc minimumReleaseAge field', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ minimumReleaseAge: 1440 })
+    await runCli(baseOptions)
+    expect(runnerOptions().minimumReleaseAge).toBe(1440)
+  })
+
+  it('prefers the flag over the .inuprc field', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ minimumReleaseAge: 1440 })
+    await runCli({ ...baseOptions, minimumReleaseAge: '60' })
+    expect(runnerOptions().minimumReleaseAge).toBe(60)
+  })
+
+  it('lets an explicit 0 disable a cooldown configured in .inuprc', async () => {
+    // The escape hatch for "I know what I am doing, just this once". It only works
+    // because the flag is checked for presence, not truthiness.
+    mocks.loadProjectConfig.mockReturnValue({ minimumReleaseAge: 10080 })
+    await runCli({ ...baseOptions, minimumReleaseAge: '0' })
+    expect(runnerOptions().minimumReleaseAge).toBe(0)
+  })
+
+  it('takes the exclusion list from .inuprc only', async () => {
+    mocks.loadProjectConfig.mockReturnValue({
+      minimumReleaseAge: 1440,
+      minimumReleaseAgeExclude: ['@myco/*'],
+    })
+    await runCli(baseOptions)
+    expect(runnerOptions().minimumReleaseAgeExclude).toEqual(['@myco/*'])
+  })
+
+  it.each(['abc', '-1', '7.5', ''])(
+    'refuses to run rather than silently disabling itself on --minimum-release-age %s',
+    async (raw) => {
+      // A typo'd window must never read as "no cooldown configured".
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit')
+      }) as never)
+
+      await expect(runCli({ ...baseOptions, minimumReleaseAge: raw })).rejects.toThrow(
+        'process.exit'
+      )
+      expect(exitSpy).toHaveBeenCalledWith(1)
+
+      errorSpy.mockRestore()
+      exitSpy.mockRestore()
+    }
+  )
+})
+
 describe('CLI --init', () => {
   let testDir: string
 

@@ -25,6 +25,8 @@ The quickest start is `inup --init`: it writes a commented `.inuprc` template wi
   "ignoreMajor": ["@tiptap/*"],
   "exclude": ["fixtures", "examples/.*"],
   "scanDirs": ["lib"],
+  "minimumReleaseAge": 10080,
+  "minimumReleaseAgeExclude": ["@myco/*"],
   "showPeerDependencyVulnerabilities": false,
   "showOptionalDependencyVulnerabilities": false
 }
@@ -83,6 +85,20 @@ Experimental. Set to `true` to fetch and parse registry data with inup's native 
 inup itself ships without native code. The first run with native enabled downloads the core for your platform (about 1.5 MB) from your npm registry, checks it against the checksum the registry publishes, and caches it; that run still uses the standard core, and later runs use the native one. A new inup version downloads its matching core once.
 
 Available for macOS, Linux (glibc and musl) and Windows, on x64 and arm64. Wherever the native core can't be downloaded or loaded, inup quietly uses the standard core — `--debug` logs which one is active.
+
+### `minimumReleaseAge`
+
+Supply-chain cooldown, in **minutes** (matching pnpm's setting of the same name). Versions published more recently than this are not offered as upgrade targets — in the picker, in reports, or under `--apply`. Freshly published versions are the ones most likely to be a compromised release nobody has caught yet. `0` or absent disables it; `10080` is 7 days. The `--minimum-release-age` flag overrides it.
+
+Unlike other tools' cooldowns, inup does not skip silently: a withheld version shows a `[HELD]` badge in the picker, appears in the `heldByCooldown` array of the `--json` report, and gets its own table in the GitHub Action's PR body.
+
+A `[HELD]` badge on a row means that package has an upgrade you can take *and* something newer that was withheld; press `i` to see which version and how old it is. A package whose *every* newer version is inside the window is no longer outdated, so it has no row at all; the picker header counts those separately as "fully held", and `c` brings them into the list. They can't be selected, because there is nothing to upgrade to yet.
+
+Registries that don't expose publish times are unaffected — the policy acts only on positive evidence. Enabling the cooldown fetches the full registry metadata rather than the abbreviated format, since only the full document carries publish times. Measured against the largest packages on the public registry (`aws-sdk`, `@types/node`), that is about 20% more bytes over the wire and roughly 3x the memory while a package is being parsed — around 10 MB rather than 3.5 MB, briefly, per in-flight package. Later runs are cushioned by the ETag cache.
+
+### `minimumReleaseAgeExclude`
+
+Packages exempt from `minimumReleaseAge` — typically your own first-party packages, which you want immediately. Same pattern syntax as `ignore`.
 
 ## Environment variables
 

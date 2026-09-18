@@ -1,9 +1,30 @@
 import type {
   CatalogEntrySummary,
+  CooldownHold,
   DependencyType,
   PackageLoadState,
   VulnerabilitySummary,
 } from './domain'
+
+/**
+ * Live cooldown status the picker header reads every frame.
+ *
+ * Mutable and shared by reference: the session mounts before scanning, so these values are
+ * still zero on the first frame and only become true partway through the run.
+ */
+export interface CooldownRenderStatus {
+  /**
+   * Packages the cooldown withheld a version from that are NOT in the list. The list holds
+   * only outdated packages, so a package whose every newer version is inside the window has
+   * no row to badge and would otherwise be indistinguishable from up to date.
+   */
+  heldCount: number
+  /**
+   * The configured cooldown could not act — the registry returned no publish times. Shown
+   * because the policy fails open, so an inert cooldown otherwise looks like a satisfied one.
+   */
+  unsupported: boolean
+}
 
 export interface PackageSelectionState {
   name: string
@@ -29,6 +50,13 @@ export interface PackageSelectionState {
   license?: string // Package license
   deprecated?: string // npm deprecation message for the latest version (loaded on demand)
   enginesNode?: string // declared engines.node range for the latest version (loaded on demand)
+  heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
+  /**
+   * The row exists only to surface a cooldown hold: every version newer than the installed
+   * one is inside the window, so there is nothing to select. Hidden until `c` reveals them,
+   * because the list otherwise means "things you can upgrade".
+   */
+  heldOnly?: boolean
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions (for release notes version range)
   releaseNotesVersions?: string[] // Versions between current and target (newest first)
@@ -46,6 +74,8 @@ export interface PersistedFilters {
   showPeerDependencies: boolean
   showOptionalDependencies: boolean
   showOnlyVulnerable: boolean
+  /** Show packages whose only newer versions the release-age cooldown withheld. */
+  showCooldownHeld: boolean
 }
 
 export interface GroupedPackages {

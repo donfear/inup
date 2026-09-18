@@ -81,7 +81,50 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     expect(options).toEqual({
       showPeerDependencyVulnerabilities: true,
       showOptionalDependencyVulnerabilities: false,
+      cooldown: { heldCount: 0, unsupported: false },
     })
+  })
+
+  it('passes the inert-cooldown flag set by the runner into the session', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    ui.setCooldownUnsupported(true)
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({
+      cooldown: { unsupported: true },
+    })
+  })
+
+  it('keeps the cooldown status live after the session has already started', async () => {
+    // The regression this shape exists for: the picker mounts BEFORE scanning, so the
+    // runner only learns what was held once packages resolve. A value copied into the
+    // session's options at mount time would stay at zero for the whole run and the
+    // header would never admit the cooldown was holding anything.
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+    const options = sessionMock.mock.calls[0][5] as {
+      cooldown: { heldCount: number; unsupported: boolean }
+    }
+    expect(options.cooldown).toEqual({ heldCount: 0, unsupported: false })
+
+    ui.setCooldownHeldCount(4)
+    ui.setCooldownUnsupported(true)
+
+    expect(options.cooldown).toEqual({ heldCount: 4, unsupported: true })
+  })
+
+  it('passes the cooldown held count set by the runner into the session', async () => {
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    ui.setCooldownHeldCount(3)
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldown: { heldCount: 3 } })
   })
 })
 
@@ -111,7 +154,7 @@ describe('InteractiveUI selection state builders', () => {
   })
 })
 
-describe('InteractiveUI.insertOutdatedPackage', () => {
+describe('InteractiveUI.insertResolvedPackages', () => {
   const resolved = (name: string, overrides?: Partial<ReturnType<typeof makePackageInfo>>) => [
     makePackageInfo({ name, ...overrides }),
   ]
@@ -121,8 +164,8 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList([makeSelectionState({ name: 'm-existing' })])
 
-    ui.insertOutdatedPackage(selection, resolved('a-fresh'))
-    ui.insertOutdatedPackage(selection, resolved('z-fresh'))
+    ui.insertResolvedPackages(selection, resolved('a-fresh'))
+    ui.insertResolvedPackages(selection, resolved('z-fresh'))
 
     expect(selection.items.map((s) => s.name)).toEqual(['a-fresh', 'm-existing', 'z-fresh'])
     expect(audit).toHaveBeenCalledTimes(2)
@@ -138,7 +181,7 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
     ])
 
-    ui.insertOutdatedPackage(selection, resolved('test-pkg'))
+    ui.insertResolvedPackages(selection, resolved('test-pkg'))
 
     expect(selection.length).toBe(1)
     expect(audit).not.toHaveBeenCalled()
@@ -149,10 +192,60 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList()
 
-    ui.insertOutdatedPackage(selection, resolved('current-pkg', { isOutdated: false }))
+    ui.insertResolvedPackages(selection, resolved('current-pkg', { isOutdated: false }))
 
     expect(selection.items).toEqual([])
     expect(audit).not.toHaveBeenCalled()
+  })
+
+  it('keeps a row for a package the cooldown emptied out, marked heldOnly', () => {
+    // Not outdated — every newer version is inside the window — so it would normally
+    // never reach the list. It is also the package the run most needs to be able to
+    // show, so it gets a row that the filters keep hidden until `c`.
+    const ui = new InteractiveUI(npmInfo)
+    const selection = new SelectionList()
+
+    ui.insertResolvedPackages(
+      selection,
+      resolved('held-pkg', {
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        heldByCooldown: {
+          version: '5.1.0',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      })
+    )
+
+    expect(selection.items).toHaveLength(1)
+    expect(selection.items[0]).toMatchObject({ name: 'held-pkg', heldOnly: true })
+    // Nothing to select: the existing gates read these two flags, so the row can never
+    // be cycled onto an upgrade that does not exist.
+    expect(selection.items[0].hasRangeUpdate).toBe(false)
+    expect(selection.items[0].hasMajorUpdate).toBe(false)
+  })
+
+  it('does not mark an outdated package with a hold as heldOnly (it has a real row)', () => {
+    const ui = new InteractiveUI(npmInfo)
+    const selection = new SelectionList()
+
+    ui.insertResolvedPackages(
+      selection,
+      resolved('partly-held', {
+        isOutdated: true,
+        heldByCooldown: {
+          version: '9.9.9',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      })
+    )
+
+    expect(selection.items[0]).toMatchObject({ name: 'partly-held', heldOnly: false })
   })
 })
 

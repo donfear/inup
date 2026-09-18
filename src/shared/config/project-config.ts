@@ -33,6 +33,21 @@ export interface InupProjectConfig {
   scanDirs?: string[]
 
   /**
+   * Release-age cooldown in MINUTES (matching pnpm's setting of the same name): versions
+   * published more recently than this are not offered as upgrade targets. A supply-chain
+   * guard against freshly compromised releases. 0 or absent disables the policy.
+   * Example: 10080 = 7 days.
+   */
+  minimumReleaseAge?: number
+
+  /**
+   * Packages exempt from `minimumReleaseAge`. Supports exact names and the same glob
+   * patterns as `ignore` (e.g. "@myco/*") — typically your own first-party packages,
+   * which you want immediately.
+   */
+  minimumReleaseAgeExclude?: string[]
+
+  /**
    * Show vulnerability badges for peerDependencies in the package list.
    * Defaults to false so peer dependency risk stays hidden unless explicitly enabled.
    */
@@ -200,6 +215,30 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   if (config.scanDirs) {
     if (Array.isArray(config.scanDirs)) {
       normalized.scanDirs = config.scanDirs.filter((item) => typeof item === 'string')
+    }
+  }
+
+  // Never drop this one silently either: a cooldown is a security control, and
+  // ignoring a typo'd value would quietly leave the user unprotected.
+  if (config.minimumReleaseAge !== undefined) {
+    if (
+      typeof config.minimumReleaseAge === 'number' &&
+      Number.isInteger(config.minimumReleaseAge) &&
+      config.minimumReleaseAge >= 0
+    ) {
+      normalized.minimumReleaseAge = config.minimumReleaseAge
+    } else {
+      console.warn(
+        `Warning: ignoring invalid "minimumReleaseAge" in project config (expected a non-negative integer number of minutes, got ${JSON.stringify(config.minimumReleaseAge)})`
+      )
+    }
+  }
+
+  if (config.minimumReleaseAgeExclude) {
+    if (Array.isArray(config.minimumReleaseAgeExclude)) {
+      normalized.minimumReleaseAgeExclude = config.minimumReleaseAgeExclude.filter(
+        (item) => typeof item === 'string'
+      )
     }
   }
 

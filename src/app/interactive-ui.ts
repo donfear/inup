@@ -9,10 +9,12 @@ import {
   PackageInfoModalController,
   runInteractiveSession,
   SelectionList,
+  type SessionDisplayOptions,
   UIRenderer,
 } from '../features/interactive'
 import { CursorUtils, TerminalInput } from '../shared/terminal'
 import type {
+  CooldownRenderStatus,
   PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
@@ -47,6 +49,26 @@ export class InteractiveUI {
   private renderer: UIRenderer
   private packageManager: PackageManagerInfo
   private readonly options: Required<VulnerabilityDisplayOptions>
+  /**
+   * One live object, handed to the session by reference and mutated by the setters below.
+   *
+   * The picker mounts before scanning starts, so a value copied into the session's options
+   * at mount time would stay at its initial zero for the whole run — the runner only learns
+   * what the cooldown held once packages resolve. Same shape as the live progress object.
+   */
+  private readonly cooldown: CooldownRenderStatus = { heldCount: 0, unsupported: false }
+
+  public setCooldownHeldCount(count: number): void {
+    this.cooldown.heldCount = count
+  }
+
+  public setCooldownUnsupported(unsupported: boolean): void {
+    this.cooldown.unsupported = unsupported
+  }
+
+  private sessionOptions(): SessionDisplayOptions {
+    return { ...this.options, cooldown: this.cooldown }
+  }
   private readonly saveExact: boolean
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
@@ -78,7 +100,7 @@ export class InteractiveUI {
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
-      this.options,
+      this.sessionOptions(),
       (session) => {
         this.refreshView = session?.refresh
       }
@@ -115,20 +137,20 @@ export class InteractiveUI {
   }
 
   /**
-   * Adds the outdated declarations of one streamed package to the list at
-   * their sorted position and audits just the rows that were new.
+   * Adds the rows of one streamed package to the list at their sorted position and audits
+   * just the ones that were new.
+   *
+   * "Rows" means outdated declarations plus any the cooldown emptied out — the latter have
+   * nothing to select, but they are the packages a user most needs to be told about, and
+   * they stay filtered out of the default view.
    */
-  public insertOutdatedPackage(
+  public insertResolvedPackages(
     selection: SelectionList,
     packageInfo: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): void {
-    const outdatedStates = this.createSelectionStates(
-      packageInfo.filter((pkg) => pkg.isOutdated),
-      previousSelections,
-      false
-    )
-    const inserted = selection.insert(outdatedStates)
+    const rows = this.createSelectionStates(packageInfo, previousSelections, false)
+    const inserted = selection.insert(rows)
     if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
   }
 
@@ -148,7 +170,7 @@ export class InteractiveUI {
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
-      this.options,
+      this.sessionOptions(),
       (session) => {
         this.refreshView = session?.refresh
         attachSession(session)
