@@ -451,6 +451,38 @@ describe('filesystem utils', () => {
       expect(skipped).toHaveLength(0)
     })
 
+    it('skips dunder-prefixed tooling dirs, whose manifests are not real packages', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      for (const dir of ['__fixtures__', '__mocks__', '__tests__', '__generated__']) {
+        const pkg = join(testDir, 'src', dir, 'monorepo')
+        mkdirSync(pkg, { recursive: true })
+        writeFileSync(join(pkg, 'package.json'), '{}')
+      }
+      const skipped: string[] = []
+      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(result).toEqual([join(testDir, 'package.json')])
+      expect(skipped).toHaveLength(0)
+    })
+
+    it('scans a dunder or hidden dir that scanDirs opts back in', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      const generated = join(testDir, '__generated__', 'sdk')
+      const hidden = join(testDir, '.tooling', 'plugin')
+      for (const dir of [generated, hidden]) {
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'package.json'), '{}')
+      }
+      const options = { scanDirs: ['__generated__', '.tooling'] }
+      const sync = findAllPackageJsonFiles(testDir, [], 10, undefined, options)
+      const async = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, options)
+      for (const result of [sync, async]) {
+        expect(result).toContain(join(generated, 'package.json'))
+        expect(result).toContain(join(hidden, 'package.json'))
+      }
+    })
+
     it('does not warn for node_modules or build-output dirs even when they hold a package.json', () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
       // node_modules always holds package.json files — warning here would be pure noise

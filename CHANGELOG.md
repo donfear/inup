@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Faster project scan on large repositories.
+- Directories whose name starts with `__` (`__fixtures__`, `__mocks__`, `__tests__`, …) are no longer scanned, so test fixture manifests no longer show up as unavailable packages. `scanDirs` in `.inuprc` scans them again, and now also works for directories starting with `.`.
+
 ## [1.8.0] - 2026-09-17
 
 ### Added

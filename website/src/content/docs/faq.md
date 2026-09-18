@@ -21,7 +21,7 @@ A few things cause inup to skip something:
 
 - **Ignored packages** — anything matching `ignore` in [`.inuprc`](../configuration/) or `-i, --ignore` (glob supported, e.g. `@babel/*`).
 - **Excluded directories** — anything matching `exclude` in `.inuprc` or `-e, --exclude` (regex).
-- **Default skip list** — inup does not descend into `node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, or `cjs`. If a real package lives under one of those (e.g. `lib/`), add it to `scanDirs` in `.inuprc`.
+- **Default skip list** — inup does not descend into `node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, or `cjs`, nor into directories whose name starts with `.` or `__` (`.yarn`, `__fixtures__`, `__mocks__`, …). If a real package lives under one of those (e.g. `lib/`), add it to `scanDirs` in `.inuprc`.
 - **Scan depth** — package discovery stops at `--max-depth` (default `10`) directories deep.
 
 ## How does inup know which package manager to use?
