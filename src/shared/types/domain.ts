@@ -14,6 +14,21 @@ export interface VulnerabilitySummary {
   }>
 }
 
+/**
+ * Evidence that the release-age cooldown withheld one or more versions from this package.
+ *
+ * Present only when the cooldown actually changed what was on offer, so its presence alone
+ * means "there is something newer that inup deliberately did not show you". Carried through
+ * to the TUI badge, the --json report, and the GitHub Action PR body — a silent skip is
+ * indistinguishable from being up to date, which is exactly the failure mode to avoid.
+ */
+export interface CooldownHold {
+  version: string // Newest version withheld — what you would have been offered
+  publishedAt: string // ISO publish time of that version
+  ageMinutes: number // How old it was when the scan ran
+  count: number // How many versions in total were withheld
+}
+
 export interface PackageInfo {
   name: string
   currentVersion: string // Raw version specifier from package.json (with ^/~ prefixes)
@@ -38,6 +53,7 @@ export interface PackageInfo {
   enginesNode?: string // declared engines.node range for the latest version, if any
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions from registry
+  heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
 }
 
 export type DependencyType =

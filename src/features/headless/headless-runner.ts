@@ -103,7 +103,19 @@ export class HeadlessRunner {
       const vulnerabilities = await auditVulnerabilities(outdated, advisories)
 
       // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
-      const report = buildHeadlessReport(packages, outdated, vulnerabilities)
+      const cooldown = this.detector.getCooldownDiagnostics()
+      const report = buildHeadlessReport(packages, outdated, vulnerabilities, cooldown)
+
+      // A cooldown that could not act must say so. It fails open on missing publish times, so
+      // staying quiet here would present an inert control as a satisfied one — and this is the
+      // path CI gates on. stderr keeps `--json` stdout a pure document.
+      if (cooldown && !cooldown.publishTimesAvailable) {
+        console.error(
+          chalk.yellow(
+            `Warning: --minimum-release-age ${cooldown.minimumReleaseAge} had no effect — the registry did not return publish times for any package.`
+          )
+        )
+      }
 
       // --apply writes the bumps + lockfile. The scan above already honored .inuprc
       // (ignore/exclude/scanDirs), so the set we write is exactly the set we report — never more.
@@ -115,7 +127,7 @@ export class HeadlessRunner {
         // stdout is reserved for the JSON document only.
         console.log(JSON.stringify(report, null, 2))
       } else if (!options.apply) {
-        console.log(renderPlainReport(outdated, vulnerabilities))
+        console.log(renderPlainReport(outdated, vulnerabilities, packages))
       }
 
       // Exit 1 only means "updates exist" (like `prettier --check`); 2 is reserved for errors.

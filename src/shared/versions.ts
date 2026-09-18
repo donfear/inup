@@ -162,30 +162,50 @@ export function highestOverallVersion(
   return semver.gt(pre, stable) ? pre : stable
 }
 
+/** A version the cooldown withheld, carrying the timestamp that caused it to be withheld. */
+export interface WithheldVersion {
+  version: string
+  publishedAt: string
+}
+
+export interface ReleaseAgePartition {
+  eligible: string[]
+  withheld: WithheldVersion[]
+}
+
 /**
- * Drop versions published more recently than the cooldown window (`minimumReleaseAge`, minutes).
+ * Split versions into those old enough to offer and those still inside the cooldown window
+ * (`minimumReleaseAge`, minutes).
  *
  * This is a supply-chain guard: freshly published versions are the ones most likely to be a
- * compromised release that hasn't been caught yet. Versions without a (parsable) publish
- * timestamp are kept — the policy only acts on positive evidence, so registries that don't
- * expose `time` degrade to a no-op rather than hiding everything.
+ * compromised release nobody has caught yet. Versions without a parsable publish timestamp
+ * stay ELIGIBLE — the policy only acts on positive evidence, so a registry that doesn't
+ * expose `time` degrades to a no-op rather than hiding every version.
+ *
+ * Withheld entries carry their timestamp rather than requiring a second lookup, so callers
+ * reporting what was held cannot end up re-checking a value already known to exist.
  */
-export function filterVersionsByReleaseAge(
-  allVersions: string[],
+export function partitionVersionsByReleaseAge(
+  versions: string[],
   publishTimes: Record<string, string> | undefined,
   minimumReleaseAgeMinutes: number,
   now: number = Date.now()
-): string[] {
-  if (!publishTimes) return allVersions
+): ReleaseAgePartition {
+  if (!publishTimes) return { eligible: versions, withheld: [] }
 
   const cutoff = now - minimumReleaseAgeMinutes * 60_000
-  return allVersions.filter((version) => {
+  const eligible: string[] = []
+  const withheld: WithheldVersion[] = []
+  for (const version of versions) {
     const publishedAt = publishTimes[version]
-    if (!publishedAt) return true
-    const timestamp = Date.parse(publishedAt)
-    if (Number.isNaN(timestamp)) return true
-    return timestamp <= cutoff
-  })
+    const timestamp = publishedAt === undefined ? Number.NaN : Date.parse(publishedAt)
+    if (publishedAt === undefined || Number.isNaN(timestamp) || timestamp <= cutoff) {
+      eligible.push(version)
+    } else {
+      withheld.push({ version, publishedAt })
+    }
+  }
+  return { eligible, withheld }
 }
 
 /**

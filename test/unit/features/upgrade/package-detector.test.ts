@@ -1557,9 +1557,9 @@ describe('PackageDetector concurrency plumbing', () => {
   })
 })
 
-describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
-  const DAY_MS = 24 * 60 * 60_000
-  const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString()
+describe('PackageDetector release-age cooldown', () => {
+  const NOW = Date.parse('2024-06-01T12:00:00.000Z')
+  const minutesAgo = (n: number) => new Date(NOW - n * 60_000).toISOString()
 
   const dep = (name: string, version: string, packageJsonPath = '/repo/package.json') => ({
     name,
@@ -1568,216 +1568,400 @@ describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
     packageJsonPath,
   })
 
-  /** Route each package to its own version data through the streaming callback. */
-  const fetchWith = (dataByName: Record<string, unknown>) => {
+  const mockRegistry = (data: Record<string, unknown>) => {
     mocks.fetchPackageVersions.mockImplementation(
       async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         for (const packageName of packageNames) {
-          options.onPackageReady({ packageName, data: dataByName[packageName] })
+          options.onPackageReady({ packageName, data: data[packageName] })
         }
-        return new Map(packageNames.map((name) => [name, dataByName[name]]))
+        return new Map(packageNames.map((name) => [name, data[name]]))
       }
     )
   }
 
-  beforeEach(() => {
-    vi.mocked(debugLog.info).mockClear()
+  beforeEach(async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    // One test swaps in the real matcher; restore the suite-wide stub so it cannot leak.
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    const actualVersions = await vi.importActual<typeof import('../../../../src/shared/versions')>(
+      '../../../../src/shared/versions'
+    )
+    mocks.findClosestMinorVersion.mockReset()
+    mocks.findClosestMinorVersion.mockImplementation(actualVersions.findClosestMinorVersion)
     mocks.loadPnpmCatalogs.mockReturnValue(null)
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockReset()
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
-    mocks.findClosestMinorVersion.mockReset()
-    mocks.findClosestMinorVersion.mockImplementation(
-      (version: string, versions: string[]) => versions[0] ?? version
-    )
     mocks.fetchPackageVersions.mockReset()
   })
 
-  it('hides too-young versions, recomputes the latest, and drops its health signals', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
-    fetchWith({
-      zod: {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('only requests the full packument when the cooldown is enabled', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({ axios: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } })
+
+    await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()
+    expect(mocks.fetchPackageVersions.mock.calls[0][1]).toMatchObject({ fullMetadata: false })
+
+    mocks.fetchPackageVersions.mockClear()
+    mockRegistry({ axios: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } })
+    await new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 }).getOutdatedPackages()
+    expect(mocks.fetchPackageVersions.mock.calls[0][1]).toMatchObject({ fullMetadata: true })
+  })
+
+  it('withholds a too-fresh stable release and falls back to the newest eligible one', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
         latestVersion: '1.2.0',
         allVersions: ['1.2.0', '1.1.0', '1.0.0'],
         publishTimes: {
-          '1.2.0': iso(60 * 60_000), // 1 hour old — inside the 1-day window
-          '1.1.0': iso(30 * DAY_MS),
-          '1.0.0': iso(60 * DAY_MS),
+          '1.2.0': minutesAgo(5),
+          '1.1.0': minutesAgo(10_000),
+          '1.0.0': minutesAgo(20_000),
         },
-        deprecated: 'this describes 1.2.0, not the effective latest',
-        enginesNode: '>=20',
       },
     })
 
-    const detector = new PackageDetector({
+    const packages = await new PackageDetector({
       cwd: '/repo',
-      minimumReleaseAge: 1440,
-      // Non-matching exclusions must not disable the gate.
-      minimumReleaseAgeExclude: ['some-other-pkg'],
-    })
-    const packages = await detector.getOutdatedPackages()
+      minimumReleaseAge: 60,
+    }).getOutdatedPackages()
 
-    expect(packages).toHaveLength(1)
-    expect(packages[0]).toMatchObject({
-      name: 'zod',
-      latestVersion: '1.1.0',
-      rangeVersion: '1.1.0',
-      allVersions: ['1.1.0', '1.0.0'],
-      isOutdated: true,
-      hasMajorUpdate: false,
+    expect(packages[0]).toMatchObject({ latestVersion: '1.1.0', rangeVersion: '1.1.0' })
+    expect(packages[0].heldByCooldown).toEqual({
+      version: '1.2.0',
+      publishedAt: minutesAgo(5),
+      ageMinutes: 5,
+      count: 1,
     })
-    // Signals described the gated 1.2.0 — they must not be misattributed to 1.1.0.
-    expect(packages[0].deprecated).toBeUndefined()
-    expect(packages[0].enginesNode).toBeUndefined()
-
-    // The policy needs publish times, which only the full packument carries.
-    const fetchOptions = mocks.fetchPackageVersions.mock.calls[0][1]
-    expect(fetchOptions.fullMetadata).toBe(true)
   })
 
-  it('keeps the health signals when only a non-latest backport is gated', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
-    fetchWith({
-      zod: {
-        latestVersion: '2.0.0',
-        allVersions: ['2.0.0', '1.0.5', '1.0.0'],
+  it('withholds a too-fresh PRERELEASE from a prerelease install', async () => {
+    // The gap PR #87 left open: gating only the stable pool lets a compromised
+    // prerelease straight through for anyone on the prerelease channel.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '0.9.0',
+        allVersions: ['0.9.0'],
+        prereleaseVersions: ['1.0.0-rc.3', '1.0.0-beta.2'],
         publishTimes: {
-          '2.0.0': iso(30 * DAY_MS),
-          '1.0.5': iso(60 * 60_000), // young backport
-          '1.0.0': iso(60 * DAY_MS),
+          '0.9.0': minutesAgo(20_000),
+          '1.0.0-rc.3': minutesAgo(5),
+          '1.0.0-beta.2': minutesAgo(20_000),
         },
-        deprecated: 'legit signal for 2.0.0',
-        enginesNode: '>=18',
       },
     })
 
-    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 60,
+    }).getOutdatedPackages()
 
-    expect(packages[0]).toMatchObject({
-      latestVersion: '2.0.0',
-      allVersions: ['2.0.0', '1.0.0'],
-      deprecated: 'legit signal for 2.0.0',
-      enginesNode: '>=18',
-    })
+    expect(packages[0].latestVersion).not.toBe('1.0.0-rc.3')
+    expect(packages[0].isOutdated).toBe(false)
+    expect(packages[0].heldByCooldown).toMatchObject({ version: '1.0.0-rc.3', count: 1 })
   })
 
-  it('treats a package whose every version is too young as having nothing to offer', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
-      dep('brand-new', '^1.0.0'),
-      // Uncoercible specifier: the fallback keeps the raw specifier as effective latest.
-      dep('tagged', 'latest'),
-    ])
-    fetchWith({
-      'brand-new': {
+  it('never falls back onto the prerelease pool when every stable release is too fresh', () => {
+    // A package with stable publishes must not silently switch channels just
+    // because its recent stable releases are inside the window.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
         latestVersion: '1.1.0',
         allVersions: ['1.1.0'],
-        publishTimes: { '1.1.0': iso(60_000) },
-      },
-      tagged: {
-        latestVersion: '3.0.0',
-        allVersions: ['3.0.0'],
-        publishTimes: { '3.0.0': iso(60_000) },
-      },
-    })
-
-    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
-    const packages = await detector.getOutdatedPackages()
-
-    const byName = Object.fromEntries(packages.map((pkg) => [pkg.name, pkg]))
-    expect(byName['brand-new']).toMatchObject({
-      latestVersion: '1.0.0',
-      allVersions: [],
-      isOutdated: false,
-      hasRangeUpdate: false,
-      hasMajorUpdate: false,
-    })
-    expect(byName.tagged).toMatchObject({ latestVersion: 'latest', isOutdated: false })
-  })
-
-  it('gates the prerelease channel and recomputes the latest on it', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('preview-only', '^1.0.0-rc.1')])
-    fetchWith({
-      'preview-only': {
-        latestVersion: '1.0.0-rc.3',
-        // A package with no stable publishes: every candidate is a prerelease,
-        // so gating only the stable pool would let the fresh rc.3 straight through.
-        allVersions: [],
-        prereleaseVersions: ['1.0.0-rc.3', '1.0.0-rc.2', '1.0.0-rc.1'],
+        prereleaseVersions: ['2.0.0-beta.1'],
         publishTimes: {
-          '1.0.0-rc.3': iso(60_000),
-          '1.0.0-rc.2': iso(30 * DAY_MS),
-          '1.0.0-rc.1': iso(60 * DAY_MS),
+          '1.1.0': minutesAgo(5),
+          '2.0.0-beta.1': minutesAgo(20_000),
         },
       },
     })
 
-    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
-    const packages = await detector.getOutdatedPackages()
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0]).toMatchObject({ latestVersion: '1.0.0', isOutdated: false })
+      })
+  })
 
-    expect(packages[0]).toMatchObject({
-      name: 'preview-only',
-      latestVersion: '1.0.0-rc.2',
-      allVersions: ['1.0.0-rc.2', '1.0.0-rc.1'],
-      isOutdated: true,
+  it('drops deprecation and engines signals when the cooldown changes the latest', () => {
+    // Those signals describe the true latest; attributing them to an older
+    // effective latest would be a lie.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.1.0'],
+        deprecated: 'use something else',
+        enginesNode: '>=22',
+        publishTimes: { '1.2.0': minutesAgo(5), '1.1.0': minutesAgo(20_000) },
+      },
     })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].deprecated).toBeUndefined()
+        expect(packages[0].enginesNode).toBeUndefined()
+      })
+  })
+
+  it('keeps health signals when the cooldown withheld only versions below the latest', () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.1.0'],
+        deprecated: 'use something else',
+        publishTimes: { '1.2.0': minutesAgo(20_000), '1.1.0': minutesAgo(5) },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].latestVersion).toBe('1.2.0')
+        expect(packages[0].deprecated).toBe('use something else')
+      })
   })
 
   it('exempts packages matching minimumReleaseAgeExclude', async () => {
+    // The suite-wide mock stubs isPackageIgnored to false; this case is entirely
+    // about the matcher firing, so restore the real implementation.
+    const actualConfig = await vi.importActual<typeof import('../../../../src/shared/config')>(
+      '../../../../src/shared/config'
+    )
     const { isPackageIgnored } = await import('../../../../src/shared/config')
-    vi.mocked(isPackageIgnored).mockImplementation((name: string) => name === 'zod')
-    try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
-      fetchWith({
-        zod: {
-          latestVersion: '1.2.0',
-          allVersions: ['1.2.0', '1.0.0'],
-          publishTimes: { '1.2.0': iso(60_000), '1.0.0': iso(60 * DAY_MS) },
-        },
-      })
+    vi.mocked(isPackageIgnored).mockImplementation(actualConfig.isPackageIgnored)
 
-      const detector = new PackageDetector({
-        cwd: '/repo',
-        minimumReleaseAge: 1440,
-        minimumReleaseAgeExclude: ['zod'],
-      })
-      const packages = await detector.getOutdatedPackages()
-
-      // Excluded → the young latest stays visible.
-      expect(packages[0]).toMatchObject({ latestVersion: '1.2.0' })
-    } finally {
-      vi.mocked(isPackageIgnored).mockImplementation(() => false)
-    }
-  })
-
-  it('is a no-op when the registry provides no publish times, and logs each gate once', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
-      dep('no-times', '^1.0.0'),
-      // The same gated package referenced from two manifests logs once.
-      dep('gated', '^1.0.0', '/repo/packages/a/package.json'),
-      dep('gated', '^1.0.0', '/repo/packages/b/package.json'),
-    ])
-    fetchWith({
-      'no-times': { latestVersion: '9.9.9', allVersions: ['9.9.9', '1.0.0'] },
-      gated: {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@myco/ui', '^1.0.0')])
+    mockRegistry({
+      '@myco/ui': {
         latestVersion: '1.2.0',
         allVersions: ['1.2.0', '1.0.0'],
-        publishTimes: { '1.2.0': iso(60_000), '1.0.0': iso(60 * DAY_MS) },
+        publishTimes: { '1.2.0': minutesAgo(5), '1.0.0': minutesAgo(20_000) },
       },
     })
 
-    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
-    const packages = await detector.getOutdatedPackages()
+    return new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 60,
+      minimumReleaseAgeExclude: ['@myco/*'],
+    })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].latestVersion).toBe('1.2.0')
+        expect(packages[0].heldByCooldown).toBeUndefined()
+      })
+  })
 
-    const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
-    // Abbreviated-style data without times is untouched by the policy.
-    expect(byName.get('no-times')).toMatchObject({ latestVersion: '9.9.9' })
-    expect(byName.get('gated')).toMatchObject({ latestVersion: '1.0.0' })
+  it('is inert when disabled or when nothing falls inside the window', () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.0.0'],
+        publishTimes: { '1.2.0': minutesAgo(20_000), '1.0.0': minutesAgo(30_000) },
+      },
+    })
 
-    const gateLogs = vi
-      .mocked(debugLog.info)
-      .mock.calls.filter((call) => String(call[1]).includes('release-age gate'))
-    expect(gateLogs).toHaveLength(1)
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].latestVersion).toBe('1.2.0')
+        expect(packages[0].heldByCooldown).toBeUndefined()
+      })
+  })
+
+  it('reports no hold detail when the registry has no time for the withheld version', () => {
+    // filterVersionsByReleaseAge fails open per-version, so a withheld set can
+    // only arise from versions that DO have times — except when a mixed map
+    // leaves the newest withheld one without a parsable stamp.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.1.0', '1.0.0'],
+        publishTimes: { '1.1.0': minutesAgo(5), '1.0.0': minutesAgo(20_000) },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        // 1.2.0 has no timestamp so it stays eligible and remains the latest.
+        expect(packages[0].latestVersion).toBe('1.2.0')
+        expect(packages[0].heldByCooldown).toMatchObject({ version: '1.1.0', count: 1 })
+      })
+  })
+
+  it('falls back on the PRERELEASE channel for a prerelease-only package', () => {
+    // The package has zero stable publishes, so its true latest is a prerelease.
+    // The fallback must stay on that channel rather than jumping to a stable pool
+    // that does not exist.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-alpha.1')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '1.0.0-alpha.3',
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-alpha.3', '1.0.0-alpha.2', '1.0.0-alpha.1'],
+        publishTimes: {
+          '1.0.0-alpha.3': minutesAgo(5),
+          '1.0.0-alpha.2': minutesAgo(20_000),
+          '1.0.0-alpha.1': minutesAgo(30_000),
+        },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].latestVersion).toBe('1.0.0-alpha.2')
+        expect(packages[0].heldByCooldown).toMatchObject({ version: '1.0.0-alpha.3' })
+      })
+  })
+
+  it('reports nothing to upgrade to when EVERY prerelease of a prerelease-only package is too fresh', () => {
+    // Brand-new prerelease-only package: the whole pool is inside the window, so
+    // the installed version becomes the effective latest rather than the run
+    // offering a version the cooldown just withheld.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('brand-new', '^1.0.0-alpha.1')])
+    mockRegistry({
+      'brand-new': {
+        latestVersion: '1.0.0-alpha.2',
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-alpha.2', '1.0.0-alpha.1'],
+        publishTimes: {
+          '1.0.0-alpha.2': minutesAgo(5),
+          '1.0.0-alpha.1': minutesAgo(10),
+        },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0]).toMatchObject({
+          latestVersion: '1.0.0-alpha.1',
+          isOutdated: false,
+        })
+        expect(packages[0].heldByCooldown).toMatchObject({
+          version: '1.0.0-alpha.2',
+          count: 2,
+        })
+      })
+  })
+
+  it('falls back to the raw specifier when the installed version is unparsable', () => {
+    // A wildcard pins nothing, so parseCurrentVersion returns null and there is no
+    // clean installed version to fall back to.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('anything-goes', 'x')])
+    mockRegistry({
+      'anything-goes': {
+        latestVersion: '2.5.1',
+        allVersions: ['2.5.1'],
+        publishTimes: { '2.5.1': minutesAgo(5) },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0]).toMatchObject({ latestVersion: 'x', isOutdated: false })
+        expect(packages[0].heldByCooldown).toMatchObject({ version: '2.5.1' })
+      })
+  })
+
+  it('reports the cooldown as unsupported when no packument carried publish times', () => {
+    // The policy fails open on missing `time`, so an inert cooldown produces an empty
+    // held list — byte-identical to "every version is old enough". Callers need to be
+    // able to tell those apart, or a disabled control reads as a passing check.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({
+      axios: { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+    return detector.getOutdatedPackages().then((packages) => {
+      expect(packages[0].latestVersion).toBe('2.0.0')
+      expect(packages[0].heldByCooldown).toBeUndefined()
+      expect(detector.getCooldownDiagnostics()).toEqual({
+        minimumReleaseAge: 60,
+        publishTimesAvailable: false,
+      })
+    })
+  })
+
+  it('reports the cooldown as supported once any packument carried publish times', () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('axios', '^1.0.0'),
+      dep('lodash', '^4.0.0'),
+    ])
+    mockRegistry({
+      axios: { latestVersion: '2.0.0', allVersions: ['2.0.0'] },
+      lodash: {
+        latestVersion: '4.1.0',
+        allVersions: ['4.1.0'],
+        publishTimes: { '4.1.0': minutesAgo(20_000) },
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+    return detector.getOutdatedPackages().then(() => {
+      expect(detector.getCooldownDiagnostics()).toMatchObject({ publishTimesAvailable: true })
+    })
+  })
+
+  it('reports no diagnostics at all when the cooldown is disabled', () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({ axios: { latestVersion: '2.0.0', allVersions: ['2.0.0'] } })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    return detector.getOutdatedPackages().then(() => {
+      expect(detector.getCooldownDiagnostics()).toBeNull()
+    })
+  })
+
+  it('does not blame the registry when nothing resolved at all', () => {
+    // A total fetch failure is not evidence that the registry lacks publish times.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mockRegistry({ axios: { latestVersion: 'unknown', allVersions: [] } })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+    return detector.getOutdatedPackages().then(() => {
+      expect(detector.getCooldownDiagnostics()).toMatchObject({ publishTimesAvailable: true })
+    })
+  })
+
+  it('counts every withheld version across both channels', () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '1.0.0',
+        allVersions: ['1.0.0', '0.9.0'],
+        prereleaseVersions: ['1.1.0-rc.1', '1.0.0-beta.1'],
+        publishTimes: {
+          '1.0.0': minutesAgo(5),
+          '0.9.0': minutesAgo(20_000),
+          '1.1.0-rc.1': minutesAgo(5),
+          '1.0.0-beta.1': minutesAgo(20_000),
+        },
+      },
+    })
+
+    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
+      .getOutdatedPackages()
+      .then((packages) => {
+        expect(packages[0].heldByCooldown).toMatchObject({ version: '1.1.0-rc.1', count: 2 })
+      })
   })
 })

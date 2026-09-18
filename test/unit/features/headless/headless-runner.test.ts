@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getOutdatedPackages: vi.fn(),
+  getCooldownDiagnostics: vi.fn(() => null),
   streamOutdatedPackages: vi.fn(),
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../../../../src/features/upgrade/package-detector', () => ({
     streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
+    getCooldownDiagnostics = mocks.getCooldownDiagnostics
     getPerfConfig = vi.fn().mockReturnValue({
       cwd: '/repo',
       adaptive: false,
@@ -161,8 +163,14 @@ describe('HeadlessRunner.run', () => {
 
     expect(logSpy).toHaveBeenCalledTimes(1)
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
-    expect(report.schemaVersion).toBe(1)
-    expect(report.summary).toEqual({ total: 2, outdated: 1, major: 1, vulnerable: 0 })
+    expect(report.schemaVersion).toBe(2)
+    expect(report.summary).toEqual({
+      total: 2,
+      outdated: 1,
+      major: 1,
+      vulnerable: 0,
+      heldByCooldown: 0,
+    })
     expect(report.outdated).toHaveLength(1)
     expect(report.outdated[0].name).toBe('axios')
     expect('vulnerability' in report.outdated[0]).toBe(false)
@@ -227,7 +235,7 @@ describe('HeadlessRunner.run', () => {
     try {
       await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
       expect(warn).toHaveBeenCalledWith('Skipped directory')
-      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).schemaVersion).toBe(1)
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).schemaVersion).toBe(2)
       const messages = write.mock.calls.map(([chunk]) => String(chunk).split('\r').at(-1)!)
       if (isTTY) {
         expect(messages.slice(0, 7)).toEqual([
@@ -335,6 +343,48 @@ describe('HeadlessRunner.run', () => {
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
     expect(report.outdated.map((p: any) => p.name)).toEqual(['axios'])
     logSpy.mockRestore()
+  })
+
+  it('warns on stderr and flags the report when the cooldown could not act', async () => {
+    // An inert cooldown must never read as a satisfied one — this is the path CI gates on.
+    mocks.getCooldownDiagnostics.mockReturnValue({
+      minimumReleaseAge: 10080,
+      publishTimesAvailable: false,
+    })
+    mocks.getOutdatedPackages.mockResolvedValue([])
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report.cooldown).toEqual({ minimumReleaseAge: 10080, publishTimesAvailable: false })
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining('--minimum-release-age 10080 had no effect')
+    )
+
+    logSpy.mockRestore()
+    errSpy.mockRestore()
+  })
+
+  it('stays quiet and omits the cooldown block when no cooldown is configured', async () => {
+    mocks.getCooldownDiagnostics.mockReturnValue(null)
+    mocks.getOutdatedPackages.mockResolvedValue([])
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report).not.toHaveProperty('cooldown')
+    expect(errSpy).not.toHaveBeenCalled()
+
+    logSpy.mockRestore()
+    errSpy.mockRestore()
   })
 
   it('--check sets exit code 1 when updates exist, 0 when up to date', async () => {

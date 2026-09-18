@@ -1,4 +1,4 @@
-import type { DependencyType } from '../../shared/types'
+import type { CooldownHold, DependencyType } from '../../shared/types'
 import type { HeadlessVulnerability } from '../audit'
 
 /** Version policy for `--apply`: how far to bump. `minor`/`patch` stay in-range; `latest` allows majors. */
@@ -12,7 +12,21 @@ export interface HeadlessOptions {
 }
 
 /** Bump when the `--json` shape changes in a way consumers (scripts, agents) must adapt to. */
-export const HEADLESS_SCHEMA_VERSION = 1
+export const HEADLESS_SCHEMA_VERSION = 2
+
+/**
+ * A package the release-age cooldown withheld a version from.
+ *
+ * Reported at the top level rather than only inside `outdated`, because a package whose ONLY
+ * newer versions are inside the cooldown window is not outdated — it would otherwise be
+ * indistinguishable from a package that is genuinely up to date. Superset: packages that are
+ * also outdated appear here AND carry `heldByCooldown` on their `outdated` entry.
+ */
+export interface HeadlessCooldownHold extends CooldownHold {
+  name: string
+  type: DependencyType
+  packageJsonPath: string
+}
 
 export interface HeadlessReportEntry {
   name: string
@@ -27,6 +41,7 @@ export interface HeadlessReportEntry {
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
   vulnerability?: HeadlessVulnerability // Advisories on the current version + whether upgrading clears them
+  heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
 }
 
 export interface HeadlessReport {
@@ -36,6 +51,22 @@ export interface HeadlessReport {
     outdated: number // Packages with an available update
     major: number // Of the outdated, how many are a major bump
     vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
+    heldByCooldown: number // Packages with ≥1 version withheld by minimumReleaseAge (0 when disabled)
   }
   outdated: HeadlessReportEntry[]
+  heldByCooldown: HeadlessCooldownHold[] // Every withheld package, outdated or not
+  cooldown?: HeadlessCooldownStatus // Present only when a release-age cooldown was configured
+}
+
+/**
+ * Whether the configured cooldown could actually act.
+ *
+ * The policy fails open on missing publish times, so a registry that doesn't expose `time`
+ * yields an empty `heldByCooldown` — byte-identical to "every version is old enough". Without
+ * this, a consumer cannot tell a satisfied cooldown from an inert one, and would read a
+ * disabled control as a passing check.
+ */
+export interface HeadlessCooldownStatus {
+  minimumReleaseAge: number // The configured window, in minutes
+  publishTimesAvailable: boolean // false = the registry returned no `time`; the cooldown did nothing
 }

@@ -13,6 +13,7 @@ import type { ControlTick } from '../../shared/http/controller-contract'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import type {
+  CooldownHold,
   DependencyEntry,
   NetworkProfile,
   PackageInfo,
@@ -23,10 +24,10 @@ import type {
 } from '../../shared/types'
 import {
   buildRangeCandidates,
-  filterVersionsByReleaseAge,
   findClosestMinorVersion,
   highestOverallVersion,
   parseCurrentVersion,
+  partitionVersionsByReleaseAge,
   toComparableVersion,
 } from '../../shared/versions'
 import { getPerformanceTracker } from '../debug'
@@ -433,6 +434,7 @@ export class PackageDetector {
     dependencies: DependencyEntry[],
     packageData: PackageVersionData | undefined
   ): PackageInfo[] {
+    this.recordCooldownSupport(packageData)
     if (!packageData || packageData.latestVersion === 'unknown') {
       debugLog.warn('PackageDetector', `no data returned for ${packageName} — marking unavailable`)
       return dependencies.map((dep) => this.createFailedPackageInfo(dep))
@@ -463,7 +465,7 @@ export class PackageDetector {
 
         // Versions still inside the release-age window are never offered, on
         // either channel, and the pools below are the gated ones.
-        const gated = this.applyReleaseAgePolicy(dep, packageData)
+        const { data: gated, held } = this.applyReleaseAgePolicy(dep, packageData, installed)
         const gatedStable = gated.allVersions
         const gatedPrereleases = gated.prereleaseVersions
 
@@ -546,6 +548,7 @@ export class PackageDetector {
           // than staying silent.
           deprecated: gated.deprecated,
           enginesNode: gated.enginesNode,
+          heldByCooldown: held,
         }
         resolvedBySpecifier.set(dep.version, info)
         return info
@@ -569,67 +572,131 @@ export class PackageDetector {
    */
   private applyReleaseAgePolicy(
     dep: DependencyEntry,
-    packageData: PackageVersionData
-  ): PackageVersionData {
-    if (this.minimumReleaseAge <= 0) return packageData
+    packageData: PackageVersionData,
+    installed: semver.SemVer | null
+  ): { data: PackageVersionData; held?: CooldownHold } {
+    if (this.minimumReleaseAge <= 0) return { data: packageData }
     if (
       this.minimumReleaseAgeExclude.length > 0 &&
       isPackageIgnored(dep.name, this.minimumReleaseAgeExclude)
     ) {
-      return packageData
+      return { data: packageData }
     }
 
-    // Both pools are gated. Filtering only the stable one would let a prerelease
+    // Both pools are partitioned. Gating only the stable one would let a prerelease
     // published minutes ago through for anyone on the prerelease channel — the
     // same attack, one channel over.
-    const prereleaseVersions = packageData.prereleaseVersions ?? []
-    const eligible = filterVersionsByReleaseAge(
+    const now = Date.now()
+    const { publishTimes } = packageData
+    const stable = partitionVersionsByReleaseAge(
       packageData.allVersions,
-      packageData.publishTimes,
-      this.minimumReleaseAge
+      publishTimes,
+      this.minimumReleaseAge,
+      now
     )
-    const eligiblePrereleases = filterVersionsByReleaseAge(
-      prereleaseVersions,
-      packageData.publishTimes,
-      this.minimumReleaseAge
+    const prerelease = packageData.prereleaseVersions
+      ? partitionVersionsByReleaseAge(
+          packageData.prereleaseVersions,
+          publishTimes,
+          this.minimumReleaseAge,
+          now
+        )
+      : undefined
+
+    const withheld = [...stable.withheld, ...(prerelease?.withheld ?? [])].sort((a, b) =>
+      semver.rcompare(a.version, b.version)
     )
-    const gatedCount =
-      packageData.allVersions.length -
-      eligible.length +
-      (prereleaseVersions.length - eligiblePrereleases.length)
-    if (gatedCount === 0) return packageData
+    if (withheld.length === 0) return { data: packageData }
+
+    // `prerelease` is undefined exactly when the packument carried no prerelease
+    // pool, so this mirrors the original absent-vs-present distinction directly.
+    const eligiblePrerelease = prerelease?.eligible
 
     // Recompute the latest on the channel the original latest came from, so a
     // package with stable publishes never falls back onto a prerelease just
     // because its recent stable releases are inside the window. An empty pool
     // means nothing is old enough yet: the installed version is the latest on
     // offer.
-    const pool =
-      semver.prerelease(packageData.latestVersion) !== null ? eligiblePrereleases : eligible
+    const installedFallback = installed?.version || dep.version
     const effectiveLatest =
-      pool.slice().sort(semver.rcompare)[0] ?? (semver.coerce(dep.version)?.version || dep.version)
+      semver.prerelease(packageData.latestVersion) !== null
+        ? (eligiblePrerelease?.[0] ?? installedFallback)
+        : (stable.eligible[0] ?? installedFallback)
     const latestUnchanged = effectiveLatest === packageData.latestVersion
+
+    // Report the newest withheld version — that is what the user would have been
+    // offered, and the thing they need to know is being deliberately held back.
+    const newest = withheld[0]
+    const held: CooldownHold = {
+      version: newest.version,
+      publishedAt: newest.publishedAt,
+      // Clamped: a registry clock ahead of ours yields a future publish time, which
+      // is withheld correctly but would otherwise report a negative age.
+      ageMinutes: Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000)),
+      count: withheld.length,
+    }
 
     const gateKey = `${dep.name}@${dep.version}`
     if (!this.loggedReleaseAgeGates.has(gateKey)) {
       this.loggedReleaseAgeGates.add(gateKey)
       debugLog.info(
         'PackageDetector',
-        `release-age gate: ${gatedCount} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min hidden (effective latest: ${effectiveLatest})`
+        `release-age gate: ${withheld.length} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${effectiveLatest})`
       )
     }
 
     return {
-      ...packageData,
-      latestVersion: effectiveLatest,
-      allVersions: eligible,
-      prereleaseVersions: eligiblePrereleases,
-      deprecated: latestUnchanged ? packageData.deprecated : undefined,
-      enginesNode: latestUnchanged ? packageData.enginesNode : undefined,
+      data: {
+        ...packageData,
+        latestVersion: effectiveLatest,
+        allVersions: stable.eligible,
+        prereleaseVersions: eligiblePrerelease,
+        deprecated: latestUnchanged ? packageData.deprecated : undefined,
+        enginesNode: latestUnchanged ? packageData.enginesNode : undefined,
+      },
+      held,
     }
   }
 
   private readonly loggedReleaseAgeGates = new Set<string>()
+
+  /** Cooldown support probe: packages whose data arrived, and whether any carried `time`. */
+  private cooldownPackagesResolved = 0
+  private cooldownPublishTimesSeen = false
+
+  /**
+   * Note whether this packument actually carried publish times, so a cooldown that could
+   * not act is never mistaken for a cooldown that found nothing to hold.
+   *
+   * The policy deliberately fails open on missing `time` data, which means a registry that
+   * doesn't expose it produces an empty held list — identical to "every version is old
+   * enough". That is the one reading a supply-chain control must never invite, so the
+   * distinction is tracked here and reported by the callers.
+   */
+  private recordCooldownSupport(packageData: PackageVersionData | undefined): void {
+    if (this.minimumReleaseAge <= 0) return
+    if (!packageData || packageData.latestVersion === 'unknown') return
+    this.cooldownPackagesResolved++
+    if (packageData.publishTimes !== undefined) this.cooldownPublishTimesSeen = true
+  }
+
+  /**
+   * What the release-age cooldown was able to do this run, or null when it was disabled.
+   * `publishTimesAvailable: false` means the registry never returned a `time` field, so the
+   * cooldown was inert regardless of the configured window.
+   */
+  public getCooldownDiagnostics(): {
+    minimumReleaseAge: number
+    publishTimesAvailable: boolean
+  } | null {
+    if (this.minimumReleaseAge <= 0) return null
+    return {
+      minimumReleaseAge: this.minimumReleaseAge,
+      // No packages resolved at all (empty project, total fetch failure) is not evidence
+      // the registry lacks publish times, so it is not reported as unsupported.
+      publishTimesAvailable: this.cooldownPackagesResolved === 0 || this.cooldownPublishTimesSeen,
+    }
+  }
 
   private createFailedPackageInfo(dep: DependencyEntry): PackageInfo {
     return {
