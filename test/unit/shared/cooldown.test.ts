@@ -85,6 +85,8 @@ describe('applyReleaseAgeCooldown', () => {
       version: '1.2.0',
       publishedAt: minutesAgo(5),
       ageMinutes: 5,
+      // 60-minute window, published 5 minutes ago.
+      eligibleInMinutes: 55,
       count: 1,
     })
     expect(decision.withheldTotal).toBe(1)
@@ -407,18 +409,36 @@ describe('buildCooldownHold', () => {
         { version: '2.0.0', publishedAt: minutesAgo(5) },
         { version: '1.9.0', publishedAt: minutesAgo(30) },
       ],
-      NOW
+      NOW,
+      WINDOW
     )
 
     expect(hold).toEqual({
       version: '2.0.0',
       publishedAt: minutesAgo(5),
       ageMinutes: 5,
+      eligibleInMinutes: 55,
       count: 2,
     })
   })
 
+  it('reports how long is left, rounded up so a hold never says zero', () => {
+    // "so when can I have it?" is the next question, and the reader should not have to
+    // subtract an age from a window somebody else configured.
+    const hold = buildCooldownHold([{ version: '2.0.0', publishedAt: minutesAgo(5) }], NOW, 1440)
+
+    expect(hold).toMatchObject({ ageMinutes: 5, eligibleInMinutes: 1435 })
+  })
+
+  it('never reports a negative wait for a version already past the window', () => {
+    // Reachable through an exemption or a clock that moved: the number is a snapshot, and
+    // "-20m left" is worse than saying it clears immediately.
+    const hold = buildCooldownHold([{ version: '2.0.0', publishedAt: minutesAgo(80) }], NOW, 60)
+
+    expect(hold?.eligibleInMinutes).toBe(0)
+  })
+
   it('returns undefined for an empty set rather than a zero-count sentinel', () => {
-    expect(buildCooldownHold([], NOW)).toBeUndefined()
+    expect(buildCooldownHold([], NOW, WINDOW)).toBeUndefined()
   })
 })

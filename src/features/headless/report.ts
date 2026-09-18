@@ -114,7 +114,10 @@ function heldLines(held: Array<{ name: string; hold: CooldownHold }>): string[] 
   const lines = [`Held by release-age cooldown (${unique.size}):`]
   for (const { name, hold } of unique.values()) {
     const extra = hold.count > 1 ? ` (+${hold.count - 1} more)` : ''
-    lines.push(`  ${name}  ${hold.version}  published ${formatAge(hold.ageMinutes)} ago${extra}`)
+    const clears = hold.eligibleInMinutes > 0 ? `, ${formatAge(hold.eligibleInMinutes)} left` : ''
+    lines.push(
+      `  ${name}  ${hold.version}  published ${formatAge(hold.ageMinutes)} ago${clears}${extra}`
+    )
   }
   return lines
 }

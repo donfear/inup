@@ -26,6 +26,13 @@ export interface CooldownHold {
   version: string // Newest version withheld — what you would have been offered
   publishedAt: string // ISO publish time of that version
   ageMinutes: number // How old it was when the scan ran
+  /**
+   * Minutes until this version clears the window, as of the scan. Answers the question the
+   * hold immediately raises — "so when can I have it?" — without the reader having to
+   * subtract the age from a window they may not have configured themselves. Like
+   * `ageMinutes`, it is a snapshot: it is measured against the clock at scan time.
+   */
+  eligibleInMinutes: number
   count: number // How many versions in total were withheld
 }
 

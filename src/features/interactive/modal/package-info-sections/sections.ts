@@ -168,8 +168,14 @@ export function buildPackageInfoSections(
     // WHICH version is being withheld and how close it is to becoming eligible.
     const hold = state.heldByCooldown
     const others = hold.count > 1 ? ` (+${hold.count - 1} more withheld)` : ''
+    // "so when can I have it?" is the next question the hold raises, and the reader should
+    // not have to subtract the age from a window somebody else configured.
+    const clears =
+      hold.eligibleInMinutes > 0
+        ? `, ${formatAge(hold.eligibleInMinutes)} left`
+        : ', clears on the next run'
     for (const line of wrapPlainText(
-      `Cooldown: ${hold.version} published ${formatAge(hold.ageMinutes)} ago — withheld by minimumReleaseAge${others}`,
+      `Cooldown: ${hold.version} published ${formatAge(hold.ageMinutes)} ago — withheld by minimumReleaseAge${clears}${others}`,
       warningContentWidth
     )) {
       warningRows.push(getThemeColor('warning')(line))

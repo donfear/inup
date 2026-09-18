@@ -133,10 +133,11 @@ describe('renderPlainReport', () => {
 })
 
 describe('release-age cooldown reporting', () => {
-  const hold = (version: string, ageMinutes: number, count = 1) => ({
+  const hold = (version: string, ageMinutes: number, count = 1, eligibleInMinutes = 60) => ({
     version,
     publishedAt: '2024-06-01T00:00:00.000Z',
     ageMinutes,
+    eligibleInMinutes,
     count,
   })
 
@@ -162,6 +163,7 @@ describe('release-age cooldown reporting', () => {
         version: '2.1.0',
         publishedAt: '2024-06-01T00:00:00.000Z',
         ageMinutes: 30,
+        eligibleInMinutes: 60,
         count: 1,
       },
     ])
@@ -193,7 +195,7 @@ describe('release-age cooldown reporting', () => {
     const output = renderPlainReport([], new Map(), [heldPkg])
 
     expect(output).toContain('Held by release-age cooldown (1)')
-    expect(output).toContain('held-only  2.1.0  published 1h ago')
+    expect(output).toContain('held-only  2.1.0  published 1h ago, 1h left')
   })
 
   it('appends the cooldown recap after the outdated list', () => {
@@ -202,7 +204,7 @@ describe('release-age cooldown reporting', () => {
     const output = renderPlainReport([pkg], new Map(), [pkg])
 
     expect(output).toContain('1 package(s) outdated')
-    expect(output).toContain('test-pkg  3.0.0  published 2d ago (+2 more)')
+    expect(output).toContain('test-pkg  3.0.0  published 2d ago, 1h left (+2 more)')
   })
 
   it('counts unique packages in the summary, not per-workspace entries', () => {
@@ -266,6 +268,17 @@ describe('release-age cooldown reporting', () => {
     const pkg = makePackageInfo({ heldByCooldown: hold('3.0.0', 45) })
 
     expect(renderPlainReport([pkg], new Map(), [pkg])).toContain('published 45m ago')
+  })
+
+  it('leaves the remaining time off a hold that clears on the next run', () => {
+    // ", 0m left" on a line that exists to say the version is being withheld reads as a
+    // contradiction; the absence of the clause is the honest form.
+    const pkg = makePackageInfo({ heldByCooldown: hold('3.0.0', 1440, 1, 0) })
+
+    const output = renderPlainReport([pkg], new Map(), [pkg])
+
+    expect(output).toContain('published 1d ago')
+    expect(output).not.toContain('left')
   })
 
   it('omits the cooldown recap entirely when nothing is held', () => {

@@ -203,6 +203,7 @@ describe('buildPackageInfoSections (info tab)', () => {
         version: '6.0.0',
         publishedAt: '2026-07-26T14:51:07.269Z',
         ageMinutes: 7981,
+        eligibleInMinutes: 2099,
         count: 1,
       },
     })
@@ -211,6 +212,8 @@ describe('buildPackageInfoSections (info tab)', () => {
 
     expect(text).toContain('Cooldown: 6.0.0 published 5d ago')
     expect(text).toContain('withheld by minimumReleaseAge')
+    // The hold answers its own next question: 2099 minutes is a day and a half.
+    expect(text).toContain('1d left')
     expect(text).not.toContain('more withheld')
   })
 
@@ -220,6 +223,7 @@ describe('buildPackageInfoSections (info tab)', () => {
         version: '6.0.0',
         publishedAt: '2026-07-26T14:51:07.269Z',
         ageMinutes: 30,
+        eligibleInMinutes: 1410,
         count: 4,
       },
     })
@@ -227,7 +231,25 @@ describe('buildPackageInfoSections (info tab)', () => {
     const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
 
     expect(text).toContain('published 30m ago')
+    expect(text).toContain('23h left')
     expect(text).toContain('(+3 more withheld)')
+  })
+
+  it('says the hold clears on the next run instead of showing no time left', () => {
+    const state = makeSelectionState({
+      heldByCooldown: {
+        version: '6.0.0',
+        publishedAt: '2026-07-26T14:51:07.269Z',
+        ageMinutes: 1440,
+        eligibleInMinutes: 0,
+        count: 1,
+      },
+    })
+
+    const text = plain(buildPackageInfoSections(state, MODAL_WIDTH, 'info'))
+
+    expect(text).toContain('clears on the next run')
+    expect(text).not.toContain('0m left')
   })
 
   it('omits the cooldown line entirely when nothing was held', () => {

@@ -449,6 +449,7 @@ describe('render-pr-body release-age cooldown section', () => {
     version: '1.9.0',
     publishedAt: '2024-06-01T00:00:00.000Z',
     ageMinutes: 30,
+    eligibleInMinutes: 1410, // a 1-day window, 30 minutes in
     count: 1,
     ...overrides,
   })
@@ -465,7 +466,7 @@ describe('render-pr-body release-age cooldown section', () => {
 
     expect(body).not.toContain('Everything is up to date. 🎉')
     expect(body).toContain('### ⏳ Held by release-age cooldown')
-    expect(body).toContain('| `axios` | 1.9.0 | 30m ago | 1 |')
+    expect(body).toContain('| `axios` | 1.9.0 | 30m ago | 23h | 1 |')
   })
 
   it('appends the held table after the upgrade sections', async () => {
@@ -483,11 +484,11 @@ describe('render-pr-body release-age cooldown section', () => {
           hasMajorUpdate: false,
         },
       ],
-      heldByCooldown: [hold({ ageMinutes: 4320, count: 3 })],
+      heldByCooldown: [hold({ ageMinutes: 4320, eligibleInMinutes: 5760, count: 3 })],
     })
 
     expect(body).toContain('### ✅ Applied in this PR')
-    expect(body).toContain('| `axios` | 1.9.0 | 3d ago | 3 |')
+    expect(body).toContain('| `axios` | 1.9.0 | 3d ago | 4d | 3 |')
     expect(body.indexOf('### Updates')).toBeLessThan(body.indexOf('Held by release-age cooldown'))
   })
 
@@ -507,10 +508,21 @@ describe('render-pr-body release-age cooldown section', () => {
       schemaVersion: 2,
       summary: { ...baseSummary, total: 3, heldByCooldown: 1 },
       outdated: [],
-      heldByCooldown: [hold({ ageMinutes: 150 })],
+      heldByCooldown: [hold({ ageMinutes: 150, eligibleInMinutes: 90 })],
     })
 
-    expect(body).toContain('| `axios` | 1.9.0 | 2h ago | 1 |')
+    expect(body).toContain('| `axios` | 1.9.0 | 2h ago | 1h | 1 |')
+  })
+
+  it('says "next run" rather than a zero wait for a version about to clear', async () => {
+    const body = await renderPrBody({
+      schemaVersion: 2,
+      summary: { ...baseSummary, total: 3, heldByCooldown: 1 },
+      outdated: [],
+      heldByCooldown: [hold({ ageMinutes: 1440, eligibleInMinutes: 0 })],
+    })
+
+    expect(body).toContain('| next run |')
   })
 
   it('warns in the PR body when the cooldown could not act', async () => {

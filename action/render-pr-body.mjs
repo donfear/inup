@@ -137,11 +137,11 @@ export function heldSection(report) {
       'Freshly published versions are the ones most likely to be a compromised release nobody has caught yet.'
   )
   lines.push('')
-  lines.push('| Package | Held version | Published | Versions held |')
-  lines.push('|---|---|---|---|')
+  lines.push('| Package | Held version | Published | Clears in | Versions held |')
+  lines.push('|---|---|---|---|---|')
   for (const h of seen.values()) {
     lines.push(
-      `| \`${escapeCell(h.name)}\` | ${escapeCell(h.version)} | ${formatAge(h.ageMinutes)} ago | ${h.count} |`
+      `| \`${escapeCell(h.name)}\` | ${escapeCell(h.version)} | ${formatAge(h.ageMinutes)} ago | ${h.eligibleInMinutes > 0 ? formatAge(h.eligibleInMinutes) : 'next run'} | ${h.count} |`
     )
   }
   lines.push('')

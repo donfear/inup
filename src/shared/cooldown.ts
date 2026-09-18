@@ -69,16 +69,21 @@ export function countHeldPackages(
  */
 export function buildCooldownHold(
   withheld: readonly WithheldVersion[],
-  now: number
+  now: number,
+  minimumReleaseAgeMinutes: number
 ): CooldownHold | undefined {
   const newest = withheld[0]
   if (!newest) return undefined
+  // Clamped: a registry clock ahead of ours yields a future publish time, which is
+  // withheld correctly but would otherwise report a negative age.
+  const ageMinutes = Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000))
   return {
     version: newest.version,
     publishedAt: newest.publishedAt,
-    // Clamped: a registry clock ahead of ours yields a future publish time, which is
-    // withheld correctly but would otherwise report a negative age.
-    ageMinutes: Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000)),
+    ageMinutes,
+    // Rounded UP: reporting "0m left" for something still being withheld would contradict
+    // the hold it is attached to.
+    eligibleInMinutes: Math.max(0, Math.ceil(minimumReleaseAgeMinutes - ageMinutes)),
     count: withheld.length,
   }
 }
@@ -189,7 +194,7 @@ export function applyReleaseAgeCooldown(
       deprecated: latestUnchanged ? parsed.deprecated : undefined,
       enginesNode: latestUnchanged ? parsed.enginesNode : undefined,
     },
-    held: buildCooldownHold(reportable, now),
+    held: buildCooldownHold(reportable, now, minimumReleaseAgeMinutes),
     withheldTotal,
   }
 }

@@ -83,6 +83,7 @@ Note the deliberate asymmetry with `summary.heldByCooldown`: the **array** carri
 | `version` | `string` | Newest withheld version — what you would otherwise have been offered. |
 | `publishedAt` | `string` | ISO publish timestamp of that version. |
 | `ageMinutes` | `number` | How old it was when the scan ran. |
+| `eligibleInMinutes` | `number` | Minutes until it clears the window, as of the scan. `0` means the next run will offer it. |
 | `count` | `number` | How many versions in total were withheld for this package. |
 
 ## `Vulnerability`

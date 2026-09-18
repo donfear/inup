@@ -1639,6 +1639,7 @@ describe('PackageDetector release-age cooldown', () => {
       version: '1.2.0',
       publishedAt: minutesAgo(5),
       ageMinutes: 5,
+      eligibleInMinutes: 55,
       count: 1,
     })
   })
