@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-18
+
 ### Added
 
 - Release-age cooldown: `--minimum-release-age <minutes>`, or `minimumReleaseAge` in `.inuprc` (minutes, the same name and unit pnpm uses), never offers a version published more recently than the window — not in the picker, not in reports, and not under `--apply`. Freshly published versions are the ones most likely to be a compromised release nobody has caught yet. `minimumReleaseAgeExclude` exempts packages you publish yourself, and the GitHub Action takes the same window as a `minimum-release-age` input.
@@ -436,7 +438,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.0...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/donfear/inup/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/donfear/inup/compare/v1.7.3...v1.8.0
 [1.7.3]: https://github.com/donfear/inup/compare/v1.7.2...v1.7.3
 [1.7.2]: https://github.com/donfear/inup/compare/v1.7.1...v1.7.2
