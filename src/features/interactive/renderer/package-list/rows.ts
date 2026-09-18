@@ -21,6 +21,8 @@ export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
    * `loadingProgress` is a single mutable object the runner writes through.
    */
   cooldown?: CooldownRenderStatus
+  /** The held rows are currently revealed (`c`), so the header must stop saying "not listed". */
+  cooldownHeldShown?: boolean
 }
 
 export interface VersionColumnWidths {
@@ -121,6 +123,17 @@ function measureVersionColumns(state: PackageSelectionState, need: VersionColumn
     )
     need.latest = cap(
       Math.max(need.latest, VersionUtils.getVisualLength(latest) + VERSION_COLUMN_OVERHEAD)
+    )
+  }
+  // A withheld version occupies the same column as a latest one, so it has to be measured
+  // there too — otherwise revealing the held rows would truncate them.
+  if (state.heldByCooldown) {
+    const held = VersionUtils.applyVersionPrefix(
+      state.currentVersionSpecifier,
+      state.heldByCooldown.version
+    )
+    need.latest = cap(
+      Math.max(need.latest, VersionUtils.getVisualLength(held) + VERSION_COLUMN_OVERHEAD)
     )
   }
 }
@@ -279,6 +292,20 @@ export function renderPackageLine(
     latestVersionText = getThemeColor('versionLatest')(
       fitColumn(latestVersionWithPrefix, latestColumnWidth)
     )
+  } else if (state.heldByCooldown) {
+    // Nothing to select — the point is to name the version that exists and was withheld,
+    // so `[HELD]` on the row is answerable without opening the modal. `◌` rather than `○`
+    // for the same reason it marks loading and unavailable rows: this is not a choice.
+    latestDot = getThemeColor('dotEmpty')('◌')
+    latestVersionText = getThemeColor('textSecondary')(
+      fitColumn(
+        VersionUtils.applyVersionPrefix(
+          state.currentVersionSpecifier,
+          state.heldByCooldown.version
+        ),
+        latestColumnWidth
+      )
+    )
   } else {
     latestDot = getThemeColor('dotEmpty')('○')
     latestVersionText = ''
@@ -355,7 +382,9 @@ export function renderPackageLine(
   }
 
   let latestSection = ''
-  if (isPending || isFailed || state.hasMajorUpdate) {
+  // A held row has no major update to show, but it does have a version to name: the one the
+  // cooldown withheld. Without this the column stays blank and `[HELD]` answers nothing.
+  if (isPending || isFailed || state.hasMajorUpdate || (!isPending && state.heldByCooldown)) {
     latestSection = `${latestDot} ${latestVersionText}`
     const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)

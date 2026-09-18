@@ -154,7 +154,7 @@ describe('InteractiveUI selection state builders', () => {
   })
 })
 
-describe('InteractiveUI.insertOutdatedPackage', () => {
+describe('InteractiveUI.insertResolvedPackages', () => {
   const resolved = (name: string, overrides?: Partial<ReturnType<typeof makePackageInfo>>) => [
     makePackageInfo({ name, ...overrides }),
   ]
@@ -164,8 +164,8 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList([makeSelectionState({ name: 'm-existing' })])
 
-    ui.insertOutdatedPackage(selection, resolved('a-fresh'))
-    ui.insertOutdatedPackage(selection, resolved('z-fresh'))
+    ui.insertResolvedPackages(selection, resolved('a-fresh'))
+    ui.insertResolvedPackages(selection, resolved('z-fresh'))
 
     expect(selection.items.map((s) => s.name)).toEqual(['a-fresh', 'm-existing', 'z-fresh'])
     expect(audit).toHaveBeenCalledTimes(2)
@@ -181,7 +181,7 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
     ])
 
-    ui.insertOutdatedPackage(selection, resolved('test-pkg'))
+    ui.insertResolvedPackages(selection, resolved('test-pkg'))
 
     expect(selection.length).toBe(1)
     expect(audit).not.toHaveBeenCalled()
@@ -192,10 +192,60 @@ describe('InteractiveUI.insertOutdatedPackage', () => {
     const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList()
 
-    ui.insertOutdatedPackage(selection, resolved('current-pkg', { isOutdated: false }))
+    ui.insertResolvedPackages(selection, resolved('current-pkg', { isOutdated: false }))
 
     expect(selection.items).toEqual([])
     expect(audit).not.toHaveBeenCalled()
+  })
+
+  it('keeps a row for a package the cooldown emptied out, marked heldOnly', () => {
+    // Not outdated — every newer version is inside the window — so it would normally
+    // never reach the list. It is also the package the run most needs to be able to
+    // show, so it gets a row that the filters keep hidden until `c`.
+    const ui = new InteractiveUI(npmInfo)
+    const selection = new SelectionList()
+
+    ui.insertResolvedPackages(
+      selection,
+      resolved('held-pkg', {
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        heldByCooldown: {
+          version: '5.1.0',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      })
+    )
+
+    expect(selection.items).toHaveLength(1)
+    expect(selection.items[0]).toMatchObject({ name: 'held-pkg', heldOnly: true })
+    // Nothing to select: the existing gates read these two flags, so the row can never
+    // be cycled onto an upgrade that does not exist.
+    expect(selection.items[0].hasRangeUpdate).toBe(false)
+    expect(selection.items[0].hasMajorUpdate).toBe(false)
+  })
+
+  it('does not mark an outdated package with a hold as heldOnly (it has a real row)', () => {
+    const ui = new InteractiveUI(npmInfo)
+    const selection = new SelectionList()
+
+    ui.insertResolvedPackages(
+      selection,
+      resolved('partly-held', {
+        isOutdated: true,
+        heldByCooldown: {
+          version: '9.9.9',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      })
+    )
+
+    expect(selection.items[0]).toMatchObject({ name: 'partly-held', heldOnly: false })
   })
 })
 

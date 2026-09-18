@@ -137,20 +137,20 @@ export class InteractiveUI {
   }
 
   /**
-   * Adds the outdated declarations of one streamed package to the list at
-   * their sorted position and audits just the rows that were new.
+   * Adds the rows of one streamed package to the list at their sorted position and audits
+   * just the ones that were new.
+   *
+   * "Rows" means outdated declarations plus any the cooldown emptied out — the latter have
+   * nothing to select, but they are the packages a user most needs to be told about, and
+   * they stay filtered out of the default view.
    */
-  public insertOutdatedPackage(
+  public insertResolvedPackages(
     selection: SelectionList,
     packageInfo: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): void {
-    const outdatedStates = this.createSelectionStates(
-      packageInfo.filter((pkg) => pkg.isOutdated),
-      previousSelections,
-      false
-    )
-    const inserted = selection.insert(outdatedStates)
+    const rows = this.createSelectionStates(packageInfo, previousSelections, false)
+    const inserted = selection.insert(rows)
     if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
   }
 

@@ -71,7 +71,12 @@ export function createSelectionStates(
   previousSelections?: Map<string, 'none' | 'range' | 'latest'>,
   includeUpToDate: boolean = true
 ): PackageSelectionState[] {
-  const relevantPackages = includeUpToDate ? packages : packages.filter((p) => p.isOutdated)
+  // A package the cooldown emptied out is not outdated — every version newer than the
+  // installed one is inside the window — but it is exactly what the run needs to be able
+  // to show. It earns a row, marked `heldOnly` so the filters can keep it out of the way.
+  const relevantPackages = includeUpToDate
+    ? packages
+    : packages.filter((p) => p.isOutdated || p.heldByCooldown !== undefined)
   const uniquePackages = deduplicatePackages(relevantPackages)
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
@@ -102,6 +107,7 @@ export function createSelectionStates(
       deprecated: pkg.deprecated,
       enginesNode: pkg.enginesNode,
       heldByCooldown: pkg.heldByCooldown,
+      heldOnly: !pkg.isOutdated && pkg.heldByCooldown !== undefined,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
       allVersions: pkg.allVersions,
     }

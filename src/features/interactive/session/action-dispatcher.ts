@@ -20,6 +20,7 @@ const INTERACTIVE_ACTIONS = new Set([
   'bulk_unselect_all',
   'toggle_dep_type_filter',
   'toggle_vulnerable_filter',
+  'toggle_cooldown_held_filter',
 ])
 
 export type DispatchContext = {
@@ -251,6 +252,9 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       break
     case 'toggle_vulnerable_filter':
       auditOrToggleVulnerable()
+      break
+    case 'toggle_cooldown_held_filter':
+      stateManager.toggleCooldownHeldFilter()
       break
     case 'cancel':
     case 'quit':

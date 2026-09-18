@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   upgradePackages: vi.fn(),
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
-  insertOutdatedPackage: vi.fn(),
+  insertResolvedPackages: vi.fn(),
   setCooldownHeldCount: vi.fn(),
   setCooldownUnsupported: vi.fn(),
   isPerfLoggingEnabled: vi.fn(() => false),
@@ -47,7 +47,7 @@ vi.mock('../../../src/app/interactive-ui', () => ({
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
-    insertOutdatedPackage = mocks.insertOutdatedPackage
+    insertResolvedPackages = mocks.insertResolvedPackages
     setCooldownHeldCount = mocks.setCooldownHeldCount
     setCooldownUnsupported = mocks.setCooldownUnsupported
   },
@@ -89,7 +89,7 @@ describe('UpgradeRunner terminal handoff', () => {
       color: null,
     })
     mocks.getOutdatedPackagesOnly.mockImplementation((packages: any[]) => packages)
-    mocks.insertOutdatedPackage.mockImplementation(() => {})
+    mocks.insertResolvedPackages.mockImplementation(() => {})
 
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
@@ -303,7 +303,7 @@ describe('UpgradeRunner terminal handoff', () => {
         return []
       }
     )
-    mocks.insertOutdatedPackage.mockImplementation(() => {
+    mocks.insertResolvedPackages.mockImplementation(() => {
       snapshotsAtPackage.push(seenProgress?.slowNetwork)
     })
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
@@ -662,8 +662,8 @@ describe('UpgradeRunner terminal handoff', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
 
-    expect(mocks.insertOutdatedPackage).toHaveBeenCalledTimes(2)
-    expect(mocks.insertOutdatedPackage.mock.calls[1][1]).toEqual([
+    expect(mocks.insertResolvedPackages).toHaveBeenCalledTimes(2)
+    expect(mocks.insertResolvedPackages.mock.calls[1][1]).toEqual([
       { ...streamedPackage, name: 'zod' },
     ])
     // Once per package event, once for completion.

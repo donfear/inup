@@ -124,6 +124,95 @@ describe('UIRenderer', () => {
     expect(text).not.toContain('3 held by cooldown')
   })
 
+  it('names the key that reveals the held packages, and stops saying so once they are', () => {
+    // A count nobody can act on is worse than no count: the header has to point at the way
+    // to see them, and must not keep claiming they are missing once they are on screen.
+    const hidden = renderer.renderInterface(
+      [makeSelectionState()],
+      0,
+      0,
+      10,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      140,
+      undefined,
+      undefined,
+      { cooldown: { heldCount: 5, unsupported: false } }
+    )
+    expect(stripAnsi(hidden.join('\n'))).toContain('5 held by cooldown, not listed — press c')
+
+    const shown = renderer.renderInterface(
+      [makeSelectionState()],
+      0,
+      0,
+      10,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      140,
+      undefined,
+      undefined,
+      { cooldown: { heldCount: 5, unsupported: false }, cooldownHeldShown: true }
+    )
+    const shownText = stripAnsi(shown.join('\n'))
+    expect(shownText).toContain('5 held by cooldown')
+    expect(shownText).not.toContain('not listed')
+  })
+
+  it('names the withheld version on a held-only row instead of leaving the column blank', () => {
+    // The row has nothing to select, so without this it would show only [HELD] and the
+    // installed version — the user would have to open the modal to learn what is being
+    // kept from them, which is the question the badge itself raises.
+    const held = makeSelectionState({
+      name: 'zod',
+      currentVersionSpecifier: '^4.1.12',
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      heldOnly: true,
+      heldByCooldown: {
+        version: '4.1.13',
+        publishedAt: '2026-09-17T00:00:00.000Z',
+        ageMinutes: 2880,
+        count: 1,
+      },
+    })
+
+    const text = stripAnsi(
+      renderer
+        .renderInterface(
+          [held],
+          0,
+          0,
+          10,
+          false,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          140
+        )
+        .join('\n')
+    )
+
+    expect(text).toContain('zod')
+    expect(text).toContain('[HELD]')
+    expect(text).toContain('^4.1.13')
+    // `◌`, not the selectable `○`: pressing -> on this row does nothing, and the marker
+    // should not promise otherwise.
+    expect(text).toContain('◌ ^4.1.13')
+  })
+
   it('omits the cooldown header note when nothing is held', () => {
     const lines = renderer.renderInterface([makeSelectionState()], 0, 0, 10, false)
     expect(stripAnsi(lines.join('\n'))).not.toContain('held by cooldown')

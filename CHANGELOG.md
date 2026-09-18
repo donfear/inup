@@ -10,7 +10,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Release-age cooldown: `--minimum-release-age <minutes>`, or `minimumReleaseAge` in `.inuprc` (minutes, the same name and unit pnpm uses), never offers a version published more recently than the window — not in the picker, not in reports, and not under `--apply`. Freshly published versions are the ones most likely to be a compromised release nobody has caught yet. `minimumReleaseAgeExclude` exempts packages you publish yourself, and the GitHub Action takes the same window as a `minimum-release-age` input.
-- The cooldown says what it withheld instead of quietly showing you fewer updates: a `[HELD]` badge on the row, the withheld version and its age in the info modal (`i`), a count in the picker header for packages held back entirely, a `heldByCooldown` array in `--json`, a recap in the plain report, and a table in the Action's PR body. A package waiting out its cooldown never looks the same as a package that is up to date.
+- The cooldown says what it withheld instead of quietly showing you fewer updates: a `[HELD]` badge on the row, the withheld version and its age in the info modal (`i`), a `heldByCooldown` array in `--json`, a recap in the plain report, and a table in the Action's PR body. A package waiting out its cooldown never looks the same as a package that is up to date.
+- Packages whose every newer version is inside the cooldown window are not outdated, so they have no row in the picker. The header counts them and `c` brings them into the list, showing which version is being held. They can't be selected — there is nothing to upgrade to yet.
 - `--json` reports whether the cooldown could act at all. Registries that don't publish release times leave it inert, and `cooldown.publishTimesAvailable` says so, so CI can gate on the control working rather than on it finding nothing.
 
 ### Changed

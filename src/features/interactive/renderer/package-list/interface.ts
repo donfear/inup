@@ -54,14 +54,21 @@ export function renderInterface(
 ): string[] {
   const output: string[] = []
 
-  // Appended to the header: the list shows only outdated packages, so a fully-held
-  // package has no row to carry a badge. Without this the cooldown would be silent,
-  // which is the one thing a security control must never be.
+  // Appended to the header. These packages are not outdated any more — every version newer
+  // than the installed one is inside the window — so the default list has no row for them
+  // and the cooldown would otherwise be silent, which is the one thing a security control
+  // must never be. The count says "not listed" and names the key that reveals them, because
+  // a bare number beside a short list reads as a contradiction and a number nobody can act
+  // on is worse than no number at all.
   const heldCount = options.cooldown?.heldCount ?? 0
   const heldSuffix = options.cooldown?.unsupported
     ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
     : heldCount > 0
-      ? getThemeColor('warning')(`  ${heldCount} held by cooldown`)
+      ? getThemeColor('warning')(
+          options.cooldownHeldShown
+            ? `  ${heldCount} held by cooldown`
+            : `  ${heldCount} held by cooldown, not listed — press c`
+        )
       : ''
 
   const headerLine =

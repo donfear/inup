@@ -126,7 +126,7 @@ export class UpgradeRunner {
             latestPackages.push(...event.payload.packageInfo)
             syncProgress(event.payload.progress)
             performanceTracker.mark('firstResult')
-            this.ui.insertOutdatedPackage(selection, event.payload.packageInfo, previousSelections)
+            this.ui.insertResolvedPackages(selection, event.payload.packageInfo, previousSelections)
             this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
             this.ui.setCooldownUnsupported(this.isCooldownInert())
             session?.refresh()

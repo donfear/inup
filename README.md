@@ -61,6 +61,7 @@ Review the diff and run your tests after upgrading.
 | `o` | Toggle optionalDependencies |
 | `s` | Run the vulnerability audit |
 | `v` | Show only vulnerable packages |
+| `c` | Show packages held back by the release-age cooldown |
 | `Esc` | Clear the active search filter |
 | `i` | View package details and changelog |
 | `t` | Change the color theme |

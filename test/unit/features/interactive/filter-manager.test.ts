@@ -185,6 +185,49 @@ describe('FilterManager vulnerability filtering', () => {
   })
 })
 
+describe('FilterManager cooldown-held rows', () => {
+  const row = (name: string, heldOnly: boolean) =>
+    ({
+      name,
+      type: 'dependencies',
+      heldOnly,
+    }) as never
+
+  it('hides held-only rows by default and reveals them on toggle', () => {
+    // They carry no selectable upgrade, so the default list keeps meaning
+    // "things you can upgrade" — but the header count has to be reachable.
+    const fm = new FilterManager()
+    const states = [row('axios', false), row('zod', true)]
+
+    expect(fm.getFilteredStates(states).map((s) => s.name)).toEqual(['axios'])
+
+    fm.toggleCooldownHeldFilter()
+    expect(fm.isCooldownHeldFilterActive()).toBe(true)
+    expect(fm.getFilteredStates(states).map((s) => s.name)).toEqual(['axios', 'zod'])
+
+    fm.toggleCooldownHeldFilter()
+    expect(fm.getFilteredStates(states).map((s) => s.name)).toEqual(['axios'])
+  })
+
+  it('says so in the filter label while they are shown', () => {
+    const fm = new FilterManager()
+    expect(fm.getActiveFilterLabel()).not.toContain('cooldown')
+
+    fm.toggleCooldownHeldFilter()
+    expect(fm.getActiveFilterLabel()).toContain('(+ cooldown held)')
+  })
+
+  it('still applies the dependency-type and search filters to revealed rows', () => {
+    const fm = new FilterManager()
+    fm.toggleCooldownHeldFilter()
+    const states = [row('zod', true), row('axios', true)]
+
+    fm.updateFilterQuery('zo')
+
+    expect(fm.getFilteredStates(states).map((s) => s.name)).toEqual(['zod'])
+  })
+})
+
 describe('FilterManager persistence', () => {
   it('seeds from persisted filters, defaulting unspecified toggles to visible', () => {
     const fm = new FilterManager({ showDevDependencies: false, showOnlyVulnerable: true })
@@ -202,6 +245,7 @@ describe('FilterManager persistence', () => {
 
     const persisted = fm.getPersistableState()
     expect(persisted).toEqual({
+      showCooldownHeld: false,
       showDependencies: true,
       showDevDependencies: true,
       showPeerDependencies: true,

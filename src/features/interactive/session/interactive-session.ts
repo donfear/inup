@@ -386,6 +386,7 @@ export async function runInteractiveSession(
           auditProgress,
           {
             ...packageListRenderOptions,
+            cooldownHeldShown: stateManager.isCooldownHeldFilterActive(),
             columnWidths: columnLayout.get(selection.arrivals, terminalWidth),
           },
           uiState.notice

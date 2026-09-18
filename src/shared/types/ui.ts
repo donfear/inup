@@ -51,6 +51,12 @@ export interface PackageSelectionState {
   deprecated?: string // npm deprecation message for the latest version (loaded on demand)
   enginesNode?: string // declared engines.node range for the latest version (loaded on demand)
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
+  /**
+   * The row exists only to surface a cooldown hold: every version newer than the installed
+   * one is inside the window, so there is nothing to select. Hidden until `c` reveals them,
+   * because the list otherwise means "things you can upgrade".
+   */
+  heldOnly?: boolean
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions (for release notes version range)
   releaseNotesVersions?: string[] // Versions between current and target (newest first)
@@ -68,6 +74,8 @@ export interface PersistedFilters {
   showPeerDependencies: boolean
   showOptionalDependencies: boolean
   showOnlyVulnerable: boolean
+  /** Show packages whose only newer versions the release-age cooldown withheld. */
+  showCooldownHeld: boolean
 }
 
 export interface GroupedPackages {

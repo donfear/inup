@@ -19,6 +19,7 @@ export type InputAction =
   | { type: 'scroll_help_modal_up' }
   | { type: 'scroll_help_modal_down' }
   | { type: 'toggle_vulnerable_filter' }
+  | { type: 'toggle_cooldown_held_filter' }
   | { type: 'notify_empty_selection' }
   | { type: 'confirm' }
   | { type: 'bulk_select_minor' }
