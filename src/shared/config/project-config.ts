@@ -42,7 +42,8 @@ export interface InupProjectConfig {
 
   /**
    * Packages exempt from `minimumReleaseAge`. Supports exact names and the same glob
-   * patterns as `ignore` (e.g. "@myco/*").
+   * patterns as `ignore` (e.g. "@myco/*") — typically your own first-party packages,
+   * which you want immediately.
    */
   minimumReleaseAgeExclude?: string[]
 
@@ -217,9 +218,20 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
     }
   }
 
-  // JSON.parse can only yield finite numbers, so type + sign checks are sufficient.
-  if (typeof config.minimumReleaseAge === 'number' && config.minimumReleaseAge >= 0) {
-    normalized.minimumReleaseAge = config.minimumReleaseAge
+  // Never drop this one silently either: a cooldown is a security control, and
+  // ignoring a typo'd value would quietly leave the user unprotected.
+  if (config.minimumReleaseAge !== undefined) {
+    if (
+      typeof config.minimumReleaseAge === 'number' &&
+      Number.isInteger(config.minimumReleaseAge) &&
+      config.minimumReleaseAge >= 0
+    ) {
+      normalized.minimumReleaseAge = config.minimumReleaseAge
+    } else {
+      console.warn(
+        `Warning: ignoring invalid "minimumReleaseAge" in project config (expected a non-negative integer number of minutes, got ${JSON.stringify(config.minimumReleaseAge)})`
+      )
+    }
   }
 
   if (config.minimumReleaseAgeExclude) {

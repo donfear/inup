@@ -244,7 +244,13 @@ export const rows: FeatureRow[] = [
   },
   {
     feature: 'Cooldown / publish-age delay',
-    support: { inup: 'no', ncu: 'yes', taze: 'yes', updates: 'yes', renovate: 'yes' },
+    support: { inup: 'yes', ncu: 'yes', taze: 'yes', updates: 'yes', renovate: 'yes' },
+  },
+  {
+    // ncu names the held version in its terminal table, but --jsonUpgraded drops it
+    // entirely (verified 2026-08-01), so a CI job or agent cannot see the hold at all.
+    feature: 'Cooldown holds in the JSON report',
+    support: { inup: 'yes', ncu: 'no' },
   },
   {
     feature: 'Per-package upgrade rules',

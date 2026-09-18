@@ -25,6 +25,8 @@ The quickest start is `inup --init`: it writes a commented `.inuprc` template wi
   "ignoreMajor": ["@tiptap/*"],
   "exclude": ["fixtures", "examples/.*"],
   "scanDirs": ["lib"],
+  "minimumReleaseAge": 10080,
+  "minimumReleaseAgeExclude": ["@myco/*"],
   "showPeerDependencyVulnerabilities": false,
   "showOptionalDependencyVulnerabilities": false
 }
@@ -83,6 +85,18 @@ Experimental. Set to `true` to fetch and parse registry data with inup's native 
 inup itself ships without native code. The first run with native enabled downloads the core for your platform (about 1.5 MB) from your npm registry, checks it against the checksum the registry publishes, and caches it; that run still uses the standard core, and later runs use the native one. A new inup version downloads its matching core once.
 
 Available for macOS, Linux (glibc and musl) and Windows, on x64 and arm64. Wherever the native core can't be downloaded or loaded, inup quietly uses the standard core — `--debug` logs which one is active.
+
+### `minimumReleaseAge`
+
+Supply-chain cooldown, in **minutes** (matching pnpm's setting of the same name). Versions published more recently than this are not offered as upgrade targets — in the picker, in reports, or under `--apply`. Freshly published versions are the ones most likely to be a compromised release nobody has caught yet. `0` or absent disables it; `10080` is 7 days. The `--minimum-release-age` flag overrides it.
+
+Unlike other tools' cooldowns, inup does not skip silently: a withheld version shows a `[HELD]` badge in the picker, appears in the `heldByCooldown` array of the `--json` report, and gets its own table in the GitHub Action's PR body.
+
+Registries that don't expose publish times are unaffected — the policy acts only on positive evidence. Enabling it fetches the full registry metadata rather than the abbreviated format, so the first run is somewhat slower; later runs are cushioned by the ETag cache.
+
+### `minimumReleaseAgeExclude`
+
+Packages exempt from `minimumReleaseAge` — typically your own first-party packages, which you want immediately. Same pattern syntax as `ignore`.
 
 ## Environment variables
 

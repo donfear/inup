@@ -28,6 +28,7 @@ inup [options]
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation) |
 | `--target <level>` | With `--apply`: `minor` (default, in-range), `patch`, or `latest` |
+| `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via `.inuprc`) |
 | `--save-exact` | Write exact versions instead of preserving the range prefix (`^`/`~`) |
 | `--no-color` | Disable colored output (also respects `NO_COLOR` / `FORCE_COLOR`) |
 | `--debug` | Write a verbose debug log to `/tmp/inup-debug-YYYY-MM-DD.log` |

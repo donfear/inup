@@ -87,6 +87,67 @@ export function dedupe(entries) {
   return [...seen.values()]
 }
 
+/** Coarse human age — minutes under an hour, then hours, then days. */
+export function formatAge(minutes) {
+  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`
+  return `${Math.floor(minutes / (60 * 24))}d`
+}
+
+/**
+ * The release-age cooldown section: versions that exist but were deliberately withheld.
+ *
+ * Rendered even when nothing else was upgraded. A cooldown that silently skips a version is
+ * indistinguishable from being up to date, which would let a reviewer conclude there is
+ * nothing newer — the opposite of what a supply-chain control should communicate.
+ */
+/**
+ * A warning when the configured cooldown could not act at all.
+ *
+ * The policy fails open on missing publish times, so a registry that doesn't expose `time`
+ * produces an empty held list — indistinguishable from "every version is old enough". In CI
+ * nobody reads stderr, so the PR body is the only place a reviewer would ever learn that the
+ * supply-chain guard they configured did nothing.
+ */
+export function cooldownWarningSection(report) {
+  const cooldown = report.cooldown
+  if (!cooldown || cooldown.publishTimesAvailable) return []
+  return [
+    `> [!WARNING]`,
+    `> \`minimum-release-age\` is set to **${cooldown.minimumReleaseAge}** minutes, but the registry returned no publish times.`,
+    `> The cooldown had **no effect** on this run — every version was treated as eligible.`,
+    '',
+  ]
+}
+
+export function heldSection(report) {
+  const held = report.heldByCooldown ?? []
+  if (held.length === 0) return []
+
+  // Same monorepo collapse as the upgrades table: one line per unique withheld version.
+  const seen = new Map()
+  for (const h of held) {
+    const key = `${h.name}@${h.version}`
+    if (!seen.has(key)) seen.set(key, h)
+  }
+
+  const lines = ['### ⏳ Held by release-age cooldown', '']
+  lines.push(
+    'A newer version exists but is younger than the configured `minimum-release-age`, so it was **not** applied. ' +
+      'Freshly published versions are the ones most likely to be a compromised release nobody has caught yet.'
+  )
+  lines.push('')
+  lines.push('| Package | Held version | Published | Versions held |')
+  lines.push('|---|---|---|---|')
+  for (const h of seen.values()) {
+    lines.push(
+      `| \`${escapeCell(h.name)}\` | ${escapeCell(h.version)} | ${formatAge(h.ageMinutes)} ago | ${h.count} |`
+    )
+  }
+  lines.push('')
+  return lines
+}
+
 export function render(report) {
   const { summary } = report
   // Collapse monorepo duplicates up front so every section below counts and lists unique upgrades.
@@ -110,8 +171,17 @@ export function render(report) {
   )
   lines.push('')
 
+  lines.push(...cooldownWarningSection(report))
+
   if (outdated.length === 0) {
-    lines.push('Everything is up to date. 🎉')
+    const held = heldSection(report)
+    if (held.length === 0) {
+      lines.push('Everything is up to date. 🎉')
+      return lines.join('\n')
+    }
+    lines.push('No upgrades were applied, but the cooldown is holding versions back.')
+    lines.push('')
+    lines.push(...held)
     return lines.join('\n')
   }
 
@@ -186,6 +256,8 @@ export function render(report) {
     }
     lines.push('')
   }
+
+  lines.push(...heldSection(report))
 
   lines.push('---')
   lines.push('')

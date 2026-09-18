@@ -56,6 +56,17 @@ export function buildConfigTemplate(): string {
   "showPeerDependencyVulnerabilities": false,
   "showOptionalDependencyVulnerabilities": false
 
+  // Supply-chain cooldown, in MINUTES: never offer a version published more
+  // recently than this. Freshly published versions are the ones most likely to
+  // be a compromised release nobody has caught yet. 10080 = 7 days.
+  // Enabling it fetches the full registry metadata, so the first run is a
+  // little slower; later runs are cushioned by the ETag cache.
+  // "minimumReleaseAge": 10080,
+
+  // Packages exempt from the cooldown — typically your own, which you want
+  // immediately. Same pattern syntax as "ignore".
+  // "minimumReleaseAgeExclude": ["@myco/*"],
+
   // Pin registry-fetch parallelism (integer 1-24) and disable adaptive
   // ramping — an escape hatch for slow or metered connections.
   // "concurrency": 4

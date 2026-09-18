@@ -87,6 +87,8 @@ npx inup --minimum-release-age 10080   # nothing published in the last 7 days
 
 Keep it in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
 
+inup tells you what it held back rather than quietly showing you fewer updates, so a package waiting out its cooldown never looks the same as a package that is up to date.
+
 Registries that don't publish release times are unaffected — the cooldown only acts on evidence it actually has.
 
 ## GitHub Action: one PR, kept up to date

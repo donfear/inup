@@ -21,7 +21,7 @@ import { base } from '../../lib/url';
     },
     {
       q: 'When should I choose updates over inup?',
-      a: 'When you want a fast, non-interactive step for CI or a script — especially in a polyglot repo where you also update Cargo, Go, Docker or GitHub Actions versions. updates also has a typed config file and a publish-age cooldown. inup is the better fit for a hands-on npm/yarn/pnpm/bun upgrade session.',
+      a: 'When you want a fast, non-interactive step for CI or a script — especially in a polyglot repo where you also update Cargo, Go, Docker or GitHub Actions versions. updates also has a typed config file. Both tools have a publish-age cooldown. inup is the better fit for a hands-on npm/yarn/pnpm/bun upgrade session.',
     },
   ]}
 >
@@ -61,9 +61,9 @@ import { base } from '../../lib/url';
         images, GitHub Actions and Makefile tool versions.
       </li>
       <li>
-        <strong>Typed config and a cooldown.</strong> An <code>updates.config</code>
-        file (TS/JS) plus a publish-age cooldown to skip brand-new releases —
-        neither of which inup has today.
+        <strong>Typed config.</strong> An <code>updates.config</code> file
+        (TS/JS) with editor completion, where inup's <code>.inuprc</code> is
+        plain JSON with comments.
       </li>
     </ul>
   </Fragment>
