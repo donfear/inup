@@ -122,11 +122,18 @@ export async function runCli(options: CliOptions): Promise<void> {
     process.exit(1)
   }
 
-  // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc".
+  // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc"; an
+  // explicit 0 means "disable the configured cooldown for this run", so presence is what
+  // counts, not truthiness. Number() rather than parseInt: parseInt('7.5') is 7, and a
+  // security control must reject input it cannot honor instead of quietly rounding it.
   let cliMinimumReleaseAge: number | undefined
   if (options.minimumReleaseAge !== undefined) {
-    cliMinimumReleaseAge = Number.parseInt(options.minimumReleaseAge, 10)
-    if (!Number.isInteger(cliMinimumReleaseAge) || cliMinimumReleaseAge < 0) {
+    cliMinimumReleaseAge = Number(options.minimumReleaseAge)
+    if (
+      options.minimumReleaseAge.trim() === '' ||
+      !Number.isInteger(cliMinimumReleaseAge) ||
+      cliMinimumReleaseAge < 0
+    ) {
       console.error(chalk.red(`Invalid minimum release age: ${options.minimumReleaseAge}`))
       console.error(
         chalk.yellow('Expected a non-negative number of minutes, e.g. --minimum-release-age 10080')

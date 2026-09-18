@@ -7,6 +7,7 @@ import {
 } from '../features/debug'
 import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
+import { countHeldPackages } from '../shared/cooldown'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
 import type {
@@ -25,20 +26,10 @@ import { InteractiveUI } from './interactive-ui'
  * Packages whose newer versions were ALL withheld by the release-age cooldown.
  *
  * These are invisible in the picker — it lists outdated packages only, and a package with no
- * reachable upgrade target is not outdated. Counted separately so the header can say so.
- * Partially-held packages (an in-range bump is still available) do appear as rows and carry
- * their own `[HELD]` badge, so they are excluded here to avoid double-reporting.
- *
- * Counted by unique name: the scan yields one entry per (package, file, dependency type), so
- * a workspace repo depending on the same package five times would otherwise report "5 held"
- * for a single withheld release.
+ * reachable upgrade target is not outdated, so the header is the only place they can surface.
  */
 function countHiddenCooldownHolds(packages: PackageInfo[]): number {
-  const names = new Set<string>()
-  for (const pkg of packages) {
-    if (pkg.heldByCooldown !== undefined && !pkg.isOutdated) names.add(pkg.name)
-  }
-  return names.size
+  return countHeldPackages(packages, { hiddenOnly: true })
 }
 
 export class UpgradeRunner {

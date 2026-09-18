@@ -502,6 +502,64 @@ describe('HeadlessRunner.run', () => {
       logSpy.mockRestore()
     })
 
+    it('never applies a version the cooldown withheld, at any target', async () => {
+      // End of the chain: the gate happens in the detector, so `--apply` can only ever
+      // choose from what survived it. This pins that the withheld version has no path
+      // back in through latestVersion or the version list.
+      const held = {
+        ...OUTDATED,
+        latestVersion: '1.0.0', // 1.16.1 was withheld; the effective latest is older
+        allVersions: ['0.27.0', '0.27.1', '0.27.2', '1.0.0'],
+        heldByCooldown: {
+          version: '1.16.1',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([held])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      for (const target of ['minor', 'patch', 'latest'] as const) {
+        mocks.upgradePackages.mockClear()
+        await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target })
+
+        const choices = mocks.upgradePackages.mock.calls[0]?.[0] ?? []
+        for (const choice of choices) {
+          expect(choice.targetVersion, `target=${target}`).not.toContain('1.16.1')
+        }
+      }
+
+      logSpy.mockRestore()
+    })
+
+    it('--apply --json still reports what the cooldown withheld', async () => {
+      // The upgrade happened; the hold is still the thing a reviewer needs to see.
+      const held = {
+        ...OUTDATED,
+        latestVersion: '1.0.0',
+        allVersions: ['0.27.0', '0.27.1', '0.27.2', '1.0.0'],
+        heldByCooldown: {
+          version: '1.16.1',
+          publishedAt: '2026-09-17T00:00:00.000Z',
+          ageMinutes: 30,
+          count: 1,
+        },
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([held])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, json: true, target: 'latest' })
+
+      const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+      expect(report.summary.heldByCooldown).toBe(1)
+      expect(report.heldByCooldown).toEqual([
+        expect.objectContaining({ name: 'axios', version: '1.16.1', count: 1 }),
+      ])
+      expect(report.outdated[0].heldByCooldown).toMatchObject({ version: '1.16.1' })
+      logSpy.mockRestore()
+    })
+
     it('target=latest holds ignoreMajor packages to their in-range bump', async () => {
       // Detector-level suppression already cleared hasMajorUpdate and set
       // majorIgnored; latest must not resurrect the major via latestVersion.

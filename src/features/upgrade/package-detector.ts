@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import * as semver from 'semver'
 import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
 import { configManager } from '../../shared/config/user-config'
+import { applyReleaseAgeCooldown } from '../../shared/cooldown'
 import { debugLog } from '../../shared/debug-logger'
 import {
   collectAllDependenciesAsync,
@@ -27,7 +28,6 @@ import {
   findClosestMinorVersion,
   highestOverallVersion,
   parseCurrentVersion,
-  partitionVersionsByReleaseAge,
   toComparableVersion,
 } from '../../shared/versions'
 import { getPerformanceTracker } from '../debug'
@@ -583,95 +583,23 @@ export class PackageDetector {
       return { data: packageData }
     }
 
-    // Both pools are partitioned. Gating only the stable one would let a prerelease
-    // published minutes ago through for anyone on the prerelease channel — the
-    // same attack, one channel over.
-    const now = Date.now()
-    const { publishTimes } = packageData
-    const stable = partitionVersionsByReleaseAge(
-      packageData.allVersions,
-      publishTimes,
-      this.minimumReleaseAge,
-      now
+    const { data, held, withheldTotal } = applyReleaseAgeCooldown(packageData, {
+      minimumReleaseAgeMinutes: this.minimumReleaseAge,
+      installed,
+      specifier: dep.version,
+    })
+    if (withheldTotal === 0) return { data }
+
+    // One line per (package, specifier), because `resolvePackageGroup` evaluates the policy
+    // once per distinct specifier and re-stamps the rest: a monorepo declaring the same
+    // dependency in five manifests describes one gate, not five.
+    debugLog.info(
+      'PackageDetector',
+      `release-age gate: ${withheldTotal} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${data.latestVersion})`
     )
-    const prerelease = packageData.prereleaseVersions
-      ? partitionVersionsByReleaseAge(
-          packageData.prereleaseVersions,
-          publishTimes,
-          this.minimumReleaseAge,
-          now
-        )
-      : undefined
 
-    const withheldPrerelease = prerelease?.withheld ?? []
-    if (stable.withheld.length === 0 && withheldPrerelease.length === 0) {
-      return { data: packageData }
-    }
-
-    // Both channels are GATED, but only the channel this dependency can actually reach is
-    // REPORTED. A stable install is never offered a prerelease, so naming one as "held back"
-    // would invent a missed upgrade that was never on the table.
-    const withheld = (
-      (installed?.prerelease.length ?? 0) > 0
-        ? [...stable.withheld, ...withheldPrerelease]
-        : stable.withheld
-    )
-      .slice()
-      .sort((a, b) => semver.rcompare(a.version, b.version))
-
-    // `prerelease` is undefined exactly when the packument carried no prerelease
-    // pool, so this mirrors the original absent-vs-present distinction directly.
-    const eligiblePrerelease = prerelease?.eligible
-
-    // Recompute the latest on the channel the original latest came from, so a
-    // package with stable publishes never falls back onto a prerelease just
-    // because its recent stable releases are inside the window. An empty pool
-    // means nothing is old enough yet: the installed version is the latest on
-    // offer.
-    const installedFallback = installed?.version || dep.version
-    const effectiveLatest =
-      semver.prerelease(packageData.latestVersion) !== null
-        ? (eligiblePrerelease?.[0] ?? installedFallback)
-        : (stable.eligible[0] ?? installedFallback)
-    const latestUnchanged = effectiveLatest === packageData.latestVersion
-
-    // Report the newest withheld version — that is what the user would have been
-    // offered, and the thing they need to know is being deliberately held back.
-    const newest = withheld[0]
-    const held: CooldownHold | undefined = newest
-      ? {
-          version: newest.version,
-          publishedAt: newest.publishedAt,
-          // Clamped: a registry clock ahead of ours yields a future publish time, which
-          // is withheld correctly but would otherwise report a negative age.
-          ageMinutes: Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000)),
-          count: withheld.length,
-        }
-      : undefined
-
-    const gateKey = `${dep.name}@${dep.version}`
-    if (!this.loggedReleaseAgeGates.has(gateKey)) {
-      this.loggedReleaseAgeGates.add(gateKey)
-      debugLog.info(
-        'PackageDetector',
-        `release-age gate: ${stable.withheld.length + withheldPrerelease.length} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${effectiveLatest})`
-      )
-    }
-
-    return {
-      data: {
-        ...packageData,
-        latestVersion: effectiveLatest,
-        allVersions: stable.eligible,
-        prereleaseVersions: eligiblePrerelease,
-        deprecated: latestUnchanged ? packageData.deprecated : undefined,
-        enginesNode: latestUnchanged ? packageData.enginesNode : undefined,
-      },
-      held,
-    }
+    return { data, held }
   }
-
-  private readonly loggedReleaseAgeGates = new Set<string>()
 
   /** Cooldown support probe: packages whose data arrived, and whether any carried `time`. */
   private cooldownPackagesResolved = 0

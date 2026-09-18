@@ -1734,6 +1734,38 @@ describe('PackageDetector release-age cooldown', () => {
       })
   })
 
+  it('logs one gate line per (package, specifier), not one per workspace manifest', async () => {
+    // A monorepo declaring the same dependency in five manifests describes ONE gate.
+    // Repeating it per location turns the debug log into noise at exactly the moment
+    // someone is reading it to understand why an upgrade disappeared.
+    vi.mocked(debugLog.info).mockClear()
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('axios', '^1.0.0', '/repo/packages/a/package.json'),
+      dep('axios', '^1.0.0', '/repo/packages/b/package.json'),
+      dep('axios', '^1.0.0', '/repo/packages/c/package.json'),
+    ])
+    mockRegistry({
+      axios: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.0.0'],
+        publishTimes: { '1.2.0': minutesAgo(5), '1.0.0': minutesAgo(10_000) },
+      },
+    })
+
+    const packages = await new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 60,
+    }).getOutdatedPackages()
+
+    // Every location still carries the hold — each names a different file.
+    expect(packages.filter((pkg) => pkg.heldByCooldown !== undefined)).toHaveLength(3)
+    const gateLogs = vi
+      .mocked(debugLog.info)
+      .mock.calls.filter((call) => String(call[1]).includes('release-age gate'))
+    expect(gateLogs).toHaveLength(1)
+    expect(String(gateLogs[0][1])).toContain('1 version(s) of axios')
+  })
+
   it('does not report a withheld PRERELEASE to a stable install', async () => {
     // The stable install can never be offered 7.0.0-dev.1, so naming it as held back
     // would invent a missed upgrade that was never on the table. The gate still applies

@@ -1,3 +1,4 @@
+import { countHeldPackages, packagesWithHolds } from '../../shared/cooldown'
 import { formatAge } from '../../shared/duration'
 import type { CooldownHold, PackageInfo } from '../../shared/types'
 import type { HeadlessVulnerability } from '../audit'
@@ -22,18 +23,12 @@ export function buildHeadlessReport(
   // cooldown window is not outdated, and is precisely the case that must stay visible.
   // One entry per location, matching `outdated` — the same package held in five workspaces
   // is five rows, because each names a different file.
-  const held: HeadlessCooldownHold[] = all.flatMap((pkg) =>
-    pkg.heldByCooldown
-      ? [
-          {
-            name: pkg.name,
-            type: pkg.type,
-            packageJsonPath: pkg.packageJsonPath,
-            ...pkg.heldByCooldown,
-          },
-        ]
-      : []
-  )
+  const held: HeadlessCooldownHold[] = packagesWithHolds(all).map((pkg) => ({
+    name: pkg.name,
+    type: pkg.type,
+    packageJsonPath: pkg.packageJsonPath,
+    ...pkg.heldByCooldown,
+  }))
 
   return {
     schemaVersion: HEADLESS_SCHEMA_VERSION,
@@ -44,7 +39,7 @@ export function buildHeadlessReport(
       vulnerable: vulnerabilities.size,
       // Unique packages, NOT array length: this is a risk count, and one package
       // held across five workspaces is one thing to think about, not five.
-      heldByCooldown: new Set(held.map((entry) => entry.name)).size,
+      heldByCooldown: countHeldPackages(all),
     },
     outdated: outdated.map((pkg) => {
       const entry: HeadlessReportEntry = {
@@ -76,11 +71,7 @@ export function renderPlainReport(
   vulnerabilities: VulnerabilityMap,
   all: PackageInfo[] = outdated
 ): string {
-  // flatMap rather than filter: it narrows the hold to non-optional in one step, so the
-  // renderer below has no re-check of something already guaranteed present.
-  const held = all.flatMap((pkg) =>
-    pkg.heldByCooldown ? [{ name: pkg.name, hold: pkg.heldByCooldown }] : []
-  )
+  const held = packagesWithHolds(all).map((pkg) => ({ name: pkg.name, hold: pkg.heldByCooldown }))
 
   if (outdated.length === 0) {
     // "Up to date" would be a lie while the cooldown is holding something back.

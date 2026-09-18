@@ -1052,6 +1052,124 @@ describe('npm-registry', () => {
       })
     })
 
+    describe('with a release-age cooldown (fullMetadata)', () => {
+      const fullBody = {
+        versions: { '1.0.0': {}, '1.1.0': {} },
+        time: {
+          created: '2020-01-01T00:00:00.000Z',
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+        },
+      }
+
+      it('restores the publish times from the cache on a 304, so warm runs still gate', async () => {
+        // The cooldown is only as good as its evidence. If a revalidated packument came
+        // back without `time`, every warm run would silently report the cooldown inert.
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify(fullBody),
+          headers: { etag: 'W/"full-1"' },
+        }))
+        const first = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+        expect(first.get('demo-pkg')?.publishTimes).toEqual({
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+        })
+
+        let sentIfNoneMatch: string | undefined
+        requestMock.mockReset()
+        poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+          const o = opts as { headers: Record<string, string> }
+          sentIfNoneMatch = o.headers['if-none-match']
+          return {
+            statusCode: 304,
+            headers: {},
+            body: { ...streamOf(Buffer.alloc(0)), dump: async () => {} },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any
+        })
+        clearPackageCache()
+
+        const second = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+        expect(sentIfNoneMatch).toBe('W/"full-1"')
+        expect(second.get('demo-pkg')?.publishTimes).toEqual({
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+        })
+      })
+
+      it('never revalidates a full request against an abbreviated cache entry', async () => {
+        // The two formats parse to different data. A 304 answered from the wrong entry
+        // would hand a cooldown run a body that never had `time` in it.
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }),
+          headers: { etag: 'W/"abbreviated"' },
+        }))
+        await fetchPackageVersions(['demo-pkg'])
+
+        clearPackageCache()
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify(fullBody),
+          headers: { etag: 'W/"full"' },
+        }))
+        poolRequestSpy.mockClear()
+
+        const full = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+        const opts = poolRequestSpy.mock.calls[0][0] as { headers: Record<string, string> }
+        expect(opts.headers.accept).toBe('application/json')
+        expect(opts.headers['if-none-match']).toBeUndefined()
+        expect(full.get('demo-pkg')?.publishTimes).toBeDefined()
+        // And the abbreviated entry is still there, under its own key.
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')?.etag).toBe('W/"abbreviated"')
+        expect(readEtag('https://registry.npmjs.org/demo-pkg#full')?.etag).toBe('W/"full"')
+      })
+
+      it('bypasses the native transport, which can only ask for the abbreviated document', async () => {
+        // The addon hardcodes the install-v1 accept header and its parser drops `time`.
+        // Using it for a cooldown run would lose the field the policy depends on.
+        const fetch = vi.fn(async () => {
+          throw new Error('the native transport must not be used for a full packument')
+        })
+        nativeTransportMock.mockReturnValue({ fetch, takeReceivedBytes: vi.fn(() => 0) })
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify(fullBody),
+        }))
+
+        const result = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+        expect(fetch).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')?.publishTimes).toBeDefined()
+        nativeTransportMock.mockReset()
+        nativeTransportMock.mockReturnValue(null)
+      })
+
+      it('bypasses the Rust decoder, whose parsed shape has no publish times', async () => {
+        const decode = vi.fn(async () => ({
+          latestVersion: '1.1.0',
+          allVersions: ['1.1.0', '1.0.0'],
+          prereleaseVersions: [],
+        }))
+        packumentDecoderMock.mockReturnValue(decode)
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify(fullBody),
+          headers: { 'content-encoding': 'identity' },
+        }))
+
+        const result = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+        expect(decode).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')?.publishTimes).toBeDefined()
+        packumentDecoderMock.mockReset()
+        packumentDecoderMock.mockReturnValue(null)
+      })
+    })
+
     describe('with the native transport', () => {
       type Outcome = Record<string, unknown>
       const data = {
