@@ -60,15 +60,16 @@ export function renderInterface(
   // must never be. The count says "not listed" and names the key that reveals them, because
   // a bare number beside a short list reads as a contradiction and a number nobody can act
   // on is worse than no number at all.
+  //
+  // It disappears once they ARE listed. Its job is done at that point, and it counts unique
+  // package NAMES while the list counts rows — one per (name, specifier, dependency type),
+  // so a package declared twice is two rows. Both numbers are right and side by side they
+  // look like a bug.
   const heldCount = options.cooldown?.heldCount ?? 0
   const heldSuffix = options.cooldown?.unsupported
     ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
-    : heldCount > 0
-      ? getThemeColor('warning')(
-          options.cooldownHeldShown
-            ? `  ${heldCount} held by cooldown`
-            : `  ${heldCount} held by cooldown, not listed — press c`
-        )
+    : heldCount > 0 && !options.cooldownHeldShown
+      ? getThemeColor('warning')(`  ${heldCount} held by cooldown, not listed — press c`)
       : ''
 
   const headerLine =

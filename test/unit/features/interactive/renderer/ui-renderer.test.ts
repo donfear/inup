@@ -124,9 +124,11 @@ describe('UIRenderer', () => {
     expect(text).not.toContain('3 held by cooldown')
   })
 
-  it('names the key that reveals the held packages, and stops saying so once they are', () => {
-    // A count nobody can act on is worse than no count: the header has to point at the way
-    // to see them, and must not keep claiming they are missing once they are on screen.
+  it('names the key that reveals the held packages, and drops the count once they are shown', () => {
+    // A count nobody can act on is worse than no count, so the header points at the way to
+    // see them. Once they are on screen it goes away entirely: it counts unique package
+    // names while the list counts rows, and two nearly-equal numbers side by side read as
+    // a bug rather than as two different questions.
     const hidden = renderer.renderInterface(
       [makeSelectionState()],
       0,
@@ -163,9 +165,7 @@ describe('UIRenderer', () => {
       undefined,
       { cooldown: { heldCount: 5, unsupported: false }, cooldownHeldShown: true }
     )
-    const shownText = stripAnsi(shown.join('\n'))
-    expect(shownText).toContain('5 held by cooldown')
-    expect(shownText).not.toContain('not listed')
+    expect(stripAnsi(shown.join('\n'))).not.toContain('held by cooldown')
   })
 
   it('names the withheld version on a held-only row instead of leaving the column blank', () => {
