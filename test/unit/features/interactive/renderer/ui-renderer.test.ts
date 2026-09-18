@@ -168,13 +168,14 @@ describe('UIRenderer', () => {
     expect(stripAnsi(shown.join('\n'))).not.toContain('held by cooldown')
   })
 
-  it('names the withheld version on a held-only row instead of leaving the column blank', () => {
-    // The row has nothing to select, so without this it would show only [HELD] and the
-    // installed version — the user would have to open the modal to learn what is being
-    // kept from them, which is the question the badge itself raises.
+  it('marks a held-only row with [HELD] and leaves the version columns to real upgrades', () => {
+    // The badge signals, `i` explains — the same contract `[DEPR]` and `[ENG]` have. Putting
+    // the withheld version in the latest column would offer, in the column that means "pick
+    // one of these", a version that was deliberately refused.
     const held = makeSelectionState({
       name: 'zod',
       currentVersionSpecifier: '^4.1.12',
+      latestVersion: '4.1.12',
       hasRangeUpdate: false,
       hasMajorUpdate: false,
       heldOnly: true,
@@ -207,10 +208,7 @@ describe('UIRenderer', () => {
 
     expect(text).toContain('zod')
     expect(text).toContain('[HELD]')
-    expect(text).toContain('^4.1.13')
-    // `◌`, not the selectable `○`: pressing -> on this row does nothing, and the marker
-    // should not promise otherwise.
-    expect(text).toContain('◌ ^4.1.13')
+    expect(text).not.toContain('4.1.13')
   })
 
   it('keeps a real upgrade in the latest column even when that row also has a hold', () => {

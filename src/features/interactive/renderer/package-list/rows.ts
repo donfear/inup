@@ -125,17 +125,6 @@ function measureVersionColumns(state: PackageSelectionState, need: VersionColumn
       Math.max(need.latest, VersionUtils.getVisualLength(latest) + VERSION_COLUMN_OVERHEAD)
     )
   }
-  // A withheld version occupies the same column as a latest one, so it has to be measured
-  // there too — otherwise revealing the held rows would truncate them.
-  if (state.heldByCooldown) {
-    const held = VersionUtils.applyVersionPrefix(
-      state.currentVersionSpecifier,
-      state.heldByCooldown.version
-    )
-    need.latest = cap(
-      Math.max(need.latest, VersionUtils.getVisualLength(held) + VERSION_COLUMN_OVERHEAD)
-    )
-  }
 }
 
 /** Fits the needed widths into the terminal, growing columns round-robin from the classic size. */
@@ -292,22 +281,6 @@ export function renderPackageLine(
     latestVersionText = getThemeColor('versionLatest')(
       fitColumn(latestVersionWithPrefix, latestColumnWidth)
     )
-  } else if (state.heldByCooldown) {
-    // Nothing to select — the point is to name the version that exists and was withheld,
-    // so `[HELD]` on the row is answerable without opening the modal. `◌` rather than `○`
-    // for the same reason it marks loading and unavailable rows: this is not a choice.
-    latestDot = getThemeColor('dotEmpty')('◌')
-    // Amber, the same colour as the `[HELD]` badge: this column otherwise means "a version
-    // you can pick", and `◌` against `○` is too thin a distinction to carry that alone.
-    latestVersionText = getThemeColor('warning')(
-      fitColumn(
-        VersionUtils.applyVersionPrefix(
-          state.currentVersionSpecifier,
-          state.heldByCooldown.version
-        ),
-        latestColumnWidth
-      )
-    )
   } else {
     latestDot = getThemeColor('dotEmpty')('○')
     latestVersionText = ''
@@ -384,9 +357,7 @@ export function renderPackageLine(
   }
 
   let latestSection = ''
-  // A held row has no major update to show, but it does have a version to name: the one the
-  // cooldown withheld. Without this the column stays blank and `[HELD]` answers nothing.
-  if (isPending || isFailed || state.hasMajorUpdate || (!isPending && state.heldByCooldown)) {
+  if (isPending || isFailed || state.hasMajorUpdate) {
     latestSection = `${latestDot} ${latestVersionText}`
     const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
