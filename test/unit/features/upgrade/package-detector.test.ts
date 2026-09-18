@@ -1734,6 +1734,57 @@ describe('PackageDetector release-age cooldown', () => {
       })
   })
 
+  it('does not report a withheld PRERELEASE to a stable install', async () => {
+    // The stable install can never be offered 7.0.0-dev.1, so naming it as held back
+    // would invent a missed upgrade that was never on the table. The gate still applies
+    // to both channels — only the reporting narrows.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('typescript', '^6.0.0')])
+    mockRegistry({
+      typescript: {
+        latestVersion: '6.0.3',
+        allVersions: ['6.0.3'],
+        prereleaseVersions: ['7.0.0-dev.1'],
+        publishTimes: {
+          '6.0.3': minutesAgo(10_000),
+          '7.0.0-dev.1': minutesAgo(5),
+        },
+      },
+    })
+
+    const packages = await new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 60,
+    }).getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({ name: 'typescript', latestVersion: '6.0.3' })
+    expect(packages[0].heldByCooldown).toBeUndefined()
+    // The prerelease is still withheld from the pool the resolver sees.
+    expect(packages[0].allVersions).not.toContain('7.0.0-dev.1')
+  })
+
+  it('does report a withheld prerelease to a prerelease install', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('typescript', '^7.0.0-dev.1')])
+    mockRegistry({
+      typescript: {
+        latestVersion: '6.0.3',
+        allVersions: ['6.0.3'],
+        prereleaseVersions: ['7.0.0-dev.2', '7.0.0-dev.1'],
+        publishTimes: {
+          '6.0.3': minutesAgo(10_000),
+          '7.0.0-dev.2': minutesAgo(5),
+          '7.0.0-dev.1': minutesAgo(10_000),
+        },
+      },
+    })
+
+    const packages = await new PackageDetector({
+      cwd: '/repo',
+      minimumReleaseAge: 60,
+    }).getOutdatedPackages()
+
+    expect(packages[0].heldByCooldown).toMatchObject({ version: '7.0.0-dev.2', count: 1 })
+  })
+
   it('exempts packages matching minimumReleaseAgeExclude', async () => {
     // The suite-wide mock stubs isPackageIgnored to false; this case is entirely
     // about the matcher firing, so restore the real implementation.

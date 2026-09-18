@@ -603,10 +603,21 @@ export class PackageDetector {
         )
       : undefined
 
-    const withheld = [...stable.withheld, ...(prerelease?.withheld ?? [])].sort((a, b) =>
-      semver.rcompare(a.version, b.version)
+    const withheldPrerelease = prerelease?.withheld ?? []
+    if (stable.withheld.length === 0 && withheldPrerelease.length === 0) {
+      return { data: packageData }
+    }
+
+    // Both channels are GATED, but only the channel this dependency can actually reach is
+    // REPORTED. A stable install is never offered a prerelease, so naming one as "held back"
+    // would invent a missed upgrade that was never on the table.
+    const withheld = (
+      (installed?.prerelease.length ?? 0) > 0
+        ? [...stable.withheld, ...withheldPrerelease]
+        : stable.withheld
     )
-    if (withheld.length === 0) return { data: packageData }
+      .slice()
+      .sort((a, b) => semver.rcompare(a.version, b.version))
 
     // `prerelease` is undefined exactly when the packument carried no prerelease
     // pool, so this mirrors the original absent-vs-present distinction directly.
@@ -627,21 +638,23 @@ export class PackageDetector {
     // Report the newest withheld version — that is what the user would have been
     // offered, and the thing they need to know is being deliberately held back.
     const newest = withheld[0]
-    const held: CooldownHold = {
-      version: newest.version,
-      publishedAt: newest.publishedAt,
-      // Clamped: a registry clock ahead of ours yields a future publish time, which
-      // is withheld correctly but would otherwise report a negative age.
-      ageMinutes: Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000)),
-      count: withheld.length,
-    }
+    const held: CooldownHold | undefined = newest
+      ? {
+          version: newest.version,
+          publishedAt: newest.publishedAt,
+          // Clamped: a registry clock ahead of ours yields a future publish time, which
+          // is withheld correctly but would otherwise report a negative age.
+          ageMinutes: Math.max(0, Math.floor((now - Date.parse(newest.publishedAt)) / 60_000)),
+          count: withheld.length,
+        }
+      : undefined
 
     const gateKey = `${dep.name}@${dep.version}`
     if (!this.loggedReleaseAgeGates.has(gateKey)) {
       this.loggedReleaseAgeGates.add(gateKey)
       debugLog.info(
         'PackageDetector',
-        `release-age gate: ${withheld.length} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${effectiveLatest})`
+        `release-age gate: ${stable.withheld.length + withheldPrerelease.length} version(s) of ${dep.name} younger than ${this.minimumReleaseAge}min withheld (effective latest: ${effectiveLatest})`
       )
     }
 
