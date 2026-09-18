@@ -6,9 +6,10 @@ import {
   writePerfLog,
 } from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
+import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
-import { applyVersionPrefix } from '../../shared/versions'
-import { auditVulnerabilities } from '../audit'
+import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
+import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
 import { PackageDetector, PackageUpgrader } from '../upgrade'
 import { buildHeadlessReport, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
@@ -43,7 +44,45 @@ export class HeadlessRunner {
       const performanceTracker = getPerformanceTracker()
       if (perfEnabled) performanceTracker.start()
 
-      const packages = await this.detector.getOutdatedPackages()
+      // The bulk advisory request needs only name → declared specifier, which the
+      // detector knows before it touches the registry. Start it from the `initial`
+      // event so it overlaps the fetch instead of adding a round-trip at the end.
+      // Best-effort like the audit itself: a failure resolves to an empty map.
+      let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
+      let packages: PackageInfo[] = []
+      await this.detector.streamOutdatedPackages((event) => {
+        if (event.type === 'warning') {
+          console.warn(chalk.yellow(event.payload.message))
+        } else if (event.type === 'status') {
+          const { phase, packageJsonFiles, scanningDir } = event.payload.progress
+          const count = packageJsonFiles ?? 0
+          const showProgress = (message: string) =>
+            ConsoleUtils.showProgress(truncatePlainText(message, process.stderr.columns || 80))
+          switch (phase) {
+            case 'discovering':
+              showProgress(
+                scanningDir
+                  ? `Scanning ${scanningDir} (found ${count})`
+                  : 'Scanning repository for package.json files…'
+              )
+              break
+            case 'collecting':
+              showProgress(`Found ${count} package.json file${count === 1 ? '' : 's'}`)
+              showProgress('Reading dependencies…')
+              break
+            case 'resolving':
+              showProgress('Identifying unique packages…')
+              break
+            case 'done':
+              break
+          }
+        } else if (event.type === 'initial') {
+          advisories = fetchVulnerabilities(event.payload.currentVersions)
+        } else if (event.type === 'complete') {
+          packages = event.payload.packages
+          ConsoleUtils.clearProgress()
+        }
+      })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)
 
       if (perfEnabled) {
@@ -61,7 +100,7 @@ export class HeadlessRunner {
 
       // Audit the current versions (one bulk request, best-effort) and cross-reference each
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
-      const vulnerabilities = await auditVulnerabilities(outdated)
+      const vulnerabilities = await auditVulnerabilities(outdated, advisories)
 
       // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
       const report = buildHeadlessReport(packages, outdated, vulnerabilities)
@@ -113,8 +152,10 @@ export class HeadlessRunner {
    * Build `PackageUpgradeChoice[]` from the outdated set per the version policy. Mirrors
    * `createUpgradeChoices` in the TUI: preserves the original range prefix (^/~) unless --save-exact.
    *
-   * - minor/patch: take the in-range target (`rangeVersion`); skip packages whose only update is a
+   * - minor: take the in-range target (`rangeVersion`); skip packages whose only update is a
    *   major (no in-range bump). Uses upgradeType 'range'.
+   * - patch: take the highest patch in the current major.minor line; skip packages whose only
+   *   update crosses a minor (or major) boundary. Uses upgradeType 'range'.
    * - latest: take `latestVersion`; uses upgradeType 'latest' (majors included).
    */
   private buildChoices(outdated: PackageInfo[], target: ApplyTarget): PackageUpgradeChoice[] {
@@ -122,12 +163,7 @@ export class HeadlessRunner {
     const choices: PackageUpgradeChoice[] = []
 
     for (const pkg of outdated) {
-      const useLatest = target === 'latest'
-
-      // minor/patch only act on packages with an in-range bump; major-only updates are skipped.
-      if (!useLatest && !pkg.hasRangeUpdate) continue
-
-      const targetVersion = useLatest ? pkg.latestVersion : pkg.rangeVersion
+      const targetVersion = this.resolveTargetVersion(pkg, target)
       if (!targetVersion) continue
 
       const targetVersionWithPrefix = saveExact
@@ -138,7 +174,7 @@ export class HeadlessRunner {
         name: pkg.name,
         packageJsonPath: pkg.packageJsonPath,
         dependencyType: pkg.type,
-        upgradeType: useLatest ? 'latest' : 'range',
+        upgradeType: target === 'latest' ? 'latest' : 'range',
         targetVersion: targetVersionWithPrefix,
         currentVersionSpecifier: pkg.currentVersion,
         catalog: pkg.catalog,
@@ -146,6 +182,26 @@ export class HeadlessRunner {
     }
 
     return choices
+  }
+
+  /** Resolve the version a package should be bumped to under the given policy, or null to skip. */
+  private resolveTargetVersion(pkg: PackageInfo, target: ApplyTarget): string | null {
+    if (target === 'latest') {
+      // ignoreMajor holds matched packages to their in-range bump even under
+      // --target latest; without a range update there is nothing to write.
+      if (pkg.majorIgnored) {
+        return pkg.hasRangeUpdate ? pkg.rangeVersion || null : null
+      }
+      return pkg.latestVersion || null
+    }
+    if (target === 'patch') {
+      // Strictly patch-level: computed from the full version list, not `rangeVersion` (which may
+      // be a minor bump). Null when the only updates cross a minor boundary.
+      return findHighestPatchVersion(pkg.currentVersion, pkg.allVersions ?? [])
+    }
+    // minor: in-range bump only; major-only updates are skipped.
+    if (!pkg.hasRangeUpdate) return null
+    return pkg.rangeVersion || null
   }
 
   /** Resolve the package manager the same way the interactive runner does. */

@@ -5,7 +5,7 @@ import {
   perfEnv,
   writePerfLog,
 } from '../features/debug'
-import { selectionKey } from '../features/interactive'
+import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
@@ -13,7 +13,6 @@ import type {
   PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
-  PackageSelectionState,
   PackageUpgradeChoice,
   UpgradeOptions,
 } from '../shared/types'
@@ -48,6 +47,12 @@ export class UpgradeRunner {
   }
 
   public async run(): Promise<void> {
+    const scanController = new AbortController()
+    let scanError: { error: unknown } | undefined
+    const warnings: string[] = []
+    const printWarnings = () => {
+      for (const message of warnings.splice(0)) console.warn(chalk.yellow(message))
+    }
     try {
       // Check prerequisites
       this.checkPrerequisites()
@@ -57,62 +62,57 @@ export class UpgradeRunner {
       performanceTracker.setPackageManager(this.packageManager.name)
 
       const progress: PackageLoadProgress = {
+        phase: 'discovering',
         discovered: 0,
         resolved: 0,
         total: 0,
         failed: 0,
         isLoading: true,
       }
-      let selectionStates: PackageSelectionState[] = []
-      let refreshUI: (() => void) | undefined
+      const selection = new SelectionList()
+      let session: InteractiveSessionHandle | undefined
+      // Packages arrive once each, in scan order; 'complete' installs the
+      // detector's final list so post-selection steps never see a partial one.
       let latestPackages: PackageInfo[] = []
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
 
       const selectionPromise = new Promise<PackageUpgradeChoice[]>((resolve, reject) => {
+        // The UI holds a reference to `progress`, so updates must mutate it in
+        // place — and copy EVERY field (a field-by-field copy silently dropped
+        // slowNetwork once).
+        const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
+
+        this.ui
+          .selectPackagesToUpgradeProgressive(selection, progress, (handle) => {
+            session = handle
+          })
+          .then(resolve)
+          .catch(reject)
+
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
+          if (event.type === 'warning') warnings.push(event.payload.message)
+          if (event.type === 'status') {
+            syncProgress(event.payload.progress)
+            session?.refresh()
+          }
           if (event.type === 'initial') {
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
+            syncProgress(event.payload.progress)
 
-            selectionStates = []
-
-            this.ui
-              .selectPackagesToUpgradeProgressive(selectionStates, progress, (refresh) => {
-                refreshUI = refresh
-              })
-              .then(resolve)
-              .catch(reject)
+            session?.refresh()
           }
 
-          if (event.type === 'batch') {
-            latestPackages = latestPackages
-              .filter((pkg) => !event.payload.batch.some((item) => item.packageName === pkg.name))
-              .concat(event.payload.batch.flatMap((item) => item.packageInfo))
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
-            performanceTracker.mark('firstBatch')
-            this.ui.appendOutdatedBatchToSelectionStates(
-              selectionStates,
-              event.payload.batch,
-              previousSelections
-            )
-            refreshUI?.()
+          if (event.type === 'package') {
+            latestPackages.push(...event.payload.packageInfo)
+            syncProgress(event.payload.progress)
+            performanceTracker.mark('firstResult')
+            this.ui.insertOutdatedPackage(selection, event.payload.packageInfo, previousSelections)
+            session?.refresh()
           }
 
           if (event.type === 'complete') {
             latestPackages = event.payload.packages
-            progress.discovered = event.payload.progress.discovered
-            progress.resolved = event.payload.progress.resolved
-            progress.total = event.payload.progress.total
-            progress.failed = event.payload.progress.failed
-            progress.isLoading = event.payload.progress.isLoading
-            performanceTracker.mark('firstBatch')
+            syncProgress(event.payload.progress)
+            performanceTracker.mark('firstResult')
             performanceTracker.mark('allLoaded')
             if (isPerfLoggingEnabled()) {
               writePerfLog(
@@ -125,16 +125,22 @@ export class UpgradeRunner {
                 performanceTracker.snapshot()
               )
             }
-            refreshUI?.()
+            session?.refresh()
           }
-        })
+        }, scanController.signal)
 
-        streamPromise.catch(reject)
+        streamPromise.catch((error) => {
+          if (scanController.signal.aborted) return
+          scanError = { error }
+          session?.abort(error)
+          reject(error)
+        })
       })
 
       let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
+      printWarnings()
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
-      if (outdatedPackages.length === 0 && selectedChoices.length === 0) {
+      if (!progress.isLoading && outdatedPackages.length === 0 && selectedChoices.length === 0) {
         console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
         return
       }
@@ -168,18 +174,15 @@ export class UpgradeRunner {
 
         // Confirm upgrade
         shouldProceed = await this.ui.confirmUpgrade(selectedChoices)
+        if (scanError) throw scanError.error
 
         if (shouldProceed === null) {
           // User pressed N or ESC - go back to selection with current selections preserved
           ConsoleUtils.clearProgress()
           selectedChoices = progress.isLoading
-            ? await this.ui.selectPackagesToUpgradeProgressive(
-                selectionStates,
-                progress,
-                (refresh) => {
-                  refreshUI = refresh
-                }
-              )
+            ? await this.ui.selectPackagesToUpgradeProgressive(selection, progress, (handle) => {
+                session = handle
+              })
             : await this.ui.selectPackagesToUpgrade(latestPackages, previousSelections)
           continue
         }
@@ -196,8 +199,11 @@ export class UpgradeRunner {
       // Perform upgrade
       await this.upgrader.upgradePackages(selectedChoices, latestPackages)
     } catch (error) {
+      printWarnings()
       console.error(chalk.red(`Error: ${error}`))
       process.exit(1)
+    } finally {
+      scanController.abort()
     }
   }
 

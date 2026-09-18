@@ -285,3 +285,56 @@ describe('NavigationManager grouped fallbacks', () => {
     expect(nav.getCurrentRow()).toBe(0)
   })
 })
+
+describe('NavigationManager page navigation', () => {
+  it('moves by a page and keeps the destination visible', () => {
+    const nav = new NavigationManager(0, 2)
+    nav.navigatePageDown(5)
+    expect(nav.getCurrentRow()).toBe(2)
+    expect(nav.getScrollOffset()).toBe(1)
+    nav.navigatePageUp(5)
+    expect(nav.getCurrentRow()).toBe(0)
+    expect(nav.getScrollOffset()).toBe(0)
+  })
+
+  it('clamps both ends without wrapping, even when a page is larger than the list', () => {
+    const nav = new NavigationManager(0, 10)
+    nav.navigatePageUp(5)
+    expect(nav.getCurrentRow()).toBe(0)
+    nav.navigatePageDown(5)
+    expect(nav.getCurrentRow()).toBe(4)
+    nav.navigatePageDown(5)
+    expect(nav.getCurrentRow()).toBe(4)
+    nav.navigatePageUp(5)
+    expect(nav.getCurrentRow()).toBe(0)
+  })
+
+  it('navigates grouped packages without focusing headers or spacers', () => {
+    const nav = new NavigationManager(0, 2)
+    nav.setRenderableItems(makeGroupedItems())
+    nav.navigatePageDown(3)
+    expect(nav.getCurrentRow()).toBe(2)
+    expect(nav.getScrollOffset()).toBeGreaterThan(0)
+    nav.navigatePageDown(3)
+    expect(nav.getCurrentRow()).toBe(2)
+    nav.navigatePageUp(3)
+    expect(nav.getCurrentRow()).toBe(0)
+    expect(nav.getScrollOffset()).toBe(0)
+    nav.setCurrentRow(99)
+    nav.navigatePageUp(3)
+    expect(nav.getCurrentRow()).toBe(0)
+  })
+
+  it('does nothing for an empty list', () => {
+    const nav = new NavigationManager(0, 2)
+    nav.navigatePageUp(0)
+    nav.navigatePageDown(0)
+    expect(nav.getCurrentRow()).toBe(0)
+  })
+
+  it('stops immediately when there is only one package', () => {
+    const nav = new NavigationManager(0, 2)
+    nav.navigatePageDown(1)
+    expect(nav.getCurrentRow()).toBe(0)
+  })
+})

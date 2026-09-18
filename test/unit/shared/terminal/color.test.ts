@@ -21,6 +21,16 @@ describe('shouldDisableColor', () => {
     expect(shouldDisableColor(undefined, {})).toBe(false)
     expect(shouldDisableColor(true, {})).toBe(false)
   })
+
+  it('ignores an empty NO_COLOR, per the no-color.org spec (non-empty values only)', () => {
+    expect(shouldDisableColor(undefined, { NO_COLOR: '' })).toBe(false)
+  })
+
+  it('treats any non-empty NO_COLOR value as disable, including "0"', () => {
+    // The spec is presence-of-a-non-empty-value, not truthiness of the content.
+    expect(shouldDisableColor(undefined, { NO_COLOR: '0' })).toBe(true)
+    expect(shouldDisableColor(undefined, { NO_COLOR: 'false' })).toBe(true)
+  })
 })
 
 describe('applyColorSetting', () => {

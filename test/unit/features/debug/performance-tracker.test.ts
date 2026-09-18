@@ -69,15 +69,17 @@ describe('PerformanceTracker', () => {
     expect(tracker.snapshot().counts).toEqual({ packageJsonFiles: 2, resolved: 10 })
   })
 
-  it('collects batches, control ticks, and package timings', () => {
-    tracker.recordBatch({ index: 0, size: 5, durationMs: 100, failedCount: 0 })
+  it('collects control ticks and package timings in arrival order', () => {
     tracker.recordControlTick({ atMs: 1, limit: 8, ewmaMs: 90, retries: 0, reason: 'up' })
     tracker.recordPackageTiming({ name: 'demo', latencyMs: 33 })
+    tracker.recordPackageTiming({ name: 'other', latencyMs: 12 })
 
     const snapshot = tracker.snapshot()
-    expect(snapshot.batches).toHaveLength(1)
     expect(snapshot.controlTicks).toHaveLength(1)
-    expect(snapshot.packageTimings).toEqual([{ name: 'demo', latencyMs: 33 }])
+    expect(snapshot.packageTimings).toEqual([
+      { name: 'demo', latencyMs: 33 },
+      { name: 'other', latencyMs: 12 },
+    ])
   })
 
   it('deduplicates failed packages', () => {
@@ -95,13 +97,13 @@ describe('PerformanceTracker', () => {
   })
 
   it('returns defensive copies from snapshot', () => {
-    tracker.recordBatch({ index: 0, size: 5, durationMs: 100, failedCount: 0 })
+    tracker.recordPackageTiming({ name: 'demo', latencyMs: 33 })
 
     const snapshot = tracker.snapshot()
-    snapshot.batches.push({ index: 1, size: 1, durationMs: 1, failedCount: 0 })
+    snapshot.packageTimings.push({ name: 'ghost', latencyMs: 1 })
     snapshot.failedPackages.push('ghost')
 
-    expect(tracker.snapshot().batches).toHaveLength(1)
+    expect(tracker.snapshot().packageTimings).toHaveLength(1)
     expect(tracker.snapshot().failedPackages).toEqual([])
   })
 

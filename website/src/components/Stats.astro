@@ -1,0 +1,47 @@
+---
+/**
+ * Trust strip: real numbers only. Test/coverage counts are parsed from the
+ * repo README at build time; version/downloads/stars arrive as props when
+ * live data is available and the chip is hidden otherwise.
+ */
+import { compactNumber } from '../lib/format';
+import { testStats } from '../lib/readme';
+import { site } from '../data/site';
+import Icon from './Icon.astro';
+import type { IconName } from './icons';
+
+interface Props {
+  monthlyDownloads?: number | null;
+  stars?: number | null;
+}
+
+const { monthlyDownloads = null, stars = null } = Astro.props;
+
+// Truthy checks are intentional: a legitimate 0 reads as bad social
+// proof, so zero and unavailable both hide the chip (same as Base.astro).
+const items: Array<{ icon: IconName; text: string; href?: string } | null> = [
+  monthlyDownloads
+    ? { icon: 'download', text: `${compactNumber.format(monthlyDownloads)}/month`, href: site.npmUrl }
+    : null,
+  stars ? { icon: 'star', text: `${compactNumber.format(stars)} stars`, href: site.repoUrl } : null,
+  {
+    icon: 'shield-check',
+    text: `${testStats.tests.toLocaleString('en-US')} tests · ${testStats.coverage} coverage`,
+  },
+  { icon: 'scale', text: `${site.license} license` },
+  { icon: 'lock', text: 'No telemetry' },
+];
+---
+
+<ul class="m-0 flex list-none flex-wrap items-center gap-x-6 gap-y-2 p-0 text-sm text-muted-foreground">
+  {items.filter((i) => i !== null).map((item) => (
+    <li class="flex items-center gap-1.5">
+      <Icon name={item.icon} size={15} class="text-brand" />
+      {item.href ? (
+        <a href={item.href} class="no-underline hover:text-foreground">{item.text}</a>
+      ) : (
+        <span>{item.text}</span>
+      )}
+    </li>
+  ))}
+</ul>

@@ -7,7 +7,7 @@ branding:
 
 inputs:
   target:
-    description: 'How far to bump: minor (in-range only, default), patch, or latest (includes majors).'
+    description: 'How far to bump: minor (in-range only, default), patch (same major.minor only), or latest (includes majors).'
     required: false
     default: 'minor'
   directory:

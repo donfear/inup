@@ -20,7 +20,6 @@ function makeConfig(overrides?: Partial<PerfRunConfig>): PerfRunConfig {
     adaptive: true,
     maxConcurrency: 8,
     poolConnections: 16,
-    batchSize: 20,
     mode: 'interactive',
     env: perfEnv(),
     ...overrides,
@@ -57,6 +56,11 @@ describe('perfEnv', () => {
     expect(perfEnv()).toMatchObject({ INUP_ADAPTIVE: '0', INUP_PERF: '1' })
     expect(Object.keys(perfEnv())).toEqual([
       'INUP_ADAPTIVE',
+      'INUP_CONTROLLER',
+      'INUP_FASTLINK',
+      'INUP_PACE_BPS',
+      'INUP_NET_PROFILE',
+      'INUP_CORE',
       'INUP_PERF',
       'INUP_DEBUG',
       'CI',
@@ -104,7 +108,8 @@ describe('writePerfLog', () => {
 
     expect(filePath).not.toBeNull()
     const record = JSON.parse(readFileSync(filePath!, 'utf8'))
-    expect(record.schemaVersion).toBe(1)
+    // Bumped when the record shape changes; analysis scripts pin to it.
+    expect(record.schemaVersion).toBe(2)
     expect(record.wallMs).toBe(1234)
     expect(record.config.packageManager).toBe('pnpm')
     expect(record.tuning).toBeDefined()

@@ -83,6 +83,29 @@ describe('ReleaseNotesService source fallback chain', () => {
     )
   })
 
+  it('normalizes CRLF line endings from the release API (a raw \\r corrupts the TUI)', async () => {
+    const { service, githubClient } = makeHarness()
+    githubClient.fetchReleaseByTag.mockResolvedValueOnce(
+      '## Changes\r\n\r\n- fixed a thing\r\n- broke nothing\r\n'
+    )
+
+    const notes = await service.fetchReleaseNotesForVersion('demo', '1.0.0')
+
+    expect(notes).toBe('## Changes\n\n- fixed a thing\n- broke nothing\n')
+    expect(notes?.includes('\r')).toBe(false)
+  })
+
+  it('normalizes CRLF in a CHANGELOG.md fetched from a Windows-authored repo', async () => {
+    const { service, githubClient } = makeHarness()
+    githubClient.fetchRawChangelog.mockResolvedValue(
+      '# Changelog\r\n\r\n## 1.0.0\r\n\r\n- first line\r\n- second line\r\n\r\n## 0.9.0\r\n\r\n- old\r\n'
+    )
+
+    const notes = await service.fetchReleaseNotesForVersion('demo', '1.0.0')
+
+    expect(notes).toBe('- first line\n- second line')
+  })
+
   it('skips page HTML that yields no extractable notes', async () => {
     const { service, githubClient } = makeHarness()
     githubClient.fetchReleasePageHtml.mockResolvedValue('<html><body>no markers</body></html>')

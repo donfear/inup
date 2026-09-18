@@ -56,6 +56,23 @@ describe('git utils', () => {
 
     expect(getGitWorkingTreeState(dir)).toEqual({ isRepo: false, isDirty: false })
   })
+
+  it('works in a repo path containing spaces (cwd is an option, not shell-interpolated)', () => {
+    const repoDir = path.join(createTempDir(), 'my project dir')
+    fs.mkdirSync(repoDir)
+
+    executeCommand('git init', repoDir)
+    executeCommand('git config user.email "test@example.com"', repoDir)
+    executeCommand('git config user.name "Test User"', repoDir)
+    fs.writeFileSync(path.join(repoDir, 'tracked.txt'), 'hello\n')
+    executeCommand('git add tracked.txt', repoDir)
+    executeCommand('git commit -m "init"', repoDir)
+
+    expect(getGitWorkingTreeState(repoDir)).toEqual({ isRepo: true, isDirty: false })
+
+    fs.writeFileSync(path.join(repoDir, 'untracked.txt'), 'new\n')
+    expect(getGitWorkingTreeState(repoDir)).toEqual({ isRepo: true, isDirty: true })
+  })
 })
 
 it('reports non-worktree git contexts as not a repo', () => {

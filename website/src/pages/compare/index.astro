@@ -1,0 +1,121 @@
+---
+/**
+ * /compare — the scoreboard for every tool the site is measured against.
+ * Scores, badges and headline counts are all derived from comparison.ts, so
+ * the page cannot claim a number the matrix does not actually show.
+ */
+import ComparisonTable from '../../components/ComparisonTable.astro';
+import CopyInstall from '../../components/CopyInstall.astro';
+import Icon from '../../components/Icon.astro';
+import Base from '../../layouts/Base.astro';
+import {
+  competitorList,
+  competitors,
+  overviewColumns,
+  rowsFor,
+  scoresFor,
+  verdictFor,
+  verifiedOn,
+  type ColumnId,
+} from '../../data/comparison';
+import { numberWord } from '../../lib/format';
+import { breadcrumbs } from '../../lib/seo';
+import { absUrl, base } from '../../lib/url';
+
+const matrixRows = rowsFor(overviewColumns);
+const scores = scoresFor(overviewColumns, matrixRows);
+const toolCount = competitorList.length + 1; // the competitors plus inup
+
+const label = (c: ColumnId) => (c === 'inup' ? 'inup' : competitors[c].short);
+
+const heading = `${numberWord(matrixRows.length, { capitalize: true })} capabilities. ${numberWord(toolCount, { capitalize: true })} tools. Honest marks.`;
+
+// Copy that counts something has to count it: the concession in the lede is
+// derived so it can never claim one loss while the table shows two.
+const losses = matrixRows.filter((r) => verdictFor(r, overviewColumns) === 'inup-loses').length;
+const lossPhrase =
+  losses === 1
+    ? 'one of them is a row inup loses outright'
+    : `${numberWord(losses)} of them are rows inup loses outright`;
+
+const jsonLd = breadcrumbs([
+  { name: 'inup', item: absUrl('/', Astro.site!) },
+  { name: 'Compare', item: new URL(Astro.url.pathname, Astro.site).href },
+]);
+---
+
+<Base
+  title="Compare inup — honest marks against every dependency upgrader"
+  description={`inup measured against ${competitorList.map((c) => c.name).join(', ')} — capability by capability, including the rows inup loses. Verified against each tool's own documentation on ${verifiedOn}.`}
+  jsonLd={jsonLd}
+>
+  <div class="mx-auto max-w-5xl px-6">
+    <section class="pt-14 pb-8 sm:pt-20">
+      <p class="eyebrow">
+        <Icon name="scale" size={15} class="text-brand" /> comparison
+      </p>
+      <div class="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 class="m-0 max-w-[18ch] text-3xl font-bold tracking-tight text-balance sm:text-4xl lg:text-5xl">
+            {heading}
+          </h1>
+          <p class="mt-4 mb-0 max-w-[52ch] text-lg leading-relaxed text-pretty text-muted-foreground">
+            Including the rows where the others win — {lossPhrase}. Verified
+            against each tool's own documentation on {verifiedOn}.
+          </p>
+        </div>
+
+        <div class="score-strip lg:w-[26rem] lg:shrink-0">
+          {scores.map((s) => (
+            <div class={`score-tile ${s.column === 'inup' ? 'score-tile-lead' : ''}`}>
+              <div class="score-value">{s.yes}/{s.of}</div>
+              <div class="score-label">{label(s.column)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <ComparisonTable columns={overviewColumns} />
+
+    <p class="mt-4 mb-0 max-w-[70ch] font-mono text-xs leading-relaxed text-muted-foreground">
+      "PM built-ins" = <code>yarn upgrade-interactive</code>,
+      <code>pnpm update -i</code>, <code>bun update -i</code>,
+      <code>deno outdated -i</code> — each works with its own package manager
+      only, so the score counts a capability only where that built-in provides
+      it for its own ecosystem.
+    </p>
+
+    <section class="pt-16 pb-4">
+      <div class="mb-6 flex items-baseline gap-4">
+        <p class="eyebrow m-0">head-to-heads</p>
+        <span class="h-px flex-1 bg-border"></span>
+      </div>
+      <div class="h2h">
+        {competitorList.map((c) => (
+          <a class="card-lift p-5 no-underline" href={`${base}/vs/${c.slug}/`}>
+            <span class="block font-semibold">vs {c.name}</span>
+            <span class="mt-1.5 block text-sm leading-relaxed text-muted-foreground">
+              {c.blurb}
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <section class="py-14">
+      <div
+        class="flex flex-col items-start gap-5 rounded-2xl border border-brand/20 bg-surface bg-gradient-to-b from-brand/8 to-transparent p-8 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div>
+          <p class="m-0 text-lg font-semibold">Nothing to migrate.</p>
+          <p class="mt-1 mb-0 max-w-[46ch] text-sm leading-relaxed text-muted-foreground">
+            inup reads the same manifests these tools do — no config file, no
+            lockfile rewrite. Run it once and compare the output yourself.
+          </p>
+        </div>
+        <CopyInstall />
+      </div>
+    </section>
+  </div>
+</Base>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { detectJsonFormat } from '../../../../src/shared/fs/io'
+import { detectJsonFormat, stringifyWithFormat } from '../../../../src/shared/fs/io'
 
 describe('detectJsonFormat', () => {
   it('detects 2-space indentation', () => {
@@ -35,6 +35,55 @@ describe('detectJsonFormat', () => {
     const result = detectJsonFormat('{"a":1}\n')
     expect(result.indent).toBe(2)
     expect(result.trailingNewline).toBe(true)
+  })
+
+  it('reports LF line endings for a plain LF document', () => {
+    expect(detectJsonFormat('{\n  "a": 1\n}\n').newline).toBe('\n')
+  })
+
+  it('detects CRLF line endings (Windows-authored files)', () => {
+    const result = detectJsonFormat('{\r\n  "a": 1\r\n}\r\n')
+    expect(result.newline).toBe('\r\n')
+    expect(result.indent).toBe('  ')
+    expect(result.trailingNewline).toBe(true)
+  })
+
+  it('detects tab indentation through CRLF line endings', () => {
+    expect(detectJsonFormat('{\r\n\t"a": 1\r\n}\r\n').indent).toBe('\t')
+  })
+
+  it('detects a missing trailing newline on a CRLF document', () => {
+    const result = detectJsonFormat('{\r\n  "a": 1\r\n}')
+    expect(result.newline).toBe('\r\n')
+    expect(result.trailingNewline).toBe(false)
+  })
+})
+
+describe('stringifyWithFormat', () => {
+  it('round-trips an unchanged LF document byte-for-byte', () => {
+    const raw = '{\n  "a": 1\n}\n'
+    expect(stringifyWithFormat(JSON.parse(raw), detectJsonFormat(raw))).toBe(raw)
+  })
+
+  it('round-trips an unchanged CRLF document byte-for-byte', () => {
+    const raw = '{\r\n  "a": 1,\r\n  "b": {\r\n    "c": 2\r\n  }\r\n}\r\n'
+    expect(stringifyWithFormat(JSON.parse(raw), detectJsonFormat(raw))).toBe(raw)
+  })
+
+  it('round-trips CRLF with tab indentation and no trailing newline', () => {
+    const raw = '{\r\n\t"a": 1\r\n}'
+    expect(stringifyWithFormat(JSON.parse(raw), detectJsonFormat(raw))).toBe(raw)
+  })
+
+  it('emits CRLF for every line, including the trailing newline', () => {
+    const out = stringifyWithFormat({ a: 1, b: 2 }, detectJsonFormat('{\r\n  "x": 0\r\n}\r\n'))
+    expect(out.split('\r\n').length).toBe(out.split('\n').length)
+    expect(out.endsWith('\r\n')).toBe(true)
+  })
+
+  it('never introduces carriage returns into an LF document', () => {
+    const out = stringifyWithFormat({ a: 1 }, detectJsonFormat('{\n  "x": 0\n}\n'))
+    expect(out.includes('\r')).toBe(false)
   })
 })
 

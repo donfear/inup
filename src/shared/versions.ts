@@ -23,12 +23,17 @@ export function versionIdentity(version: string): string {
 export interface ParsedVersions {
   latestVersion: string
   allVersions: string[]
+  // Prerelease versions (any tag: alpha/beta/rc/preview/…), sorted descending.
+  // Optional so callers tolerate data from sources that never carried it
+  // (hand-built fixtures, failed-fetch fallbacks).
+  prereleaseVersions?: string[]
   deprecated?: string // npm deprecation message for the latest version, if any
   enginesNode?: string // declared engines.node range for the latest version, if any
   /**
    * ISO publish timestamp per version, from the packument's `time` field. Only present when the
    * FULL packument was fetched (the abbreviated install-v1 format has no `time`), i.e. when a
-   * release-age policy is active. Restricted to the versions in `allVersions`.
+   * release-age policy is active. Restricted to the versions in `allVersions` and
+   * `prereleaseVersions`.
    */
   publishTimes?: Record<string, string>
 }
@@ -39,16 +44,30 @@ export function parseVersions(raw: string): ParsedVersions {
     time?: Record<string, string>
   }
   const versions = data.versions || {}
-  const allVersions = Object.keys(versions).filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
+  const versionKeys = Object.keys(versions)
+  // Stable versions only — prereleases are kept in their own list so they are
+  // never offered to users on a stable version. The strict x.y.z shape also
+  // keeps build-metadata variants (1.0.0+build) out of the stable pool.
+  const allVersions = versionKeys.filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
   const sortedVersions = allVersions.sort(semver.rcompare)
-  const latestVersion = sortedVersions.length > 0 ? sortedVersions[0] : 'unknown'
+  const prereleaseVersions = versionKeys
+    .filter((v) => semver.valid(v) !== null && semver.prerelease(v) !== null)
+    .sort(semver.rcompare)
+  // A package that has only ever published prereleases still has a meaningful
+  // latest; without this fallback it would be reported as unavailable.
+  const latestVersion =
+    sortedVersions.length > 0
+      ? sortedVersions[0]
+      : prereleaseVersions.length > 0
+        ? prereleaseVersions[0]
+        : 'unknown'
 
   // Publish times exist only in the full packument; keep just the entries for versions we track
   // (`time` also carries 'created'/'modified' and prerelease keys).
   let publishTimes: Record<string, string> | undefined
   if (data.time) {
     publishTimes = {}
-    for (const version of allVersions) {
+    for (const version of [...allVersions, ...prereleaseVersions]) {
       const publishedAt = data.time[version]
       if (typeof publishedAt === 'string') {
         publishTimes[version] = publishedAt
@@ -64,7 +83,83 @@ export function parseVersions(raw: string): ParsedVersions {
   const deprecated = normalizeDeprecatedMessage(latestManifest?.deprecated)
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 
-  return { latestVersion, allVersions, deprecated, enginesNode, publishTimes }
+  return { latestVersion, allVersions, prereleaseVersions, deprecated, enginesNode, publishTimes }
+}
+
+/**
+ * Extract the concrete installed version from a package.json specifier without
+ * losing a prerelease tag: semver.coerce('^1.0.0-beta.2') drops the '-beta.2',
+ * so ranges go through minVersion first. coerce stays as the last resort for
+ * malformed input. Note: for open ranges like '>2.0.0' minVersion yields 2.0.1
+ * (the lowest version actually allowed) where coerce yielded 2.0.0.
+ */
+export function parseCurrentVersion(specifier: string): semver.SemVer | null {
+  const trimmed = specifier.trim()
+  // Pure wildcards ('x', 'x.x', '*', '') pin nothing — minVersion would
+  // resolve them to 0.0.0 and flag every such dep as outdated (and a later
+  // applyVersionPrefix would write garbage like 'x2.5.1'). coerce returned
+  // null for these; keep that contract.
+  if (/^[xX*\s.]*$/.test(trimmed)) return null
+  const exact = semver.valid(trimmed)
+  if (exact) return semver.parse(exact)
+  try {
+    const min = semver.minVersion(specifier)
+    if (min) return min
+  } catch {
+    // Not a parseable range — fall through to coerce.
+  }
+  return semver.coerce(specifier)
+}
+
+/** Whether a specifier pins a prerelease (e.g. '^1.0.0-beta.2', '16.0.0-preview.9'). */
+export function isPrereleaseCurrent(specifier: string): boolean {
+  return (parseCurrentVersion(specifier)?.prerelease.length ?? 0) > 0
+}
+
+/**
+ * Build the pool of upgrade candidates for one dependency.
+ * Stable current version: the stable list, untouched — prereleases stay invisible.
+ * Prerelease current version: stable list plus prereleases sharing the current
+ * major.minor.patch tuple, matching npm range semantics ('^1.0.0-beta.2'
+ * satisfies '1.0.0-rc.3' but never '1.1.0-alpha.1'). Result stays descending.
+ */
+export function buildRangeCandidates(
+  current: semver.SemVer | null,
+  allVersions: string[],
+  prereleaseVersions?: string[]
+): string[] {
+  if (!current || current.prerelease.length === 0 || !prereleaseVersions?.length) {
+    return allVersions
+  }
+  const sameTuple = prereleaseVersions.filter((v) => {
+    const parsed = semver.parse(v)
+    return (
+      parsed !== null &&
+      parsed.major === current.major &&
+      parsed.minor === current.minor &&
+      parsed.patch === current.patch
+    )
+  })
+  if (sameTuple.length === 0) {
+    return allVersions
+  }
+  return [...allVersions, ...sameTuple].sort(semver.rcompare)
+}
+
+/**
+ * Highest version across the stable and prerelease lists (both descending, so
+ * only the heads are compared). Used as the effective latest when the current
+ * version is a prerelease: the user opted into the prerelease channel.
+ */
+export function highestOverallVersion(
+  allVersions: string[],
+  prereleaseVersions?: string[]
+): string | null {
+  const stable = allVersions[0] ?? null
+  const pre = prereleaseVersions?.[0] ?? null
+  if (stable === null) return pre
+  if (pre === null) return stable
+  return semver.gt(pre, stable) ? pre : stable
 }
 
 /**
@@ -95,13 +190,13 @@ export function filterVersionsByReleaseAge(
 
 /**
  * Checks if a version is outdated compared to the latest version.
- * Handles version prefixes (^, ~, >=, etc.) by coercing them to valid semver.
+ * Handles version prefixes (^, ~, >=, etc.) and preserves prerelease tags,
+ * so '1.0.0-beta.2' is correctly outdated against '1.0.0-rc.3'.
  */
 export function isVersionOutdated(current: string, latest: string): boolean {
   try {
-    // Remove version prefixes like ^, ~, >=, etc.
-    const cleanCurrent = semver.coerce(current)?.version || current
-    const cleanLatest = semver.coerce(latest)?.version || latest
+    const cleanCurrent = parseCurrentVersion(current)?.version || current
+    const cleanLatest = toComparableVersion(latest) || latest
 
     return semver.gt(cleanLatest, cleanCurrent)
   } catch {
@@ -145,14 +240,14 @@ export function findClosestMinorVersion(
   allVersions: string[]
 ): string | null {
   try {
-    const coercedInstalled = semver.coerce(installedVersion)
-    if (!coercedInstalled) {
+    const installed = parseCurrentVersion(installedVersion)
+    if (!installed) {
       return null
     }
 
-    const installedMajor = semver.major(coercedInstalled)
-    const installedMinor = semver.minor(coercedInstalled)
-    const installedPatch = semver.patch(coercedInstalled)
+    const installedIsStable = installed.prerelease.length === 0
+    const installedMajor = installed.major
+    const installedMinor = installed.minor
 
     let bestMinorVersion: string | null = null
     let bestMinorValue = -1
@@ -160,6 +255,9 @@ export function findClosestMinorVersion(
     // Single pass to find best minor version in same major
     for (const version of allVersions) {
       try {
+        // A stable install is never offered a prerelease, even if one leaks
+        // into the candidate list.
+        if (installedIsStable && semver.prerelease(version) !== null) continue
         const major = semver.major(version)
         const minor = semver.minor(version)
         if (major === installedMajor && minor > installedMinor && minor > bestMinorValue) {
@@ -175,28 +273,52 @@ export function findClosestMinorVersion(
       return bestMinorVersion
     }
 
-    // Fallback: find highest patch version in same major.minor that's higher than installed
-    let bestPatchVersion: string | null = null
-    for (const version of allVersions) {
-      try {
-        const major = semver.major(version)
-        const minor = semver.minor(version)
-        const patch = semver.patch(version)
-        // Same major and minor, but higher patch
-        if (major === installedMajor && minor === installedMinor && patch > installedPatch) {
-          if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
-            bestPatchVersion = version
-          }
-        }
-      } catch {
-        // Skip invalid versions
-      }
-    }
-
-    return bestPatchVersion
+    // Fallback: highest patch version in the same major.minor that's higher than installed
+    return findHighestPatchVersion(installedVersion, allVersions)
   } catch {
     return null
   }
+}
+
+/**
+ * Find the highest patch version in the installed version's own major.minor line.
+ * This is the `--target patch` policy: never crosses a minor (or major) boundary.
+ */
+export function findHighestPatchVersion(
+  installedVersion: string,
+  allVersions: string[]
+): string | null {
+  const installed = parseCurrentVersion(installedVersion)
+  if (!installed) {
+    return null
+  }
+
+  const installedIsStable = installed.prerelease.length === 0
+
+  let bestPatchVersion: string | null = null
+  for (const version of allVersions) {
+    try {
+      const parsed = semver.parse(version)
+      if (!parsed) continue
+      // A stable install is never offered a prerelease.
+      if (installedIsStable && parsed.prerelease.length > 0) continue
+      // Same major and minor, strictly newer. semver.gt orders prereleases
+      // natively, so 1.0.0-beta.2 < 1.0.0-rc.3 < 1.0.0 all resolve correctly.
+      if (
+        parsed.major === installed.major &&
+        parsed.minor === installed.minor &&
+        semver.gt(parsed, installed)
+      ) {
+        if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
+          bestPatchVersion = version
+        }
+      }
+    } catch {
+      // Skip invalid versions
+    }
+  }
+
+  return bestPatchVersion
 }
 
 /** Re-apply the original specifier's range prefix (^, ~, >=, …) to a new version. */

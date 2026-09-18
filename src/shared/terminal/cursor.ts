@@ -76,10 +76,10 @@ export const ConsoleUtils = {
   /**
    * Show a progress message on the current line (overwrites previous content).
    * Written to stderr so stdout stays clean for --json / piped output, and only
-   * when stderr is a TTY — the \r animation is just noise in a redirected log.
+   * when stderr is a TTY outside CI — the \r animation is just noise in logs.
    */
   showProgress(message: string): void {
-    if (!process.stderr.isTTY) return
+    if (!process.stderr.isTTY || process.env.CI) return
     process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${message}`)
   },
 
@@ -87,7 +87,7 @@ export const ConsoleUtils = {
    * Clear the current progress line
    */
   clearProgress(): void {
-    if (!process.stderr.isTTY) return
+    if (!process.stderr.isTTY || process.env.CI) return
     process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r`)
   },
 }

@@ -140,6 +140,47 @@ describe('PackageManagerDetector', () => {
       const result = PackageManagerDetector.detect(testDir)
       expect(result.name).toBe('yarn')
     })
+
+    it('accepts a packageManager field carrying a corepack integrity hash', () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({ packageManager: 'pnpm@10.28.1+sha512.abc123def' })
+      )
+
+      expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+    })
+
+    it('survives a non-string packageManager field without crashing', () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({ packageManager: { name: 'pnpm' } })
+      )
+      writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+
+      expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+    })
+
+    it('does not treat a bare name prefix like "pnpm-fork@1.0.0" as pnpm', () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({ packageManager: 'pnpm-fork@1.0.0' })
+      )
+      writeFileSync(join(testDir, 'yarn.lock'), '')
+
+      expect(PackageManagerDetector.detect(testDir).name).toBe('yarn')
+    })
+
+    it('falls back to the lockfile when package.json starts with a UTF-8 BOM', () => {
+      // Windows editors love BOMs; JSON.parse rejects them, so detection must degrade
+      // to the lockfile instead of crashing or mis-detecting.
+      writeFileSync(
+        join(testDir, 'package.json'),
+        `\uFEFF${JSON.stringify({ packageManager: 'yarn@4.0.0' })}`
+      )
+      writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+
+      expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+    })
   })
 
   describe('getInfo()', () => {

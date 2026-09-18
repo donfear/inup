@@ -1,5 +1,10 @@
 # Testing Strategy
 
+> **Before pushing:** run `pnpm test:coverage`, not just `pnpm test`. CI's canonical
+> cell runs the coverage command with 100% thresholds, and a test can pass plain but
+> fail under instrumentation. Then `pnpm vitest run badges-readme` (README badges
+> must match the coverage output; refresh with `pnpm docs:badges`).
+
 This directory contains the test suite for `inup`: unit tests, integration tests, and the shared harnesses that make the interactive TUI testable without a real terminal.
 
 ## Test Structure
@@ -25,7 +30,6 @@ test/
 │   └── apply-config-invariant.test.ts
 ├── fixtures/                # Test fixtures and factories
 │   ├── test-package/        # Sample package for integration detection tests
-│   ├── mock-registry.ts     # fetchPackageVersions mock factory
 │   ├── package-info-factory.ts        # makePackageInfo(overrides)
 │   ├── selection-state-factory.ts     # makeSelectionState(overrides)
 │   └── performance-snapshot-factory.ts # makeSnapshot(overrides)
@@ -105,10 +109,13 @@ modified user config means a test is writing where it shouldn't.
 
 ### Color and ANSI assertions
 
-CI has no TTY, so chalk's level is 0 there (no ANSI emitted). Assert on
-`stripAnsi`'d output (from `src/shared/terminal/text.ts`), or pin
-`chalk.level` explicitly and restore it in `afterEach` when the test is about
-the escape codes themselves.
+[helpers/disable-color.ts](helpers/disable-color.ts) pins `chalk.level` to 0
+before every test file, so no ANSI is emitted by default — locally and in CI
+alike. (Under `pool: 'threads'` workers share the parent's stdout, so without
+it a local TTY would turn colors on while CI keeps them off.) Still assert on
+`stripAnsi`'d output (from `src/shared/terminal/text.ts`) when the text may be
+styled, or pin `chalk.level` explicitly and restore it in `afterEach` when the
+test is about the escape codes themselves.
 
 ### Keyboard assertions
 
@@ -135,7 +142,7 @@ suites:
 - **Network clients** (`github-client.test.ts`, `npm-registry-client.test.ts`,
   `vulnerability-checker.test.ts`) — `vi.stubGlobal('fetch', …)`; abort errors
   must rethrow, everything else degrades to null.
-- **Registry** (`npm-registry.test.ts`) — undici pool mocking with retry,
+- **Registry** (`npm-registry.test.ts`) — `httpRequest` mocking with retry,
   ETag, and adaptive-concurrency paths.
 - **Filesystem** (`filesystem.test.ts`, `io.test.ts`, `paths.test.ts`) — real
   temp dirs via `mkdtempSync`, cleaned up in `afterEach`.

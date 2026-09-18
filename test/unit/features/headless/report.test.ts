@@ -44,6 +44,16 @@ describe('buildHeadlessReport', () => {
     expect(report.outdated[0]).not.toHaveProperty('catalog')
   })
 
+  it('flags ignoreMajor-suppressed entries and omits the flag otherwise', () => {
+    const suppressed = makePackageInfo({ hasMajorUpdate: false, majorIgnored: true })
+    const normal = makePackageInfo({ name: 'plain' })
+
+    const report = buildHeadlessReport([suppressed, normal], [suppressed, normal], new Map())
+
+    expect(report.outdated[0]).toMatchObject({ majorIgnored: true, hasMajorUpdate: false })
+    expect(report.outdated[1]).not.toHaveProperty('majorIgnored')
+  })
+
   it('includes the pnpm catalog for catalog-sourced entries', () => {
     const pkg = makePackageInfo({
       packageJsonPath: '/repo/pnpm-workspace.yaml',
@@ -81,6 +91,19 @@ describe('renderPlainReport', () => {
     const text = renderPlainReport([pkg], new Map())
 
     expect(text).toContain('test-pkg')
+    expect(text).not.toContain('(major)')
+  })
+
+  it('points the arrow at the in-range target for ignoreMajor-suppressed entries', () => {
+    const pkg = makePackageInfo({
+      hasMajorUpdate: false,
+      majorIgnored: true,
+      rangeVersion: '1.2.0',
+    })
+
+    const text = renderPlainReport([pkg], new Map())
+
+    expect(text).toContain('test-pkg  ^1.0.0 → 1.2.0  [dependencies]')
     expect(text).not.toContain('(major)')
   })
 

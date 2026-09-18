@@ -5,9 +5,10 @@ import {
   createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
+  type InteractiveSessionHandle,
   PackageInfoModalController,
   runInteractiveSession,
-  selectionKey,
+  SelectionList,
   UIRenderer,
 } from '../features/interactive'
 import { CursorUtils, TerminalInput } from '../shared/terminal'
@@ -17,7 +18,6 @@ import type {
   PackageManagerInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
-  StreamOutdatedPackagesBatchItem,
   VulnerabilityDisplayOptions,
 } from '../shared/types'
 
@@ -73,14 +73,14 @@ export class InteractiveUI {
     }
 
     const selectedStates = await runInteractiveSession(
-      selectionStates,
+      new SelectionList(selectionStates),
       this.packageManager,
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => {
-        this.refreshView = refresh
+      (session) => {
+        this.refreshView = session?.refresh
       }
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
@@ -114,72 +114,69 @@ export class InteractiveUI {
     )
   }
 
-  public appendOutdatedBatchToSelectionStates(
-    selectionStates: PackageSelectionState[],
-    batch: StreamOutdatedPackagesBatchItem[],
+  /**
+   * Adds the outdated declarations of one streamed package to the list at
+   * their sorted position and audits just the rows that were new.
+   */
+  public insertOutdatedPackage(
+    selection: SelectionList,
+    packageInfo: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
   ): void {
     const outdatedStates = this.createSelectionStates(
-      batch.flatMap((batchItem) => batchItem.packageInfo).filter((pkg) => pkg.isOutdated),
+      packageInfo.filter((pkg) => pkg.isOutdated),
       previousSelections,
       false
     )
-
-    if (outdatedStates.length === 0) {
-      return
-    }
-
-    const seen = new Set(
-      selectionStates.map((state) =>
-        selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
-      )
-    )
-
-    outdatedStates.forEach((state) => {
-      const key = selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
-      if (!seen.has(key)) {
-        selectionStates.push(state)
-        seen.add(key)
-      }
-    })
-
-    this.enqueueSecurityAudit(selectionStates)
+    const inserted = selection.insert(outdatedStates)
+    if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
   }
 
+  /**
+   * Runs the session over a list that is still filling. The caller receives
+   * a handle for background refreshes and failures, revoked during teardown.
+   */
   public async selectPackagesToUpgradeProgressive(
-    selectionStates: PackageSelectionState[],
+    selection: SelectionList,
     progress: PackageLoadProgress,
-    attachRefresh: (refresh: () => void) => void
+    attachSession: (session: InteractiveSessionHandle | undefined) => void
   ): Promise<PackageUpgradeChoice[]> {
-    this.enqueueSecurityAudit(selectionStates)
+    this.enqueueSecurityAudit(selection.items)
     const selectedStates = await runInteractiveSession(
-      selectionStates,
+      selection,
       this.packageManager,
       this.renderer,
       this.packageInfoModalController,
       this.vulnerabilityAuditController,
       this.options,
-      (refresh) => {
-        this.refreshView = refresh
+      (session) => {
+        this.refreshView = session?.refresh
+        attachSession(session)
       },
-      progress,
-      attachRefresh
+      progress
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
   }
 
-  public enqueueSecurityAudit(selectionStates: PackageSelectionState[]): void {
-    this.vulnerabilityAuditController.enqueueStates(selectionStates, () => this.refreshView?.())
+  public enqueueSecurityAudit(
+    states: PackageSelectionState[],
+    applyTo: PackageSelectionState[] = states
+  ): void {
+    this.vulnerabilityAuditController.enqueueStates(states, () => this.refreshView?.(), applyTo)
   }
 
   public async confirmUpgrade(choices: PackageUpgradeChoice[]): Promise<boolean | null> {
     console.log(this.renderer.renderConfirmation(choices))
 
     return new Promise((resolve) => {
-      // Replaced synchronously below before any keypress can invoke it.
-      let cleanupConfirmationSession = /* v8 ignore next */ () => {
+      // Replaced synchronously below before any keypress can invoke it, so
+      // the placeholder body is unreachable. (The `v8 ignore next` form is
+      // not honored by coverage-v8 here; the block form is.)
+      /* v8 ignore start */
+      let cleanupConfirmationSession = () => {
         CursorUtils.show()
       }
+      /* v8 ignore stop */
 
       const handleConfirm = (confirmed: boolean | null) => {
         cleanupConfirmationSession()

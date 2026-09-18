@@ -336,6 +336,70 @@ describe('createPendingSelectionStates', () => {
   })
 })
 
+describe('prerelease preservation', () => {
+  it('keeps prerelease tags on current/range/latest versions (coerce used to strip them)', () => {
+    const [state] = createSelectionStates(
+      [
+        makePackageInfo({
+          currentVersion: '^1.0.0-beta.2',
+          rangeVersion: '1.0.0-rc.3',
+          latestVersion: '1.0.0-rc.3',
+        }),
+      ],
+      noSummary
+    )
+
+    expect(state.currentVersion).toBe('1.0.0-beta.2')
+    expect(state.rangeVersion).toBe('1.0.0-rc.3')
+    expect(state.latestVersion).toBe('1.0.0-rc.3')
+  })
+
+  it('keeps prerelease tags in pending states', () => {
+    const [state] = createPendingSelectionStates(
+      [
+        {
+          name: 'next',
+          currentVersion: '16.0.0-preview.9',
+          type: 'dependencies',
+          packageJsonPath: '/repo/package.json',
+        },
+      ],
+      noSummary
+    )
+
+    expect(state.currentVersion).toBe('16.0.0-preview.9')
+  })
+
+  it('writes a prerelease upgrade with the original range prefix', () => {
+    const choices = createUpgradeChoices([
+      makeState({
+        currentVersionSpecifier: '^1.0.0-beta.2',
+        rangeVersion: '1.0.0-rc.3',
+        latestVersion: '1.0.0-rc.3',
+        selectedOption: 'latest',
+      }),
+    ])
+
+    expect(choices[0].targetVersion).toBe('^1.0.0-rc.3')
+  })
+
+  it('writes a bare prerelease version when saveExact is true', () => {
+    const choices = createUpgradeChoices(
+      [
+        makeState({
+          currentVersionSpecifier: '^1.0.0-beta.2',
+          rangeVersion: '1.0.0-rc.3',
+          latestVersion: '1.0.0-rc.3',
+          selectedOption: 'range',
+        }),
+      ],
+      true
+    )
+
+    expect(choices[0].targetVersion).toBe('1.0.0-rc.3')
+  })
+})
+
 describe('ordering and version fallbacks', () => {
   it('sorts scoped packages before unscoped ones', () => {
     const states = createSelectionStates(

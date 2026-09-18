@@ -1,0 +1,105 @@
+name: Native build
+
+# Reusable: Rust checks, then build and smoke-test the native core for every
+# published platform. ci.yml runs it on pull requests; publish.yml runs it
+# before publishing. Each platform uploads its addon as `bindings-<abi>`.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Rust checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - name: fmt, clippy, test
+        run: |
+          cargo fmt --manifest-path native/Cargo.toml --all --check
+          cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings
+          cargo test --manifest-path native/Cargo.toml --workspace --release
+
+  build:
+    name: Build ${{ matrix.abi }}
+    runs-on: ${{ matrix.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { abi: darwin-arm64, target: aarch64-apple-darwin, host: macos-latest, smoke: native }
+          - { abi: darwin-x64, target: x86_64-apple-darwin, host: macos-latest, smoke: rosetta }
+          - { abi: win32-x64-msvc, target: x86_64-pc-windows-msvc, host: windows-latest, smoke: native }
+          - { abi: win32-arm64-msvc, target: aarch64-pc-windows-msvc, host: windows-11-arm, smoke: native }
+          - { abi: linux-x64-gnu, target: x86_64-unknown-linux-gnu, host: ubuntu-latest, cross: --use-napi-cross, smoke: native }
+          - { abi: linux-arm64-gnu, target: aarch64-unknown-linux-gnu, host: ubuntu-24.04-arm, cross: --use-napi-cross, smoke: native }
+          - { abi: linux-x64-musl, target: x86_64-unknown-linux-musl, host: ubuntu-latest, cross: -x, smoke: alpine }
+          - { abi: linux-arm64-musl, target: aarch64-unknown-linux-musl, host: ubuntu-24.04-arm, cross: -x, smoke: alpine }
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - run: corepack enable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+          key: ${{ matrix.target }}
+      - name: Install zig (musl cross-compile)
+        if: matrix.cross == '-x'
+        uses: mlugg/setup-zig@v2
+
+      - name: Build
+        run: pnpm native:build --target ${{ matrix.target }} ${{ matrix.cross }}
+
+      # Official Node 22 binaries need glibc 2.28; the addon must not need more.
+      - name: glibc floor (<= 2.28)
+        if: endsWith(matrix.abi, '-gnu')
+        run: |
+          file=native/out/inup.${{ matrix.abi }}.node
+          max=$(objdump -T "$file" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -1)
+          echo "requires glibc $max"
+          [ "$(printf '%s\n2.28\n' "$max" | sort -V | tail -1)" = "2.28" ]
+
+      - name: Smoke (native host)
+        if: matrix.smoke == 'native'
+        run: node native/scripts/smoke.cjs native/out/inup.${{ matrix.abi }}.node
+
+      - name: Smoke (x64 Node under Rosetta)
+        if: matrix.smoke == 'rosetta'
+        run: |
+          softwareupdate --install-rosetta --agree-to-license || true
+          version=$(node -e "fetch('https://nodejs.org/dist/index.json').then(r => r.json()).then(v => console.log(v.find(x => x.version.startsWith('v24.')).version))")
+          node_x64="$RUNNER_TEMP/node-x64"
+          mkdir -p "$node_x64"
+          curl -fsSL "https://nodejs.org/dist/$version/node-$version-darwin-x64.tar.gz" | tar -xz -C "$node_x64" --strip-components=1
+          arch -x86_64 "$node_x64/bin/node" -p process.arch
+          arch -x86_64 "$node_x64/bin/node" native/scripts/smoke.cjs native/out/inup.${{ matrix.abi }}.node
+
+      - name: Smoke (Alpine container)
+        if: matrix.smoke == 'alpine'
+        run: docker run --rm -v "$PWD:/w" -w /w node:24-alpine node native/scripts/smoke.cjs native/out/inup.${{ matrix.abi }}.node
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bindings-${{ matrix.abi }}
+          path: native/out/inup.${{ matrix.abi }}.node
+          if-no-files-found: error
+          retention-days: 7

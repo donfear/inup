@@ -1,14 +1,15 @@
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { DEFAULT_TUNING } from '../../shared/http/adaptive-controller'
+import { HILL_CLIMB_TUNING } from '../../shared/http/hill-climb-controller'
 import type { PerformanceSnapshot } from './types'
 
 /**
  * Performance debug logger.
  *
  * When INUP_PERF=1, every run writes ONE self-contained JSON file capturing the
- * full configuration plus the performance snapshot (phases, batches, adaptive
- * control ticks, counts). The files accumulate in a gitignored directory so a
+ * full configuration plus the performance snapshot (phases, per-package
+ * latency, adaptive control ticks, counts). The files accumulate in a gitignored directory so a
  * series of runs can be diffed to find the best-performing configuration.
  *
  * Output location:
@@ -39,13 +40,18 @@ export interface PerfRunConfig {
   maxConcurrency: number
   /** Pool ceiling / controller ceiling in effect. */
   poolConnections: number
-  /** Emission batch size used for UI grouping. */
-  batchSize: number
   /** Entry path: interactive TUI vs headless (json/check/plain). */
   mode: 'interactive' | 'headless'
   /** Relevant env toggles, captured verbatim for reproducibility. */
   env: Record<string, string | undefined>
 }
+
+/**
+ * Bumped on breaking shape changes:
+ * 2 — results stream per package: `config.batchSize` and `snapshot.batches`
+ *     removed, phase `firstBatch` renamed `firstResult`.
+ */
+export const PERF_RECORD_SCHEMA_VERSION = 2
 
 export interface PerfRunRecord {
   schemaVersion: number
@@ -54,8 +60,10 @@ export interface PerfRunRecord {
   /** Wall-clock time for the whole tracked run, in ms. */
   wallMs: number | null
   config: PerfRunConfig
-  /** Tuning constants in effect when adaptive is on (for cross-run comparison). */
+  /** AIMD tuning constants in effect (for cross-run comparison). */
   tuning: typeof DEFAULT_TUNING
+  /** Hill-climb tuning constants in effect (which arm ran is in config.controllerMode). */
+  hillClimbTuning: typeof HILL_CLIMB_TUNING
   snapshot: PerformanceSnapshot
 }
 
@@ -67,6 +75,11 @@ export function isPerfLoggingEnabled(): boolean {
 export function perfEnv(): Record<string, string | undefined> {
   return {
     INUP_ADAPTIVE: process.env.INUP_ADAPTIVE,
+    INUP_CONTROLLER: process.env.INUP_CONTROLLER,
+    INUP_FASTLINK: process.env.INUP_FASTLINK,
+    INUP_PACE_BPS: process.env.INUP_PACE_BPS,
+    INUP_NET_PROFILE: process.env.INUP_NET_PROFILE,
+    INUP_CORE: process.env.INUP_CORE,
     INUP_PERF: process.env.INUP_PERF,
     INUP_DEBUG: process.env.INUP_DEBUG,
     CI: process.env.CI,
@@ -115,11 +128,12 @@ export function writePerfLog(config: PerfRunConfig, snapshot: PerformanceSnapsho
   try {
     const now = new Date()
     const record: PerfRunRecord = {
-      schemaVersion: 1,
+      schemaVersion: PERF_RECORD_SCHEMA_VERSION,
       timestamp: now.toISOString(),
       wallMs: snapshot.totalMs,
       config,
       tuning: DEFAULT_TUNING,
+      hillClimbTuning: HILL_CLIMB_TUNING,
       snapshot,
     }
 

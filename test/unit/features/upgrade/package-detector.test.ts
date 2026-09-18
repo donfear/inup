@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   findPackageJson: vi.fn(),
@@ -9,11 +9,13 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   loadPnpmCatalogs: vi.fn(),
   isPerfLoggingEnabled: vi.fn(() => false),
+  getNetworkProfile: vi.fn(() => null),
+  setNetworkProfile: vi.fn(),
   performanceTracker: {
+    mark: vi.fn(),
     recordControlTick: vi.fn(),
     recordPackageTiming: vi.fn(),
     recordFailedPackage: vi.fn(),
-    recordBatch: vi.fn(),
     recordCounts: vi.fn(),
     recordPhaseDuration: vi.fn(),
   },
@@ -77,6 +79,14 @@ vi.mock('../../../../src/shared/terminal', () => ({
   },
 }))
 
+// Keep the detector's profile read/write away from the user's real config.
+vi.mock('../../../../src/shared/config/user-config', () => ({
+  configManager: {
+    getNetworkProfile: mocks.getNetworkProfile,
+    setNetworkProfile: mocks.setNetworkProfile,
+  },
+}))
+
 import { PackageDetector } from '../../../../src/features/upgrade/package-detector'
 import { debugLog } from '../../../../src/shared/debug-logger'
 import { ConsoleUtils } from '../../../../src/shared/terminal'
@@ -108,37 +118,23 @@ describe('PackageDetector streaming', () => {
       async (
         packageNames: string[],
         options: {
-          onBatchReady: (batch: any[]) => void
-          batchSize: number
+          onPackageReady: (result: any) => void
           maxConcurrency: number
         }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options.batchSize).toBe(10)
         expect(options.maxConcurrency).toBe(10)
-        const onBatchReady = options.onBatchReady
+        const onPackageReady = options.onPackageReady
 
-        onBatchReady([
-          {
-            packageName: '@scope/pkg',
-            data: { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] },
-            completed: 1,
-            total: 2,
-            batchIndex: 0,
-            itemIndex: 0,
-          },
-        ])
+        onPackageReady({
+          packageName: '@scope/pkg',
+          data: { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] },
+        })
 
-        onBatchReady([
-          {
-            packageName: 'zod',
-            data: { latestVersion: 'unknown', allVersions: [] },
-            completed: 2,
-            total: 2,
-            batchIndex: 0,
-            itemIndex: 1,
-          },
-        ])
+        onPackageReady({
+          packageName: 'zod',
+          data: { latestVersion: 'unknown', allVersions: [] },
+        })
 
         return new Map([
           ['@scope/pkg', { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] }],
@@ -148,10 +144,10 @@ describe('PackageDetector streaming', () => {
     )
   })
 
-  it('emits initial, batch, and complete events in stable order', async () => {
+  it('emits initial, one package event per package, and complete in stable order', async () => {
     const detector = new PackageDetector({ cwd: '/repo' })
     const eventTypes: string[] = []
-    const batchPackageNames: string[][] = []
+    const packageNames: string[] = []
 
     const packages = await detector.streamOutdatedPackages((event) => {
       eventTypes.push(event.type)
@@ -165,12 +161,15 @@ describe('PackageDetector streaming', () => {
         })
       }
 
-      if (event.type === 'batch') {
-        batchPackageNames.push(event.payload.batch.map((item) => item.packageName))
+      if (event.type === 'package') {
+        packageNames.push(event.payload.packageName)
+        expect(event.payload.progress.phase).toBe('resolving')
+        expect(event.payload.progress.isLoading).toBe(true)
       }
 
       if (event.type === 'complete') {
         expect(event.payload.progress).toMatchObject({
+          phase: 'done',
           total: 2,
           resolved: 2,
           failed: 1,
@@ -179,8 +178,16 @@ describe('PackageDetector streaming', () => {
       }
     })
 
-    expect(eventTypes).toEqual(['initial', 'batch', 'batch', 'complete'])
-    expect(batchPackageNames).toEqual([['@scope/pkg'], ['zod']])
+    expect(eventTypes).toEqual([
+      'status',
+      'status',
+      'status',
+      'initial',
+      'package',
+      'package',
+      'complete',
+    ])
+    expect(packageNames).toEqual(['@scope/pkg', 'zod'])
     expect(packages.map((pkg) => pkg.name)).toEqual(['@scope/pkg', 'zod'])
     expect(packages[0]).toMatchObject({
       name: '@scope/pkg',
@@ -193,6 +200,124 @@ describe('PackageDetector streaming', () => {
       latestVersion: 'unknown',
       isOutdated: false,
     })
+  })
+
+  it('advances progress by one per package and flags failures without breaking order', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      { name: 'a', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+      { name: 'b', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+      { name: 'c', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
+    ])
+    const ok = { latestVersion: '2.0.0', allVersions: ['1.2.0', '1.0.0'] }
+    const failed = { latestVersion: 'unknown', allVersions: [] }
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      options.onPackageReady({ packageName: 'a', data: ok })
+      options.onPackageReady({ packageName: 'b', data: failed })
+      options.onPackageReady({ packageName: 'c', data: ok })
+      return new Map([
+        ['a', ok],
+        ['b', failed],
+        ['c', ok],
+      ])
+    })
+    mocks.performanceTracker.recordCounts.mockClear()
+    mocks.performanceTracker.recordFailedPackage.mockClear()
+
+    const seen: Array<[string, string, number, number, boolean]> = []
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type !== 'package') return
+      const { packageName, packageInfo, progress } = event.payload
+      seen.push([
+        packageName,
+        packageInfo[0].latestVersion,
+        progress.resolved,
+        progress.failed,
+        progress.isLoading,
+      ])
+    })
+
+    expect(seen).toEqual([
+      ['a', '2.0.0', 1, 0, true],
+      ['b', 'unknown', 2, 1, true],
+      ['c', '2.0.0', 3, 1, true],
+    ])
+    expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledTimes(1)
+    expect(mocks.performanceTracker.recordFailedPackage).toHaveBeenCalledWith('b')
+    expect(mocks.performanceTracker.recordCounts).toHaveBeenLastCalledWith({
+      resolved: 3,
+      failed: 1,
+    })
+  })
+
+  it('resolves each specifier once per scan while preserving workspace and catalog sources', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: () => ({ catalog: 'default', range: '^1.0.0' }),
+      entriesOf: () => [{ name: 'shared', range: '^1.0.0' }],
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'shared',
+        version: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/a/package.json',
+      },
+      {
+        name: 'shared',
+        version: '^1.0.0',
+        type: 'devDependencies',
+        packageJsonPath: '/repo/b/package.json',
+      },
+      {
+        name: 'shared',
+        version: 'catalog:',
+        type: 'optionalDependencies',
+        packageJsonPath: '/repo/c/package.json',
+      },
+      {
+        name: 'shared',
+        version: '^2.0.0',
+        type: 'peerDependencies',
+        packageJsonPath: '/repo/d/package.json',
+      },
+    ])
+    let range = '1.5.0'
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      const data = { latestVersion: '3.0.0', allVersions: [range, '1.0.0'] }
+      options.onPackageReady({ packageName: 'shared', data })
+      return new Map([['shared', data]])
+    })
+    mocks.findClosestMinorVersion.mockClear()
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const first = await detector.getOutdatedPackages()
+    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(2)
+    expect(first.map((pkg) => [pkg.packageJsonPath, pkg.type, pkg.catalog])).toEqual([
+      ['/repo/a/package.json', 'dependencies', undefined],
+      ['/repo/b/package.json', 'devDependencies', undefined],
+      ['/repo/pnpm-workspace.yaml', 'optionalDependencies', 'default'],
+      ['/repo/d/package.json', 'peerDependencies', undefined],
+    ])
+    expect(first[2].catalogReferencedBy).toEqual(['/repo/c/package.json'])
+    expect(first[2].catalogEntries).toEqual([{ name: 'shared', range: '^1.0.0' }])
+    expect(first[0]).not.toBe(first[1])
+    expect(first[0].catalogEntries).toBeUndefined()
+    range = '1.6.0'
+    const second = await detector.getOutdatedPackages()
+    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(4)
+    expect(second[0].rangeVersion).toBe('1.6.0')
+    expect(first[0].rangeVersion).toBe('1.5.0')
+  })
+
+  it('ignores unexpected registry results with no corresponding dependency', async () => {
+    mocks.fetchPackageVersions.mockImplementation(async (_names: string[], options: any) => {
+      options.onPackageReady({
+        packageName: 'unrequested',
+        data: { latestVersion: '1.0.0', allVersions: ['1.0.0'] },
+      })
+      return new Map()
+    })
+    expect(await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()).toEqual([])
   })
 
   it('keeps getOutdatedPackages compatible with the streamed implementation', async () => {
@@ -251,12 +376,10 @@ describe('PackageDetector streaming', () => {
       },
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         expect(packageNames).toEqual(['react'])
         const data = { latestVersion: '19.1.0', allVersions: ['19.1.0', '18.3.0', '18.2.0'] }
-        options.onBatchReady([
-          { packageName: 'react', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'react', data })
         return new Map([['react', data]])
       }
     )
@@ -338,12 +461,10 @@ describe('PackageDetector streaming', () => {
       },
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         expect(packageNames).toEqual(['shared-lib'])
         const data = { latestVersion: '1.2.0', allVersions: ['1.2.0', '1.0.0'] }
-        options.onBatchReady([
-          { packageName: 'shared-lib', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'shared-lib', data })
         return new Map([['shared-lib', data]])
       }
     )
@@ -429,18 +550,9 @@ describe('PackageDetector edge paths', () => {
     )
     mocks.fetchPackageVersions.mockReset()
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.2.0', '1.0.0'] }
-        options.onBatchReady(
-          packageNames.map((packageName, itemIndex) => ({
-            packageName,
-            data,
-            completed: itemIndex + 1,
-            total: packageNames.length,
-            batchIndex: 0,
-            itemIndex,
-          }))
-        )
+        for (const packageName of packageNames) options.onPackageReady({ packageName, data })
         return new Map(packageNames.map((name) => [name, data]))
       }
     )
@@ -455,8 +567,11 @@ describe('PackageDetector edge paths', () => {
       cwd: process.cwd(),
       adaptive: true,
       maxConcurrency: 10,
-      batchSize: 10,
       poolConnections: expect.any(Number),
+      controllerMode: 'hillclimb',
+      pinnedConcurrency: null,
+      hadNetworkProfile: false,
+      profileLearnedLimit: null,
     })
   })
 
@@ -472,8 +587,9 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
-  it('records perf callbacks when perf logging is enabled', async () => {
-    mocks.isPerfLoggingEnabled.mockReturnValue(true)
+  it('forwards control ticks and per-package latency to the tracker in every run', async () => {
+    // Not gated on INUP_PERF: the in-app performance modal reads these timings.
+    mocks.isPerfLoggingEnabled.mockReturnValue(false)
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       dep('zod', '^1.0.0'),
       dep('never-resolved', '^1.0.0'),
@@ -482,7 +598,7 @@ describe('PackageDetector edge paths', () => {
       async (
         _packageNames: string[],
         options: {
-          onBatchReady: (batch: any[]) => void
+          onPackageReady: (result: any) => void
           onControlTick: (tick: unknown) => void
           onPackageTiming?: (name: string, latencyMs: number) => void
         }
@@ -491,11 +607,9 @@ describe('PackageDetector edge paths', () => {
         expect(options.onPackageTiming).toBeDefined()
         options.onPackageTiming!('zod', 12)
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
-        // Only one of the two packages ever gets a batch: the other must fall
+        // Only one of the two packages ever resolves: the other must fall
         // back to an empty group in the final assembly.
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 2, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -511,17 +625,20 @@ describe('PackageDetector edge paths', () => {
     })
   })
 
-  it('pluralizes the found-files progress message', async () => {
+  it('emits the found-files count as collection status', async () => {
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue([
       '/repo/package.json',
       '/repo/packages/a/package.json',
     ])
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    await detector.getOutdatedPackages()
+    const statuses: unknown[] = []
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'status') statuses.push(event.payload.progress)
+    })
 
-    expect(vi.mocked(ConsoleUtils.showProgress).mock.calls.flat()).toContain(
-      '🔍 Found 2 package.json files'
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ phase: 'collecting', packageJsonFiles: 2 })
     )
   })
 
@@ -557,12 +674,151 @@ describe('PackageDetector edge paths', () => {
       expect(packages[0].catalogReferencedBy).toEqual(['/repo/packages/a/package.json'])
       const wsLogs = vi
         .mocked(debugLog.info)
-        .mock.calls.filter((call) => String(call[1]).includes('skipping workspace ref'))
+        .mock.calls.filter((call) => String(call[1]).includes('skipping non-registry specifier'))
       expect(wsLogs).toHaveLength(1)
       const ignoreLogs = vi
         .mocked(debugLog.info)
         .mock.calls.filter((call) => String(call[1]).includes('ignoring package'))
       expect(ignoreLogs).toHaveLength(1)
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('skips npm: aliases and git/tarball URL specifiers', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      // An alias must never be looked up under its alias name — 'my-fork' is not
+      // the packument that 'npm:real-pkg@^1.0.0' points at.
+      dep('my-fork', 'npm:real-pkg@^1.0.0'),
+      dep('from-git', 'git+https://github.com/user/repo.git'),
+      dep('from-git-proto', 'git://github.com/user/repo.git'),
+      dep('tarball', 'https://example.com/pkg-1.0.0.tgz'),
+      dep('insecure-tarball', 'http://example.com/pkg-1.0.0.tgz'),
+      dep('zod', '^3.0.0'),
+    ])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        expect(packageNames).toEqual(['zod'])
+        options.onPackageReady({
+          packageName: 'zod',
+          data: { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] },
+        })
+        return new Map([['zod', { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] }]])
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
+  })
+
+  it('treats a package as up to date when ignoreMajor suppresses its only update', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      // No in-range update: the only available bump crosses the major boundary.
+      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+          const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.0.0'] }
+          options.onPackageReady({
+            packageName: '@tiptap/core',
+            data,
+          })
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages).toHaveLength(1)
+      expect(packages[0]).toMatchObject({
+        name: '@tiptap/core',
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        majorIgnored: true,
+        latestVersion: '3.0.0',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('keeps the in-range update visible when ignoreMajor suppresses the major', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      mocks.findClosestMinorVersion.mockImplementation(() => '2.6.0')
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+          const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.6.0', '2.0.0'] }
+          options.onPackageReady({
+            packageName: '@tiptap/core',
+            data,
+          })
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages[0]).toMatchObject({
+        isOutdated: true,
+        hasRangeUpdate: true,
+        rangeVersion: '2.6.0',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+        latestVersion: '3.0.0',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('leaves majors intact for packages ignoreMajor does not match', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('react', '^17.0.0')])
+      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.fetchPackageVersions.mockImplementation(
+        async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+          const data = { latestVersion: '18.0.0', allVersions: ['18.0.0', '17.0.0'] }
+          options.onPackageReady({ packageName: 'react', data })
+          return new Map(packageNames.map((name) => [name, data]))
+        }
+      )
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        ignoreMajorPackages: ['@tiptap/core'],
+      })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages[0]).toMatchObject({
+        name: 'react',
+        isOutdated: true,
+        hasMajorUpdate: true,
+        majorIgnored: false,
+      })
     } finally {
       vi.mocked(isPackageIgnored).mockImplementation(() => false)
     }
@@ -595,11 +851,9 @@ describe('PackageDetector edge paths', () => {
       dep('zod', '^1.0.0', '/repo/packages/b/package.json'),
     ])
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: 'unknown', allVersions: [] }
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -619,11 +873,9 @@ describe('PackageDetector edge paths', () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', 'latest')])
     mocks.findClosestMinorVersion.mockReturnValue('weird-version')
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: 'next', allVersions: ['next'] }
-        options.onBatchReady([
-          { packageName: 'zod', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'zod', data })
         return new Map([['zod', data]])
       }
     )
@@ -646,11 +898,9 @@ describe('PackageDetector edge paths', () => {
     ])
     mocks.findClosestMinorVersion.mockReturnValue(null)
     mocks.fetchPackageVersions.mockImplementation(
-      async (_names: string[], options: { onBatchReady: (batch: any[]) => void }) => {
+      async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
-        options.onBatchReady([
-          { packageName: 'major-only', data, completed: 1, total: 1, batchIndex: 0, itemIndex: 0 },
-        ])
+        options.onPackageReady({ packageName: 'major-only', data })
         return new Map([['major-only', data]])
       }
     )
@@ -695,7 +945,7 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
-  it('truncates long directory names in scan progress', async () => {
+  it('emits the scanning directory in progress status', async () => {
     const longDir = `/repo/${'deeply-nested/'.repeat(6)}`
     mocks.findAllPackageJsonFilesAsync.mockImplementation(
       async (
@@ -710,11 +960,38 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    await detector.getOutdatedPackages()
+    const statuses: unknown[] = []
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'status') statuses.push(event.payload.progress)
+    })
 
-    const progressCalls = vi.mocked(ConsoleUtils.showProgress).mock.calls.flat()
-    const truncated = progressCalls.find((msg) => String(msg).includes('(found 3)'))
-    expect(truncated).toContain(`...${longDir.slice(-47)}`)
+    expect(statuses).toContainEqual(
+      expect.objectContaining({ scanningDir: longDir, packageJsonFiles: 3 })
+    )
+  })
+
+  it('stops discovery before collecting dependencies when cancelled', async () => {
+    const controller = new AbortController()
+    const cancelled = new Error('cancelled scan')
+    mocks.findAllPackageJsonFilesAsync.mockImplementation(
+      async (
+        _cwd: string,
+        _exclude: string[],
+        _depth: number,
+        onProgress: (dir: string, found: number) => void
+      ) => {
+        controller.abort(cancelled)
+        onProgress('/repo', 1)
+        return ['/repo/package.json']
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await expect(detector.streamOutdatedPackages(() => {}, controller.signal)).rejects.toThrow(
+      'cancelled scan'
+    )
+    expect(mocks.collectAllDependenciesAsync).not.toHaveBeenCalled()
+    expect(mocks.fetchPackageVersions).not.toHaveBeenCalled()
   })
 
   it('warns about package.json-bearing directories the default skip list pruned', async () => {
@@ -788,6 +1065,498 @@ describe('PackageDetector edge paths', () => {
   })
 })
 
+describe('PackageDetector prerelease handling', () => {
+  const dep = (name: string, version: string, packageJsonPath = '/repo/package.json') => ({
+    name,
+    version,
+    type: 'dependencies',
+    packageJsonPath,
+  })
+
+  // A mock registry keyed by package name; values use the real ParsedVersions
+  // shape (allVersions = stable only, prereleaseVersions = every channel).
+  const mockRegistry = (data: Record<string, unknown>) => {
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        for (const packageName of packageNames) {
+          options.onPackageReady({ packageName, data: data[packageName] })
+        }
+        return new Map(packageNames.map((name) => [name, data[name]]))
+      }
+    )
+  }
+
+  beforeEach(async () => {
+    // These tests exercise the real version arithmetic end to end — restore the
+    // actual findClosestMinorVersion behind the suite-wide mock.
+    const actualVersions = await vi.importActual<typeof import('../../../../src/shared/versions')>(
+      '../../../../src/shared/versions'
+    )
+    mocks.findClosestMinorVersion.mockReset()
+    mocks.findClosestMinorVersion.mockImplementation(actualVersions.findClosestMinorVersion)
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
+    mocks.findPackageJson.mockReturnValue('/repo/package.json')
+    mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
+    mocks.findAllPackageJsonFilesAsync.mockReset()
+    mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
+    mocks.fetchPackageVersions.mockReset()
+  })
+
+  it('reports a newer rc to a beta install (vuetify-nuxt-module bug report)', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('vuetify-nuxt-module', '^1.0.0-beta.2'),
+    ])
+    mockRegistry({
+      'vuetify-nuxt-module': {
+        latestVersion: '0.19.5',
+        allVersions: ['0.19.5', '0.18.7'],
+        prereleaseVersions: [
+          '1.0.0-rc.3',
+          '1.0.0-rc.1',
+          '1.0.0-beta.11',
+          '1.0.0-beta.2',
+          '1.0.0-alpha.6',
+        ],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages).toHaveLength(1)
+    expect(packages[0]).toMatchObject({
+      name: 'vuetify-nuxt-module',
+      currentVersion: '^1.0.0-beta.2',
+      isOutdated: true,
+      hasRangeUpdate: true,
+      rangeVersion: '1.0.0-rc.3',
+      hasMajorUpdate: false,
+      latestVersion: '1.0.0-rc.3',
+    })
+    // The candidate pool carries same-tuple prereleases for downstream targets
+    expect(packages[0].allVersions).toEqual([
+      '1.0.0-rc.3',
+      '1.0.0-rc.1',
+      '1.0.0-beta.11',
+      '1.0.0-beta.2',
+      '1.0.0-alpha.6',
+      '0.19.5',
+      '0.18.7',
+    ])
+  })
+
+  it('reports a newer preview build to a preview install (next-style tags)', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('next', '16.0.0-preview.9')])
+    mockRegistry({
+      next: {
+        latestVersion: '15.5.4',
+        allVersions: ['15.5.4', '15.5.3'],
+        prereleaseVersions: ['16.0.0-preview.10', '16.0.0-preview.9', '16.0.0-preview.8'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: true,
+      hasRangeUpdate: true,
+      rangeVersion: '16.0.0-preview.10',
+      hasMajorUpdate: false,
+      latestVersion: '16.0.0-preview.10',
+    })
+  })
+
+  it('never surfaces prereleases to a stable install', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.2.0')])
+    mockRegistry({
+      lib: {
+        latestVersion: '1.2.0',
+        allVersions: ['1.2.0', '1.1.0'],
+        prereleaseVersions: ['2.0.0-beta.1', '1.3.0-rc.1'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      latestVersion: '1.2.0',
+    })
+    expect(packages[0].allVersions).toEqual(['1.2.0', '1.1.0'])
+  })
+
+  it('offers both the same-tuple rc and the newer stable major to a beta install', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      lib: {
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0', '0.19.5'],
+        prereleaseVersions: ['1.0.0-rc.3', '1.0.0-beta.2'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: true,
+      hasRangeUpdate: true,
+      rangeVersion: '1.0.0-rc.3',
+      hasMajorUpdate: true,
+      latestVersion: '2.0.0',
+    })
+  })
+
+  it('keeps the prerelease range bump when ignoreMajor suppresses the stable major', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+      mockRegistry({
+        lib: {
+          latestVersion: '2.0.0',
+          allVersions: ['2.0.0', '0.19.5'],
+          prereleaseVersions: ['1.0.0-rc.3', '1.0.0-beta.2'],
+        },
+      })
+
+      const detector = new PackageDetector({ cwd: '/repo', ignoreMajorPackages: ['lib'] })
+      const packages = await detector.getOutdatedPackages()
+
+      expect(packages[0]).toMatchObject({
+        isOutdated: true,
+        hasRangeUpdate: true,
+        rangeVersion: '1.0.0-rc.3',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('reports prerelease-only packages unavailable to a STABLE install', async () => {
+    // Hard invariant: a stable install is never offered a prerelease, even
+    // when the package has zero stable publishes — same behavior as before
+    // prerelease support (unavailable), not a ^1.0.0-alpha.2 suggestion.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^0.9.0')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '1.0.0-alpha.2',
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-alpha.2', '1.0.0-alpha.1'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      latestVersion: 'unknown',
+      rangeVersion: 'unknown',
+    })
+  })
+
+  it('treats wildcard specifiers as up to date instead of resolving them to 0.0.0', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('anything-goes', 'x')])
+    mockRegistry({
+      'anything-goes': { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+  })
+
+  it('surfaces a same-major cross-tuple prerelease as the latest update', async () => {
+    // 1.0.0-beta.2 installed, the project moved on to 1.1.0-alpha.1: no
+    // same-tuple bump exists and no major is crossed, but latest must still
+    // show it — otherwise headless --target latest writes a version the
+    // interactive UI never displayed.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      lib: {
+        latestVersion: '0.19.5',
+        allVersions: ['0.19.5'],
+        prereleaseVersions: ['1.1.0-alpha.1', '1.0.0-beta.2'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: true,
+      hasRangeUpdate: false,
+      hasMajorUpdate: true,
+      latestVersion: '1.1.0-alpha.1',
+    })
+  })
+
+  it('does not let ignoreMajor suppress a same-major prerelease latest', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    try {
+      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+      mockRegistry({
+        lib: {
+          latestVersion: '0.19.5',
+          allVersions: ['0.19.5'],
+          prereleaseVersions: ['1.1.0-alpha.1', '1.0.0-beta.2'],
+        },
+      })
+
+      const detector = new PackageDetector({ cwd: '/repo', ignoreMajorPackages: ['lib'] })
+      const packages = await detector.getOutdatedPackages()
+
+      // 1.0.0-beta.2 → 1.1.0-alpha.1 never crosses a major; ignoreMajor must
+      // not hide it.
+      expect(packages[0]).toMatchObject({
+        hasMajorUpdate: true,
+        majorIgnored: false,
+        latestVersion: '1.1.0-alpha.1',
+      })
+    } finally {
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('resolves prerelease-only packages instead of marking them unavailable', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
+    mockRegistry({
+      'early-lib': {
+        latestVersion: '1.0.0-beta.2',
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-beta.2', '1.0.0-beta.1'],
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: true,
+      hasRangeUpdate: true,
+      rangeVersion: '1.0.0-beta.2',
+      latestVersion: '1.0.0-beta.2',
+    })
+  })
+
+  it('falls back to the reported latest when the version lists are empty', async () => {
+    // Degenerate blob: a latest version but no version lists at all. The
+    // effective-latest computation must fall back rather than crash or blank.
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      lib: { latestVersion: '1.0.0-rc.3', allVersions: [] },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      latestVersion: '1.0.0-rc.3',
+      hasRangeUpdate: false,
+    })
+  })
+
+  it('tolerates registry data without a prereleaseVersions field (pre-v2 shape)', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mockRegistry({
+      lib: { latestVersion: '0.19.5', allVersions: ['0.19.5'] },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+  })
+})
+
+describe('PackageDetector concurrency plumbing', () => {
+  const originalController = process.env.INUP_CONTROLLER
+  const originalNetProfile = process.env.INUP_NET_PROFILE
+
+  const storedProfile = {
+    schemaVersion: 1 as const,
+    learnedLimit: 6,
+    baselineLatencyMs: 350,
+    baselineGoodputRps: 8.5,
+    sampleCount: 120,
+    updatedAt: new Date().toISOString(),
+  }
+
+  let fetchOptions: Record<string, unknown>
+
+  beforeEach(() => {
+    delete process.env.INUP_CONTROLLER
+    delete process.env.INUP_NET_PROFILE
+    mocks.getNetworkProfile.mockReset()
+    mocks.getNetworkProfile.mockReturnValue(null)
+    mocks.setNetworkProfile.mockReset()
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
+    mocks.findPackageJson.mockReturnValue('/repo/package.json')
+    mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
+    mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      {
+        name: 'zod',
+        version: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/package.json',
+      },
+    ])
+    mocks.findClosestMinorVersion.mockImplementation(
+      (version: string, versions: string[]) => versions[0] ?? version
+    )
+    mocks.fetchPackageVersions.mockReset()
+    mocks.fetchPackageVersions.mockImplementation(
+      async (_packageNames: string[], options: Record<string, unknown>) => {
+        fetchOptions = options
+        return new Map()
+      }
+    )
+  })
+
+  afterEach(() => {
+    if (originalController === undefined) delete process.env.INUP_CONTROLLER
+    else process.env.INUP_CONTROLLER = originalController
+    if (originalNetProfile === undefined) delete process.env.INUP_NET_PROFILE
+    else process.env.INUP_NET_PROFILE = originalNetProfile
+  })
+
+  const run = async (options?: ConstructorParameters<typeof PackageDetector>[0]) => {
+    const detector = new PackageDetector({ cwd: '/repo', ...options })
+    await detector.streamOutdatedPackages(() => {})
+    return detector
+  }
+
+  it('passes a pinned concurrency through to the registry fetcher', async () => {
+    await run({ concurrency: 5 })
+    expect(fetchOptions.concurrency).toBe(5)
+  })
+
+  it('defaults to the hillclimb controller', async () => {
+    await run()
+    expect(fetchOptions.controllerMode).toBe('hillclimb')
+  })
+
+  it('INUP_CONTROLLER=aimd selects the control arm', async () => {
+    process.env.INUP_CONTROLLER = 'aimd'
+    await run()
+    expect(fetchOptions.controllerMode).toBe('aimd')
+  })
+
+  it('injects the stored network profile', async () => {
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    await run()
+    expect(fetchOptions.networkProfile).toEqual(storedProfile)
+  })
+
+  it('persists the settled profile via onNetworkProfile', async () => {
+    await run()
+    const onNetworkProfile = fetchOptions.onNetworkProfile as (p: unknown) => void
+    expect(onNetworkProfile).toBeTypeOf('function')
+    onNetworkProfile(storedProfile)
+    expect(mocks.setNetworkProfile).toHaveBeenCalledWith(storedProfile)
+  })
+
+  it('INUP_NET_PROFILE=0 disables both profile read and write', async () => {
+    process.env.INUP_NET_PROFILE = '0'
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    await run()
+    expect(fetchOptions.networkProfile).toBeNull()
+    expect(fetchOptions.onNetworkProfile).toBeUndefined()
+  })
+
+  it('exposes the new knobs in the perf config', async () => {
+    mocks.getNetworkProfile.mockReturnValue(storedProfile)
+    const detector = await run({ concurrency: 7 })
+    expect(detector.getPerfConfig()).toMatchObject({
+      controllerMode: 'hillclimb',
+      pinnedConcurrency: 7,
+      hadNetworkProfile: true,
+      profileLearnedLimit: 6,
+    })
+  })
+
+  const streamWithTick = async (tick: Record<string, unknown>) => {
+    const flags: (boolean | undefined)[] = []
+    const data = { latestVersion: '2.0.0', allVersions: ['2.0.0'] }
+    mocks.fetchPackageVersions.mockImplementation(
+      async (_packageNames: string[], options: Record<string, any>) => {
+        options.onControlTick(tick)
+        options.onPackageReady({ packageName: 'zod', data })
+        return new Map([['zod', data]])
+      }
+    )
+    const detector = new PackageDetector({ cwd: '/repo' })
+    await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'package') flags.push(event.payload.progress.slowNetwork)
+    })
+    return flags
+  }
+
+  it('marks progress slowNetwork when the controller settled low', async () => {
+    const flags = await streamWithTick({
+      atMs: 1,
+      limit: 4,
+      ewmaMs: 300,
+      retries: 0,
+      reason: 'step-down',
+      state: 'hold',
+      goodputRps: 8,
+    })
+    expect(flags).toEqual([true])
+  })
+
+  it('leaves slowNetwork false on a healthy link', async () => {
+    const flags = await streamWithTick({
+      atMs: 1,
+      limit: 24,
+      ewmaMs: 40,
+      retries: 0,
+      reason: 'hold',
+      state: 'hold',
+      goodputRps: 300,
+    })
+    expect(flags).toEqual([false])
+  })
+
+  it('marks the firstResult phase when the first package streams in', async () => {
+    mocks.performanceTracker.mark.mockClear()
+    await streamWithTick({
+      atMs: 1,
+      limit: 24,
+      ewmaMs: 40,
+      retries: 0,
+      reason: 'hold',
+      state: 'hold',
+      goodputRps: 300,
+    })
+    expect(mocks.performanceTracker.mark).toHaveBeenCalledWith('firstResult')
+  })
+})
+
 describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
   const DAY_MS = 24 * 60 * 60_000
   const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString()
@@ -802,18 +1571,11 @@ describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
   /** Route each package to its own version data through the streaming callback. */
   const fetchWith = (dataByName: Record<string, unknown>) => {
     mocks.fetchPackageVersions.mockImplementation(
-      async (packageNames: string[], options: { onBatchReady: (batch: any[]) => void }) => {
-        options.onBatchReady(
-          packageNames.map((packageName, itemIndex) => ({
-            packageName,
-            data: dataByName[packageName],
-            completed: itemIndex + 1,
-            total: packageNames.length,
-            batchIndex: 0,
-            itemIndex,
-          }))
-        )
-        return new Map(Object.entries(dataByName))
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        for (const packageName of packageNames) {
+          options.onPackageReady({ packageName, data: dataByName[packageName] })
+        }
+        return new Map(packageNames.map((name) => [name, dataByName[name]]))
       }
     )
   }
@@ -932,6 +1694,34 @@ describe('PackageDetector release-age cooldown (minimumReleaseAge)', () => {
       hasMajorUpdate: false,
     })
     expect(byName.tagged).toMatchObject({ latestVersion: 'latest', isOutdated: false })
+  })
+
+  it('gates the prerelease channel and recomputes the latest on it', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('preview-only', '^1.0.0-rc.1')])
+    fetchWith({
+      'preview-only': {
+        latestVersion: '1.0.0-rc.3',
+        // A package with no stable publishes: every candidate is a prerelease,
+        // so gating only the stable pool would let the fresh rc.3 straight through.
+        allVersions: [],
+        prereleaseVersions: ['1.0.0-rc.3', '1.0.0-rc.2', '1.0.0-rc.1'],
+        publishTimes: {
+          '1.0.0-rc.3': iso(60_000),
+          '1.0.0-rc.2': iso(30 * DAY_MS),
+          '1.0.0-rc.1': iso(60 * DAY_MS),
+        },
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 1440 })
+    const packages = await detector.getOutdatedPackages()
+
+    expect(packages[0]).toMatchObject({
+      name: 'preview-only',
+      latestVersion: '1.0.0-rc.2',
+      allVersions: ['1.0.0-rc.2', '1.0.0-rc.1'],
+      isOutdated: true,
+    })
   })
 
   it('exempts packages matching minimumReleaseAgeExclude', async () => {

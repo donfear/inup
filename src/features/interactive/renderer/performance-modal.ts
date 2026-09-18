@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { clamp } from '../../../shared/math'
 import type { PerformanceSnapshot } from '../../debug'
 import {
   getModalWidth,
@@ -27,7 +28,7 @@ function buildSections(snapshot: PerformanceSnapshot): {
   pinned: ModalSection[]
   body: ModalSection[]
 } {
-  const { phases, counts, batches, controlTicks, failedPackages, packageManager, totalMs } =
+  const { phases, counts, packageTimings, controlTicks, failedPackages, packageManager, totalMs } =
     snapshot
 
   const pinned: ModalSection[] = [
@@ -51,7 +52,7 @@ function buildSections(snapshot: PerformanceSnapshot): {
   bodyRows.push(labelValue('Dep collection', formatMs(phases.depCollection)))
   bodyRows.push(labelValue('Filter', formatMs(phases.filter)))
   bodyRows.push(labelValue('Registry fetch', formatMs(phases.registryFetch)))
-  bodyRows.push(labelValue('First batch ready', formatMs(phases.firstBatch)))
+  bodyRows.push(labelValue('First result ready', formatMs(phases.firstResult)))
   bodyRows.push(labelValue('All packages loaded', formatMs(phases.allLoaded)))
   bodyRows.push(labelValue('Elapsed total', formatMs(totalMs ?? undefined)))
 
@@ -66,20 +67,21 @@ function buildSections(snapshot: PerformanceSnapshot): {
   bodyRows.push(labelValue('Failed', formatCount(counts.failed)))
 
   bodyRows.push('')
-  bodyRows.push(chalk.bold('Batches'))
-  if (batches.length > 0) {
-    const durations = batches.map((b) => b.durationMs)
-    const total = durations.reduce((a, b) => a + b, 0)
-    const avg = Math.round(total / batches.length)
-    const slowest = Math.max(...durations)
-    const slowestBatch = batches.find((b) => b.durationMs === slowest)
-    bodyRows.push(labelValue('Batch count', formatCount(batches.length)))
-    bodyRows.push(labelValue('Avg batch', formatMs(avg)))
+  bodyRows.push(chalk.bold('Registry latency'))
+  if (packageTimings.length > 0) {
+    const sorted = packageTimings.map((t) => t.latencyMs).sort((a, b) => a - b)
+    const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length)
+    // Nearest-rank percentile: the smallest value with >= 95% of samples at or below it.
+    const p95 = sorted[Math.ceil(sorted.length * 0.95) - 1]
+    const slowest = packageTimings.reduce((a, b) => (b.latencyMs > a.latencyMs ? b : a))
+    bodyRows.push(labelValue('Packages timed', formatCount(sorted.length)))
+    bodyRows.push(labelValue('Avg', formatMs(avg)))
+    bodyRows.push(labelValue('p95', formatMs(p95)))
     bodyRows.push(
-      labelValue('Slowest batch', `${formatMs(slowest)} ${chalk.gray(`(#${slowestBatch?.index})`)}`)
+      labelValue('Slowest', `${formatMs(slowest.latencyMs)} ${chalk.gray(`(${slowest.name})`)}`)
     )
   } else {
-    bodyRows.push(chalk.gray('  (no batches recorded)'))
+    bodyRows.push(chalk.gray('  (no registry responses timed yet)'))
   }
 
   bodyRows.push('')
@@ -88,12 +90,32 @@ function buildSections(snapshot: PerformanceSnapshot): {
     const limits = controlTicks.map((t) => t.limit)
     const finalTick = controlTicks[controlTicks.length - 1]
     const hardDowns = controlTicks.filter((t) => t.reason === 'hard-down').length
+    // Hill-climb ticks carry a state; plain AIMD ticks never do.
+    const isHillClimb = controlTicks.some((t) => t.state !== undefined)
+    bodyRows.push(labelValue('Controller', chalk.cyan(isHillClimb ? 'hillclimb' : 'aimd')))
     bodyRows.push(labelValue('Start limit', formatCount(controlTicks[0].limit)))
     bodyRows.push(labelValue('Peak limit', formatCount(Math.max(...limits))))
     bodyRows.push(labelValue('Final limit', formatCount(finalTick.limit)))
     bodyRows.push(labelValue('Final EWMA', formatMs(finalTick.ewmaMs)))
     bodyRows.push(labelValue('Control ticks', formatCount(controlTicks.length)))
     bodyRows.push(labelValue('Hard back-offs', formatCount(hardDowns)))
+    if (isHillClimb) {
+      const state = finalTick.state ?? '—'
+      bodyRows.push(
+        labelValue('State', chalk.cyan(finalTick.fastLink ? `${state} (fast link)` : state))
+      )
+      // Cold windows are measured in streamed bytes/sec, warm ones in
+      // completions/sec; show whichever the last tick carried.
+      const goodput =
+        finalTick.goodputBps !== undefined
+          ? `${(finalTick.goodputBps / 1_000_000).toFixed(1)} MB/s`
+          : finalTick.goodputRps !== undefined
+            ? `${finalTick.goodputRps}/s`
+            : null
+      bodyRows.push(
+        labelValue('Last goodput', goodput !== null ? chalk.yellow(goodput) : chalk.gray('—'))
+      )
+    }
   } else {
     bodyRows.push(chalk.gray('  (fixed — adaptive off or run too small)'))
   }
@@ -140,7 +162,7 @@ export function renderPerformanceModal(
   const needsScroll = totalScrollableRows > availableForBody
   const visibleBodyRows = needsScroll ? Math.max(1, availableForBody - 1) : availableForBody
   const maxScroll = Math.max(0, totalScrollableRows - visibleBodyRows)
-  const clampedOffset = Math.min(Math.max(0, scrollOffset), maxScroll)
+  const clampedOffset = clamp(scrollOffset, 0, maxScroll)
   const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
 
   const lines: string[] = []

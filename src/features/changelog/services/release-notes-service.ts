@@ -69,7 +69,9 @@ export class ReleaseNotesService {
     if (repoUrl.includes('github.com')) {
       for (const loadSource of this.getGitHubSources(repoUrl, version, signal)) {
         const notes = await loadSource()
-        if (notes) return notes
+        // GitHub API release bodies use CRLF line endings; a stray `\r` written to the
+        // terminal jumps the cursor to column 0 and corrupts the modal layout.
+        if (notes) return notes.replace(/\r\n/g, '\n')
       }
     }
 

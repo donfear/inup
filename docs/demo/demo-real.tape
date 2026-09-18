@@ -1,18 +1,30 @@
-Output docs/demo/interactive-upgrade.gif
+# record-demo.sh always passes -o with a fresh temporary path, which overrides
+# this line. It stays deliberately generic so a bare `vhs demo-real.tape` run
+# cannot overwrite the tracked demo assets.
+Output recording.gif
 
 Set Shell bash
 Set PlaybackSpeed 1.0
-# Width/Height include a 20px Padding on every side, so the usable terminal grid
-# stays 1200x470 while inup's full-height panel borders get breathing room from the
-# video edge (Padding 0 jammed the bottom/edge borders flush against the frame).
-Set Width 1240
-Set Height 510
-Set FontSize 16
-Set Padding 20
+# Rendered at 2x density for crispness. This VHS (0.10) has no `Set Scale`, so
+# the hi-DPI look comes from drawing everything twice as large — FontSize 32 on
+# a 2480x1020 canvas is ~2x the pixels-per-glyph of a 1x render, i.e. Retina
+# sharp. record-demo.sh downscales the GIF back to 1240 wide (small README
+# asset) and keeps the mp4 at full 2x for the website hero. Keep Width/Height a
+# clean 2x of the old 1240x510 so the framing is unchanged. Padding scales too
+# (40 = 2x20) so inup's full-height panel borders keep their breathing room.
+Set Width 2480
+Set Height 1020
+Set FontSize 32
+Set Padding 40
+# A steady framerate keeps motion smooth without bloating the GIF.
+Set Framerate 30
 
 # Change to clean temp directory (hidden from view)
 Hide
-Type "cd /tmp/my-app"
+Type `cd "$VHS_DEMO_DIR"`
+Enter
+# Bind the exact wrapper inside the recorded shell, independent of its PATH.
+Type `inup() { "$VHS_DEMO_DIR/.bin/inup" "$@"; }`
 Enter
 # Clear CI so inup renders the interactive TUI. GitHub Actions sets CI=true, which
 # the VHS-spawned shell inherits and which would otherwise route inup to its headless
@@ -23,14 +35,23 @@ Type `export PS1='$ '`
 Enter
 Type "clear"
 Enter
-Show
 
-# Run inup and hide shell/loading so the demo opens directly on the CLI
-Hide
+# Stay hidden through launch and resume the instant the picker paints, so the
+# demo opens on the UI rather than on a shell prompt and node's startup. The
+# picker mounts before the scan, so this still shows the real loading screen
+# with rows streaming in, rather than cutting to an already-finished list.
 Type "inup"
 Enter
-Sleep 5s
+Wait+Screen@30s /q Quit/
 Show
+
+# Every package resolved (the audit counter tracks resolved packages), so the
+# first keypress can never land on a half-loaded list no matter how slow the
+# runner or the registry is. If this times out the recording fails loudly
+# instead of publishing a half-scanned demo.
+# ('.' stands in for the slash: the tape lexer ends the pattern at a literal /.)
+Wait+Screen@60s /Audit 35.35/
+Sleep 700ms
 
 # Use 'M' to select all minor updates
 Type "m"

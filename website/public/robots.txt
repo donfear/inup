@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://donfear.github.io/inup/sitemap-index.xml

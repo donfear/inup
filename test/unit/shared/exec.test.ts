@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as os from 'node:os'
-import { describe, expect, it } from 'vitest'
+import * as path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { executeCommand, executeCommandAsync } from '../../../src/shared/exec'
 
 describe('exec utils', () => {
@@ -63,6 +64,75 @@ describe('exec utils', () => {
     })
   })
 })
+describe('exec cross-platform robustness', () => {
+  let scratchDir: string
+
+  beforeEach(() => {
+    scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), 'inup-exec-test-'))
+  })
+
+  afterEach(() => {
+    fs.rmSync(scratchDir, { recursive: true, force: true })
+  })
+
+  it('runs with a cwd containing spaces (common under C:\\Users\\First Last)', () => {
+    const spaced = path.join(scratchDir, 'dir with spaces')
+    fs.mkdirSync(spaced)
+    const real = fs.realpathSync(spaced)
+
+    const result = executeCommand('node -e "console.log(process.cwd())"', spaced)
+    expect(result.trim()).toBe(real)
+  })
+
+  it('runs with a cwd containing non-ASCII characters', () => {
+    const unicodeDir = path.join(scratchDir, 'пакет-höhe-日本')
+    fs.mkdirSync(unicodeDir)
+    const real = fs.realpathSync(unicodeDir)
+
+    const result = executeCommand('node -e "console.log(process.cwd())"', unicodeDir)
+    expect(result.trim()).toBe(real)
+  })
+
+  it('round-trips non-ASCII output as UTF-8 regardless of the console codepage', () => {
+    const result = executeCommand(
+      'node -e "console.log(Buffer.from([0xE6, 0x97, 0xA5, 0xF0, 0x9F, 0x9A, 0x80]).toString())"'
+    )
+    expect(result.trim()).toBe('日🚀')
+  })
+
+  it('emits LF-only multi-line output from a piped child on every platform', () => {
+    // stdio is a pipe, not a console, so even Windows children write \n — code that
+    // splits command output on '\n' relies on this holding everywhere.
+    const result = executeCommand(`node -e "console.log('one'); console.log('two')"`)
+    expect(result).toBe('one\ntwo\n')
+    expect(result.includes('\r')).toBe(false)
+  })
+
+  it('fails loudly instead of truncating when output exceeds the 1MB maxBuffer default', () => {
+    expect(() =>
+      executeCommand(`node -e "process.stdout.write('x'.repeat(2 * 1024 * 1024))"`)
+    ).toThrow('Command failed')
+  })
+
+  it('includes the failing command in the sync error for diagnosability', () => {
+    expect(() => executeCommand('node -e "process.exit(3)"')).toThrow(
+      'Command failed: node -e "process.exit(3)"'
+    )
+  })
+
+  it('throws for a command that exits non-zero even when it wrote to stdout first', () => {
+    expect(() => executeCommand(`node -e "console.log('partial'); process.exit(1)"`)).toThrow(
+      'Command failed'
+    )
+  })
+
+  it('rejects with the failing command in the async error too', async () => {
+    await expect(executeCommandAsync('node -e "process.exit(7)"')).rejects.toThrow(
+      'Command failed: node -e "process.exit(7)"'
+    )
+  })
+})
+
 describe('executeCommandAsync stderr handling', () => {
   it('rejects when a command produces only stderr output', async () => {
     await expect(executeCommandAsync(`node -e "console.error('boom')"`)).rejects.toThrow(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  computeVersionColumnWidths,
   renderInterface,
   renderPackageLine,
   renderPackagesTable,
@@ -34,6 +35,7 @@ interface RenderOptions {
   loadingProgress?: Parameters<typeof renderInterface>[12]
   auditProgress?: Parameters<typeof renderInterface>[13]
   notice?: string | null
+  terminalWidth?: number
 }
 
 function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
@@ -49,7 +51,7 @@ function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
     opts.filterMode,
     opts.filterQuery,
     opts.totalPackagesBeforeFilter,
-    120,
+    opts.terminalWidth ?? 120,
     opts.loadingProgress,
     opts.auditProgress,
     undefined,
@@ -324,6 +326,61 @@ describe('package-list renderer', () => {
 })
 
 describe('renderInterface header', () => {
+  it.each(['discovering', 'collecting'] as const)(
+    'renders one %s status for the empty first frame',
+    (phase) => {
+      const text = renderPlain([], {
+        loadingProgress: {
+          phase,
+          discovered: 0,
+          resolved: 0,
+          total: 0,
+          failed: 0,
+          isLoading: true,
+          packageJsonFiles: 2,
+        },
+      })
+      expect(text).toContain(
+        phase === 'discovering'
+          ? 'Scanning for package.json files…'
+          : 'Reading dependencies from 2 package.json files…'
+      )
+      expect(text).not.toContain('Confirm')
+      expect(text).not.toContain('Loading packages')
+      expect(text.trimEnd().split('\n')).toHaveLength(4)
+    }
+  )
+
+  it('includes scan details only when they fit and truncates the base label on tiny screens', () => {
+    const loadingProgress = {
+      phase: 'discovering' as const,
+      discovered: 0,
+      resolved: 0,
+      total: 0,
+      failed: 0,
+      isLoading: true,
+      scanningDir: 'packages/api',
+    }
+    expect(renderPlain([], { loadingProgress })).toContain('packages/api (found 0)')
+    const narrow = renderPlain([], { terminalWidth: 40, loadingProgress })
+    expect(narrow).not.toContain('packages/api')
+    const tiny = renderPlain([], { terminalWidth: 20, loadingProgress })
+    expect(tiny.split('\n').every((line) => line.length <= 20)).toBe(true)
+    const collecting = { ...loadingProgress, phase: 'collecting' as const }
+    expect(renderPlain([baseState], { loadingProgress: collecting })).toContain(
+      'Reading dependencies from 0 package.json files…'
+    )
+  })
+  it.each([20, 40, 60, 80, 120])('fits the shortcut footer within %s columns', (terminalWidth) => {
+    const footer = renderPlain([baseState], { terminalWidth }).split('\n')[2]
+    expect(VersionUtils.getVisualLength(footer)).toBeLessThanOrEqual(terminalWidth)
+    if (terminalWidth >= 40) {
+      expect(footer).toContain('? Help')
+      expect(footer).toContain('q Quit')
+    }
+    if (terminalWidth === 60) expect(footer).not.toContain('i Info')
+    if (terminalWidth === 120) expect(footer).toContain('i Info')
+  })
   it('shows the package manager display name when known', () => {
     expect(renderPlain([baseState], { packageManager: npmInfo })).toContain('(npm)')
   })
@@ -514,6 +571,51 @@ describe('renderInterface body', () => {
 
     expect(text).not.toContain('Loading packages')
   })
+
+  it('flags a slow connection on the loading line', () => {
+    const text = renderPlain([baseState], {
+      loadingProgress: {
+        discovered: 50,
+        resolved: 12,
+        total: 50,
+        failed: 0,
+        isLoading: true,
+        slowNetwork: true,
+      },
+    })
+
+    expect(text).toContain('Loading packages... (12/50 checked)')
+    expect(text).toContain('slow connection, reduced parallelism')
+  })
+
+  it('does not mention the connection when it is not slow', () => {
+    const text = renderPlain([baseState], {
+      loadingProgress: { discovered: 5, resolved: 2, total: 5, failed: 0, isLoading: true },
+    })
+
+    expect(text).not.toContain('slow connection')
+  })
+
+  it('drops the slow-connection hint before overflowing a narrow terminal', () => {
+    const width = 60
+    const text = renderPlain([baseState], {
+      terminalWidth: width,
+      loadingProgress: {
+        discovered: 100,
+        resolved: 42,
+        total: 100,
+        failed: 3,
+        isLoading: true,
+        slowNetwork: true,
+      },
+    })
+
+    // The hint is informational; the loading line is not allowed to wrap.
+    expect(text).not.toContain('slow connection')
+    const loadingLine = text.split('\n').find((line) => line.includes('Loading packages'))
+    expect(loadingLine).toBeDefined()
+    expect(loadingLine!.length).toBeLessThanOrEqual(width)
+  })
 })
 
 describe('renderPackagesTable', () => {
@@ -585,6 +687,143 @@ describe('renderPackageLine option columns', () => {
   })
 })
 
+describe('version column sizing for long prerelease versions', () => {
+  const longState = makeSelectionState({
+    name: 'next',
+    currentVersionSpecifier: '^16.0.0-preview.9',
+    currentVersion: '16.0.0-preview.9',
+    rangeVersion: '16.0.0-preview.10',
+    latestVersion: '16.0.0-preview.10',
+    hasRangeUpdate: true,
+    hasMajorUpdate: true,
+  })
+
+  it('keeps default column widths when every version fits', () => {
+    const widths = computeVersionColumnWidths([baseState], 120)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+
+  it('grows columns to fit long prerelease versions on a wide terminal', () => {
+    // ^16.0.0-preview.10 = 18 visual chars, +3 column overhead = 21.
+    const widths = computeVersionColumnWidths([baseState, longState], 120)
+
+    expect(widths).toEqual({ current: 20, range: 21, latest: 21 })
+  })
+
+  it('shows the full prerelease version when the terminal has room', () => {
+    const text = renderPlain([longState], { terminalWidth: 120 })
+
+    expect(text).toContain('^16.0.0-preview.9')
+    expect(text).toContain('^16.0.0-preview.10')
+    expect(text).not.toContain('…')
+  })
+
+  it('never grows columns past the name-column minimum on a narrow terminal', () => {
+    // 84 columns leave zero growth budget: name keeps its 24 minimum.
+    const widths = computeVersionColumnWidths([longState], 84)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+
+  it('splits a short growth budget round-robin across the columns', () => {
+    // 88 columns leave a pool of 4: +2 current, +1 range, +1 latest.
+    const widths = computeVersionColumnWidths([longState], 88)
+
+    expect(widths).toEqual({ current: 18, range: 17, latest: 17 })
+  })
+
+  it('caps column growth for absurdly long versions', () => {
+    const absurd = makeSelectionState({
+      currentVersionSpecifier: '^1.0.0-canary.20260729093015.sha.abcdef12',
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+    const widths = computeVersionColumnWidths([absurd], 200)
+
+    expect(widths.current).toBe(24)
+  })
+
+  it('middle-truncates a version that cannot fit its column', () => {
+    const lines = renderInterface(
+      [longState],
+      0,
+      0,
+      10,
+      false,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      '',
+      1,
+      84
+    )
+    const row = lines.map(stripAnsi).find((line) => line.includes('next'))
+
+    expect(row).toBeDefined()
+    expect(row).toContain('…')
+    expect(row).not.toContain('^16.0.0-preview.10')
+    // Both ends of the version survive the ellipsis
+    expect(row).toMatch(/\^16\.0\.[^ ]*…[^ ]*w\.10/)
+  })
+
+  it('keeps every row at the same visual width when versions overflow', () => {
+    for (const terminalWidth of [84, 100, 120]) {
+      const widths = computeVersionColumnWidths([baseState, longState], terminalWidth)
+      const rowWidths = [baseState, longState].flatMap((state) => [
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, false, terminalWidth, {}, widths)),
+        VersionUtils.getVisualLength(renderPackageLine(state, 0, true, terminalWidth, {}, widths)),
+      ])
+      expect(new Set(rowWidths).size).toBe(1)
+    }
+  })
+
+  it('never overflows the terminal when badges, a long name, and grown columns combine', () => {
+    // Worst case: saturated name column + [HIGH] + [DEPR] + [D] badges while
+    // long prerelease versions grow every version column. The name budget
+    // must absorb the badges or the row wraps and corrupts the frame.
+    const loaded = makeSelectionState({
+      name: '@a-very-long-scope/an-extremely-long-package-name-for-testing',
+      currentVersionSpecifier: '^16.0.0-preview.9',
+      rangeVersion: '16.0.0-preview.10',
+      latestVersion: '16.0.0-preview.10',
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+      type: 'devDependencies',
+      deprecated: 'this package is deprecated',
+      vulnerability: {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-x',
+        advisories: [],
+      },
+    })
+    for (const terminalWidth of [84, 100, 111, 120, 139, 160]) {
+      const widths = computeVersionColumnWidths([loaded, longState], terminalWidth)
+      const badgedRow = renderPackageLine(loaded, 0, false, terminalWidth, {}, widths)
+      const plainRow = renderPackageLine(longState, 0, false, terminalWidth, {}, widths)
+
+      expect(VersionUtils.getVisualLength(badgedRow)).toBeLessThanOrEqual(terminalWidth)
+      expect(VersionUtils.getVisualLength(badgedRow)).toBe(VersionUtils.getVisualLength(plainRow))
+    }
+  })
+
+  it('ignores range/latest lengths of rows that are not ready', () => {
+    const pendingLong = makeSelectionState({
+      loadState: 'pending',
+      currentVersionSpecifier: '^1.0.0',
+      rangeVersion: '16.0.0-preview.10',
+      latestVersion: '16.0.0-preview.10',
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+    })
+    const widths = computeVersionColumnWidths([pendingLong], 120)
+
+    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
+  })
+})
+
 describe('package-list render fallbacks', () => {
   it('renders a scoped name without a slash on both row states', () => {
     const state = makeSelectionState({ name: '@solo' })
@@ -594,9 +833,11 @@ describe('package-list render fallbacks', () => {
   })
 
   it('pads the current-version column with spaces when dashes do not fit', () => {
-    const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-beta.12' })
+    // 13 visual chars fill the default 16-wide column exactly (dot + space +
+    // version + trailing space) — no room for dashes, spaces only.
+    const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-b1' })
 
-    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-beta.12')
+    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-b1')
   })
 
   it('colors the header with the provided color for unknown package managers', () => {

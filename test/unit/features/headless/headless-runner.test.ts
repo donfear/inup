@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   getOutdatedPackages: vi.fn(),
+  streamOutdatedPackages: vi.fn(),
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
   fetchVulnerabilities: vi.fn(),
@@ -12,13 +13,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
     getOutdatedPackages = mocks.getOutdatedPackages
+    streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
     getPerfConfig = vi.fn().mockReturnValue({
       cwd: '/repo',
       adaptive: false,
       maxConcurrency: 8,
-      batchSize: 10,
       poolConnections: 5,
     })
   },
@@ -45,17 +46,38 @@ vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
 }))
 
 import { HeadlessRunner } from '../../../../src/features/headless'
+import { getVisualLength } from '../../../../src/shared/terminal'
+import type {
+  PackageLoadProgress,
+  StreamOutdatedPackagesCallback,
+} from '../../../../src/shared/types'
 
 const OUTDATED = {
   name: 'axios',
   currentVersion: '^0.27.0',
   rangeVersion: '0.27.2',
   latestVersion: '1.16.1',
+  allVersions: ['0.27.0', '0.27.1', '0.27.2', '1.0.0', '1.16.1'],
   type: 'dependencies',
   packageJsonPath: '/repo/package.json',
   isOutdated: true,
   hasRangeUpdate: true,
   hasMajorUpdate: true,
+}
+
+// The in-range bump crosses a minor boundary (no newer patch in 2.0.x). `--target patch` must
+// skip this package; `--target minor` takes it.
+const MINOR_ONLY = {
+  name: 'lodash-ish',
+  currentVersion: '~2.0.0',
+  rangeVersion: '2.3.0',
+  latestVersion: '2.3.0',
+  allVersions: ['2.0.0', '2.1.0', '2.3.0'],
+  type: 'dependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: true,
+  hasMajorUpdate: false,
 }
 
 const UP_TO_DATE = {
@@ -67,6 +89,22 @@ const UP_TO_DATE = {
   packageJsonPath: '/repo/package.json',
   isOutdated: false,
   hasRangeUpdate: false,
+  hasMajorUpdate: false,
+}
+
+// A prerelease install with a newer same-tuple prerelease available. The
+// detector produced the candidate pool (stable + same-tuple prereleases) and
+// an effective latest on the prerelease channel.
+const PRERELEASE = {
+  name: 'vuetify-nuxt-module',
+  currentVersion: '^1.0.0-beta.2',
+  rangeVersion: '1.0.0-rc.3',
+  latestVersion: '1.0.0-rc.3',
+  allVersions: ['1.0.0-rc.3', '1.0.0-rc.1', '1.0.0-beta.2', '0.19.5'],
+  type: 'dependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: true,
   hasMajorUpdate: false,
 }
 
@@ -93,6 +131,22 @@ describe('HeadlessRunner.run', () => {
       pkgs.filter((p) => p.isOutdated)
     )
     mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, UP_TO_DATE])
+    // The streaming form the runner uses: an `initial` event carrying every
+    // declared dependency's specifier, then `complete` with the resolved set.
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {
+      const packages = await mocks.getOutdatedPackages()
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: packages.map((p: any) => p.name),
+          currentVersions: new Map(packages.map((p: any) => [p.name, p.currentVersion])),
+          progress: {},
+        },
+      })
+      onEvent({ type: 'complete', payload: { packages, progress: {} } })
+      return packages
+    })
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
   })
 
@@ -114,6 +168,92 @@ describe('HeadlessRunner.run', () => {
     expect('vulnerability' in report.outdated[0]).toBe(false)
 
     logSpy.mockRestore()
+  })
+
+  it.each([true, false])('renders ordered scan status only on a TTY (%s)', async (isTTY) => {
+    vi.stubEnv('CI', '')
+    const tty = Object.getOwnPropertyDescriptor(process.stderr, 'isTTY')
+    const columns = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
+    Object.defineProperty(process.stderr, 'isTTY', { configurable: true, value: isTTY })
+    Object.defineProperty(process.stderr, 'columns', { configurable: true, value: 60 })
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    mocks.streamOutdatedPackages.mockImplementation(
+      async (onEvent: StreamOutdatedPackagesCallback) => {
+        const status = (
+          phase: PackageLoadProgress['phase'],
+          detail: Partial<PackageLoadProgress> = {}
+        ) =>
+          onEvent({
+            type: 'status',
+            payload: {
+              progress: {
+                phase,
+                discovered: 0,
+                resolved: 0,
+                failed: 0,
+                total: 0,
+                isLoading: phase !== 'done',
+                ...detail,
+              },
+            },
+          })
+        status('discovering')
+        status('discovering', { scanningDir: '/repo/packages/api', packageJsonFiles: 1 })
+        status('collecting', { packageJsonFiles: 1 })
+        status('collecting', { packageJsonFiles: 2 })
+        status('resolving')
+        status('discovering', { scanningDir: `/repo/${'日本語/'.repeat(30)}`, packageJsonFiles: 3 })
+        status('done')
+        onEvent({ type: 'warning', payload: { message: 'Skipped directory' } })
+        onEvent({
+          type: 'complete',
+          payload: {
+            packages: [],
+            progress: {
+              phase: 'done',
+              discovered: 0,
+              resolved: 0,
+              failed: 0,
+              total: 0,
+              isLoading: false,
+            },
+          },
+        })
+        return []
+      }
+    )
+    try {
+      await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+      expect(warn).toHaveBeenCalledWith('Skipped directory')
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).schemaVersion).toBe(1)
+      const messages = write.mock.calls.map(([chunk]) => String(chunk).split('\r').at(-1)!)
+      if (isTTY) {
+        expect(messages.slice(0, 7)).toEqual([
+          'Scanning repository for package.json files…',
+          'Scanning /repo/packages/api (found 1)',
+          'Found 1 package.json file',
+          'Reading dependencies…',
+          'Found 2 package.json files',
+          'Reading dependencies…',
+          'Identifying unique packages…',
+        ])
+        expect(messages.every((message) => getVisualLength(message) <= 60)).toBe(true)
+        expect(messages.at(-1)).toBe('')
+      } else {
+        expect(write).not.toHaveBeenCalled()
+      }
+    } finally {
+      if (tty) Object.defineProperty(process.stderr, 'isTTY', tty)
+      else delete process.stderr.isTTY
+      if (columns) Object.defineProperty(process.stderr, 'columns', columns)
+      else delete process.stderr.columns
+      write.mockRestore()
+      log.mockRestore()
+      warn.mockRestore()
+      vi.unstubAllEnvs()
+    }
   })
 
   it('--json cross-references advisories against the upgrade targets', async () => {
@@ -142,8 +282,14 @@ describe('HeadlessRunner.run', () => {
 
     await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
 
-    // The audit checks the currently-installed specifier.
-    expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(new Map([['axios', '^0.27.0']]))
+    // The audit checks the currently-installed specifier of every declared
+    // dependency (it starts before the registry says which are outdated).
+    expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(
+      new Map([
+        ['axios', '^0.27.0'],
+        ['left-pad', '^1.3.0'],
+      ])
+    )
 
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
     expect(report.summary.vulnerable).toBe(1)
@@ -157,6 +303,37 @@ describe('HeadlessRunner.run', () => {
       ],
     })
 
+    logSpy.mockRestore()
+  })
+
+  it('starts the advisory request from the initial dependency set, before packages resolve', async () => {
+    let auditCallsBeforeComplete = -1
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {
+      onEvent({
+        type: 'initial',
+        payload: {
+          allDependencies: [],
+          uniquePackages: ['axios', 'left-pad'],
+          currentVersions: new Map([
+            ['axios', '^0.27.0'],
+            ['left-pad', '^1.3.0'],
+          ]),
+          progress: {},
+        },
+      })
+      // Registry still "in flight" here: the bulk audit must already be on its way.
+      auditCallsBeforeComplete = mocks.fetchVulnerabilities.mock.calls.length
+      onEvent({ type: 'complete', payload: { packages: [OUTDATED, UP_TO_DATE], progress: {} } })
+      return [OUTDATED, UP_TO_DATE]
+    })
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+    expect(auditCallsBeforeComplete).toBe(1)
+    expect(mocks.fetchVulnerabilities).toHaveBeenCalledTimes(1)
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report.outdated.map((p: any) => p.name)).toEqual(['axios'])
     logSpy.mockRestore()
   })
 
@@ -222,6 +399,45 @@ describe('HeadlessRunner.run', () => {
       logSpy.mockRestore()
     })
 
+    it('target=patch bumps only within the current major.minor line', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MINOR_ONLY, MAJOR_ONLY, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      // axios has newer 0.27.x patches; lodash-ish only has minor bumps and chalk only a major —
+      // both must be skipped even though they have in-range updates.
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({
+        name: 'axios',
+        upgradeType: 'range',
+        targetVersion: '^0.27.2',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('target=patch skips packages without version-list data', async () => {
+      const { allVersions: _omitted, ...withoutVersions } = OUTDATED
+      mocks.getOutdatedPackages.mockResolvedValue([withoutVersions])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
+    it('target=latest skips packages whose latest version is empty', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([{ ...OUTDATED, latestVersion: '' }])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
     it('target=latest bumps to latest including majors', async () => {
       mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -233,6 +449,51 @@ describe('HeadlessRunner.run', () => {
       const byName = Object.fromEntries(choices.map((c: any) => [c.name, c]))
       expect(byName.axios).toMatchObject({ upgradeType: 'latest', targetVersion: '^1.16.1' })
       expect(byName.chalk).toMatchObject({ upgradeType: 'latest', targetVersion: '^5.6.2' })
+      logSpy.mockRestore()
+    })
+
+    it('target=latest holds ignoreMajor packages to their in-range bump', async () => {
+      // Detector-level suppression already cleared hasMajorUpdate and set
+      // majorIgnored; latest must not resurrect the major via latestVersion.
+      const majorIgnored = {
+        ...OUTDATED,
+        name: '@tiptap/core',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([majorIgnored])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({ name: '@tiptap/core', targetVersion: '^0.27.2' })
+      logSpy.mockRestore()
+    })
+
+    it('target=latest skips ignoreMajor packages without an in-range bump', async () => {
+      // Normally the detector already drops these from the outdated set
+      // (isOutdated=false); keep them outdated here to pin the defensive
+      // branch in resolveTargetVersion itself.
+      const suppressedMajorOnly = {
+        ...MAJOR_ONLY,
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      const suppressedEmptyRange = {
+        ...OUTDATED,
+        name: 'no-range-data',
+        rangeVersion: '',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      }
+      mocks.getOutdatedPackages.mockResolvedValue([suppressedMajorOnly, suppressedEmptyRange])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
       logSpy.mockRestore()
     })
 
@@ -307,6 +568,75 @@ describe('HeadlessRunner.run', () => {
       expect(mocks.upgradePackages).not.toHaveBeenCalled()
       logSpy.mockRestore()
     })
+
+    it('target=minor writes a prerelease bump with the original prefix preserved', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE, UP_TO_DATE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0]).toMatchObject({
+        name: 'vuetify-nuxt-module',
+        upgradeType: 'range',
+        targetVersion: '^1.0.0-rc.3',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('target=patch resolves the highest same-tuple prerelease from the pool', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices).toHaveLength(1)
+      expect(choices[0].targetVersion).toBe('^1.0.0-rc.3')
+      logSpy.mockRestore()
+    })
+
+    it('target=latest takes the effective latest on the prerelease channel', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices[0]).toMatchObject({
+        upgradeType: 'latest',
+        targetVersion: '^1.0.0-rc.3',
+      })
+      logSpy.mockRestore()
+    })
+
+    it('--save-exact writes the bare prerelease version', async () => {
+      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo', saveExact: true }).run({
+        apply: true,
+        target: 'minor',
+      })
+
+      const choices = mocks.upgradePackages.mock.calls[0][0]
+      expect(choices[0].targetVersion).toBe('1.0.0-rc.3')
+      logSpy.mockRestore()
+    })
+  })
+
+  it('plain report shows a prerelease bump without the (major) tag', async () => {
+    mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({})
+
+    const output = String(logSpy.mock.calls[0][0])
+    expect(output).toContain('vuetify-nuxt-module')
+    expect(output).toContain('1.0.0-rc.3')
+    expect(output).not.toContain('(major)')
+    logSpy.mockRestore()
   })
 
   it('stringifies non-Error failures before exiting', async () => {

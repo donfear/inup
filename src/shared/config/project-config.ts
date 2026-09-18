@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { POOL_CONNECTIONS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
 
 /**
@@ -11,6 +12,13 @@ export interface InupProjectConfig {
    * Supports exact names and glob patterns (e.g., "@babel/*", "eslint-*")
    */
   ignore?: string[]
+
+  /**
+   * Packages whose major updates are suppressed. Minor/patch updates still
+   * show; a package whose only available update is a new major is treated as
+   * up to date. Same pattern syntax as `ignore`.
+   */
+  ignoreMajor?: string[]
 
   /**
    * Exclude directory patterns (regex patterns)
@@ -49,6 +57,20 @@ export interface InupProjectConfig {
    * Defaults to false so optional dependency risk stays hidden unless explicitly enabled.
    */
   showOptionalDependencyVulnerabilities?: boolean
+
+  /**
+   * Pin registry-fetch parallelism for this project (integer 1..24) and disable
+   * adaptive ramping. Escape hatch for known-slow networks; the --concurrency
+   * flag overrides this.
+   */
+  concurrency?: number
+
+  /**
+   * Use the native (Rust) registry core for this project. Experimental and off
+   * by default; the first run downloads the prebuilt addon for this platform
+   * once. The --native / --no-native flags override this.
+   */
+  native?: boolean
 }
 
 const CONFIG_FILES = [
@@ -70,7 +92,7 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
       if (existsSync(configPath)) {
         try {
           const content = readFileSync(configPath, 'utf-8')
-          const config = JSON.parse(content) as InupProjectConfig
+          const config = JSON.parse(stripJsonComments(content)) as InupProjectConfig
           return normalizeConfig(config)
         } catch (error) {
           // Invalid JSON or read error - continue searching
@@ -91,6 +113,81 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
 }
 
 /**
+ * Remove line comments (slash-slash) and block comments (slash-star) so config files can
+ * be self-documenting (the `--init` template relies on this). String-aware: a
+ * `//` inside a JSON string (e.g. a URL) is left untouched. Comment characters
+ * are replaced rather than deleted so JSON.parse error positions still line up
+ * with the file.
+ */
+export function stripJsonComments(content: string): string {
+  let result = ''
+  let inString = false
+  let inLineComment = false
+  let inBlockComment = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+    const next = content[i + 1]
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false
+        result += char
+      } else {
+        result += ' '
+      }
+      continue
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false
+        result += '  '
+        i++
+      } else {
+        result += char === '\n' ? char : ' '
+      }
+      continue
+    }
+
+    if (inString) {
+      if (char === '\\') {
+        result += char + (next ?? '')
+        i++
+        continue
+      }
+      if (char === '"') inString = false
+      result += char
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      result += char
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true
+      result += '  '
+      i++
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true
+      result += '  '
+      i++
+      continue
+    }
+
+    result += char
+  }
+
+  return result
+}
+
+/**
  * Normalize and validate the config
  */
 function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
@@ -99,6 +196,12 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   if (config.ignore) {
     if (Array.isArray(config.ignore)) {
       normalized.ignore = config.ignore.filter((item) => typeof item === 'string')
+    }
+  }
+
+  if (config.ignoreMajor) {
+    if (Array.isArray(config.ignoreMajor)) {
+      normalized.ignoreMajor = config.ignoreMajor.filter((item) => typeof item === 'string')
     }
   }
 
@@ -133,6 +236,28 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
 
   if (typeof config.showOptionalDependencyVulnerabilities === 'boolean') {
     normalized.showOptionalDependencyVulnerabilities = config.showOptionalDependencyVulnerabilities
+  }
+
+  if (typeof config.native === 'boolean') {
+    normalized.native = config.native
+  }
+
+  if (config.concurrency !== undefined) {
+    if (
+      typeof config.concurrency === 'number' &&
+      Number.isInteger(config.concurrency) &&
+      config.concurrency >= 1 &&
+      config.concurrency <= POOL_CONNECTIONS
+    ) {
+      normalized.concurrency = config.concurrency
+    } else {
+      // Never drop this one silently: the user set it to protect a slow or
+      // metered link, and ignoring it would let the run adapt up to the pool
+      // ceiling — the exact opposite of their intent.
+      console.warn(
+        `Warning: ignoring invalid "concurrency" in project config (expected an integer 1..${POOL_CONNECTIONS}, got ${JSON.stringify(config.concurrency)})`
+      )
+    }
   }
 
   return normalized

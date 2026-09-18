@@ -27,6 +27,7 @@ export interface PackageInfo {
   isOutdated: boolean
   hasRangeUpdate: boolean // If range version is different from current
   hasMajorUpdate: boolean // If latest version is a major update
+  majorIgnored?: boolean // Major update exists but is suppressed by .inuprc ignoreMajor
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases
@@ -103,11 +104,33 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
+  ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
-  adaptive?: boolean // Adaptive registry concurrency (AIMD). Defaults to true.
+  adaptive?: boolean // Adaptive registry concurrency. Defaults to true.
+  concurrency?: number // Pin registry fetch parallelism (1..24) and disable adaptation
   minimumReleaseAge?: number // Minutes a version must have been public before it's offered. 0/absent disables.
   minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge
+}
+
+/**
+ * Locally persisted network shape learned by the hill-climb concurrency
+ * controller. A starting hypothesis for the next run — never a hard cap: the
+ * controller re-validates it against live latency at run start and discards it
+ * when the network regime changed (different location, VPN, tethering).
+ */
+export interface NetworkProfile {
+  schemaVersion: 1
+  /** Last stable HOLD limit the controller settled at. */
+  learnedLimit: number
+  /** Success-only single-attempt latency EWMA at the end of that run. */
+  baselineLatencyMs: number
+  /** Window goodput (completions/sec) at settle time; diagnostic only. */
+  baselineGoodputRps: number
+  /** Completions that informed the profile. */
+  sampleCount: number
+  /** ISO timestamp; profiles expire after a few days. */
+  updatedAt: string
 }
 
 export interface PackageJson {

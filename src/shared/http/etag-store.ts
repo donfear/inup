@@ -38,7 +38,7 @@ interface EtagEntry {
 }
 
 /** Bump when the on-disk entry shape changes; old generations are ignored. */
-const SCHEMA = 'v1'
+const SCHEMA = 'v2' // v2: PackageVersionData gained prereleaseVersions
 
 /** Entries untouched for longer than this are swept on first access. */
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000 // 14 days
@@ -145,6 +145,20 @@ export function readEtag(key: string): EtagEntry | null {
     const parsed = JSON.parse(readFileSync(file, 'utf8')) as EtagEntry
     if (!parsed || typeof parsed.etag !== 'string' || !parsed.data) return null
     return parsed
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The file an entry for `key` lives in, or null when the store is disabled or
+ * the directory is unusable. Lets the optional Rust core write the entry off
+ * the main thread; its content must match writeEtag's JSON.stringify({ etag, data }).
+ */
+export function etagFileFor(key: string): string | null {
+  if (!enabled) return null
+  try {
+    return fileFor(key)
   } catch {
     return null
   }

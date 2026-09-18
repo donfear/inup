@@ -1,4 +1,3 @@
-import { Pool } from 'undici'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Keep retry classification real, but make backoff instant so retry-exhaustion
@@ -21,12 +20,38 @@ vi.mock('../../../../src/shared/registry/registry-config', async (importOriginal
   registryTargetFor: registryTargetMock,
 }))
 
+// Every JS-transport request goes through this mock (see requestSpy below).
+const { requestSpy } = vi.hoisted(() => ({
+  requestSpy: vi.fn<(opts: unknown) => Promise<unknown>>(),
+}))
+vi.mock('../../../../src/shared/http/http-request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/http/http-request')>()),
+  httpRequest: (origin: string, opts: object) => requestSpy({ origin, ...opts }),
+}))
+
+// The optional Rust core is off unless a test hands out a decoder or transport.
+const { packumentDecoderMock, nativeTransportMock } = vi.hoisted(() => ({
+  packumentDecoderMock: vi.fn((): unknown => null),
+  nativeTransportMock: vi.fn((): unknown => null),
+}))
+vi.mock('../../../../src/shared/registry/rust-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../src/shared/registry/rust-core')>()),
+  packumentDecoder: packumentDecoderMock,
+  nativeTransport: nativeTransportMock,
+}))
+
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
+import { debugLog } from '../../../../src/shared/debug-logger'
 import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
-import { setEtagCacheEnabled, setEtagCacheRoot } from '../../../../src/shared/http/etag-store'
+import {
+  readEtag,
+  setEtagCacheEnabled,
+  setEtagCacheRoot,
+} from '../../../../src/shared/http/etag-store'
+import { sleep } from '../../../../src/shared/http/retry'
 import {
   clearPackageCache,
   fetchPackageVersions,
@@ -38,11 +63,20 @@ type MockResponse = {
   headers?: Record<string, string>
   /** Optional artificial delay (ms) before the response resolves. */
   delayMs?: number
+  /** When set, the body is also async-iterable and streams exactly these chunks. */
+  chunks?: Buffer[]
 }
 
 const makeOkBody = (json: unknown): MockResponse => ({
   statusCode: 200,
   body: JSON.stringify(json),
+})
+
+/** A streamed response body yielding `buffer` as one chunk (none when empty). */
+const streamOf = (buffer: Buffer) => ({
+  [Symbol.asyncIterator]: async function* () {
+    if (buffer.length > 0) yield buffer
+  },
 })
 
 const makeErrBody = (statusCode: number): MockResponse => ({
@@ -53,28 +87,28 @@ const makeErrBody = (statusCode: number): MockResponse => ({
 describe('npm-registry', () => {
   const requestMock = vi.fn<(opts: { path: string }) => Promise<MockResponse>>()
 
-  const poolRequestSpy = vi
-    .spyOn(Pool.prototype, 'request')
-    .mockImplementation(async (opts: unknown) => {
-      const { path } = opts as { path: string }
-      const response = await requestMock({ path })
-      if (response.delayMs) {
-        await new Promise((resolve) => setTimeout(resolve, response.delayMs))
-      }
-      return {
-        statusCode: response.statusCode,
-        headers: response.headers ?? {},
-        trailers: {},
-        opaque: null,
-        context: {},
-        body: {
-          arrayBuffer: async () => Buffer.from(response.body, 'utf8'),
-          text: async () => response.body,
-          dump: async () => {},
+  // Responses have the shape httpRequest resolves: status, headers and a
+  // streamed body (the test's chunks, or the whole body as one chunk).
+  const poolRequestSpy = requestSpy
+  const defaultRequest = async (opts: unknown) => {
+    const { path } = opts as { path: string }
+    const response = await requestMock({ path })
+    if (response.delayMs) {
+      await new Promise((resolve) => setTimeout(resolve, response.delayMs))
+    }
+    const chunks = response.chunks ?? [Buffer.from(response.body, 'utf8')]
+    return {
+      statusCode: response.statusCode,
+      headers: response.headers ?? {},
+      body: {
+        dump: async () => {},
+        [Symbol.asyncIterator]: async function* () {
+          for (const chunk of chunks) yield chunk
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any
-    })
+      },
+    }
+  }
+  poolRequestSpy.mockImplementation(defaultRequest)
 
   beforeEach(() => {
     clearPackageCache()
@@ -107,7 +141,51 @@ describe('npm-registry', () => {
     expect(result.get('demo-pkg')).toEqual({
       latestVersion: '1.2.0',
       allVersions: ['1.2.0', '1.1.0', '1.0.0'],
+      prereleaseVersions: ['2.0.0-beta.1'],
     })
+  })
+
+  it('cancels active requests and skips queued packages without retrying', async () => {
+    const controller = new AbortController()
+    poolRequestSpy.mockImplementationOnce(
+      (opts: any) =>
+        new Promise((_resolve, reject) => {
+          opts.signal.addEventListener('abort', () => reject(opts.signal.reason), { once: true })
+          controller.abort(new Error('cancelled'))
+        }) as any
+    )
+    const pending = fetchPackageVersions(['active', 'queued'], {
+      concurrency: 1,
+      signal: controller.signal,
+    })
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(poolRequestSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels a retry wait instead of retrying the package', async () => {
+    const controller = new AbortController()
+    requestMock.mockImplementation(async () => {
+      setImmediate(() => controller.abort(new Error('cancel retry')))
+      return makeErrBody(503)
+    })
+    await expect(fetchPackageVersions(['retry'], { signal: controller.signal })).rejects.toThrow()
+    expect(requestMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('resolves cancellable requests normally and never publishes a result after cancellation', async () => {
+    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+    const controller = new AbortController()
+    const result = await fetchPackageVersions(['first'], { signal: controller.signal })
+    expect(result.get('first')?.latestVersion).toBe('1.0.0')
+    const ready = vi.fn()
+    await expect(
+      fetchPackageVersions(['second'], {
+        signal: controller.signal,
+        onPackageTiming: () => controller.abort(new Error('cancel before publication')),
+        onPackageReady: ready,
+      })
+    ).rejects.toThrow('cancel before publication')
+    expect(ready).not.toHaveBeenCalled()
   })
 
   it('sends no authorization header when the registry has no credentials', async () => {
@@ -206,6 +284,7 @@ describe('npm-registry', () => {
     expect(result.get('demo-pkg')).toEqual({
       latestVersion: '1.1.0',
       allVersions: ['1.1.0', '1.0.0'],
+      prereleaseVersions: [],
     })
   })
 
@@ -235,6 +314,7 @@ describe('npm-registry', () => {
     expect(result.get('good-pkg')).toEqual({
       latestVersion: '1.1.0',
       allVersions: ['1.1.0', '1.0.0'],
+      prereleaseVersions: [],
     })
     expect(result.get('bad-pkg')).toEqual({
       latestVersion: 'unknown',
@@ -293,11 +373,8 @@ describe('npm-registry', () => {
       return {
         statusCode: 404,
         headers: {},
-        trailers: {},
-        opaque: null,
-        context: {},
         body: {
-          arrayBuffer: async () => Buffer.alloc(0),
+          ...streamOf(Buffer.alloc(0)),
           dump: async () => {
             throw new Error('drain failed')
           },
@@ -324,12 +401,9 @@ describe('npm-registry', () => {
       poolRequestSpy.mockImplementationOnce(async () => {
         return {
           statusCode: 200,
-          // Array-valued header: undici surfaces repeated headers as arrays.
+          // Array-valued header: repeated headers can arrive as arrays.
           headers: { 'content-encoding': [encoding] },
-          trailers: {},
-          opaque: null,
-          context: {},
-          body: { arrayBuffer: async () => buffer, dump: async () => {} },
+          body: { ...streamOf(buffer), dump: async () => {} },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
       })
@@ -339,45 +413,102 @@ describe('npm-registry', () => {
     }
   })
 
-  it('emits batched results in request order', async () => {
+  it('emits every package exactly once with its own data', async () => {
     requestMock.mockImplementation(async ({ path }) => {
-      if (path.includes('pkg-a')) {
-        return makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } })
-      }
-      if (path.includes('pkg-b')) {
-        return makeOkBody({ versions: { '2.0.0': {}, '2.1.0': {} } })
-      }
-      return makeOkBody({ versions: { '3.0.0': {}, '3.1.0': {} } })
+      const major = path.endsWith('pkg-a') ? 1 : path.endsWith('pkg-b') ? 2 : 3
+      return makeOkBody({ versions: { [`${major}.0.0`]: {}, [`${major}.1.0`]: {} } })
     })
 
-    const batches: string[][] = []
+    const emitted: Array<[string, string]> = []
     const result = await fetchPackageVersions(['pkg-a', 'pkg-b', 'pkg-c'], {
-      batchSize: 2,
-      maxConcurrency: 1,
-      onBatchReady: (batch) => {
-        batches.push(batch.map((item) => item.packageName))
-      },
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
     })
 
-    expect(batches).toEqual([['pkg-a', 'pkg-b'], ['pkg-c']])
-    expect(new Set(result.keys())).toEqual(new Set(['pkg-a', 'pkg-b', 'pkg-c']))
+    expect(emitted).toEqual([
+      ['pkg-a', '1.1.0'],
+      ['pkg-b', '2.1.0'],
+      ['pkg-c', '3.1.0'],
+    ])
+    expect(Array.from(result.keys())).toEqual(['pkg-a', 'pkg-b', 'pkg-c'])
   })
 
-  it('supports a growing batch-size sequence', async () => {
-    requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+  it('emits each package the moment it resolves; a slow earlier package holds nothing back', async () => {
+    const pending = new Map<string, (response: MockResponse) => void>()
+    requestMock.mockImplementation(
+      ({ path }) =>
+        new Promise((resolve) => {
+          pending.set(path, resolve)
+        })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => emitted.push(packageName),
+    })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(Array.from(pending.keys()).sort()).toEqual(['/a', '/b', '/c'])
 
-    const packageNames = Array.from({ length: 50 }, (_, index) => `pkg-${index + 1}`)
-    const batches: number[] = []
+    pending.get('/c')!(makeOkBody({ versions: { '3.0.0': {} } }))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['c'])
 
-    await fetchPackageVersions(packageNames, {
-      batchSizes: [10, 15, 20, 25],
-      maxConcurrency: 5,
-      onBatchReady: (batch) => {
-        batches.push(batch.length)
+    pending.get('/b')!(makeErrBody(404))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted).toEqual(['c', 'b'])
+
+    pending.get('/a')!(makeOkBody({ versions: { '1.0.0': {} } }))
+    const result = await run
+    expect(emitted).toEqual(['c', 'b', 'a'])
+    expect(result.get('b')?.latestVersion).toBe('unknown')
+    expect(result.get('c')?.latestVersion).toBe('3.0.0')
+  })
+
+  it('fails the run on a throwing consumer and never emits that package twice', async () => {
+    requestMock.mockImplementation(async ({ path }) =>
+      makeOkBody({ versions: { [path.endsWith('/a') ? '1.0.0' : '2.0.0']: {} } })
+    )
+    const emitted: string[] = []
+    const run = fetchPackageVersions(['a', 'b', 'c'], {
+      adaptive: false,
+      maxConcurrency: 3,
+      onPackageReady: ({ packageName }) => {
+        emitted.push(packageName)
+        if (packageName === 'a') throw new Error('consumer failed')
       },
     })
 
-    expect(batches).toEqual([10, 15, 20, 5])
+    await expect(run).rejects.toThrow('consumer failed')
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(emitted.filter((name) => name === 'a')).toHaveLength(1)
+  })
+
+  it('emits a retried package once, after its retry succeeds', async () => {
+    let attemptsForA = 0
+    requestMock.mockImplementation(async ({ path }) => {
+      if (path.endsWith('/a')) {
+        attemptsForA++
+        return attemptsForA === 1
+          ? makeErrBody(500)
+          : makeOkBody({ versions: { '1.0.0': {}, '1.5.0': {} } })
+      }
+      return makeOkBody({ versions: { '2.0.0': {} } })
+    })
+
+    const emitted: Array<[string, string]> = []
+    await fetchPackageVersions(['a', 'b'], {
+      adaptive: false,
+      maxConcurrency: 2,
+      onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
+    })
+
+    expect(attemptsForA).toBe(2)
+    // b resolves on its first attempt, so it lands before a's retry completes.
+    expect(emitted).toEqual([
+      ['b', '2.0.0'],
+      ['a', '1.5.0'],
+    ])
   })
 
   describe('adaptive concurrency', () => {
@@ -547,6 +678,325 @@ describe('npm-registry', () => {
     })
   })
 
+  describe('hill-climb wiring', () => {
+    const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
+
+    // The whole block runs on a virtual clock: mock latencies are fake-timer
+    // milliseconds, so window goodput — and therefore every controller
+    // decision — is exact and load-independent. Real timers made these tests
+    // flake under coverage instrumentation.
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Start the fetch, drain the virtual clock, return the result. */
+    const runFetch = async (
+      packageNames: string[],
+      options: Parameters<typeof fetchPackageVersions>[1]
+    ) => {
+      const done = fetchPackageVersions(packageNames, options)
+      await vi.runAllTimersAsync()
+      return await done
+    }
+
+    /**
+     * A bandwidth-bound pipe: responses are serialized through a promise chain
+     * at a fixed cost each, so total goodput is flat no matter how many
+     * requests are in flight — exactly what a narrow link looks like.
+     */
+    const withBandwidthBoundPipe = (costMs: number) => {
+      let chain = Promise.resolve()
+      requestMock.mockImplementation(async () => {
+        const my = chain.then(() => new Promise<void>((r) => setTimeout(r, costMs)))
+        chain = my
+        await my
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+    }
+
+    /** A fast, wide link: fixed per-response latency, unlimited parallelism. */
+    const withFastLink = (latencyMs: number) => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, latencyMs))
+        inFlight--
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      return () => peak
+    }
+
+    it('adapts DOWN on a bandwidth-bound link without any error signal', async () => {
+      withBandwidthBoundPipe(8)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(100), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(100)
+      // Passive down-adaptation: the flat pipe must produce at least one
+      // goodput-driven down decision — with zero 429s or network errors.
+      expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down' || t.reason === 'soft-down')).toBe(false)
+      expect(ticks.at(-1)!.limit).toBeLessThanOrEqual(8)
+    })
+
+    it('reaches the ceiling by doubling on a fast link', async () => {
+      const getPeak = withFastLink(20)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(120), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Virtual clock: 12-completion windows at limits 4/8/16 take exactly
+      // 60/40/20 fake-ms → gains 1.5 and 2.0 clear the doubling gate every time.
+      expect(ticks.filter((t) => t.reason === 'double').length).toBeGreaterThanOrEqual(2)
+      expect(Math.max(...ticks.map((t) => t.limit))).toBe(24)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    /** A wide link streaming big packuments: one `bytes`-long chunk per response. */
+    const withStreamedBigBodies = (latencyMs: number, bytes: number) => {
+      const pad = 'x'.repeat(bytes)
+      const json = JSON.stringify({ versions: { '1.0.0': {} }, pad })
+      requestMock.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, latencyMs))
+        return { statusCode: 200, body: json, chunks: [Buffer.from(json, 'utf8')] }
+      })
+    }
+
+    it('streams response bytes into the controller so a wide pipe engages fast link', async () => {
+      // 100 KB per response at 20 fake-ms: 12-completion windows stream ≥ 1.2 MB
+      // in 60 ms — far above the 1 MB/s fast-link bar.
+      withStreamedBigBodies(20, 100_000)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
+
+      expect(result.size).toBe(60)
+      expect(ticks[0]).toMatchObject({ limit: 24, fastLink: true })
+      expect(ticks[0].goodputBps).toBeGreaterThan(1_000_000)
+      expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(false)
+    })
+
+    it('INUP_FASTLINK=0 disables fast link while keeping the controller on', async () => {
+      vi.stubEnv('INUP_FASTLINK', '0')
+      try {
+        withStreamedBigBodies(20, 100_000)
+        const ticks: ControlTick[] = []
+
+        await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
+
+        expect(ticks.length).toBeGreaterThan(0)
+        expect(ticks.some((t) => t.fastLink)).toBe(false)
+        expect(ticks[0].goodputBps).toBeGreaterThan(1_000_000)
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('INUP_PACE_BPS paces streamed chunks at the given bytes per second', async () => {
+      vi.stubEnv('INUP_PACE_BPS', '1000')
+      try {
+        const json = JSON.stringify({ versions: { '1.0.0': {} }, pad: 'x'.repeat(466) })
+        expect(Buffer.byteLength(json)).toBe(500)
+        requestMock.mockResolvedValue({ statusCode: 200, body: json, chunks: [Buffer.from(json)] })
+        let settled = false
+        const done = fetchPackageVersions(['demo-pkg']).then((r) => {
+          settled = true
+          return r
+        })
+
+        await vi.advanceTimersByTimeAsync(400)
+        expect(settled).toBe(false) // 500 bytes at 1000 B/s need 500 ms
+        await vi.advanceTimersByTimeAsync(150)
+        expect(settled).toBe(true)
+        expect((await done).get('demo-pkg')?.latestVersion).toBe('1.0.0')
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('concurrency option pins the limit and disables the controller', async () => {
+      const getPeak = withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(40), {
+        concurrency: 5,
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(getPeak()).toBeLessThanOrEqual(5)
+      expect(ticks).toHaveLength(0)
+    })
+
+    it('starts from the injected network profile when the regime matches', async () => {
+      withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 8,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // The first window runs (and reports) at the learned limit.
+      expect(ticks[0].limit).toBeGreaterThanOrEqual(8)
+    })
+
+    it('uses the learned limit as the fixed start for runs too small to control', async () => {
+      const getPeak = withFastLink(5)
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(20), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 5,
+          baselineLatencyMs: 100,
+          baselineGoodputRps: 10,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks).toHaveLength(0) // too small for the controller…
+      expect(getPeak()).toBeLessThanOrEqual(5) // …but the learned limit still caps the fixed start
+    })
+
+    it('emits a settled profile via onNetworkProfile once the run held', async () => {
+      withBandwidthBoundPipe(8)
+      const profiles: unknown[] = []
+
+      await runFetch(names(100), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(1)
+      const profile = profiles[0] as { schemaVersion: number; learnedLimit: number }
+      expect(profile.schemaVersion).toBe(1)
+      expect(profile.learnedLimit).toBeLessThanOrEqual(8)
+    })
+
+    it('does not emit a profile for runs too small to control', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const profiles: unknown[] = []
+
+      await runFetch(names(12), {
+        onNetworkProfile: (p) => profiles.push(p),
+      })
+
+      expect(profiles).toHaveLength(0)
+    })
+
+    it('survives a mid-run blackout: completes, backs off, reports partial results', async () => {
+      // Simulated disconnect/reconnect: calls 41-100 all fail with a transient
+      // network error (every retry attempt included), then the link is back.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls > 40 && calls <= 100) {
+          const error = new Error('socket hang up')
+          error.name = 'AbortError'
+          throw error
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(80), {
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      // Every package gets an answer — the run never hangs or throws.
+      expect(result.size).toBe(80)
+      const unavailable = [...result.values()].filter((v) => v.latestVersion === 'unknown')
+      // A partial outage, visibly partial: some packages exhausted their
+      // retries during the blackout, the rest resolved after the reconnect.
+      expect(unavailable.length).toBeGreaterThan(0)
+      expect(unavailable.length).toBeLessThan(80)
+      // The controller backed off on the transient errors — no 429 needed.
+      expect(ticks.some((t) => t.reason === 'soft-down')).toBe(true)
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
+    })
+
+    it('controllerMode aimd selects the control arm (smart start at the ceiling)', async () => {
+      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(120), {
+        controllerMode: 'aimd',
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.length).toBeGreaterThan(0)
+      expect(ticks[0].limit).toBe(24) // AIMD smart-starts at the ceiling
+      expect(ticks.some((t) => t.reason === 'double')).toBe(false)
+    })
+
+    it('applies a failed profile validation to the semaphore immediately', async () => {
+      // 600 fake-ms per response against a 10ms baseline: the regime check
+      // fails on the 8th success and the returned cold-start limit must reach
+      // the semaphore through the success path of the observer.
+      const getPeak = withFastLink(600)
+      const ticks: ControlTick[] = []
+
+      const result = await runFetch(names(60), {
+        networkProfile: {
+          schemaVersion: 1,
+          learnedLimit: 24,
+          baselineLatencyMs: 10,
+          baselineGoodputRps: 100,
+          sampleCount: 100,
+          updatedAt: new Date(0).toISOString(),
+        },
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(result.size).toBe(60)
+      expect(ticks.some((t) => t.reason === 'regime-reset')).toBe(true)
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('emits no profile when congestion never lets the run settle', async () => {
+      // A 429 storm through the whole run: the controller keeps hard-halving,
+      // so whatever limit it ends on is a back-off artifact, not a profile.
+      let calls = 0
+      requestMock.mockImplementation(async () => {
+        calls++
+        if (calls % 4 === 0) {
+          return { statusCode: 429, body: '', headers: { 'retry-after': '0' } }
+        }
+        await new Promise((r) => setTimeout(r, 3))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+      const profiles: unknown[] = []
+      const ticks: ControlTick[] = []
+
+      await runFetch(names(60), {
+        onNetworkProfile: (p) => profiles.push(p),
+        onControlTick: (t) => ticks.push(t),
+      })
+
+      expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
+      expect(profiles).toHaveLength(0)
+    })
+  })
+
   describe('ETag conditional caching', () => {
     // Isolated root per test: never wipe (or race parallel test files on) the
     // user's real persistent cache directory.
@@ -574,6 +1024,7 @@ describe('npm-registry', () => {
       expect(first.get('demo-pkg')).toEqual({
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
+        prereleaseVersions: [],
       })
 
       // Second run: registry validates the stored ETag → 304 with no body. The
@@ -586,10 +1037,7 @@ describe('npm-registry', () => {
         return {
           statusCode: 304,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
-          body: { arrayBuffer: async () => Buffer.alloc(0), dump: async () => {} },
+          body: { ...streamOf(Buffer.alloc(0)), dump: async () => {} },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
       })
@@ -600,6 +1048,272 @@ describe('npm-registry', () => {
       expect(second.get('demo-pkg')).toEqual({
         latestVersion: '1.1.0',
         allVersions: ['1.1.0', '1.0.0'],
+        prereleaseVersions: [],
+      })
+    })
+
+    describe('with the native transport', () => {
+      type Outcome = Record<string, unknown>
+      const data = {
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0', '1.0.0'],
+        prereleaseVersions: [],
+      }
+      const outcome = (overrides: Outcome): Outcome => ({
+        kind: 'success',
+        dataJson: JSON.stringify({ ...data, deprecated: null, enginesNode: null }),
+        revalidated: false,
+        bytes: 1234,
+        latencyMs: 12.6,
+        status: 200,
+        ...overrides,
+      })
+      const useTransport = (...results: Outcome[]) => {
+        const fetch = vi.fn(async (_request: unknown, _signal?: AbortSignal) => {
+          const next = results.length > 1 ? results.shift() : results[0]
+          return next as Outcome
+        })
+        const takeReceivedBytes = vi.fn(() => 0)
+        nativeTransportMock.mockReturnValue({ fetch, takeReceivedBytes })
+        return { fetch, takeReceivedBytes }
+      }
+
+      afterEach(() => {
+        nativeTransportMock.mockReset()
+        nativeTransportMock.mockReturnValue(null)
+        delete process.env.INUP_PACE_BPS
+      })
+
+      it('sends the whole attempt to Rust: URL, credentials and the cache file', async () => {
+        registryTargetMock.mockReturnValueOnce({
+          origin: 'https://npm.example.com',
+          pathPrefix: '/artifactory/api/npm',
+          authHeader: 'Bearer secret',
+        })
+        const { fetch } = useTransport(outcome({}))
+        requestMock.mockImplementation(async () => {
+          throw new Error('the JS transport must not be used')
+        })
+
+        const result = await fetchPackageVersions(['@scope/pkg'])
+
+        expect(result.get('@scope/pkg')).toEqual({
+          ...data,
+          deprecated: undefined,
+          enginesNode: undefined,
+        })
+        const [request] = fetch.mock.calls[0] as [Record<string, string>]
+        expect(request.url).toBe('https://npm.example.com/artifactory/api/npm/@scope/pkg')
+        expect(request.authorization).toBe('Bearer secret')
+        expect(request.cacheFile.startsWith(etagTestRoot)).toBe(true)
+        expect(requestMock).not.toHaveBeenCalled()
+      })
+
+      it('skips the cache file when the ETag store is disabled', async () => {
+        setEtagCacheEnabled(false)
+        const { fetch } = useTransport(outcome({}))
+        await fetchPackageVersions(['demo-pkg'])
+        expect((fetch.mock.calls[0][0] as { cacheFile: unknown }).cacheFile).toBeNull()
+      })
+
+      it('retries congested and retryable native outcomes, honoring Retry-After', async () => {
+        vi.mocked(sleep).mockClear()
+        const { fetch } = useTransport(
+          outcome({ kind: 'congested', status: 429, retryAfter: '2' }),
+          outcome({ kind: 'retryable', status: 500 }),
+          outcome({ kind: 'success', revalidated: true, bytes: 0, status: 304 })
+        )
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(fetch).toHaveBeenCalledTimes(3)
+        expect(vi.mocked(sleep).mock.calls[0]).toEqual([2000])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+      })
+
+      it('uses the default backoff when a congested response has no Retry-After', async () => {
+        vi.mocked(sleep).mockClear()
+        useTransport(
+          outcome({ kind: 'congested', status: 503, retryAfter: null }),
+          outcome({ kind: 'success' })
+        )
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(vi.mocked(sleep).mock.calls[0]).toEqual([500])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+      })
+
+      it('reports not-found and exhausted transient outcomes as unavailable', async () => {
+        const notFound = useTransport(outcome({ kind: 'not-found', status: 404 }))
+        const missing = await fetchPackageVersions(['missing-pkg'])
+        expect(notFound.fetch).toHaveBeenCalledTimes(1)
+
+        const transient = useTransport(outcome({ kind: 'transient', errorClass: 'connect' }))
+        const down = await fetchPackageVersions(['down-pkg'])
+        expect(transient.fetch).toHaveBeenCalledTimes(3)
+
+        expect(missing.get('missing-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+        expect(down.get('down-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      })
+
+      it('reports native success latency, rounded', async () => {
+        const seen: number[] = []
+        useTransport(outcome({ latencyMs: 40.4 }))
+        await fetchPackageVersions(['demo-pkg'], {
+          onPackageTiming: (_name, latencyMs) => seen.push(latencyMs),
+        })
+        expect(seen).toEqual([40])
+      })
+
+      it('redoes the attempt with the JS transport and pins the origin after a fallback outcome', async () => {
+        const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+        const { fetch } = useTransport(
+          outcome({ kind: 'fallback', errorClass: 'tls', error: 'UnknownIssuer' })
+        )
+        requestMock.mockImplementation(async () => makeOkBody({ versions: { '1.0.0': {} } }))
+
+        const first = await fetchPackageVersions(['demo-pkg'])
+        const second = await fetchPackageVersions(['other-pkg'])
+
+        expect(first.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+        expect(second.get('other-pkg')?.latestVersion).toBe('1.0.0')
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(requestMock).toHaveBeenCalledTimes(2)
+        expect(warn).toHaveBeenCalledWith(
+          'npm-registry',
+          expect.stringContaining('(tls), using the JS transport'),
+          'UnknownIssuer'
+        )
+        warn.mockRestore()
+      })
+
+      it('turns a cancelled attempt into the abort error of the run', async () => {
+        const controller = new AbortController()
+        const { fetch } = useTransport(outcome({ kind: 'cancelled' }))
+        fetch.mockImplementationOnce(async () => {
+          controller.abort()
+          return outcome({ kind: 'cancelled' })
+        })
+        await expect(
+          fetchPackageVersions(['demo-pkg'], { signal: controller.signal })
+        ).rejects.toThrow()
+        expect(fetch.mock.calls[0][1]).toBe(controller.signal)
+      })
+
+      it('treats a cancel without an aborted signal as a transient failure', async () => {
+        useTransport(outcome({ kind: 'cancelled' }))
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(result.get('demo-pkg')?.latestVersion).toBe('unknown')
+      })
+
+      it('keeps the JS transport when dev link pacing is on', async () => {
+        process.env.INUP_PACE_BPS = '0'
+        const { fetch } = useTransport(outcome({}))
+        requestMock.mockImplementation(async () => makeOkBody({ versions: { '4.0.0': {} } }))
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(fetch).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')?.latestVersion).toBe('4.0.0')
+      })
+
+      it('feeds natively streamed bytes to the adaptive controller', async () => {
+        // Virtual time, as in the hill-climb wiring tests: the controller
+        // discards zero-length windows, which instant fakes would produce.
+        vi.useFakeTimers()
+        try {
+          const { fetch, takeReceivedBytes } = useTransport(outcome({}))
+          fetch.mockImplementation(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 5))
+            return outcome({})
+          })
+          takeReceivedBytes.mockReturnValue(4096)
+          const ticks: ControlTick[] = []
+
+          const done = fetchPackageVersions(
+            Array.from({ length: 60 }, (_, i) => `pkg-${i + 1}`),
+            { onControlTick: (tick) => ticks.push(tick) }
+          )
+          await vi.runAllTimersAsync()
+          await done
+
+          expect(takeReceivedBytes).toHaveBeenCalled()
+          expect(ticks.length).toBeGreaterThan(0)
+          // Cold windows are measured in streamed bytes/sec: the native bytes arrived.
+          expect(ticks[0].goodputBps).toBeGreaterThan(0)
+        } finally {
+          vi.useRealTimers()
+        }
+      })
+    })
+
+    describe('with the Rust core enabled', () => {
+      const parsed = { latestVersion: '3.0.0', allVersions: ['3.0.0'], prereleaseVersions: [] }
+      const okWithEtag = (etag?: string) =>
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+          headers: { 'content-encoding': 'identity', ...(etag ? { etag } : {}) },
+        }))
+
+      afterEach(() => {
+        packumentDecoderMock.mockReset()
+        packumentDecoderMock.mockReturnValue(null)
+      })
+
+      it('hands the body and the ETag cache target to the Rust decoder', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+        okWithEtag('W/"rust"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')).toEqual(parsed)
+        const [request] = decode.mock.calls[0] as [
+          { raw: Buffer; encoding: string; cache: { file: string; etag: string } | null },
+        ]
+        expect(request.raw.toString('utf8')).toBe('{"versions":{"1.0.0":{}}}')
+        expect(request.encoding).toBe('identity')
+        expect(request.cache?.etag).toBe('W/"rust"')
+        expect(request.cache?.file.startsWith(etagTestRoot)).toBe(true)
+        // Writing the entry is the decoder's job on this path.
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')).toBeNull()
+      })
+
+      it('asks for no cache write without an ETag or with the store disabled; encoding defaults to empty', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+        }))
+        await fetchPackageVersions(['no-etag'])
+        expect((decode.mock.calls[0][0] as { encoding: string }).encoding).toBe('')
+        setEtagCacheEnabled(false)
+        okWithEtag('W/"x"')
+        clearPackageCache()
+        await fetchPackageVersions(['store-off'])
+
+        expect(decode.mock.calls.map(([r]) => (r as { cache: unknown }).cache)).toEqual([
+          null,
+          null,
+        ])
+      })
+
+      it('falls back to the TypeScript decoder when the Rust decoder fails', async () => {
+        const warn = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+        packumentDecoderMock.mockReturnValue(async () => {
+          throw new Error('boom')
+        })
+        okWithEtag('W/"fallback"')
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')?.latestVersion).toBe('1.0.0')
+        expect(readEtag('https://registry.npmjs.org/demo-pkg')?.etag).toBe('W/"fallback"')
+        expect(warn).toHaveBeenCalledWith(
+          'npm-registry',
+          expect.stringContaining('falling back'),
+          expect.any(Error)
+        )
+        warn.mockRestore()
       })
     })
 
@@ -622,12 +1336,10 @@ describe('npm-registry', () => {
         return {
           statusCode: 200,
           headers: { etag: ['W/"array-form"'] },
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () =>
-              Buffer.from(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }), 'utf8'),
+            ...streamOf(
+              Buffer.from(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }), 'utf8')
+            ),
             dump: async () => {},
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -644,11 +1356,8 @@ describe('npm-registry', () => {
         return {
           statusCode: 304,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () => Buffer.alloc(0),
+            ...streamOf(Buffer.alloc(0)),
             // Draining the empty 304 body may itself fail; the cached data
             // must still be served.
             dump: async () => {
@@ -691,12 +1400,8 @@ describe('npm-registry', () => {
         return {
           statusCode: 200,
           headers: {},
-          trailers: {},
-          opaque: null,
-          context: {},
           body: {
-            arrayBuffer: async () =>
-              Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8'),
+            ...streamOf(Buffer.from(JSON.stringify({ versions: { '2.0.0': {} } }), 'utf8')),
             dump: async () => {},
           },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -150,8 +150,35 @@ export class StateManager {
     this.navigationManager.navigateBottom(totalItems)
   }
 
+  navigatePageUp(totalItems: number): void {
+    this.navigationManager.navigatePageUp(totalItems)
+  }
+
+  navigatePageDown(totalItems: number): void {
+    this.navigationManager.navigatePageDown(totalItems)
+  }
+
   packageIndexToVisualIndex(packageIndex: number): number {
     return this.navigationManager.packageIndexToVisualIndex(packageIndex)
+  }
+
+  /**
+   * `delta` rows were inserted above the focused row. The cursor (and an open
+   * info modal) follow the same package. A scrolled viewport also shifts so the
+   * focused row stays on the same screen line; a viewport at the top stays at
+   * the top and lets the list grow visibly instead.
+   */
+  shiftRows(delta: number, totalItems: number): void {
+    if (delta === 0 || totalItems === 0) return
+    const nav = this.navigationManager
+    const row = Math.min(totalItems - 1, Math.max(0, nav.getCurrentRow() + delta))
+    nav.setCurrentRow(row)
+    if (nav.getScrollOffset() > 0) {
+      const maxScroll = Math.max(0, totalItems - this.displayState.maxVisibleItems)
+      nav.setScrollOffset(Math.min(maxScroll, Math.max(0, nav.getScrollOffset() + delta)))
+    }
+    nav.resetForResize(totalItems)
+    this.modalManager.shiftRow(delta)
   }
 
   // Selection logic (still in StateManager as it operates on external state)

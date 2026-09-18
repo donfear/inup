@@ -28,6 +28,7 @@ export function buildHeadlessReport(
         packageJsonPath: pkg.packageJsonPath,
         hasMajorUpdate: pkg.hasMajorUpdate,
       }
+      if (pkg.majorIgnored) entry.majorIgnored = true
       if (pkg.catalog) entry.catalog = pkg.catalog
       if (pkg.deprecated) entry.deprecated = pkg.deprecated
       if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
@@ -50,7 +51,10 @@ export function renderPlainReport(
   const lines = outdated.map((pkg) => {
     const major = pkg.hasMajorUpdate ? ' (major)' : ''
     const deprecated = pkg.deprecated ? '  [deprecated]' : ''
-    return `${pkg.name}  ${pkg.currentVersion} → ${pkg.latestVersion}  [${pkg.type}]${major}${vulnMarker(vulnerabilities.get(pkg))}${deprecated}`
+    // With ignoreMajor in effect the actionable target is the in-range bump,
+    // so the arrow points there instead of at the suppressed major.
+    const displayTarget = pkg.majorIgnored ? pkg.rangeVersion : pkg.latestVersion
+    return `${pkg.name}  ${pkg.currentVersion} → ${displayTarget}  [${pkg.type}]${major}${vulnMarker(vulnerabilities.get(pkg))}${deprecated}`
   })
 
   const fileCount = new Set(outdated.map((pkg) => pkg.packageJsonPath)).size

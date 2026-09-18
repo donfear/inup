@@ -1,0 +1,48 @@
+---
+/**
+ * The `npx inup` terminal chip. Clicking copies the command — wired up
+ * by the [data-copy-install] script on the homepage.
+ */
+import Icon from './Icon.astro';
+
+interface Props {
+  size?: 'md' | 'lg';
+}
+
+const { size = 'md' } = Astro.props;
+const sizing = size === 'lg' ? 'px-6 py-4 text-lg' : 'h-12 px-5 text-base';
+const iconSize = size === 'lg' ? 15 : 14;
+---
+
+<button
+  type="button"
+  data-copy-install
+  class={`inline-flex cursor-pointer items-center gap-3 rounded-xl bg-terminal font-mono text-terminal-foreground shadow-md transition-shadow hover:shadow-lg ${sizing}`}
+  aria-label="Copy 'npx inup' to the clipboard"
+>
+  <span class="select-none text-term-green" aria-hidden="true">$</span> npx inup
+  <span class="copy-hint text-terminal-muted" aria-hidden="true"><Icon name="copy" size={iconSize} /></span>
+  <span class="copied-hint hidden text-term-green" aria-hidden="true"><Icon name="check" size={iconSize} /></span>
+</button>
+
+<script>
+  // The chip copies itself wherever it appears (homepage, /compare/, CTAs).
+  // Bundled once by Astro no matter how many chips a page renders.
+  for (const chip of navigator.clipboard
+    ? document.querySelectorAll('[data-copy-install]')
+    : []) {
+    chip.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('npx inup');
+      } catch {
+        return; // permission denied — leave the chip as-is
+      }
+      chip.querySelector('.copy-hint')?.classList.add('hidden');
+      chip.querySelector('.copied-hint')?.classList.remove('hidden');
+      setTimeout(() => {
+        chip.querySelector('.copy-hint')?.classList.remove('hidden');
+        chip.querySelector('.copied-hint')?.classList.add('hidden');
+      }, 1500);
+    });
+  }
+</script>

@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { clamp } from '../../../shared/math'
 import { getHelpGroups } from '../keymap'
 import type { ModalRenderResult } from '../modal'
 import { getModalWidth, renderModalRow, renderModalSeparator } from '../modal'
@@ -44,7 +45,7 @@ export function renderHelpModal(
   const needsScroll = totalScrollableRows > availableForBody
   const visibleBodyRows = needsScroll ? Math.max(1, availableForBody - 1) : availableForBody
   const maxScroll = Math.max(0, totalScrollableRows - visibleBodyRows)
-  const clampedOffset = Math.min(Math.max(0, scrollOffset), maxScroll)
+  const clampedOffset = clamp(scrollOffset, 0, maxScroll)
   const visibleSlice = bodyRows.slice(clampedOffset, clampedOffset + visibleBodyRows)
 
   // ── Render ─────────────────────────────────────────────────────────────────

@@ -46,24 +46,40 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Version bump and tag
+      - name: Version bump and changelog
         run: |
           git config --local user.email "${{ secrets.GH_EMAIL }}"
           git config --local user.name "${{ secrets.GH_USERNAME }}"
-          pnpm version ${{ github.event.inputs.version_type }} --message "release: v%s"
+
+          # The tag is created below, after CHANGELOG.md is stamped, so both land in one commit.
+          # Release candidates (v1.8.0-rc.0) are not changelog baselines.
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' --exclude 'v*-*')"
+          pnpm version ${{ github.event.inputs.version_type }} --no-git-tag-version
+
+          VERSION="$(node -p "require('./package.json').version")"          # e.g. 1.6.3
+          NEW_VERSION="v$VERSION"
+          MAJOR="${NEW_VERSION%%.*}"                                        # e.g. v1
+
+          # Renames [Unreleased] to this version and updates the link definitions. A no-op when
+          # [Unreleased] is empty — a release with nothing user-facing gets no section.
+          node scripts/release-changelog.mjs "$VERSION" "$PREVIOUS_TAG"
+
+          echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
+          echo "MAJOR=$MAJOR" >> "$GITHUB_ENV"
+
+      - name: Commit, tag and push
+        run: |
+          git add package.json CHANGELOG.md
+          git commit --message "release: $NEW_VERSION"
+          git tag "$NEW_VERSION"
           git push && git push --tags
 
           # Force-move the floating major tag (e.g. v1) to this release so consumers pinned at
           # `donfear/inup@v1` automatically pick up minor/patch fixes. A breaking change should be
           # released as the next major (v2), which starts its own floating tag and leaves v1 frozen.
           # publish.yml only triggers on `v*.*.*`, so re-pushing the floating tag won't re-publish.
-          NEW_VERSION="v$(node -p "require('./package.json').version")"   # e.g. v1.6.3
-          MAJOR="${NEW_VERSION%%.*}"                                       # e.g. v1
           git tag -f "$MAJOR" "$NEW_VERSION"
           git push -f origin "$MAJOR"
-
-          echo "NEW_VERSION=$NEW_VERSION" >> "$GITHUB_ENV"
-          echo "MAJOR=$MAJOR" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release for this version
         env:

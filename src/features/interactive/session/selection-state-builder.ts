@@ -1,11 +1,14 @@
-import * as semver from 'semver'
 import type {
   PackageInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
   VulnerabilitySummary,
 } from '../../../shared/types'
-import { applyVersionPrefix } from '../../../shared/versions'
+import {
+  applyVersionPrefix,
+  parseCurrentVersion,
+  toComparableVersion,
+} from '../../../shared/versions'
 
 type CachedSummaryFn = (
   name: string,
@@ -28,6 +31,15 @@ export function selectionKey(
   return catalog ? `${base}@catalog:${catalog}` : base
 }
 
+/** List order: scoped packages first, then by name. */
+export function comparePackageNames(a: string, b: string): number {
+  const aIsScoped = a.startsWith('@')
+  const bIsScoped = b.startsWith('@')
+  if (aIsScoped && !bIsScoped) return -1
+  if (!aIsScoped && bIsScoped) return 1
+  return a.localeCompare(b)
+}
+
 export function deduplicatePackages(
   packages: PackageInfo[]
 ): Map<string, { pkg: PackageInfo; packageJsonPaths: Set<string> }> {
@@ -47,13 +59,9 @@ export function deduplicatePackages(
   }
 
   return new Map(
-    Array.from(uniquePackages.entries()).sort(([, a], [, b]) => {
-      const aIsScoped = a.pkg.name.startsWith('@')
-      const bIsScoped = b.pkg.name.startsWith('@')
-      if (aIsScoped && !bIsScoped) return -1
-      if (!aIsScoped && bIsScoped) return 1
-      return a.pkg.name.localeCompare(b.pkg.name)
-    })
+    Array.from(uniquePackages.entries()).sort(([, a], [, b]) =>
+      comparePackageNames(a.pkg.name, b.pkg.name)
+    )
   )
 }
 
@@ -67,9 +75,11 @@ export function createSelectionStates(
   const uniquePackages = deduplicatePackages(relevantPackages)
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
-    const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
-    const rangeClean = semver.coerce(pkg.rangeVersion)?.version || pkg.rangeVersion
-    const latestClean = semver.coerce(pkg.latestVersion)?.version || pkg.latestVersion
+    // parseCurrentVersion / toComparableVersion preserve prerelease tags —
+    // coerce would strip '-rc.3' and the upgrade would silently write ^1.0.0.
+    const currentClean = parseCurrentVersion(pkg.currentVersion)?.version || pkg.currentVersion
+    const rangeClean = toComparableVersion(pkg.rangeVersion) || pkg.rangeVersion
+    const latestClean = toComparableVersion(pkg.latestVersion) || pkg.latestVersion
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 
@@ -116,7 +126,7 @@ export function createPendingSelectionStates(
   )
 
   return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
-    const currentClean = semver.coerce(pkg.currentVersion)?.version || pkg.currentVersion
+    const currentClean = parseCurrentVersion(pkg.currentVersion)?.version || pkg.currentVersion
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
 

@@ -4,12 +4,16 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    pool: 'threads',
+    setupFiles: ['test/helpers/disable-color.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary', 'html'],
       exclude: [
         'dist/**',
         'docs/**',
+        'native/**', // Rust crate + build output; covered by cargo test and the parity suite
+        'scripts/**', // release tooling; pure helpers are unit-tested, publishing runs in CI dry runs
         'test/**', // helpers/fixtures are test infrastructure, not product code
         '**/*.config.ts',
         '**/types.ts',

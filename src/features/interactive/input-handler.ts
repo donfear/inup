@@ -9,6 +9,9 @@ export type InputAction =
   | { type: 'navigate_down' }
   | { type: 'navigate_top' }
   | { type: 'navigate_bottom' }
+  | { type: 'navigate_page_up' }
+  | { type: 'navigate_page_down' }
+  | { type: 'quit' }
   | { type: 'select_left' }
   | { type: 'select_right' }
   | { type: 'toggle_selection' }
@@ -83,6 +86,7 @@ export class InputHandler {
       if (key) {
         switch (key.name) {
           case 'escape':
+          case 'q':
             // Close theme modal (which also resets theme on cancel)
             this.onAction({ type: 'toggle_theme_modal' })
             return
@@ -114,7 +118,7 @@ export class InputHandler {
 
     // Handle debug modal input (scroll and close)
     if (uiState.showDebugModal) {
-      if (str === '!') {
+      if (str === '!' || key?.name === 'q') {
         this.onAction({ type: 'toggle_debug_modal' })
         return
       }
@@ -138,7 +142,7 @@ export class InputHandler {
 
     // Handle help overlay input (close or scroll)
     if (uiState.showHelpModal) {
-      if (str === '?' || (key && key.name === 'escape')) {
+      if (str === '?' || (key && (key.name === 'escape' || key.name === 'q'))) {
         this.onAction({ type: 'toggle_help_modal' })
         return
       }
@@ -160,6 +164,7 @@ export class InputHandler {
       if (key) {
         switch (key.name) {
           case 'escape':
+          case 'q':
             this.onAction({ type: 'toggle_info_modal' })
             return
           case 'i':

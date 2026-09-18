@@ -364,6 +364,43 @@ describe('filesystem utils', () => {
       // Should find less than 15 due to depth limit
       expect(result.length).toBeLessThan(15)
     })
+
+    it('ignores a directory literally named package.json', () => {
+      // A directory can legally be called package.json; collecting it would feed a
+      // directory path into readFileSync later.
+      mkdirSync(join(testDir, 'weird', 'package.json'), { recursive: true })
+      writeFileSync(join(testDir, 'package.json'), '{}')
+
+      const result = findAllPackageJsonFiles(testDir)
+
+      expect(result).toEqual([join(testDir, 'package.json')])
+    })
+
+    it('finds packages inside non-ASCII directory names (sync and async)', async () => {
+      const unicodeDir = join(testDir, 'pákkage-日本-🚀')
+      mkdirSync(unicodeDir, { recursive: true })
+      writeFileSync(join(unicodeDir, 'package.json'), '{}')
+
+      expect(findAllPackageJsonFiles(testDir)).toEqual([join(unicodeDir, 'package.json')])
+      expect(await findAllPackageJsonFilesAsync(testDir)).toEqual([
+        join(unicodeDir, 'package.json'),
+      ])
+    })
+
+    it('applies forward-slash exclude patterns to nested paths on every platform', () => {
+      // Users write excludes with `/` (e.g. ^packages/skipme); on Windows the relative
+      // path is backslashed, so matching depends on the internal posix normalization.
+      const keep = join(testDir, 'packages', 'keep')
+      const skip = join(testDir, 'packages', 'skipme')
+      mkdirSync(keep, { recursive: true })
+      mkdirSync(skip, { recursive: true })
+      writeFileSync(join(keep, 'package.json'), '{}')
+      writeFileSync(join(skip, 'package.json'), '{}')
+
+      const result = findAllPackageJsonFiles(testDir, ['^packages/skipme(?:/|$)'])
+
+      expect(result).toEqual([join(keep, 'package.json')])
+    })
   })
 
   describe('scanDirs override and skip warnings', () => {
@@ -412,6 +449,38 @@ describe('filesystem utils', () => {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
       expect(skipped).toHaveLength(0)
+    })
+
+    it('skips dunder-prefixed tooling dirs, whose manifests are not real packages', () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      for (const dir of ['__fixtures__', '__mocks__', '__tests__', '__generated__']) {
+        const pkg = join(testDir, 'src', dir, 'monorepo')
+        mkdirSync(pkg, { recursive: true })
+        writeFileSync(join(pkg, 'package.json'), '{}')
+      }
+      const skipped: string[] = []
+      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        onSkippedPackageDir: (dir) => skipped.push(dir),
+      })
+      expect(result).toEqual([join(testDir, 'package.json')])
+      expect(skipped).toHaveLength(0)
+    })
+
+    it('scans a dunder or hidden dir that scanDirs opts back in', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      const generated = join(testDir, '__generated__', 'sdk')
+      const hidden = join(testDir, '.tooling', 'plugin')
+      for (const dir of [generated, hidden]) {
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'package.json'), '{}')
+      }
+      const options = { scanDirs: ['__generated__', '.tooling'] }
+      const sync = findAllPackageJsonFiles(testDir, [], 10, undefined, options)
+      const async = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, options)
+      for (const result of [sync, async]) {
+        expect(result).toContain(join(generated, 'package.json'))
+        expect(result).toContain(join(hidden, 'package.json'))
+      }
     })
 
     it('does not warn for node_modules or build-output dirs even when they hold a package.json', () => {

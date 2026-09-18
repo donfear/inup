@@ -10,6 +10,8 @@ const INTERACTIVE_ACTIONS = new Set([
   'navigate_down',
   'navigate_top',
   'navigate_bottom',
+  'navigate_page_up',
+  'navigate_page_down',
   'select_left',
   'select_right',
   'toggle_selection',
@@ -27,14 +29,16 @@ export type DispatchContext = {
   packageInfoModalController: PackageInfoModalController
   vulnerabilityAuditController: VulnerabilityAuditController
   isResolved: () => boolean
-  renderInterface: () => void
+  /** Coalesced render for async continuations; the session renders keyboard actions itself. */
+  requestRender: () => void
   handleCancel: () => void
   getInfoModalMaxScrollOffset: () => number
   getDebugModalMaxScrollOffset: () => number
   getHelpModalMaxScrollOffset: () => number
 }
 
-export function dispatchAction(action: InputAction, ctx: DispatchContext): void {
+/** Applies one input action. Returns true when the view must be redrawn. */
+export function dispatchAction(action: InputAction, ctx: DispatchContext): boolean {
   const {
     stateManager,
     states,
@@ -42,7 +46,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     packageInfoModalController,
     vulnerabilityAuditController,
     isResolved,
-    renderInterface,
+    requestRender,
     handleCancel,
     getInfoModalMaxScrollOffset,
     getDebugModalMaxScrollOffset,
@@ -57,7 +61,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     stateManager.clearNotice()
   }
 
-  if (uiState.showThemeModal && INTERACTIVE_ACTIONS.has(action.type)) return
+  if (uiState.showThemeModal && INTERACTIVE_ACTIONS.has(action.type)) return false
 
   // Shared by `s` (audit) and `v` (vulnerable filter): run the scan if we have no
   // data yet, otherwise toggle the vulnerable-only filter.
@@ -66,9 +70,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
     if (auditProgress.hasData) {
       stateManager.toggleVulnerableFilter()
     } else if (!auditProgress.isRunning) {
-      vulnerabilityAuditController.enqueueStates(states, () => {
-        if (!isResolved()) renderInterface()
-      })
+      vulnerabilityAuditController.enqueueStates(states, requestRender)
     }
   }
 
@@ -84,6 +86,12 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       break
     case 'navigate_bottom':
       stateManager.navigateBottom(filteredStates.length)
+      break
+    case 'navigate_page_up':
+      stateManager.navigatePageUp(filteredStates.length)
+      break
+    case 'navigate_page_down':
+      stateManager.navigatePageDown(filteredStates.length)
       break
     case 'select_left':
       stateManager.updateSelection(filteredStates, 'left')
@@ -115,7 +123,6 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
         const currentState = filteredStates[uiState.currentRow]
         const canFetchMetadata = currentState?.loadState === 'ready'
         stateManager.setModalLoading(canFetchMetadata, modalSessionId)
-        renderInterface()
 
         if (currentState && canFetchMetadata) {
           packageInfoModalController
@@ -126,34 +133,31 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
               if (update) Object.assign(currentState, update.patch)
 
               stateManager.setModalLoading(false, modalSessionId)
-              renderInterface()
+              requestRender()
 
               if (
                 stateManager.getInfoModalSessionId() === modalSessionId &&
                 packageInfoModalController.getVersionCount(currentState) > 0
               ) {
-                void packageInfoModalController.loadVersionAtIndex(currentState, 0, () => {
-                  if (!isResolved()) renderInterface()
-                })
+                void packageInfoModalController.loadVersionAtIndex(currentState, 0, requestRender)
               }
             })
             .catch(() => {
               if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
               stateManager.setModalLoading(false, modalSessionId)
-              renderInterface()
+              requestRender()
             })
         }
       } else {
         packageInfoModalController.cancel()
         stateManager.toggleInfoModal()
-        renderInterface()
       }
-      return
+      return true
     case 'scroll_info_modal_up':
-      if (!stateManager.scrollInfoModalUp()) return
+      if (!stateManager.scrollInfoModalUp()) return false
       break
     case 'scroll_info_modal_down':
-      if (!stateManager.scrollInfoModalDown(getInfoModalMaxScrollOffset())) return
+      if (!stateManager.scrollInfoModalDown(getInfoModalMaxScrollOffset())) return false
       break
     case 'toggle_debug_modal':
       stateManager.toggleDebugModal()
@@ -162,16 +166,16 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       stateManager.toggleHelpModal()
       break
     case 'scroll_help_modal_up':
-      if (!stateManager.scrollHelpModalUp()) return
+      if (!stateManager.scrollHelpModalUp()) return false
       break
     case 'scroll_help_modal_down':
-      if (!stateManager.scrollHelpModalDown(getHelpModalMaxScrollOffset())) return
+      if (!stateManager.scrollHelpModalDown(getHelpModalMaxScrollOffset())) return false
       break
     case 'scroll_debug_modal_up':
-      if (!stateManager.scrollDebugModalUp()) return
+      if (!stateManager.scrollDebugModalUp()) return false
       break
     case 'scroll_debug_modal_down':
-      if (!stateManager.scrollDebugModalDown(getDebugModalMaxScrollOffset())) return
+      if (!stateManager.scrollDebugModalDown(getDebugModalMaxScrollOffset())) return false
       break
     case 'switch_info_modal_tab': {
       const nextTab = stateManager.getInfoModalTab() === 'info' ? 'usedBy' : 'info'
@@ -185,15 +189,17 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
         if (newIndex >= 0) {
           stateManager.resetInfoModalScroll()
           if (!packageInfoModalController.isVersionLoaded(currentState, newIndex)) {
-            void packageInfoModalController.loadVersionAtIndex(currentState, newIndex, () => {
-              if (!isResolved()) renderInterface()
-            })
+            void packageInfoModalController.loadVersionAtIndex(
+              currentState,
+              newIndex,
+              requestRender
+            )
           }
         } else {
-          return
+          return false
         }
       } else {
-        return
+        return false
       }
       break
     }
@@ -247,10 +253,11 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): void 
       auditOrToggleVulnerable()
       break
     case 'cancel':
+    case 'quit':
       packageInfoModalController.cancel()
       handleCancel()
-      return
+      return false
   }
 
-  renderInterface()
+  return true
 }

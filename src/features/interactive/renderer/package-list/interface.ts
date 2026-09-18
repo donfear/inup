@@ -1,5 +1,5 @@
 import chalk from 'chalk'
-import { PACKAGE_NAME } from '../../../../shared/config'
+import { truncatePlainText } from '../../../../shared/terminal'
 import type {
   AuditProgress,
   PackageInfo,
@@ -9,15 +9,30 @@ import type {
   RenderableItem,
 } from '../../../../shared/types'
 import { getFooterHints } from '../../keymap'
-import { coloredInupLogo, getThemeColor } from '../../themes-colors'
+import { getThemeColor, inupLogo } from '../../themes-colors'
 import { VersionUtils } from '../version-format'
 import {
+  computeVersionColumnWidths,
   type PackageListRenderOptions,
   padLineToWidth,
   renderPackageLine,
   renderSectionHeader,
   renderSpacer,
 } from './rows'
+
+function scanLabel(progress: PackageLoadProgress | undefined, width: number): string | undefined {
+  if (progress?.phase === 'discovering') {
+    const label = 'Scanning for package.json files…'
+    const detail = progress.scanningDir
+      ? ` ${progress.scanningDir} (found ${progress.packageJsonFiles ?? 0})`
+      : ''
+    return VersionUtils.getVisualLength(label + detail) <= width ? label + detail : label
+  }
+  if (progress?.phase === 'collecting') {
+    return `Reading dependencies from ${progress.packageJsonFiles ?? 0} package.json files…`
+  }
+  return undefined
+}
 
 export function renderInterface(
   states: PackageSelectionState[],
@@ -39,39 +54,17 @@ export function renderInterface(
 ): string[] {
   const output: string[] = []
 
-  if (packageManager) {
-    const colorMap: { [key: string]: (text: string) => string } = {
-      npm: chalk.red,
-      yarn: chalk.blue,
-      pnpm: chalk.yellow,
-      bun: chalk.magenta,
-    }
-    const pmColor = colorMap[packageManager.name] || packageManager.color
-    const headerLine =
-      '  ' +
-      chalk.bold(pmColor('🚀')) +
-      ' ' +
-      coloredInupLogo() +
-      getThemeColor('textSecondary')(` (${packageManager.displayName})`)
-
-    const fullHeaderLine = activeFilterLabel
-      ? headerLine +
-        getThemeColor('textSecondary')(' - ') +
-        getThemeColor('primary')(activeFilterLabel)
-      : headerLine
-    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
-    output.push(fullHeaderLine + ' '.repeat(headerPadding))
-  } else {
-    const headerLine = `  ${chalk.bold.blue('🚀 ')}${coloredInupLogo()}`
-
-    const fullHeaderLine = activeFilterLabel
-      ? headerLine +
-        getThemeColor('textSecondary')(' - ') +
-        getThemeColor('primary')(activeFilterLabel)
-      : headerLine
-    const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
-    output.push(fullHeaderLine + ' '.repeat(headerPadding))
-  }
+  const headerLine =
+    '  ' +
+    inupLogo() +
+    (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '')
+  const fullHeaderLine = activeFilterLabel
+    ? headerLine +
+      getThemeColor('textSecondary')(' - ') +
+      getThemeColor('primary')(activeFilterLabel)
+    : headerLine
+  const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
+  output.push(fullHeaderLine + ' '.repeat(headerPadding))
   output.push('')
 
   if (filterMode) {
@@ -91,16 +84,18 @@ export function renderInterface(
     const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(filterDisplay))
     output.push(filterDisplay + ' '.repeat(padding))
   } else {
-    const hintLine = getFooterHints()
-      .map(
-        ({ keyLabel, label }) =>
-          chalk.bold.white(`${keyLabel} `) + getThemeColor('textSecondary')(label)
-      )
-      .join('  ')
-    output.push(`  ${hintLine}`)
+    let hintLine = '  '
+    for (const { keyLabel, label } of getFooterHints()) {
+      const hint = chalk.bold.white(`${keyLabel} `) + getThemeColor('textSecondary')(label)
+      const separator = hintLine === '  ' ? '' : '  '
+      if (VersionUtils.getVisualLength(hintLine + separator + hint) > terminalWidth) break
+      hintLine += separator + hint
+    }
+    output.push(hintLine)
   }
 
   const totalPackages = states.length
+  const scanStatus = scanLabel(loadingProgress, terminalWidth - 2)
   const totalBeforeFilter = totalPackagesBeforeFilter || totalPackages
   const totalVisualItems =
     renderableItems && renderableItems.length > 0 ? renderableItems.length : totalPackages
@@ -163,6 +158,8 @@ export function renderInterface(
     }
   }
 
+  if (totalPackages === 0 && scanStatus) statusLine = getThemeColor('textSecondary')(scanStatus)
+
   if (auditProgress && auditProgress.total > 0) {
     const auditLabel = auditProgress.isRunning
       ? `Audit ${auditProgress.completed}/${auditProgress.total}`
@@ -173,10 +170,14 @@ export function renderInterface(
   // A one-shot notice (e.g. "nothing selected") replaces the status line for a
   // single render so the layout height stays constant.
   const statusContent = notice ? getThemeColor('warning')(notice) : statusLine
-  const statusLineFull = `  ${statusContent}`
+  const statusLineFull = truncatePlainText(`  ${statusContent}`, terminalWidth)
   const statusPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(statusLineFull))
   output.push(statusLineFull + ' '.repeat(statusPadding))
   output.push('')
+
+  // Sized once per frame over every state (not the visible window), so the
+  // columns hold still while scrolling and long prerelease versions get room.
+  const columnWidths = options.columnWidths ?? computeVersionColumnWidths(states, terminalWidth)
 
   if (renderableItems && renderableItems.length > 0) {
     for (
@@ -195,25 +196,45 @@ export function renderInterface(
           item.originalIndex,
           item.originalIndex === currentRow,
           terminalWidth,
-          options
+          options,
+          columnWidths
         )
         output.push(line)
       }
     }
   } else {
     for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(states[i], i, i === currentRow, terminalWidth, options)
+      const line = renderPackageLine(
+        states[i],
+        i,
+        i === currentRow,
+        terminalWidth,
+        options,
+        columnWidths
+      )
       output.push(line)
     }
   }
 
-  if (loadingProgress?.isLoading) {
-    const loadingLabel = `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
+  if (loadingProgress?.isLoading && !(totalPackages === 0 && scanStatus)) {
+    const loadingLabel =
+      scanStatus ??
+      `Loading packages... (${loadingProgress.resolved}/${loadingProgress.total} checked)`
     const failedLabel = loadingProgress.failed > 0 ? ` ${loadingProgress.failed} unavailable` : ''
-    const loadingLine =
+    const slowLabel = loadingProgress.slowNetwork ? ' — slow connection, reduced parallelism' : ''
+    let loadingLine =
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
       (failedLabel ? chalk.yellow(failedLabel) : '')
+    // The hint is informational only: drop it rather than overflow the row —
+    // padLineToWidth pads but never truncates, so an overflow wraps the frame.
+    if (
+      slowLabel &&
+      VersionUtils.getVisualLength(loadingLine) + slowLabel.length <= terminalWidth
+    ) {
+      loadingLine += chalk.dim(slowLabel)
+    }
+    loadingLine = truncatePlainText(loadingLine, terminalWidth)
     const loadingPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(loadingLine))
     output.push(loadingLine + ' '.repeat(loadingPadding))
   }
@@ -232,5 +253,5 @@ export function renderPackagesTable(packages: PackageInfo[]): string {
     return chalk.green('✅ All packages are up to date!')
   }
 
-  return chalk.bold.blue(`🚀 ${PACKAGE_NAME}\n`)
+  return `${inupLogo()}\n`
 }

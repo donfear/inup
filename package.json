@@ -1,6 +1,6 @@
 {
   "name": "inup",
-  "version": "1.6.7",
+  "version": "1.8.0",
   "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready. Upgrade-interactive for every package manager.",
   "main": "dist/index.js",
   "bin": {
@@ -8,20 +8,28 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc",
+    "build:all": "pnpm native:build && pnpm build",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "prepare": "npm run build",
     "link": "pnpm build && pnpm add -g .",
     "check": "biome check --write .",
     "check:ci": "biome ci .",
+    "typecheck": "tsc --noEmit",
     "demo:record": "bash docs/demo/record-demo.sh",
     "demo:setup": "cd docs/demo-project && pnpm install",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
+    "bench": "node --expose-gc test/benchmarks/performance.cjs",
+    "native:build": "napi build --platform --release --no-js --manifest-path native/napi/Cargo.toml --output-dir native/out",
+    "native:check": "cargo fmt --manifest-path native/Cargo.toml --all --check && cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings && cargo test --manifest-path native/Cargo.toml --workspace --release",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
-    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme"
+    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme",
+    "site:dev": "pnpm --filter @inup/website dev",
+    "site:build": "pnpm --filter @inup/website build",
+    "site:preview": "pnpm --filter @inup/website preview"
   },
   "author": "Donfear",
   "keywords": [
@@ -44,10 +52,12 @@
     "package-manager",
     "dependencies",
     "semver",
-    "ncu"
+    "ncu",
+    "renovate",
+    "dependabot"
   ],
   "license": "MIT",
-  "homepage": "https://github.com/donfear/inup#readme",
+  "homepage": "https://donfear.github.io/inup/",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/donfear/inup.git"
@@ -60,30 +70,42 @@
     "README.md"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
-    "@types/node": "^25.9.4",
-    "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.1.9",
-    "dependency-cruiser": "^18.0.0",
+    "@biomejs/biome": "^2.5.13",
+    "@napi-rs/cli": "^3.10.1",
+    "@types/node": "^26.5.1",
+    "@types/semver": "^7.8.0",
+    "@vitest/coverage-v8": "^5.0.0",
+    "dependency-cruiser": "^18.2.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^5.0.0"
   },
   "dependencies": {
-    "chalk": "^5.6.2",
-    "cli-truncate": "^6.1.0",
+    "chalk": "^6.0.0",
+    "cli-truncate": "^6.1.1",
     "commander": "^15.0.0",
     "env-paths": "^4.0.0",
     "nanospinner": "^1.2.2",
     "registry-auth-token": "^5.1.1",
     "semver": "^7.8.5",
-    "string-width": "^8.2.1",
-    "strip-ansi": "^7.2.0",
-    "undici": "^8.6.0",
-    "wrap-ansi": "^10.0.0",
+    "string-width": "^8.2.2",
+    "wrap-ansi": "^10.0.1",
     "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=22.19.0"
   },
-  "packageManager": "pnpm@11.9.0+sha512.bd682d5d03fe525ef7c9fd6780c6884d1e756ac4c9c9fe00c538782824310dcf90e3ddc4f53835f06dfaebd5085e41855e0bcbb3b60de2ac5bbab89e5036f03b"
+  "napi": {
+    "binaryName": "inup",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl"
+    ]
+  },
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c"
 }
