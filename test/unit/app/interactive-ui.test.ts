@@ -81,8 +81,7 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     expect(options).toEqual({
       showPeerDependencyVulnerabilities: true,
       showOptionalDependencyVulnerabilities: false,
-      cooldownHeldCount: 0,
-      cooldownUnsupported: false,
+      cooldown: { heldCount: 0, unsupported: false },
     })
   })
 
@@ -93,7 +92,29 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     ui.setCooldownUnsupported(true)
     await ui.selectPackagesToUpgrade([makePackageInfo()])
 
-    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldownUnsupported: true })
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({
+      cooldown: { unsupported: true },
+    })
+  })
+
+  it('keeps the cooldown status live after the session has already started', async () => {
+    // The regression this shape exists for: the picker mounts BEFORE scanning, so the
+    // runner only learns what was held once packages resolve. A value copied into the
+    // session's options at mount time would stay at zero for the whole run and the
+    // header would never admit the cooldown was holding anything.
+    const ui = new InteractiveUI(npmInfo)
+    sessionMock.mockResolvedValue([])
+
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+    const options = sessionMock.mock.calls[0][5] as {
+      cooldown: { heldCount: number; unsupported: boolean }
+    }
+    expect(options.cooldown).toEqual({ heldCount: 0, unsupported: false })
+
+    ui.setCooldownHeldCount(4)
+    ui.setCooldownUnsupported(true)
+
+    expect(options.cooldown).toEqual({ heldCount: 4, unsupported: true })
   })
 
   it('passes the cooldown held count set by the runner into the session', async () => {
@@ -103,7 +124,7 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     ui.setCooldownHeldCount(3)
     await ui.selectPackagesToUpgrade([makePackageInfo()])
 
-    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldownHeldCount: 3 })
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({ cooldown: { heldCount: 3 } })
   })
 })
 

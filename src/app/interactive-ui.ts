@@ -14,6 +14,7 @@ import {
 } from '../features/interactive'
 import { CursorUtils, TerminalInput } from '../shared/terminal'
 import type {
+  CooldownRenderStatus,
   PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
@@ -49,28 +50,24 @@ export class InteractiveUI {
   private packageManager: PackageManagerInfo
   private readonly options: Required<VulnerabilityDisplayOptions>
   /**
-   * Packages the cooldown withheld a version from that never reach the list, because the
-   * list holds only outdated packages. Rendered as a header count so the cooldown is never
-   * silent. Set by the runner, which sees the full pre-filter set.
+   * One live object, handed to the session by reference and mutated by the setters below.
+   *
+   * The picker mounts before scanning starts, so a value copied into the session's options
+   * at mount time would stay at its initial zero for the whole run — the runner only learns
+   * what the cooldown held once packages resolve. Same shape as the live progress object.
    */
-  private cooldownHeldCount = 0
-  /** The configured cooldown could not act — the registry returned no publish times. */
-  private cooldownUnsupported = false
+  private readonly cooldown: CooldownRenderStatus = { heldCount: 0, unsupported: false }
 
   public setCooldownHeldCount(count: number): void {
-    this.cooldownHeldCount = count
+    this.cooldown.heldCount = count
   }
 
   public setCooldownUnsupported(unsupported: boolean): void {
-    this.cooldownUnsupported = unsupported
+    this.cooldown.unsupported = unsupported
   }
 
   private sessionOptions(): SessionDisplayOptions {
-    return {
-      ...this.options,
-      cooldownHeldCount: this.cooldownHeldCount,
-      cooldownUnsupported: this.cooldownUnsupported,
-    }
+    return { ...this.options, cooldown: this.cooldown }
   }
   private readonly saveExact: boolean
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()

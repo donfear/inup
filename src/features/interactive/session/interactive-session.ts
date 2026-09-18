@@ -4,6 +4,7 @@ import { configManager } from '../../../shared/config/user-config'
 import { ConsoleUtils, CursorUtils, TerminalInput } from '../../../shared/terminal'
 import { RAW_EXIT_ALT_SCREEN, RAW_SHOW_CURSOR } from '../../../shared/terminal/cursor'
 import type {
+  CooldownRenderStatus,
   PackageLoadProgress,
   PackageManagerInfo,
   PackageSelectionState,
@@ -35,8 +36,8 @@ function getTerminalHeight(): number {
  * only outdated packages, so those would otherwise leave no trace at all).
  */
 export type SessionDisplayOptions = Required<VulnerabilityDisplayOptions> & {
-  cooldownHeldCount?: number
-  cooldownUnsupported?: boolean
+  /** Held by reference so the header tracks the scan instead of freezing at mount time. */
+  cooldown?: CooldownRenderStatus
 }
 
 export interface InteractiveSessionHandle {
@@ -113,8 +114,7 @@ export async function runInteractiveSession(
     const packageListRenderOptions: PackageListRenderOptions = {
       showPeerDependencyVulnerabilities: options.showPeerDependencyVulnerabilities,
       showOptionalDependencyVulnerabilities: options.showOptionalDependencyVulnerabilities,
-      cooldownHeldCount: options.cooldownHeldCount,
-      cooldownUnsupported: options.cooldownUnsupported,
+      cooldown: options.cooldown,
     }
 
     const key = (text: string) => chalk.bold.white(text)

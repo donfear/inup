@@ -63,13 +63,25 @@ describe('version utils', () => {
       })
     })
 
-    it('skips versions whose time entry is missing or not a string', () => {
+    it('reports no publish times at all when no tracked version got a usable one', () => {
+      // `time` was present but carried nothing we can use. An empty map would read as
+      // "times available, nothing to hold" — the exact confusion the cooldown's
+      // publishTimesAvailable diagnostic exists to prevent.
       const raw = JSON.stringify({
         versions: { '1.0.0': {}, '1.1.0': {} },
         time: { '1.0.0': 12345 },
       })
 
-      expect(parseVersions(raw).publishTimes).toEqual({})
+      expect(parseVersions(raw).publishTimes).toBeUndefined()
+    })
+
+    it('reports no publish times when `time` holds only created/modified', () => {
+      const raw = JSON.stringify({
+        versions: { '1.0.0': {} },
+        time: { created: '2020-01-01T00:00:00.000Z', modified: '2024-01-01T00:00:00.000Z' },
+      })
+
+      expect(parseVersions(raw).publishTimes).toBeUndefined()
     })
 
     it('keeps prereleases out of allVersions but collects them separately, descending', () => {

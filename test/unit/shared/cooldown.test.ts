@@ -292,7 +292,60 @@ describe('applyReleaseAgeCooldown', () => {
     const decision = run(data)
 
     expect(decision.data.allVersions).toEqual(['1.3.0', '1.1.0'])
-    expect(decision.held).toMatchObject({ version: '1.2.0', count: 1 })
+    expect(decision.withheldTotal).toBe(1)
+    // 1.3.0 is still on offer and is newer than the withheld 1.2.0, so there is
+    // nothing the user is missing out on to report.
+    expect(decision.held).toBeUndefined()
+  })
+
+  it('does not report a fresh backport on a line the project has already moved past', () => {
+    // The finding this rule exists for: eslint 8.57.1 published today while the repo
+    // is on ^9.11.0. It was withheld, but it was never going to be offered — a
+    // [HELD] badge here is a false alarm on a security control.
+    const data = parsed({
+      latestVersion: '9.12.0',
+      allVersions: ['9.12.0', '9.11.0', '8.57.1', '8.57.0'],
+      publishTimes: {
+        '9.12.0': minutesAgo(10_000),
+        '9.11.0': minutesAgo(20_000),
+        '8.57.1': minutesAgo(5),
+        '8.57.0': minutesAgo(30_000),
+      },
+    })
+
+    const decision = run(data, { installed: semver.parse('9.11.0'), specifier: '^9.11.0' })
+
+    expect(decision.data.latestVersion).toBe('9.12.0')
+    expect(decision.withheldTotal).toBe(1) // still gated, just not announced
+    expect(decision.data.allVersions).not.toContain('8.57.1')
+    expect(decision.held).toBeUndefined()
+  })
+
+  it('still reports a hold that is newer than everything on offer', () => {
+    const data = parsed({
+      latestVersion: '10.0.0',
+      allVersions: ['10.0.0', '9.12.0'],
+      publishTimes: { '10.0.0': minutesAgo(5), '9.12.0': minutesAgo(10_000) },
+    })
+
+    const decision = run(data, { installed: semver.parse('9.11.0'), specifier: '^9.11.0' })
+
+    expect(decision.data.latestVersion).toBe('9.12.0')
+    expect(decision.held).toMatchObject({ version: '10.0.0', count: 1 })
+  })
+
+  it('reports every hold when the effective latest is an unparsable tag', () => {
+    // Nothing to compare against, so filtering would silently drop real holds.
+    const data = parsed({
+      latestVersion: '1.2.0',
+      allVersions: ['1.2.0', '1.1.0'],
+      publishTimes: { '1.2.0': minutesAgo(5), '1.1.0': minutesAgo(1) },
+    })
+
+    const decision = run(data, { installed: null, specifier: 'latest' })
+
+    expect(decision.data.latestVersion).toBe('latest')
+    expect(decision.held).toMatchObject({ version: '1.2.0', count: 2 })
   })
 })
 

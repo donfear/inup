@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import type {
+  CooldownRenderStatus,
   PackageInfo,
   PackageSelectionState,
   VulnerabilityDisplayOptions,
@@ -12,18 +13,14 @@ import { VersionUtils } from '../version-format'
 export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
   columnWidths?: VersionColumnWidths
   /**
-   * Packages the release-age cooldown withheld a version from that are NOT in the list.
-   * The list only holds outdated packages, so a package whose every newer version is
-   * inside the cooldown window would otherwise be indistinguishable from up to date.
-   * Surfaced in the header instead of as a row: there is nothing to select.
+   * Live cooldown status for the header, held by reference rather than copied.
+   *
+   * The session is mounted before scanning starts, so these numbers are still zero when
+   * the first frame renders and only become true partway through the run. A snapshot
+   * taken at mount time would stay zero for the whole session — the same reason
+   * `loadingProgress` is a single mutable object the runner writes through.
    */
-  cooldownHeldCount?: number
-  /**
-   * The configured cooldown could not act — the registry returned no publish times.
-   * Shown in the header because the policy fails open, so an inert cooldown otherwise
-   * looks exactly like a satisfied one.
-   */
-  cooldownUnsupported?: boolean
+  cooldown?: CooldownRenderStatus
 }
 
 export interface VersionColumnWidths {

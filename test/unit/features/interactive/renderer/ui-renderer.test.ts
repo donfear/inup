@@ -52,7 +52,7 @@ describe('UIRenderer', () => {
       120,
       undefined,
       undefined,
-      { cooldownHeldCount: 3 }
+      { cooldown: { heldCount: 3, unsupported: false } }
     )
     expect(stripAnsi(withPm.join('\n'))).toContain('3 held by cooldown')
 
@@ -71,7 +71,7 @@ describe('UIRenderer', () => {
       120,
       undefined,
       undefined,
-      { cooldownHeldCount: 2 }
+      { cooldown: { heldCount: 2, unsupported: false } }
     )
     expect(stripAnsi(withoutPm.join('\n'))).toContain('2 held by cooldown')
   })
@@ -94,7 +94,7 @@ describe('UIRenderer', () => {
       140,
       undefined,
       undefined,
-      { cooldownUnsupported: true, cooldownHeldCount: 0 }
+      { cooldown: { heldCount: 0, unsupported: true } }
     )
     expect(stripAnsi(lines.join('\n'))).toContain(
       'cooldown inactive: registry has no publish times'
@@ -117,7 +117,7 @@ describe('UIRenderer', () => {
       140,
       undefined,
       undefined,
-      { cooldownUnsupported: true, cooldownHeldCount: 3 }
+      { cooldown: { heldCount: 3, unsupported: true } }
     )
     const text = stripAnsi(lines.join('\n'))
     expect(text).toContain('cooldown inactive')

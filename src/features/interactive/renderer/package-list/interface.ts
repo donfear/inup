@@ -57,8 +57,8 @@ export function renderInterface(
   // Appended to the header: the list shows only outdated packages, so a fully-held
   // package has no row to carry a badge. Without this the cooldown would be silent,
   // which is the one thing a security control must never be.
-  const heldCount = options.cooldownHeldCount ?? 0
-  const heldSuffix = options.cooldownUnsupported
+  const heldCount = options.cooldown?.heldCount ?? 0
+  const heldSuffix = options.cooldown?.unsupported
     ? getThemeColor('warning')('  cooldown inactive: registry has no publish times')
     : heldCount > 0
       ? getThemeColor('warning')(`  ${heldCount} held by cooldown`)

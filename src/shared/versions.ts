@@ -64,15 +64,21 @@ export function parseVersions(raw: string): ParsedVersions {
 
   // Publish times exist only in the full packument; keep just the entries for versions we track
   // (`time` also carries 'created'/'modified' and prerelease keys).
+  //
+  // Stays UNDEFINED when no tracked version got a usable timestamp, even if `time` itself was
+  // present. An empty map is not "publish times we happen to have none of" — it is no publish
+  // times at all, and the release-age cooldown keys both its fail-open shortcut and its
+  // "could this control act?" diagnostic off this field being absent.
   let publishTimes: Record<string, string> | undefined
   if (data.time) {
-    publishTimes = {}
+    const collected: Record<string, string> = {}
     for (const version of [...allVersions, ...prereleaseVersions]) {
       const publishedAt = data.time[version]
       if (typeof publishedAt === 'string') {
-        publishTimes[version] = publishedAt
+        collected[version] = publishedAt
       }
     }
+    if (Object.keys(collected).length > 0) publishTimes = collected
   }
 
   // Surface health signals for the latest version straight from the abbreviated

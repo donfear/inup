@@ -155,20 +155,30 @@ export function applyReleaseAgeCooldown(
   const withheldTotal = stable.withheld.length + withheldPrerelease.length
   if (withheldTotal === 0) return { data: parsed, withheldTotal: 0 }
 
-  const reportable = (
-    (installed?.prerelease.length ?? 0) > 0
-      ? [...stable.withheld, ...withheldPrerelease]
-      : stable.withheld
-  )
-    .slice()
-    .sort((a, b) => semver.rcompare(a.version, b.version))
-
   const installedFallback = installed?.version || specifier
   const effectiveLatest =
     semver.prerelease(parsed.latestVersion) !== null
       ? (prerelease?.eligible[0] ?? installedFallback)
       : (stable.eligible[0] ?? installedFallback)
   const latestUnchanged = effectiveLatest === parsed.latestVersion
+
+  // Only channels this dependency can reach are REPORTED (gating above covers both), and
+  // only versions NEWER than what is already on offer. A fresh backport on an older line —
+  // 8.57.1 published today while the project is on ^9.11.0 — was withheld, but it was never
+  // going to be offered, and announcing it as held back raises a false alarm on a control
+  // whose whole value is that its alarms mean something.
+  const reachable =
+    (installed?.prerelease.length ?? 0) > 0
+      ? [...stable.withheld, ...withheldPrerelease]
+      : stable.withheld
+  // An unparsable effective latest (a tag like `latest` as the fallback) gives nothing to
+  // compare against, so nothing is filtered out rather than silently dropping every hold.
+  const floor = semver.valid(effectiveLatest)
+  const reportable = (
+    floor === null
+      ? reachable.slice()
+      : reachable.filter((entry) => semver.gt(entry.version, floor))
+  ).sort((a, b) => semver.rcompare(a.version, b.version))
 
   return {
     data: {

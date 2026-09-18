@@ -1865,10 +1865,10 @@ describe('PackageDetector release-age cooldown', () => {
       })
   })
 
-  it('reports no hold detail when the registry has no time for the withheld version', () => {
-    // filterVersionsByReleaseAge fails open per-version, so a withheld set can
-    // only arise from versions that DO have times — except when a mixed map
-    // leaves the newest withheld one without a parsable stamp.
+  it('stays silent when the withheld version is older than the one being offered', () => {
+    // A withheld version below the effective latest was never going to be offered,
+    // so announcing it would be a false alarm on a control whose value is that its
+    // alarms mean something.
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
@@ -1881,9 +1881,10 @@ describe('PackageDetector release-age cooldown', () => {
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
       .getOutdatedPackages()
       .then((packages) => {
-        // 1.2.0 has no timestamp so it stays eligible and remains the latest.
+        // 1.2.0 has no timestamp so it stays eligible and remains the latest — the
+        // withheld 1.1.0 is behind it and irrelevant to this user.
         expect(packages[0].latestVersion).toBe('1.2.0')
-        expect(packages[0].heldByCooldown).toMatchObject({ version: '1.1.0', count: 1 })
+        expect(packages[0].heldByCooldown).toBeUndefined()
       })
   })
 
@@ -1937,9 +1938,11 @@ describe('PackageDetector release-age cooldown', () => {
           latestVersion: '1.0.0-alpha.1',
           isOutdated: false,
         })
+        // Only alpha.2 counts: alpha.1 is the version already installed, so calling it
+        // "held back" would count the status quo as a missed upgrade.
         expect(packages[0].heldByCooldown).toMatchObject({
           version: '1.0.0-alpha.2',
-          count: 2,
+          count: 1,
         })
       })
   })

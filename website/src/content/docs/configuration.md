@@ -92,7 +92,7 @@ Supply-chain cooldown, in **minutes** (matching pnpm's setting of the same name)
 
 Unlike other tools' cooldowns, inup does not skip silently: a withheld version shows a `[HELD]` badge in the picker, appears in the `heldByCooldown` array of the `--json` report, and gets its own table in the GitHub Action's PR body.
 
-Registries that don't expose publish times are unaffected — the policy acts only on positive evidence. Enabling it fetches the full registry metadata rather than the abbreviated format, so the first run is somewhat slower; later runs are cushioned by the ETag cache.
+Registries that don't expose publish times are unaffected — the policy acts only on positive evidence. Enabling the cooldown fetches the full registry metadata rather than the abbreviated format, since only the full document carries publish times. Measured against the largest packages on the public registry (`aws-sdk`, `@types/node`), that is about 20% more bytes over the wire and roughly 3x the memory while a package is being parsed — around 10 MB rather than 3.5 MB, briefly, per in-flight package. Later runs are cushioned by the ETag cache.
 
 ### `minimumReleaseAgeExclude`
 

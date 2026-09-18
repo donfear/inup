@@ -6,6 +6,26 @@ import type {
   VulnerabilitySummary,
 } from './domain'
 
+/**
+ * Live cooldown status the picker header reads every frame.
+ *
+ * Mutable and shared by reference: the session mounts before scanning, so these values are
+ * still zero on the first frame and only become true partway through the run.
+ */
+export interface CooldownRenderStatus {
+  /**
+   * Packages the cooldown withheld a version from that are NOT in the list. The list holds
+   * only outdated packages, so a package whose every newer version is inside the window has
+   * no row to badge and would otherwise be indistinguishable from up to date.
+   */
+  heldCount: number
+  /**
+   * The configured cooldown could not act — the registry returned no publish times. Shown
+   * because the policy fails open, so an inert cooldown otherwise looks like a satisfied one.
+   */
+  unsupported: boolean
+}
+
 export interface PackageSelectionState {
   name: string
   packageJsonPath: string // Primary path to the package.json file (for display)
