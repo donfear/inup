@@ -3,7 +3,7 @@ packages:
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@iconify-json/lucide@1.2.122'
+  - '@iconify-json/lucide@1.2.122 || 1.2.134'
   - '@astrojs/internal-helpers@0.10.3'
   - '@astrojs/markdown-satteri@0.3.6'
   - '@biomejs/biome@2.5.9 || 2.5.13'
@@ -28,3 +28,4 @@ minimumReleaseAgeExclude:
   - marked@18.0.10
   - vitest@5.0.0
   - wrap-ansi@10.0.1
+  - '@types/node@26.6.2'
