@@ -175,7 +175,7 @@ Runs on every push/PR:
 - Formatting checks
 - Unit tests
 - Build verification
-- Architecture boundary checks (`pnpm lint:deps` via dependency-cruiser)
+- Architecture boundary checks (`test/unit/architecture.test.ts`)
 
 ## Writing Tests
 

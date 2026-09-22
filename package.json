@@ -24,7 +24,6 @@
     "bench": "node --expose-gc test/benchmarks/performance.cjs",
     "native:build": "napi build --platform --release --no-js --manifest-path native/napi/Cargo.toml --output-dir native/out",
     "native:check": "cargo fmt --manifest-path native/Cargo.toml --all --check && cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings && cargo test --manifest-path native/Cargo.toml --workspace --release",
-    "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
     "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme"
   },
@@ -72,8 +71,7 @@
     "@types/node": "^26.6.2",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^5.0.1",
-    "dependency-cruiser": "^18.4.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.1"
   },
   "dependencies": {
