@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
 import {
+  type ControlTick,
   HILL_CLIMB_TUNING,
   HillClimbController,
 } from '../../../../src/shared/http/hill-climb-controller'
@@ -91,32 +91,6 @@ describe('HillClimbController', () => {
       expect(T.ceil).toBe(24)
       expect(T.floor).toBe(3)
       expect(T.coldStart).toBe(4)
-    })
-  })
-
-  describe('tuning sanitization (experiment overrides)', () => {
-    it('rejects non-finite or non-positive knobs', () => {
-      expect(
-        () => new HillClimbController(300, { tuning: { windowCompletions: Number.NaN } })
-      ).toThrow(/windowCompletions/)
-      expect(() => new HillClimbController(300, { tuning: { floor: 0 } })).toThrow(/floor/)
-      expect(() => new HillClimbController(300, { tuning: { ewmaAlpha: -1 } })).toThrow(/ewmaAlpha/)
-    })
-
-    it('floors fractional bounds and never lets the ceiling drop below the floor', () => {
-      const c = new HillClimbController(300, { tuning: { floor: 2.9, ceil: 2.2, coldStart: 9.7 } })
-      // floor → 2, ceil → max(2, 2) = 2, so the cold start lands on 2.
-      expect(c.getLimit()).toBe(2)
-    })
-
-    it('floors a fractional window size to one completion and still ticks', () => {
-      const c = new HillClimbController(300, {
-        tuning: { windowCompletions: 0.9 },
-        startedAt: START_AT,
-      })
-      c.record('success', 100)
-      // One completion closes the window; the cold start blind-doubles 4 → 8.
-      expect(c.maybeTick(START_AT + 1000)).toBe(8)
     })
   })
 
@@ -770,28 +744,19 @@ describe('HillClimbController cold windows (bytes goodput + fast link)', () => {
     h.c.recordBytes(bytes)
     return h.c.maybeTick(h.clock.advance(elapsedMs))
   }
-  const noFastLink = { fastLinkBytesPerSec: 1e15 }
-  const makeNoFastLink = (): Harness => {
-    const ticks: ControlTick[] = []
-    const clock = makeClock()
-    const c = new HillClimbController(300, {
-      onTick: (t) => ticks.push(t),
-      startedAt: START_AT,
-      tuning: noFastLink,
-    })
-    return { c, ticks, clock }
-  }
 
   it('keeps doubling when completions/sec falls but streamed bytes/sec rises (the 2026-09-12 collapse)', () => {
-    // Measured windows from a real cold run: 0.7 MB, 5.6 MB, 16.5 MB with
-    // completions/sec 7 → 5.5 → 4.2. Completions goodput reads as a plateau
-    // and used to revert 8 → 4; bytes goodput reads 0.4 → 2.6 → 5.7 MB/s.
-    const h = makeNoFastLink()
-    expect(closeBytesWindow(h, 1714, 0.7 * MB)).toBe(8)
-    expect(closeBytesWindow(h, 2162, 5.6 * MB)).toBe(16)
-    expect(closeBytesWindow(h, 2871, 16.5 * MB)).toBe(24)
+    // Measured windows from a real cold run (0.7 MB, 5.6 MB, 16.5 MB), scaled
+    // ×0.1 to stay under the fast-link threshold so goodput alone decides.
+    // Completions/sec 7 → 5.5 → 4.2 reads as a plateau and used to revert
+    // 8 → 4; bytes goodput reads 41 → 259 → 575 KB/s.
+    const h = makeController({})
+    expect(closeBytesWindow(h, 1714, 0.07 * MB)).toBe(8)
+    expect(closeBytesWindow(h, 2162, 0.56 * MB)).toBe(16)
+    expect(closeBytesWindow(h, 2871, 1.65 * MB)).toBe(24)
     expect(reasons(h)).toEqual(['double', 'double', 'double'])
-    expect(h.ticks.map((t) => t.goodputBps)).toEqual([408_401.4, 2_590_194.26, 5_747_126.44])
+    expect(h.ticks.every((t) => !t.fastLink)).toBe(true)
+    expect(h.ticks.map((t) => t.goodputBps)).toEqual([40_840.14, 259_019.43, 574_712.64])
     expect(h.ticks.every((t) => t.goodputRps === undefined)).toBe(true)
   })
 
@@ -824,7 +789,7 @@ describe('HillClimbController cold windows (bytes goodput + fast link)', () => {
   })
 
   it('treats a metric switch (bytes ↔ completions) as a non-comparable window', () => {
-    const h = makeNoFastLink()
+    const h = makeController({})
     // 5/12 revalidated → bytes metric; blind double to 8.
     expect(closeBytesWindow(h, 1000, 0.5 * MB, { revalidatedCount: 5 })).toBe(8)
     // 7/12 revalidated → completions metric; ratio delta 0.17 is within the
@@ -859,12 +824,5 @@ describe('HillClimbController cold windows (bytes goodput + fast link)', () => {
     }
     expect(closeBytesWindow(h, 1000, 2 * MB)).toBe(24)
     expect(h.ticks.at(-1)?.fastLink).toBe(true)
-  })
-
-  it('never engages when the threshold is disabled via tuning', () => {
-    const h = makeNoFastLink()
-    closeBytesWindow(h, 1000, 50 * MB)
-    closeBytesWindow(h, 1000, 50 * MB)
-    expect(h.ticks.some((t) => t.fastLink)).toBe(false)
   })
 })

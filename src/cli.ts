@@ -19,7 +19,6 @@ import {
 } from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
-import { loadInupLocalEnv } from './shared/local-env'
 import { PACKAGE_MANAGER_NAMES } from './shared/package-manager'
 import { checkForUpdateAsync } from './shared/registry/version-checker'
 import { applyColorSetting, TerminalInput } from './shared/terminal'
@@ -34,11 +33,6 @@ if (typeof enableCompileCache === 'function') {
     /* best-effort */
   }
 }
-
-// Load developer-only toggles from <inup-repo>/.env.local before anything reads
-// env. Best-effort, gitignored, never overrides real env. Lets perf/debug be
-// "set once" across every project without shell config.
-loadInupLocalEnv()
 
 const program = new Command()
 
@@ -120,7 +114,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     return
   }
 
-  if (options.debug || process.env.INUP_DEBUG === '1') {
+  if (options.debug) {
     enableDebugLogging()
   }
 
@@ -220,16 +214,11 @@ export async function runCli(options: CliOptions): Promise<void> {
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
-    debug: options.debug || process.env.INUP_DEBUG === '1',
+    debug: options.debug,
     saveExact: options.saveExact ?? false,
     // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
     minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,
     minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
-    // Adaptive concurrency defaults ON; INUP_ADAPTIVE=0 disables it (fixed
-    // limit, A/B baseline). Related dev toggles read further down the stack:
-    // INUP_CONTROLLER=aimd|hillclimb picks the controller arm and
-    // INUP_NET_PROFILE=0 disables learned-profile persistence.
-    adaptive: process.env.INUP_ADAPTIVE !== '0',
     // Pinned parallelism: flag > .inuprc; undefined lets the controller adapt.
     concurrency: concurrency ?? projectConfig.concurrency,
   }
@@ -346,17 +335,9 @@ process.on('unhandledRejection', (reason) => {
 })
 
 // Handle Ctrl+C gracefully
-let sigintReceived = false
 process.on('SIGINT', () => {
-  if (sigintReceived) {
-    // Force exit on second Ctrl+C
-    console.log(chalk.red('\n\nForce exiting...'))
-    process.exit(1)
-  } else {
-    sigintReceived = true
-    console.log(chalk.yellow('\n\nOperation cancelled by user. Press Ctrl+C again to force exit.'))
-    process.exit(0)
-  }
+  console.log(chalk.yellow('\n\nOperation cancelled by user.'))
+  process.exit(0)
 })
 
 // Also handle SIGTERM

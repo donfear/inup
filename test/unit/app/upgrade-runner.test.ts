@@ -4,7 +4,6 @@ const mocks = vi.hoisted(() => ({
   streamOutdatedPackages: vi.fn(),
   getOutdatedPackagesOnly: vi.fn(),
   hasPackageJson: vi.fn(),
-  getPerfConfig: vi.fn(),
   getCooldownDiagnostics: vi.fn(() => null),
   selectPackagesToUpgradeProgressive: vi.fn(),
   selectPackagesToUpgrade: vi.fn(),
@@ -15,8 +14,6 @@ const mocks = vi.hoisted(() => ({
   insertResolvedPackages: vi.fn(),
   setCooldownHeldCount: vi.fn(),
   setCooldownUnsupported: vi.fn(),
-  isPerfLoggingEnabled: vi.fn(() => false),
-  writePerfLog: vi.fn(),
   performanceTracker: {
     start: vi.fn(),
     setPackageManager: vi.fn(),
@@ -30,16 +27,12 @@ vi.mock('../../../src/features/upgrade/package-detector', () => ({
     streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
-    getPerfConfig = mocks.getPerfConfig
     getCooldownDiagnostics = mocks.getCooldownDiagnostics
   },
 }))
 
 vi.mock('../../../src/features/debug', () => ({
   getPerformanceTracker: () => mocks.performanceTracker,
-  isPerfLoggingEnabled: mocks.isPerfLoggingEnabled,
-  perfEnv: () => ({}),
-  writePerfLog: mocks.writePerfLog,
 }))
 
 vi.mock('../../../src/app/interactive-ui', () => ({
@@ -663,22 +656,6 @@ describe('UpgradeRunner terminal handoff', () => {
     // Once per package event, once for completion.
     expect(refresh).toHaveBeenCalledTimes(4)
     expect(mocks.getOutdatedPackagesOnly).toHaveBeenCalledWith(completed)
-    logSpy.mockRestore()
-  })
-
-  it('writes a perf log on completion when perf logging is enabled', async () => {
-    mocks.isPerfLoggingEnabled.mockReturnValue(true)
-    mocks.getPerfConfig.mockReturnValue({ cwd: '/repo' })
-    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
-
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    await new UpgradeRunner({ cwd: '/repo' }).run()
-
-    expect(mocks.writePerfLog).toHaveBeenCalledTimes(1)
-    expect(mocks.writePerfLog).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'interactive', packageManager: 'yarn' }),
-      expect.anything()
-    )
     logSpy.mockRestore()
   })
 

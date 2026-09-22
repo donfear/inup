@@ -8,10 +8,8 @@ const brotliDecompressAsync = promisify(brotliDecompress)
 
 import { POOL_CONNECTIONS } from '../config'
 import { debugLog } from '../debug-logger'
-import { AdaptiveController } from '../http/adaptive-controller'
-import type { ConcurrencyController, ControlTick } from '../http/controller-contract'
 import { etagFileFor, readEtag, writeEtag } from '../http/etag-store'
-import { HillClimbController } from '../http/hill-climb-controller'
+import { type ControlTick, HillClimbController } from '../http/hill-climb-controller'
 import { httpRequest } from '../http/http-request'
 import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
@@ -48,11 +46,6 @@ const HEADERS_TIMEOUT_MS = 30_000
 
 const MAX_REGISTRY_ATTEMPTS = 3
 const RETRY_BACKOFF_MS = [500, 1500, 3000]
-
-// Fixed concurrency used when adaptive is disabled (INUP_ADAPTIVE=0, the A/B
-// control arm). Matches the production caller (PackageDetector) so the fixed path
-// reproduces the legacy behavior exactly.
-const DEFAULT_FIXED_CONCURRENCY = 10
 
 async function getFreshPackageData(
   packageName: string,
@@ -107,22 +100,6 @@ export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 /** Called with each body chunk's byte length as it arrives. */
 type OnChunk = (bytes: number) => void
 
-// Dev-only link emulation (INUP_PACE_BPS): a process-wide token bucket that
-// paces every streamed chunk to the given bytes/sec, so slow-link behavior can
-// be reproduced without a system-level link conditioner. Read per call so the
-// toggle is testable; never set in normal use.
-let paceAllowedAt = 0
-async function paceChunk(bytes: number): Promise<void> {
-  const rate = Number(process.env.INUP_PACE_BPS)
-  if (!(rate > 0)) return
-  const now = Date.now()
-  paceAllowedAt = Math.max(paceAllowedAt, now) + (bytes / rate) * 1000
-  // Own timer rather than retry's sleep(): that helper is stubbed to be instant
-  // in tests, and pacing must stay observable there. The deadline is always at
-  // or after `now`, so the wait is never negative.
-  await new Promise<void>((resolve) => setTimeout(resolve, paceAllowedAt - now))
-}
-
 /**
  * Read a response body to a Buffer chunk by chunk, so the caller can account
  * bytes as they arrive (the adaptive controller measures cold windows in
@@ -131,7 +108,6 @@ async function paceChunk(bytes: number): Promise<void> {
 async function readBody(body: AsyncIterable<Uint8Array>, onChunk?: OnChunk): Promise<Buffer> {
   const chunks: Buffer[] = []
   for await (const chunk of body) {
-    await paceChunk(chunk.length)
     onChunk?.(chunk.length)
     chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
   }
@@ -148,8 +124,8 @@ async function decompressBody(raw: Buffer, encoding: string | undefined): Promis
 
 /**
  * Turn a 200 body into version data and persist its ETag entry for the next
- * run's conditional request. Uses the Rust core when one is enabled
- * (INUP_CORE, dev only); if it fails, the TypeScript path handles the body.
+ * run's conditional request. Uses the Rust core when one is enabled; if it
+ * fails, the TypeScript path handles the body.
  *
  * The Rust decoder reads only the fields of the abbreviated document and drops
  * `time`, so a full-packument body is always decoded in TypeScript — otherwise
@@ -188,8 +164,7 @@ const jsOnlyOrigins = new Set<string>()
 
 /** The native transport for an origin, or null to use the JS transport. */
 function nativeTransportFor(origin: string): NativeTransport | null {
-  // INUP_PACE_BPS (dev link emulation) paces the JS transport's chunk stream.
-  if (process.env.INUP_PACE_BPS || jsOnlyOrigins.has(origin)) return null
+  if (jsOnlyOrigins.has(origin)) return null
   return nativeTransport()
 }
 
@@ -421,13 +396,10 @@ async function fetchPackageFromRegistry(
  * - A single resizable semaphore caps in-flight fetches. Package names are
  *   pulled from a work queue and dispatched as slots free up (a lazy pump),
  *   rather than pre-sliced into fixed batches.
- * - `adaptive` (default true) enables a controller that moves the limit at run
- *   time. `controllerMode` picks which: 'hillclimb' (default) slow-starts and
- *   climbs to the goodput knee — adapting DOWN on slow-but-healthy links;
- *   'aimd' (the A/B control arm) ramps to the ceiling and backs off only on
- *   congestion (429/503) or errors. With `adaptive:false` the limit is fixed at
- *   `maxConcurrency`, reproducing the legacy fixed path. `concurrency` pins the
- *   limit outright and disables everything adaptive.
+ * - A hill-climb controller moves the limit at run time: it slow-starts and
+ *   climbs to the goodput knee — adapting DOWN on slow-but-healthy links — and
+ *   backs off on congestion (429/503) or errors. `concurrency` pins the limit
+ *   outright and disables the controller.
  * - Tiny runs skip the controller and run at a fixed `min(learned ?? ceil, count)`
  *   so they never crawl up from the floor and lose to fixed — while still
  *   honoring a persisted slow-link profile.
@@ -468,28 +440,15 @@ export async function fetchPackageVersions(
   }
 
   const pinned = options.concurrency
-  const adaptive = pinned === undefined && (options.adaptive ?? true)
-  const controllerMode = options.controllerMode ?? 'hillclimb'
   const networkProfile = options.networkProfile ?? null
-  // `maxConcurrency` is the fixed cap used only when adaptive is off; it never
-  // caps the adaptive start.
-  const fixedConcurrency = Math.max(1, options.maxConcurrency ?? DEFAULT_FIXED_CONCURRENCY)
 
-  let controller: ConcurrencyController | null = null
-  if (adaptive) {
-    if (controllerMode === 'hillclimb' && HillClimbController.shouldControl(total)) {
-      controller = new HillClimbController(total, {
-        profile: networkProfile,
-        onTick: options.onControlTick,
-        // INUP_FASTLINK=0: A/B toggle that keeps the controller on but never
-        // lets streamed throughput pin the ceiling.
-        tuning:
-          process.env.INUP_FASTLINK === '0' ? { fastLinkBytesPerSec: Number.MAX_VALUE } : undefined,
-      })
-    } else if (controllerMode === 'aimd' && AdaptiveController.shouldControl(total)) {
-      controller = new AdaptiveController(total, options.onControlTick)
-    }
-  }
+  const controller =
+    pinned === undefined && HillClimbController.shouldControl(total)
+      ? new HillClimbController(total, {
+          profile: networkProfile,
+          onTick: options.onControlTick,
+        })
+      : null
   const initialLimit =
     pinned !== undefined
       ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
@@ -497,19 +456,17 @@ export async function fetchPackageVersions(
         clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
       : controller
         ? controller.getLimit()
-        : adaptive
-          ? // Too small to control: smart fixed start, capped by any learned
-            // slow-link limit so small projects still benefit from the profile.
-            Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
-          : fixedConcurrency
+        : // Too small to control: smart fixed start, capped by any learned
+          // slow-link limit so small projects still benefit from the profile.
+          Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
   const semaphore = new ResizableSemaphore(initialLimit)
 
   let completedCount = 0
 
   // Streamed body bytes feed the controller's cold-window goodput as they
   // arrive, not when a response completes — completion order is size-biased.
-  const onChunk: OnChunk | undefined = controller?.recordBytes
-    ? (bytes) => controller?.recordBytes?.(bytes)
+  const onChunk: OnChunk | undefined = controller
+    ? (bytes) => controller.recordBytes(bytes)
     : undefined
 
   // --- per-attempt observer ---------------------------------------------------
@@ -562,7 +519,7 @@ export async function fetchPackageVersions(
         // Run tail: with fewer pending items than the limit the drain would
         // read as a goodput collapse — stop deciding (and stop learning).
         if (total - completedCount < 2 * controller.getLimit()) {
-          controller.freeze?.()
+          controller.freeze()
         }
         // Bytes streamed by the native transport since the last completion.
         const nativeBytes = nativeTransport()?.takeReceivedBytes() ?? 0
@@ -587,7 +544,7 @@ export async function fetchPackageVersions(
 
   await Promise.all(workers)
 
-  if (controller instanceof HillClimbController && options.onNetworkProfile) {
+  if (controller && options.onNetworkProfile) {
     const settled = controller.getSettledProfile()
     if (settled) options.onNetworkProfile(settled)
   }
