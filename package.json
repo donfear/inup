@@ -1,7 +1,7 @@
 {
   "name": "inup",
   "version": "1.8.2",
-  "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Zero-config, monorepo-ready. Upgrade-interactive for every package manager.",
+  "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Changelogs, vulnerability audit, monorepo & pnpm catalogs, zero-config.",
   "main": "dist/index.js",
   "bin": {
     "inup": "./dist/cli.js"
@@ -30,11 +30,9 @@
   "author": "Donfear",
   "keywords": [
     "upgrade-interactive",
-    "interactive",
     "dependency-management",
     "outdated",
     "upgrade",
-    "update",
     "npm",
     "yarn",
     "pnpm",
@@ -50,7 +48,15 @@
     "semver",
     "ncu",
     "renovate",
-    "dependabot"
+    "dependabot",
+    "npm-check-updates",
+    "taze",
+    "tui",
+    "github-action",
+    "pnpm-catalog",
+    "security",
+    "supply-chain",
+    "dependency-updates"
   ],
   "license": "MIT",
   "homepage": "https://github.com/donfear/inup#readme",
