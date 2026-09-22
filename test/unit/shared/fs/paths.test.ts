@@ -37,14 +37,6 @@ describe('findWorkspaceRoot', () => {
     expect(findWorkspaceRoot(nested, 'pnpm')).toBe(tempDir)
   })
 
-  it('detects the package manager itself when none is given', () => {
-    writeFileSync(join(tempDir, 'package.json'), '{"name":"root"}')
-    writeFileSync(join(tempDir, 'pnpm-lock.yaml'), '')
-    writeFileSync(join(tempDir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n")
-
-    expect(findWorkspaceRoot(tempDir)).toBe(tempDir)
-  })
-
   it('returns null when no workspace marker exists', () => {
     writeFileSync(join(tempDir, 'package.json'), '{"name":"standalone"}')
 

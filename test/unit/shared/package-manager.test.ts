@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PackageManagerDetector } from '../../../src/shared/package-manager'
 
 describe('PackageManagerDetector', () => {
@@ -215,8 +215,37 @@ describe('PackageManagerDetector', () => {
     it('should return correct info for bun', () => {
       const info = PackageManagerDetector.getInfo('bun')
       expect(info.name).toBe('bun')
-      expect(info.lockFile).toBe('bun.lockb')
+      // Bun >= 1.2's text lockfile; detection also still accepts the legacy bun.lockb.
+      expect(info.lockFile).toBe('bun.lock')
       expect(info.installCommand).toBe('bun install')
+    })
+  })
+
+  describe('resolve()', () => {
+    it('uses the explicit override without detecting', () => {
+      // No lockfile or packageManager field: detection would fall back to npm.
+      expect(PackageManagerDetector.resolve({ cwd: testDir, packageManager: 'yarn' }).name).toBe(
+        'yarn'
+      )
+    })
+
+    it('detects from cwd when no override is given', () => {
+      writeFileSync(join(testDir, 'package.json'), JSON.stringify({}))
+      writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+
+      expect(PackageManagerDetector.resolve({ cwd: testDir }).name).toBe('pnpm')
+    })
+
+    it('detects from process.cwd() when given no options', () => {
+      const cwd = vi.spyOn(process, 'cwd').mockReturnValue(testDir)
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        writeFileSync(join(testDir, 'bun.lock'), '')
+        expect(PackageManagerDetector.resolve().name).toBe('bun')
+      } finally {
+        cwd.mockRestore()
+        error.mockRestore()
+      }
     })
   })
 

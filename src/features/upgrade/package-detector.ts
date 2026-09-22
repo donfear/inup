@@ -39,7 +39,6 @@ const SLOW_NETWORK_LIMIT_MAX = 6
 const SLOW_NETWORK_EWMA_MS = 1000
 
 interface PreparedDependencies {
-  allDependencies: DependencyEntry[]
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
@@ -133,8 +132,6 @@ export class PackageDetector {
 
     const prepared = await this.prepareDependencies(onEvent)
     const initialPayload: StreamOutdatedPackagesInitialPayload = {
-      allDependencies: prepared.allDependencies,
-      uniquePackages: prepared.uniquePackages,
       currentVersions: prepared.currentVersions,
       progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
     }
@@ -272,7 +269,6 @@ export class PackageDetector {
       },
     })
     const tFilter = Date.now()
-    const allDependencies: DependencyEntry[] = []
     const dependenciesByName = new Map<string, DependencyEntry[]>()
     let ignoredCount = 0
     const seenWorkspaceRefs = new Set<string>()
@@ -351,7 +347,6 @@ export class PackageDetector {
         continue
       }
 
-      allDependencies.push(dep)
       const group = dependenciesByName.get(dep.name)
       if (group) group.push(dep)
       else dependenciesByName.set(dep.name, [dep])
@@ -383,7 +378,6 @@ export class PackageDetector {
     }
 
     return {
-      allDependencies,
       dependenciesByName,
       uniquePackages,
       currentVersions,
@@ -630,7 +624,6 @@ export class PackageDetector {
   ): PackageLoadProgress {
     return {
       phase,
-      discovered: total,
       resolved,
       total,
       failed,

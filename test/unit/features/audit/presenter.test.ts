@@ -4,7 +4,6 @@ import {
   getVulnerabilityBadge,
   getVulnerabilityLinkLabel,
   getVulnerabilitySeverityColor,
-  mergeVulnerabilitySummary,
   selectRepresentativeAdvisory,
   shouldDisplayVulnerabilityForDependency,
 } from '../../../../src/features/audit/presenter'
@@ -45,7 +44,7 @@ describe('vulnerability presenter', () => {
     ).toBe('')
   })
 
-  it('preserves existing detail links when merging summaries', () => {
+  it('keeps an existing detail link over the first advisory url', () => {
     const summary = createVulnerabilitySummary(
       {
         count: 1,
@@ -64,18 +63,12 @@ describe('vulnerability presenter', () => {
       'high'
     )
 
-    const merged = mergeVulnerabilitySummary(
-      {
-        count: 1,
-        highestSeverity: 'high',
-        detailsUrl: 'https://github.com/advisories/GHSA-existing',
-        advisories: [],
-      },
-      summary
+    expect(selectRepresentativeAdvisory(summary)?.id).toBe(1)
+    expect(summary.detailsUrl).toBe('https://github.com/advisories/GHSA-existing')
+    // Without an existing link, the first advisory supplies it.
+    expect(createVulnerabilitySummary(undefined, summary.advisories, 'high').detailsUrl).toBe(
+      'https://github.com/advisories/GHSA-new'
     )
-
-    expect(selectRepresentativeAdvisory(merged)?.id).toBe(1)
-    expect(merged.detailsUrl).toBe('https://github.com/advisories/GHSA-existing')
   })
 })
 
@@ -99,6 +92,12 @@ describe('severity presentation matrix', () => {
       const color = getVulnerabilitySeverityColor(severity)
       expect(color('x')).toBeTypeOf('string')
     }
+  })
+
+  it('falls back to a neutral color for an unrecognized severity', () => {
+    expect(getVulnerabilitySeverityColor('bizarre' as never)('x')).toBe(
+      getVulnerabilitySeverityColor('info')('x')
+    )
   })
 })
 

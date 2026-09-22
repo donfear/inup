@@ -5,7 +5,6 @@ export {
   getVulnerabilityBadge,
   getVulnerabilityLinkLabel,
   getVulnerabilitySeverityColor,
-  mergeVulnerabilitySummary,
   selectRepresentativeAdvisory,
   shouldDisplayVulnerabilityForDependency,
 } from './presenter'

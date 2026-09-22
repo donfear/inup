@@ -5,38 +5,27 @@ import type {
   VulnerabilitySummary,
 } from '../../shared/types'
 
+/** One color + badge label per severity, shared by the list badge and the info modal. */
+const SEVERITY_STYLES: Record<
+  VulnerabilitySummary['highestSeverity'],
+  { color: (text: string) => string; label: string }
+> = {
+  critical: { color: chalk.bgRed.white.bold, label: 'CRIT' },
+  high: { color: chalk.red, label: 'HIGH' },
+  moderate: { color: chalk.yellow, label: 'MOD' },
+  low: { color: chalk.gray, label: 'LOW' },
+  info: { color: chalk.gray, label: 'INFO' },
+}
+
 export function getVulnerabilitySeverityColor(
   severity: VulnerabilitySummary['highestSeverity']
 ): (text: string) => string {
-  switch (severity) {
-    case 'critical':
-      return chalk.bgRed.white.bold
-    case 'high':
-      return chalk.red
-    case 'moderate':
-      return chalk.yellow
-    default:
-      return chalk.gray
-  }
+  return SEVERITY_STYLES[severity]?.color ?? chalk.gray
 }
 
 export function getVulnerabilityBadge(vulnerability: VulnerabilitySummary | undefined): string {
-  if (!vulnerability) return ''
-
-  switch (vulnerability.highestSeverity) {
-    case 'critical':
-      return chalk.bgRed.white.bold('[CRIT]')
-    case 'high':
-      return chalk.red('[HIGH]')
-    case 'moderate':
-      return chalk.yellow('[MOD]')
-    case 'low':
-      return chalk.gray('[LOW]')
-    case 'info':
-      return chalk.gray('[INFO]')
-    default:
-      return ''
-  }
+  const style = vulnerability && SEVERITY_STYLES[vulnerability.highestSeverity]
+  return style ? style.color(`[${style.label}]`) : ''
 }
 
 export function shouldDisplayVulnerabilityForDependency(
@@ -73,15 +62,5 @@ export function createVulnerabilitySummary(
     highestSeverity,
     detailsUrl: existing?.detailsUrl || advisories[0]?.url,
     advisories,
-  }
-}
-
-export function mergeVulnerabilitySummary(
-  existing: VulnerabilitySummary | undefined,
-  summary: VulnerabilitySummary
-): VulnerabilitySummary {
-  return {
-    ...summary,
-    detailsUrl: existing?.detailsUrl || summary.detailsUrl,
   }
 }

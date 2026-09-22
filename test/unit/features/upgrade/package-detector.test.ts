@@ -149,7 +149,10 @@ describe('PackageDetector streaming', () => {
       eventTypes.push(event.type)
 
       if (event.type === 'initial') {
-        expect(event.payload.uniquePackages).toEqual(['@scope/pkg', 'zod'])
+        expect(Array.from(event.payload.currentVersions.keys()).sort()).toEqual([
+          '@scope/pkg',
+          'zod',
+        ])
         expect(event.payload.progress).toMatchObject({
           total: 2,
           resolved: 0,
@@ -819,14 +822,17 @@ describe('PackageDetector edge paths', () => {
     ])
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    let uniquePackages: string[] = []
-    await detector.streamOutdatedPackages((event) => {
-      if (event.type === 'initial') {
-        uniquePackages = event.payload.uniquePackages
-      }
-    })
+    await detector.streamOutdatedPackages(() => {})
 
-    expect(uniquePackages).toEqual(['@s/a', '@s/b', '@s/c', 'alpha', 'beta', 'zod'])
+    // The registry is asked for packages in this order.
+    expect(mocks.fetchPackageVersions.mock.calls.at(-1)?.[0]).toEqual([
+      '@s/a',
+      '@s/b',
+      '@s/c',
+      'alpha',
+      'beta',
+      'zod',
+    ])
   })
 
   it('logs missing registry data once per package name', async () => {
