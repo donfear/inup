@@ -8,14 +8,6 @@ export function findPackageJson(cwd: string = process.cwd()): string | null {
   return existsSync(packageJsonPath) ? packageJsonPath : null
 }
 
-export function findWorkspaceRoot(
-  cwd: string = process.cwd(),
-  packageManager?: PackageManager
-): string | null {
-  if (!packageManager) {
-    const detected = PackageManagerDetector.detect(cwd)
-    packageManager = detected.name
-  }
-
+export function findWorkspaceRoot(cwd: string, packageManager: PackageManager): string | null {
   return PackageManagerDetector.findWorkspaceRoot(cwd, packageManager)
 }

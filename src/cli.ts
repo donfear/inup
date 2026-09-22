@@ -4,11 +4,14 @@ import { writeFileSync } from 'node:fs'
 import { enableCompileCache } from 'node:module'
 import { join, resolve } from 'node:path'
 import chalk from 'chalk'
-import { Command } from 'commander'
+import { Command, Option } from 'commander'
+import type { ApplyTarget } from './features/headless'
 import {
   buildConfigTemplate,
   findExistingConfigFile,
   INIT_CONFIG_FILENAME,
+  isValidConcurrency,
+  isValidMinimumReleaseAge,
   loadProjectConfig,
   PACKAGE_NAME,
   PACKAGE_VERSION,
@@ -17,6 +20,7 @@ import {
 import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
 import { loadInupLocalEnv } from './shared/local-env'
+import { PACKAGE_MANAGER_NAMES } from './shared/package-manager'
 import { checkForUpdateAsync } from './shared/registry/version-checker'
 import { applyColorSetting, TerminalInput } from './shared/terminal'
 import type { PackageManager, UpgradeOptions } from './shared/types'
@@ -43,7 +47,7 @@ export interface CliOptions {
   exclude: string
   ignore: string
   maxDepth: string
-  packageManager?: string
+  packageManager?: PackageManager
   init?: boolean
   debug?: boolean
   color?: boolean
@@ -51,10 +55,20 @@ export interface CliOptions {
   json?: boolean
   check?: boolean
   apply?: boolean
-  target?: string
+  target?: ApplyTarget
   concurrency?: string
   native?: boolean
   minimumReleaseAge?: string
+}
+
+/** A comma-separated flag value as a list, trimmed and without empty entries. */
+function splitList(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean)
+    : []
 }
 
 /**
@@ -115,13 +129,6 @@ export async function runCli(options: CliOptions): Promise<void> {
   const interactive =
     !!process.stdout.isTTY && !process.env.CI && !options.json && !options.check && !options.apply
 
-  // Validate --target early so a typo fails fast instead of silently defaulting.
-  if (options.target && !['minor', 'patch', 'latest'].includes(options.target)) {
-    console.error(chalk.red(`Invalid target: ${options.target}`))
-    console.error(chalk.yellow('Valid options: minor, patch, latest'))
-    process.exit(1)
-  }
-
   // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc"; an
   // explicit 0 means "disable the configured cooldown for this run", so presence is what
   // counts, not truthiness. Number() rather than parseInt: parseInt('7.5') is 7, and a
@@ -131,8 +138,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     cliMinimumReleaseAge = Number(options.minimumReleaseAge)
     if (
       options.minimumReleaseAge.trim() === '' ||
-      !Number.isInteger(cliMinimumReleaseAge) ||
-      cliMinimumReleaseAge < 0
+      !isValidMinimumReleaseAge(cliMinimumReleaseAge)
     ) {
       console.error(chalk.red(`Invalid minimum release age: ${options.minimumReleaseAge}`))
       console.error(
@@ -161,22 +167,12 @@ export async function runCli(options: CliOptions): Promise<void> {
   const projectConfig = loadProjectConfig(cwd)
 
   // Merge CLI exclude patterns with config
-  const cliExcludePatterns = options.exclude
-    ? options.exclude
-        .split(',')
-        .map((p: string) => p.trim())
-        .filter(Boolean)
-    : []
-  const excludePatterns = [...cliExcludePatterns, ...(projectConfig.exclude || [])]
+  const excludePatterns = [...splitList(options.exclude), ...(projectConfig.exclude || [])]
 
   // Merge CLI ignore patterns with config (CLI takes precedence / adds to config)
-  const cliIgnorePatterns = options.ignore
-    ? options.ignore
-        .split(',')
-        .map((p: string) => p.trim())
-        .filter(Boolean)
-    : []
-  const ignorePackages = [...new Set([...cliIgnorePatterns, ...(projectConfig.ignore || [])])]
+  const ignorePackages = [
+    ...new Set([...splitList(options.ignore), ...(projectConfig.ignore || [])]),
+  ]
 
   const maxDepth = Number.parseInt(options.maxDepth, 10)
   if (!Number.isInteger(maxDepth) || maxDepth < 0) {
@@ -188,7 +184,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   let concurrency: number | undefined
   if (options.concurrency !== undefined) {
     const parsed = Number(options.concurrency)
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > POOL_CONNECTIONS) {
+    if (!isValidConcurrency(parsed)) {
       console.error(chalk.red(`Invalid concurrency: ${options.concurrency}`))
       console.error(
         chalk.yellow(
@@ -206,18 +202,6 @@ export async function runCli(options: CliOptions): Promise<void> {
     ? checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
     : undefined
 
-  // Validate package manager if provided
-  let packageManager: PackageManager | undefined
-  if (options.packageManager) {
-    const validPMs = ['npm', 'yarn', 'pnpm', 'bun']
-    if (!validPMs.includes(options.packageManager)) {
-      console.error(chalk.red(`Invalid package manager: ${options.packageManager}`))
-      console.error(chalk.yellow(`Valid options: ${validPMs.join(', ')}`))
-      process.exit(1)
-    }
-    packageManager = options.packageManager as PackageManager
-  }
-
   // Experimental native core: flag (--native / --no-native) > .inuprc > off.
   // Loaded only when on, so default runs never touch it.
   if (options.native ?? projectConfig.native ?? false) {
@@ -232,7 +216,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     maxDepth,
     ignorePackages,
     ignoreMajorPackages: projectConfig.ignoreMajor,
-    packageManager,
+    packageManager: options.packageManager,
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
@@ -260,7 +244,7 @@ export async function runCli(options: CliOptions): Promise<void> {
       json: options.json,
       check: options.check,
       apply: options.apply,
-      target: (options.target as 'minor' | 'patch' | 'latest') || 'minor',
+      target: options.target,
     })
     return
   }
@@ -314,7 +298,11 @@ program
     '--init',
     'create a commented .inuprc template documenting every option (asks before overwriting)'
   )
-  .option('--package-manager <name>', 'manually specify package manager (npm, yarn, pnpm, bun)')
+  .addOption(
+    new Option('--package-manager <name>', 'manually specify package manager').choices(
+      PACKAGE_MANAGER_NAMES
+    )
+  )
   .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
   .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
@@ -337,10 +325,12 @@ program
     '--minimum-release-age <minutes>',
     'only offer versions published at least this many minutes ago (supply-chain cooldown; also via .inuprc)'
   )
-  .option(
-    '--target <level>',
-    'with --apply: how far to bump — minor (in-range) | patch (same major.minor only) | latest (default: minor)',
-    'minor'
+  // No commander default: HeadlessRunner owns the 'minor' default for an absent target.
+  .addOption(
+    new Option(
+      '--target <level>',
+      'with --apply: how far to bump — minor (in-range) | patch (same major.minor only) | latest (default: minor)'
+    ).choices(['minor', 'patch', 'latest'] satisfies ApplyTarget[])
   )
   .action(runCli)
 

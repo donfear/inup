@@ -1,3 +1,4 @@
+export * from './find-up'
 export * from './io'
 export * from './paths'
 export * from './scan'

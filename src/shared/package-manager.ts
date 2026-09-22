@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import chalk from 'chalk'
-import type { PackageManager, PackageManagerInfo } from './types'
+import { findUp } from './fs/find-up'
+import { readPackageJson } from './fs/io'
+import type { PackageManager, PackageManagerInfo, UpgradeOptions } from './types'
 
 /**
  * Lock files in detection priority order — the single table both `detect()` and each
@@ -60,6 +62,9 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   },
 }
 
+/** Every supported package manager name (the valid values of --package-manager). */
+export const PACKAGE_MANAGER_NAMES = Object.keys(PACKAGE_MANAGERS) as PackageManager[]
+
 // biome-ignore lint/complexity/noStaticOnlyClass: intentional namespace-style API used throughout the codebase
 export class PackageManagerDetector {
   /**
@@ -97,8 +102,7 @@ export class PackageManagerDetector {
     }
 
     try {
-      const content = readFileSync(packageJsonPath, 'utf-8')
-      const packageJson = JSON.parse(content)
+      const packageJson = readPackageJson(packageJsonPath)
 
       if (packageJson.packageManager) {
         // Parse format: "pnpm@10.28.1" or "npm@9.0.0+sha512.abc..."
@@ -156,6 +160,16 @@ export class PackageManagerDetector {
   }
 
   /**
+   * The package manager for a run: the explicit override when given, else detected from `cwd`.
+   * Shared by the interactive and headless runners so both resolve it identically.
+   */
+  static resolve(options?: Pick<UpgradeOptions, 'cwd' | 'packageManager'>): PackageManagerInfo {
+    return options?.packageManager
+      ? PackageManagerDetector.getInfo(options.packageManager)
+      : PackageManagerDetector.detect(options?.cwd || process.cwd())
+  }
+
+  /**
    * Find workspace root for any package manager
    */
   static findWorkspaceRoot(
@@ -163,46 +177,45 @@ export class PackageManagerDetector {
     packageManager: PackageManager
   ): string | null {
     const pmInfo = PACKAGE_MANAGERS[packageManager]
-    let currentDir = cwd
 
-    while (currentDir !== join(currentDir, '..')) {
-      // Check for package manager-specific workspace file
-      if (pmInfo.workspaceFile) {
-        const workspaceFilePath = join(currentDir, pmInfo.workspaceFile)
-        if (existsSync(workspaceFilePath)) {
-          return currentDir
-        }
-      } else {
-        // Check for package.json with workspaces field
-        const packageJsonPath = join(currentDir, 'package.json')
-        if (existsSync(packageJsonPath)) {
-          try {
-            const content = readFileSync(packageJsonPath, 'utf-8')
-            const packageJson = JSON.parse(content)
+    const root = findUp(cwd, (dir) => {
+      // The filesystem root itself is never treated as a workspace root.
+      if (dirname(dir) === dir) return undefined
+      return PackageManagerDetector.isWorkspaceRoot(dir, pmInfo) ? dir : undefined
+    })
+    return root ?? null
+  }
 
-            // Check if workspaces field exists and is non-empty
-            if (packageJson.workspaces) {
-              if (Array.isArray(packageJson.workspaces) && packageJson.workspaces.length > 0) {
-                return currentDir
-              } else if (
-                typeof packageJson.workspaces === 'object' &&
-                packageJson.workspaces.packages &&
-                packageJson.workspaces.packages.length > 0
-              ) {
-                // Yarn berry format: { packages: [...] }
-                return currentDir
-              }
-            }
-          } catch {
-            // Invalid package.json, continue searching
-          }
-        }
-      }
-
-      currentDir = join(currentDir, '..')
+  private static isWorkspaceRoot(dir: string, pmInfo: PackageManagerInfo): boolean {
+    // Check for package manager-specific workspace file
+    if (pmInfo.workspaceFile) {
+      return existsSync(join(dir, pmInfo.workspaceFile))
     }
 
-    return null
+    // Check for package.json with workspaces field
+    const packageJsonPath = join(dir, 'package.json')
+    if (!existsSync(packageJsonPath)) return false
+    try {
+      const { workspaces } = readPackageJson(packageJsonPath)
+
+      // Check if workspaces field exists and is non-empty
+      if (workspaces) {
+        if (Array.isArray(workspaces) && workspaces.length > 0) {
+          return true
+        } else if (
+          typeof workspaces === 'object' &&
+          !Array.isArray(workspaces) &&
+          workspaces.packages &&
+          workspaces.packages.length > 0
+        ) {
+          // Yarn berry format: { packages: [...] }
+          return true
+        }
+      }
+    } catch {
+      // Invalid package.json, continue searching
+    }
+    return false
   }
 
   /**
