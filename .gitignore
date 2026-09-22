@@ -93,8 +93,6 @@ dist/
 
 .claude
 
-# Performance debug logs (INUP_PERF=1)
-.inup-perf*
 .env.local
 
 # Rust core (native/): cargo output, local addon build, generated npm packages

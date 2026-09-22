@@ -196,7 +196,8 @@ describe('CLI headless routing', () => {
       json: undefined,
       check: undefined,
       apply: undefined,
-      target: 'minor',
+      // No target flag: the headless runner applies its own 'minor' default.
+      target: undefined,
     })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
@@ -218,7 +219,8 @@ describe('CLI headless routing', () => {
       json: true,
       check: true,
       apply: undefined,
-      target: 'minor',
+      // No target flag: the headless runner applies its own 'minor' default.
+      target: undefined,
     })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
   })

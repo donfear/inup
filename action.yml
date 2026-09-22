@@ -82,14 +82,13 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # Validate the enum-style inputs up front so a typo fails fast with an actionable message
-    # instead of an opaque downstream error. Inputs are read from env (never interpolated into the
-    # script body) to avoid shell injection.
+    # target and package-manager need no check here: the CLI rejects an invalid value with exit 1.
+    # minimum-release-age does: the CLI parses with Number(), so it would accept forms like '1e5'
+    # or '0x10' that are not the whole number of minutes this input documents. Read from env
+    # (never interpolated into the script body) to avoid shell injection.
     - name: Validate inputs
       shell: bash
       env:
-        TARGET: ${{ inputs.target }}
-        PACKAGE_MANAGER: ${{ inputs.package-manager }}
         MINIMUM_RELEASE_AGE: ${{ inputs.minimum-release-age }}
       run: |
         set -euo pipefail
@@ -99,20 +98,6 @@ runs:
               echo "::error title=inup: invalid minimum-release-age::'$MINIMUM_RELEASE_AGE' is not valid. Use a non-negative whole number of minutes (e.g. 10080), or leave empty to disable."
               exit 1
             fi
-            ;;
-        esac
-        case "$TARGET" in
-          minor|patch|latest) ;;
-          *)
-            echo "::error title=inup: invalid target::'$TARGET' is not a valid target. Use one of: minor, patch, latest."
-            exit 1
-            ;;
-        esac
-        case "$PACKAGE_MANAGER" in
-          ''|npm|yarn|pnpm|bun) ;;
-          *)
-            echo "::error title=inup: invalid package-manager::'$PACKAGE_MANAGER' is not valid. Use one of: npm, yarn, pnpm, bun (or leave empty to auto-detect)."
-            exit 1
             ;;
         esac
 
@@ -132,7 +117,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.directory }}
       # All inputs are passed via env — never interpolated into the script text — so a crafted input
-      # value cannot inject shell commands. Inputs are validated by the step above.
+      # value cannot inject shell commands. An invalid target or package-manager fails here, in the CLI.
       env:
         TARGET: ${{ inputs.target }}
         PACKAGE_MANAGER: ${{ inputs.package-manager }}

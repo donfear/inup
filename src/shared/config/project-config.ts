@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { findUp } from '../fs/find-up'
 import { POOL_CONNECTIONS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
+import { isValidConcurrency, isValidMinimumReleaseAge } from './validation'
 
 /**
  * Project-level configuration loaded from .inuprc or .inuprc.json
@@ -85,32 +87,25 @@ const CONFIG_FILES = [
  * Searches in the specified directory and parent directories up to root
  */
 export function loadProjectConfig(cwd: string): InupProjectConfig {
-  let currentDir = cwd
+  return findUp(cwd, loadConfigIn) ?? {}
+}
 
-  while (true) {
-    for (const configFile of CONFIG_FILES) {
-      const configPath = join(currentDir, configFile)
-      if (existsSync(configPath)) {
-        try {
-          const content = readFileSync(configPath, 'utf-8')
-          const config = JSON.parse(stripJsonComments(content)) as InupProjectConfig
-          return normalizeConfig(config)
-        } catch (error) {
-          // Invalid JSON or read error - continue searching
-          console.warn(`Warning: Failed to parse ${configPath}: ${error}`)
-        }
+/** The first config file in `dir` that parses, normalized; undefined to keep searching upward. */
+function loadConfigIn(dir: string): InupProjectConfig | undefined {
+  for (const configFile of CONFIG_FILES) {
+    const configPath = join(dir, configFile)
+    if (existsSync(configPath)) {
+      try {
+        const content = readFileSync(configPath, 'utf-8')
+        const config = JSON.parse(stripJsonComments(content)) as InupProjectConfig
+        return normalizeConfig(config)
+      } catch (error) {
+        // Invalid JSON or read error - continue searching
+        console.warn(`Warning: Failed to parse ${configPath}: ${error}`)
       }
     }
-
-    // Move to parent directory. join(root, '..') === root at the filesystem
-    // root on every platform ('/' on POSIX, 'C:\' on Windows), so this is the
-    // single, cross-platform loop terminator.
-    const parentDir = join(currentDir, '..')
-    if (parentDir === currentDir) break
-    currentDir = parentDir
   }
-
-  return {}
+  return undefined
 }
 
 /**
@@ -188,56 +183,36 @@ export function stripJsonComments(content: string): string {
   return result
 }
 
+/** List-valued fields: kept when they are arrays, with any non-string entries dropped. */
+const STRING_LIST_KEYS = [
+  'ignore',
+  'ignoreMajor',
+  'exclude',
+  'scanDirs',
+  'minimumReleaseAgeExclude',
+] as const
+
 /**
  * Normalize and validate the config
  */
 function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   const normalized: InupProjectConfig = {}
 
-  if (config.ignore) {
-    if (Array.isArray(config.ignore)) {
-      normalized.ignore = config.ignore.filter((item) => typeof item === 'string')
-    }
-  }
-
-  if (config.ignoreMajor) {
-    if (Array.isArray(config.ignoreMajor)) {
-      normalized.ignoreMajor = config.ignoreMajor.filter((item) => typeof item === 'string')
-    }
-  }
-
-  if (config.exclude) {
-    if (Array.isArray(config.exclude)) {
-      normalized.exclude = config.exclude.filter((item) => typeof item === 'string')
-    }
-  }
-
-  if (config.scanDirs) {
-    if (Array.isArray(config.scanDirs)) {
-      normalized.scanDirs = config.scanDirs.filter((item) => typeof item === 'string')
+  for (const key of STRING_LIST_KEYS) {
+    const value = config[key]
+    if (Array.isArray(value)) {
+      normalized[key] = value.filter((item) => typeof item === 'string')
     }
   }
 
   // Never drop this one silently either: a cooldown is a security control, and
   // ignoring a typo'd value would quietly leave the user unprotected.
   if (config.minimumReleaseAge !== undefined) {
-    if (
-      typeof config.minimumReleaseAge === 'number' &&
-      Number.isInteger(config.minimumReleaseAge) &&
-      config.minimumReleaseAge >= 0
-    ) {
+    if (isValidMinimumReleaseAge(config.minimumReleaseAge)) {
       normalized.minimumReleaseAge = config.minimumReleaseAge
     } else {
       console.warn(
         `Warning: ignoring invalid "minimumReleaseAge" in project config (expected a non-negative integer number of minutes, got ${JSON.stringify(config.minimumReleaseAge)})`
-      )
-    }
-  }
-
-  if (config.minimumReleaseAgeExclude) {
-    if (Array.isArray(config.minimumReleaseAgeExclude)) {
-      normalized.minimumReleaseAgeExclude = config.minimumReleaseAgeExclude.filter(
-        (item) => typeof item === 'string'
       )
     }
   }
@@ -255,12 +230,7 @@ function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
   }
 
   if (config.concurrency !== undefined) {
-    if (
-      typeof config.concurrency === 'number' &&
-      Number.isInteger(config.concurrency) &&
-      config.concurrency >= 1 &&
-      config.concurrency <= POOL_CONNECTIONS
-    ) {
+    if (isValidConcurrency(config.concurrency)) {
       normalized.concurrency = config.concurrency
     } else {
       // Never drop this one silently: the user set it to protect a slow or

@@ -1,10 +1,5 @@
 import chalk from 'chalk'
-import {
-  getPerformanceTracker,
-  isPerfLoggingEnabled,
-  perfEnv,
-  writePerfLog,
-} from '../features/debug'
+import { getPerformanceTracker } from '../features/debug'
 import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
 import { countHeldPackages } from '../shared/cooldown'
@@ -22,16 +17,6 @@ import { InteractiveUI } from './interactive-ui'
 /**
  * Main orchestrator for the inup upgrade process
  */
-/**
- * Packages whose newer versions were ALL withheld by the release-age cooldown.
- *
- * These are invisible in the picker — it lists outdated packages only, and a package with no
- * reachable upgrade target is not outdated, so the header is the only place they can surface.
- */
-function countHiddenCooldownHolds(packages: PackageInfo[]): number {
-  return countHeldPackages(packages, { hiddenOnly: true })
-}
-
 export class UpgradeRunner {
   private detector: PackageDetector
   private ui: InteractiveUI
@@ -39,13 +24,7 @@ export class UpgradeRunner {
   private packageManager: PackageManagerInfo
 
   constructor(options?: UpgradeOptions) {
-    // Detect package manager
-    const cwd = options?.cwd || process.cwd()
-    if (options?.packageManager) {
-      this.packageManager = PackageManagerDetector.getInfo(options.packageManager)
-    } else {
-      this.packageManager = PackageManagerDetector.detect(cwd)
-    }
+    this.packageManager = PackageManagerDetector.resolve(options)
 
     this.detector = new PackageDetector(options)
     this.ui = new InteractiveUI(this.packageManager, {
@@ -84,7 +63,6 @@ export class UpgradeRunner {
 
       const progress: PackageLoadProgress = {
         phase: 'discovering',
-        discovered: 0,
         resolved: 0,
         total: 0,
         failed: 0,
@@ -112,22 +90,16 @@ export class UpgradeRunner {
 
         const streamPromise = this.detector.streamOutdatedPackages((event) => {
           if (event.type === 'warning') warnings.push(event.payload.message)
-          if (event.type === 'status') {
+          if (event.type === 'status' || event.type === 'initial') {
             syncProgress(event.payload.progress)
-            session?.refresh()
-          }
-          if (event.type === 'initial') {
-            syncProgress(event.payload.progress)
-
             session?.refresh()
           }
 
           if (event.type === 'package') {
             latestPackages.push(...event.payload.packageInfo)
             syncProgress(event.payload.progress)
-            performanceTracker.mark('firstResult')
             this.ui.insertResolvedPackages(selection, event.payload.packageInfo, previousSelections)
-            this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
+            this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
             this.ui.setCooldownUnsupported(this.isCooldownInert())
             session?.refresh()
           }
@@ -135,21 +107,12 @@ export class UpgradeRunner {
           if (event.type === 'complete') {
             latestPackages = event.payload.packages
             syncProgress(event.payload.progress)
+            // The detector marks firstResult as packages resolve; this only lands for a
+            // run that resolved none, so the phase is never missing from the perf log.
             performanceTracker.mark('firstResult')
             performanceTracker.mark('allLoaded')
-            this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
+            this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
             this.ui.setCooldownUnsupported(this.isCooldownInert())
-            if (isPerfLoggingEnabled()) {
-              writePerfLog(
-                {
-                  ...this.detector.getPerfConfig(),
-                  packageManager: this.packageManager.name,
-                  mode: 'interactive',
-                  env: perfEnv(),
-                },
-                performanceTracker.snapshot()
-              )
-            }
             session?.refresh()
           }
         }, scanController.signal)
@@ -169,7 +132,7 @@ export class UpgradeRunner {
         console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
         // Saying "up to date" and stopping there would hide the fact that newer
         // versions exist and were deliberately withheld.
-        const held = countHiddenCooldownHolds(latestPackages)
+        const held = countHeldPackages(latestPackages, { hiddenOnly: true })
         if (held > 0) {
           console.log(
             chalk.yellow(

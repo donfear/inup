@@ -128,7 +128,8 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
   debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
-  adaptive?: boolean // Adaptive registry concurrency. Defaults to true.
+  /** @deprecated No-op: registry concurrency always adapts unless `concurrency` pins it. */
+  adaptive?: boolean
   concurrency?: number // Pin registry fetch parallelism (1..24) and disable adaptation
   minimumReleaseAge?: number // Minutes a version must have been public before it's offered. 0/absent disables.
   minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge

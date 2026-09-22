@@ -4,14 +4,14 @@ import { dirname } from 'node:path'
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { executeCommand } from '../../shared/exec'
-import {
-  detectJsonFormat,
-  findWorkspaceRoot,
-  readPackageJson,
-  stringifyWithFormat,
-} from '../../shared/fs'
+import { detectJsonFormat, findWorkspaceRoot, stringifyWithFormat } from '../../shared/fs'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
-import type { DependencyType, PackageManagerInfo, PackageUpgradeChoice } from '../../shared/types'
+import type {
+  DependencyType,
+  PackageJson,
+  PackageManagerInfo,
+  PackageUpgradeChoice,
+} from '../../shared/types'
 
 /** A choice known to target a pnpm catalog entry (its `catalog` is always set). */
 type CatalogUpgradeChoice = PackageUpgradeChoice & { catalog: string }
@@ -52,15 +52,14 @@ export class PackageUpgrader {
     )
     const fileChoices = choices.filter((choice) => choice.catalog === undefined)
 
-    // Group choices by package.json path and dependency type
-    const choicesByFileAndType = this.groupChoicesByFileAndType(fileChoices)
-
-    for (const [fileAndType, choiceList] of Object.entries(choicesByFileAndType)) {
+    // Group choices by package.json path, then dependency type
+    for (const [packageJsonPath, byType] of this.groupChoicesByFileAndType(fileChoices)) {
       // groupChoicesByFileAndType only creates a group once it has a member,
       // so choiceList is always non-empty here.
-      const [packageJsonPath, type] = fileAndType.split('|')
-      this.log(`Processing ${type} in ${packageJsonPath}`)
-      await this.upgradeChoiceGroup(choiceList, packageJsonPath, type as DependencyType)
+      for (const [type, choiceList] of byType) {
+        this.log(`Processing ${type} in ${packageJsonPath}`)
+        await this.upgradeChoiceGroup(choiceList, packageJsonPath, type)
+      }
     }
 
     if (catalogChoices.length > 0) {
@@ -192,15 +191,18 @@ export class PackageUpgrader {
 
   private groupChoicesByFileAndType(
     choices: PackageUpgradeChoice[]
-  ): Record<string, PackageUpgradeChoice[]> {
-    const groups: Record<string, PackageUpgradeChoice[]> = {}
+  ): Map<string, Map<DependencyType, PackageUpgradeChoice[]>> {
+    const groups = new Map<string, Map<DependencyType, PackageUpgradeChoice[]>>()
 
     choices.forEach((choice) => {
-      const key = `${choice.packageJsonPath}|${choice.dependencyType}`
-      if (!groups[key]) {
-        groups[key] = []
+      let byType = groups.get(choice.packageJsonPath)
+      if (!byType) {
+        byType = new Map()
+        groups.set(choice.packageJsonPath, byType)
       }
-      groups[key].push(choice)
+      const group = byType.get(choice.dependencyType)
+      if (group) group.push(choice)
+      else byType.set(choice.dependencyType, [choice])
     })
 
     return groups
@@ -230,26 +232,14 @@ export class PackageUpgrader {
     try {
       // Read the current package.json — keep the raw text so we can round-trip its formatting
       const rawContent = readFileSync(packageJsonPath, 'utf-8')
-      const packageJson = readPackageJson(packageJsonPath)
+      const packageJson = JSON.parse(rawContent) as PackageJson
 
-      // Group by upgrade type (range vs latest)
-      const rangeChoices = choices.filter((c) => c.upgradeType === 'range')
-      const latestChoices = choices.filter((c) => c.upgradeType === 'latest')
-
-      // Upgrade range versions by directly modifying package.json
-      if (rangeChoices.length > 0) {
+      // Range and latest upgrades write the same way; 'none' choices leave the entry alone.
+      const upgrades = choices.filter((c) => c.upgradeType !== 'none')
+      if (upgrades.length > 0) {
         const section = packageJson[type] ?? {}
         packageJson[type] = section
-        rangeChoices.forEach((choice) => {
-          section[choice.name] = choice.targetVersion
-        })
-      }
-
-      // Upgrade to latest versions by directly modifying package.json
-      if (latestChoices.length > 0) {
-        const section = packageJson[type] ?? {}
-        packageJson[type] = section
-        latestChoices.forEach((choice) => {
+        upgrades.forEach((choice) => {
           section[choice.name] = choice.targetVersion
         })
       }

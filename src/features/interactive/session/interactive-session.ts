@@ -126,6 +126,7 @@ export async function runInteractiveSession(
       closeInfo: key('I / Esc ') + hint('Close'),
       closeTheme: key('T / Esc ') + hint('Close'),
       closeHelp: key('? / Esc ') + hint('Close'),
+      closeDebug: key('! / Esc ') + hint('Close'),
     }
 
     const buildModalHeaderLines = (shortcutLabel: string): string[] => [
@@ -298,7 +299,7 @@ export async function runInteractiveSession(
         stateManager.clampDebugModalScrollOffset(debugModalMaxScrollOffset)
         const debugHints = [
           result.usesInternalScroll && result.maxScrollOffset > 0 ? SHORTCUTS.scroll : '',
-          SHORTCUTS.closeInfo,
+          SHORTCUTS.closeDebug,
         ]
           .filter(Boolean)
           .join(sep)

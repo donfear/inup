@@ -39,7 +39,6 @@ What happens when something goes wrong:
 - **Native decoder fails on a body:** that body is decoded again in TypeScript.
 - **Rust panic:** caught and reported as a fallback.
 - **Cancellation:** the TUI's abort signal cancels in-flight native requests.
-- **Dev link emulation** (`INUP_PACE_BPS`) always uses the JS transport.
 - **Logging:** `inup --debug` logs whether native is enabled, the decoder and transport in use, downloads, and every fallback.
 
 ## Platform packages

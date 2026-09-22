@@ -136,7 +136,16 @@ describe('Package Manager Integration Tests', () => {
 
       const pm = PackageManagerDetector.detect(testDir)
       expect(pm.name).toBe('bun')
-      expect(pm.lockFile).toBe('bun.lockb')
+    })
+
+    it('should detect bun from text bun.lock and report it as the lock file', () => {
+      createTestPackage(testDir)
+      writeFileSync(join(testDir, 'bun.lock'), '')
+
+      const pm = PackageManagerDetector.detect(testDir)
+      expect(pm.name).toBe('bun')
+      // Bun >= 1.2 writes bun.lock; the reported lock file matches what detection keys on.
+      expect(pm.lockFile).toBe('bun.lock')
     })
 
     it('should detect bun from packageManager field', () => {

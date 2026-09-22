@@ -1,5 +1,5 @@
 import * as semver from 'semver'
-import { isPackageIgnored, POOL_CONNECTIONS } from '../../shared/config'
+import { isPackageIgnored } from '../../shared/config'
 import { configManager } from '../../shared/config/user-config'
 import { applyReleaseAgeCooldown } from '../../shared/cooldown'
 import { debugLog } from '../../shared/debug-logger'
@@ -9,7 +9,7 @@ import {
   findPackageJson,
   readPackageJson,
 } from '../../shared/fs'
-import type { ControlTick } from '../../shared/http/controller-contract'
+import type { ControlTick } from '../../shared/http/hill-climb-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
 import type {
@@ -38,7 +38,6 @@ const SLOW_NETWORK_LIMIT_MAX = 6
 const SLOW_NETWORK_EWMA_MS = 1000
 
 interface PreparedDependencies {
-  allDependencies: DependencyEntry[]
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
@@ -72,13 +71,8 @@ export class PackageDetector {
   private minimumReleaseAge: number
   private minimumReleaseAgeExclude: string[]
 
-  private readonly maxConcurrency = 10
-  private readonly adaptive: boolean
   /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
   private readonly concurrency?: number
-  private readonly controllerMode: 'aimd' | 'hillclimb'
-  /** INUP_NET_PROFILE=0 disables learned-profile read AND write (clean A/B runs). */
-  private readonly profilePersistenceEnabled: boolean
   private readonly networkProfile: NetworkProfile | null
   /** Latest control decision of the current run, for the slow-network hint. */
   private lastControlTick: ControlTick | null = null
@@ -90,11 +84,8 @@ export class PackageDetector {
     this.ignorePackages = options?.ignorePackages || []
     this.ignoreMajorPackages = options?.ignoreMajorPackages || []
     this.maxDepth = options?.maxDepth ?? 10
-    this.adaptive = options?.adaptive ?? true
     this.concurrency = options?.concurrency
-    this.controllerMode = process.env.INUP_CONTROLLER === 'aimd' ? 'aimd' : 'hillclimb'
-    this.profilePersistenceEnabled = process.env.INUP_NET_PROFILE !== '0'
-    this.networkProfile = this.profilePersistenceEnabled ? configManager.getNetworkProfile() : null
+    this.networkProfile = configManager.getNetworkProfile()
     this.minimumReleaseAge = options?.minimumReleaseAge ?? 0
     this.minimumReleaseAgeExclude = options?.minimumReleaseAgeExclude ?? []
     this.packageJsonPath = findPackageJson(this.cwd)
@@ -105,32 +96,6 @@ export class PackageDetector {
 
   public hasPackageJson(): boolean {
     return this.packageJsonPath !== null && this.packageJson !== null
-  }
-
-  /**
-   * The resolved fetch configuration for this run, for perf logging. Exposes the
-   * exact values handed to the registry fetcher so a logged run is reproducible.
-   */
-  public getPerfConfig(): {
-    cwd: string
-    adaptive: boolean
-    maxConcurrency: number
-    poolConnections: number
-    controllerMode: 'aimd' | 'hillclimb'
-    pinnedConcurrency: number | null
-    hadNetworkProfile: boolean
-    profileLearnedLimit: number | null
-  } {
-    return {
-      cwd: this.cwd,
-      adaptive: this.adaptive,
-      maxConcurrency: this.maxConcurrency,
-      poolConnections: POOL_CONNECTIONS,
-      controllerMode: this.controllerMode,
-      pinnedConcurrency: this.concurrency ?? null,
-      hadNetworkProfile: this.networkProfile !== null,
-      profileLearnedLimit: this.networkProfile?.learnedLimit ?? null,
-    }
   }
 
   public async streamOutdatedPackages(
@@ -151,8 +116,6 @@ export class PackageDetector {
 
     const prepared = await this.prepareDependencies(onEvent)
     const initialPayload: StreamOutdatedPackagesInitialPayload = {
-      allDependencies: prepared.allDependencies,
-      uniquePackages: prepared.uniquePackages,
       currentVersions: prepared.currentVersions,
       progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
     }
@@ -170,17 +133,12 @@ export class PackageDetector {
     await fetchPackageVersions(prepared.uniquePackages, {
       signal,
       currentVersions: prepared.currentVersions,
-      maxConcurrency: this.maxConcurrency,
-      adaptive: this.adaptive,
       // Publish times live only in the full packument; fetch it only when the
       // release-age policy actually needs them.
       fullMetadata: this.minimumReleaseAge > 0,
       concurrency: this.concurrency,
-      controllerMode: this.controllerMode,
       networkProfile: this.networkProfile,
-      onNetworkProfile: this.profilePersistenceEnabled
-        ? (profile) => configManager.setNetworkProfile(profile)
-        : undefined,
+      onNetworkProfile: (profile) => configManager.setNetworkProfile(profile),
       onControlTick: (tick) => {
         this.lastControlTick = tick
         performanceTracker.recordControlTick(tick)
@@ -292,7 +250,6 @@ export class PackageDetector {
       },
     })
     const tFilter = Date.now()
-    const allDependencies: DependencyEntry[] = []
     const dependenciesByName = new Map<string, DependencyEntry[]>()
     let ignoredCount = 0
     const seenWorkspaceRefs = new Set<string>()
@@ -371,7 +328,6 @@ export class PackageDetector {
         continue
       }
 
-      allDependencies.push(dep)
       const group = dependenciesByName.get(dep.name)
       if (group) group.push(dep)
       else dependenciesByName.set(dep.name, [dep])
@@ -403,7 +359,6 @@ export class PackageDetector {
     }
 
     return {
-      allDependencies,
       dependenciesByName,
       uniquePackages,
       currentVersions,
@@ -650,7 +605,6 @@ export class PackageDetector {
   ): PackageLoadProgress {
     return {
       phase,
-      discovered: total,
       resolved,
       total,
       failed,

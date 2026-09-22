@@ -44,14 +44,13 @@ describe('auditVulnerabilities', () => {
 
   beforeEach(() => vi.clearAllMocks())
 
-  it('returns an empty map and skips the network when there is nothing outdated', async () => {
-    const result = await auditVulnerabilities([])
+  it('returns an empty map when there is nothing outdated', async () => {
+    const result = await auditVulnerabilities([], Promise.resolve(new Map()))
     expect(result.size).toBe(0)
-    expect(mocks.fetchVulnerabilities).not.toHaveBeenCalled()
   })
 
   it('aggregates per-advisory fix verdicts with AND across advisories', async () => {
-    mocks.fetchVulnerabilities.mockResolvedValue(
+    const advisories = Promise.resolve(
       new Map([
         [
           'axios',
@@ -73,7 +72,7 @@ describe('auditVulnerabilities', () => {
       ])
     )
 
-    const result = await auditVulnerabilities([pkg])
+    const result = await auditVulnerabilities([pkg], advisories as any)
     const summary = result.get(pkg)!
 
     expect(summary.count).toBe(2)
@@ -89,7 +88,7 @@ describe('auditVulnerabilities', () => {
     })
   })
 
-  it('uses pre-fetched advisories when given and skips its own request', async () => {
+  it('summarizes the pre-fetched advisories', async () => {
     const advisories = Promise.resolve(
       new Map([
         [
@@ -113,21 +112,19 @@ describe('auditVulnerabilities', () => {
 
     const result = await auditVulnerabilities([pkg], advisories as any)
 
-    expect(mocks.fetchVulnerabilities).not.toHaveBeenCalled()
     expect(result.get(pkg)?.count).toBe(1)
     expect(result.get(pkg)?.fixedByLatest).toBe(true)
   })
 
   it('omits packages with no advisories', async () => {
-    mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    const result = await auditVulnerabilities([pkg])
+    const result = await auditVulnerabilities([pkg], Promise.resolve(new Map()))
     expect(result.size).toBe(0)
   })
 
-  it('audits duplicate package names once and skips advisory-free entries', async () => {
+  it('summarizes every manifest of a package and skips advisory-free entries', async () => {
     const duplicate = { ...pkg, packageJsonPath: '/repo/packages/b/package.json' }
     const quiet = { ...pkg, name: 'left-pad' }
-    mocks.fetchVulnerabilities.mockResolvedValue(
+    const advisories = Promise.resolve(
       new Map([
         [
           'axios',
@@ -144,11 +141,9 @@ describe('auditVulnerabilities', () => {
       ])
     )
 
-    const result = await auditVulnerabilities([pkg, duplicate, quiet])
+    const result = await auditVulnerabilities([pkg, duplicate, quiet], advisories as any)
 
-    // One version map entry per unique name; both axios manifests summarized.
-    const sent = mocks.fetchVulnerabilities.mock.calls[0][0] as Map<string, string>
-    expect(Array.from(sent.keys())).toEqual(['axios', 'left-pad'])
+    // Both axios manifests summarized.
     expect(result.has(pkg)).toBe(true)
     expect(result.has(duplicate)).toBe(true)
     expect(result.has(quiet)).toBe(false)

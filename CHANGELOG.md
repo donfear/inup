@@ -7,6 +7,16 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- An unknown `--target` or `--package-manager` value is rejected with the list of allowed choices, and an empty value is rejected too instead of silently meaning the default.
+
+### Fixed
+
+- Ctrl+C exits straight away and no longer tells you to press it again for a second press it never waits for.
+- inup no longer loads a `.env.local` file from the project it is installed in. Values from that file could change how inup ran.
+- The performance panel (`!`) names the key that closes it, instead of `I`.
+
 ## [1.8.1] - 2026-09-18
 
 ### Added

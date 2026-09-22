@@ -1,7 +1,7 @@
 /**
  * Slow-start + hill-climb concurrency controller for slow links.
  *
- * The AIMD controller next door backs off only on real error signals (429/503,
+ * A plain AIMD controller backs off only on real error signals (429/503,
  * transient failures). That is correct for congestion but blind to a slow yet
  * healthy pipe: it ramps to the ceiling and splits a narrow connection across
  * 24 sockets. This controller instead measures *goodput* — completions per
@@ -17,16 +17,16 @@
  *  - VALIDATING: when starting from a persisted profile, confirm the network
  *                regime still matches before trusting the learned limit.
  *
- * Per-request latency NEVER drives a decision (the documented AIMD oscillation
- * failure was reacting to CDN latency variance). Latency is used exactly once:
- * the start-of-run regime check against a persisted baseline, with a 3× AND
- * ≥500ms bar that CDN jitter cannot clear. Decisions compare windowed goodput
+ * Per-request latency NEVER drives a decision (latency-driven AIMD oscillates
+ * on CDN latency variance). Latency is used exactly once: the start-of-run
+ * regime check against a persisted baseline, with a 3× AND ≥500ms bar that
+ * CDN jitter cannot clear. Decisions compare windowed goodput
  * with asymmetric hysteresis (+5% to move up, sustained −10% to move down in
  * HOLD), and steps are ±1 — worst-case oscillation amplitude is one slot.
  *
- * Error semantics are inherited from AIMD unchanged: congestion (429/503)
- * hard-halves the limit immediately; retryable errors in a window soft-decrease
- * (×0.7) at the tick and suppress any increase.
+ * Error semantics are classic AIMD: congestion (429/503) hard-halves the limit
+ * immediately; retryable errors in a window soft-decrease (×0.7) at the tick
+ * and suppress any increase.
  *
  * Windows with a very different ETag-304 share are not compared: a 304 is
  * header-sized and fast even on a slow pipe, so a cache-mix shift would fake a
@@ -37,14 +37,54 @@
 import { POOL_CONNECTIONS } from '../config/constants'
 import { clamp, Ewma, round2, roundTo } from '../math'
 import type { NetworkProfile } from '../types/domain'
-import type {
-  ConcurrencyController,
-  ConcurrencyControllerState,
-  ControlTick,
-  ControlTickReason,
-  RequestOutcomeKind,
-  RequestOutcomeMeta,
-} from './controller-contract'
+
+export type ControlTickReason =
+  | 'up'
+  | 'soft-down'
+  | 'hard-down'
+  | 'hold'
+  | 'double'
+  | 'revert'
+  | 'step-down'
+  | 'probe-up'
+  | 'probe-reject'
+  | 'regime-reset'
+
+export type ConcurrencyControllerState =
+  | 'validating'
+  | 'slow-start'
+  | 'climb-up'
+  | 'climb-down'
+  | 'hold'
+
+/** One control decision, reported to the perf tracker and the performance modal. */
+export interface ControlTick {
+  atMs: number
+  limit: number
+  ewmaMs: number
+  retries: number
+  reason: ControlTickReason
+  /** Controller phase after the decision. */
+  state: ConcurrencyControllerState
+  /** Window goodput (completions/sec), when the window was measured in completions. */
+  goodputRps?: number
+  /** Share of ETag-304 revalidations in the window (0..1). */
+  revalidatedRatio?: number
+  /** Window goodput in streamed response bytes/sec, when the window was measured
+   * in bytes (mostly full downloads). */
+  goodputBps?: number
+  /** True while the controller holds the ceiling because the link proved fast. */
+  fastLink?: boolean
+}
+
+export type RequestOutcomeKind = 'success' | 'congested' | 'retryable' | 'transient'
+
+export interface RequestOutcomeMeta {
+  /** True when the response was an ETag 304 revalidation (tiny and fast even on a slow pipe). */
+  revalidated?: boolean
+  /** Compressed response bytes received (0 for a 304). */
+  bytes?: number
+}
 
 export interface HillClimbTuning {
   /** Lower bound on the limit. */
@@ -131,42 +171,17 @@ type WindowMetric = 'bytes' | 'completions'
  * poison the next run's regime check in either direction. */
 const MIN_BASELINE_SAMPLES = 4
 
-/** Experiment/test overrides must still yield a working state machine: every
- * knob is a positive finite number, and the count-like knobs are integers with
- * sane lower bounds (a fractional window size or ceil < floor would wedge the
- * controller in ways no test of the defaults ever exercises). */
-const sanitizeTuning = (t: HillClimbTuning): HillClimbTuning => {
-  for (const [key, value] of Object.entries(t)) {
-    if (!Number.isFinite(value) || value <= 0) {
-      throw new Error(`HillClimbTuning.${key} must be a positive finite number, got ${value}`)
-    }
-  }
-  const floor = Math.max(1, Math.floor(t.floor))
-  return {
-    ...t,
-    floor,
-    ceil: Math.max(floor, Math.floor(t.ceil)),
-    coldStart: Math.max(1, Math.floor(t.coldStart)),
-    windowCompletions: Math.max(1, Math.floor(t.windowCompletions)),
-    holdDegradeWindows: Math.max(1, Math.floor(t.holdDegradeWindows)),
-    reprobeAfterWindows: Math.max(1, Math.floor(t.reprobeAfterWindows)),
-    validateAfterCompletions: Math.max(1, Math.floor(t.validateAfterCompletions)),
-  }
-}
-
 export interface HillClimbOptions {
   /** Persisted starting hypothesis; validated against live latency, never a cap. */
   profile?: Pick<NetworkProfile, 'learnedLimit' | 'baselineLatencyMs'> | null
   /** Sink for control decisions (perf modal / logs). */
   onTick?: (tick: ControlTick) => void
-  /** Override the defaults (tests / experiments). */
-  tuning?: Partial<HillClimbTuning>
   /** Timestamp the run started; anchors the first goodput window. */
   startedAt?: number
 }
 
-export class HillClimbController implements ConcurrencyController {
-  private readonly tuning: HillClimbTuning
+export class HillClimbController {
+  private readonly tuning: HillClimbTuning = HILL_CLIMB_TUNING
   private readonly onTick?: (tick: ControlTick) => void
 
   private limit: number
@@ -223,7 +238,6 @@ export class HillClimbController implements ConcurrencyController {
   private reachedHold = false
 
   constructor(packageCount: number, options: HillClimbOptions = {}) {
-    this.tuning = sanitizeTuning({ ...HILL_CLIMB_TUNING, ...options.tuning })
     this.onTick = options.onTick
     const t = this.tuning
     this.latencyEwma = new Ewma(t.ewmaAlpha)

@@ -1,9 +1,8 @@
 import type { ParsedVersions } from '../versions'
-import type { DependencyEntry, NetworkProfile, PackageInfo } from './domain'
+import type { NetworkProfile, PackageInfo } from './domain'
 
 export interface PackageLoadProgress {
   phase: 'discovering' | 'collecting' | 'resolving' | 'done'
-  discovered: number
   resolved: number
   total: number
   failed: number
@@ -23,8 +22,6 @@ export interface AuditProgress {
 }
 
 export interface StreamOutdatedPackagesInitialPayload {
-  allDependencies: DependencyEntry[]
-  uniquePackages: string[]
   currentVersions: Map<string, string>
   progress: PackageLoadProgress
 }
@@ -48,27 +45,10 @@ export interface FetchPackageVersionsOptions {
   /** Cancels queued requests, active downloads, and retry waits for this run. */
   signal?: AbortSignal
   /**
-   * In-flight registry fetches at any moment. When `adaptive` is false this is
-   * the fixed cap (the A/B control arm); when adaptive it is the legacy fallback
-   * for runs too small to control. Default: 10.
-   */
-  maxConcurrency?: number
-  /**
-   * Enable the adaptive-concurrency controller. Default: true. Set false to
-   * pin concurrency at `maxConcurrency` (legacy fixed behavior / A/B baseline).
-   */
-  adaptive?: boolean
-  /**
    * Pin registry-fetch concurrency to exactly this value and disable all
    * adaptation (and profile learning). The user-facing escape hatch.
    */
   concurrency?: number
-  /**
-   * Which adaptive controller drives the limit. Default: 'hillclimb'
-   * (slow-start + goodput hill-climb, adapts down on slow links);
-   * 'aimd' is the previous behavior, kept as the A/B control arm.
-   */
-  controllerMode?: 'aimd' | 'hillclimb'
   /**
    * Persisted starting hypothesis for the hill-climb controller. Validated
    * against live latency at run start — never a hard cap. Also caps the fixed
@@ -77,7 +57,7 @@ export interface FetchPackageVersionsOptions {
   networkProfile?: NetworkProfile | null
   /**
    * Fires once at end of run with the settled profile worth persisting
-   * (hill-climb controller only; pinned and fixed runs never learn).
+   * (pinned runs and runs too small to control never learn).
    */
   onNetworkProfile?: (profile: NetworkProfile) => void
 }

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { parse, parseDocument } from 'yaml'
 import { debugLog } from './debug-logger'
+import { findUp } from './fs/find-up'
 
 export const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml'
 
@@ -134,12 +135,10 @@ export function writeCatalogUpdates(
 
 /** Nearest pnpm-workspace.yaml at or above `startDir`, or null. */
 function findPnpmWorkspaceFile(startDir: string): string | null {
-  let dir = resolve(startDir)
-  for (;;) {
-    const candidate = join(dir, PNPM_WORKSPACE_FILE)
-    if (existsSync(candidate)) return candidate
-    const parent = dirname(dir)
-    if (parent === dir) return null
-    dir = parent
-  }
+  return (
+    findUp(startDir, (dir) => {
+      const candidate = join(dir, PNPM_WORKSPACE_FILE)
+      return existsSync(candidate) ? candidate : undefined
+    }) ?? null
+  )
 }
