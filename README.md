@@ -131,18 +131,18 @@ If you need the PR to trigger CI, pass a personal access token through the actio
 
 </details>
 
-## Native core (experimental)
+## Native core
 
-inup can fetch and parse registry data with a native core written in Rust: on large projects it uses about half the CPU and a quarter less memory, and the list stays responsive while packages load. It's off by default, and inup installs no native code until you turn it on.
+inup fetches and parses registry data with a native core written in Rust: on large projects it uses about half the CPU and a quarter less memory, and the list stays responsive while packages load. It's on by default.
+
+inup itself installs no native code. The first interactive run downloads the core for your platform (about 1.5 MB), verifies it against your registry's checksum and caches it; from the next run on, inup uses it. Scripted runs (`--json`, `--check`, `--apply`, CI) use the core once it's cached but never download it themselves, so they finish without waiting on it. Supported on macOS, Linux and Windows (x64 and arm64). If it can't be used, inup quietly falls back to the standard core.
 
 ```bash
-npx inup --native     # this run
-npx inup --no-native  # this run, even if .inuprc turns it on
+npx inup --no-native  # standard core for this run
+npx inup --native     # native core, downloading it even in a scripted run
 ```
 
-To keep it on for a project, add `"native": true` to [`.inuprc`](docs/guide/configuration.md#native).
-
-The first run with native on downloads the core for your platform (about 1.5 MB), verifies it against your registry's checksum and caches it; from the next run on, inup uses it. Supported on macOS, Linux and Windows (x64 and arm64). If it can't be used, inup quietly falls back to the standard core.
+To turn it off for a project, add `"native": false` to [`.inuprc`](docs/guide/configuration.md#native).
 
 ## Using it in scripts?
 

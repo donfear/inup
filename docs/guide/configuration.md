@@ -75,9 +75,9 @@ Pin registry-fetch parallelism for this project (integer 1–24) and disable ada
 
 ### `native`
 
-Experimental. Set to `true` to fetch and parse registry data with inup's native core, written in Rust. On large projects it uses about half the CPU and a quarter less memory, and the package list stays responsive while it loads. Defaults to `false`; `--native` and `--no-native` override it for a single run.
+Fetch and parse registry data with inup's native core, written in Rust. On large projects it uses about half the CPU and a quarter less memory, and the package list stays responsive while it loads. Defaults to `true`; set `false` to keep native code off a project. `--native` and `--no-native` override it for a single run.
 
-inup itself ships without native code. The first run with native enabled downloads the core for your platform (about 1.5 MB) from your npm registry, checks it against the checksum the registry publishes, and caches it; that run still uses the standard core, and later runs use the native one. A new inup version downloads its matching core once.
+inup itself ships without native code. The first interactive run downloads the core for your platform (about 1.5 MB) from your npm registry, checks it against the checksum the registry publishes, and caches it; that run still uses the standard core, and later runs use the native one. A new inup version downloads its matching core once. Scripted runs (`--json`, `--check`, `--apply`, CI) use a cached core but don't download one unless you pass `--native` or set `"native": true`, so they never wait on the download.
 
 Available for macOS, Linux (glibc and musl) and Windows, on x64 and arm64. Wherever the native core can't be downloaded or loaded, inup quietly uses the standard core — `--debug` logs which one is active.
 

@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The native core is on by default. The first interactive run downloads it for your platform and later runs use it; scripted runs (`--json`, `--check`, `--apply`, CI) use it once cached but never download it themselves. Turn it off with `--no-native` for one run or `"native": false` in `.inuprc`.
+
 ## [1.8.2] - 2026-09-22
 
 ### Changed

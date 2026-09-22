@@ -290,22 +290,37 @@ describe('CLI concurrency flag', () => {
     expect(runnerOptions().concurrency).toBe(2)
   })
 
-  describe('native core opt-in', () => {
+  describe('native core', () => {
     beforeEach(() => mocks.configureNativeCore.mockClear())
 
+    // [label, flags, .inuprc, interactive, download allowed (null: core off)]
     it.each([
-      ['off by default', {}, undefined, false],
-      ['on with --native', { native: true }, undefined, true],
-      ['on with "native": true in .inuprc', {}, { native: true }, true],
-      ['off with --no-native despite .inuprc', { native: false }, { native: true }, false],
-      ['off when .inuprc says false', {}, { native: false }, false],
-    ] as const)('is %s', async (_label, flags, config, expected) => {
+      ['on by default, downloading in interactive runs', {}, undefined, true, true],
+      ['on by default in headless runs, without downloading', {}, undefined, false, false],
+      [
+        'on with --native, downloading even in headless runs',
+        { native: true },
+        undefined,
+        false,
+        true,
+      ],
+      [
+        'on with "native": true in .inuprc, downloading even in headless runs',
+        {},
+        { native: true },
+        false,
+        true,
+      ],
+      ['off with --no-native despite .inuprc', { native: false }, { native: true }, true, null],
+      ['off when .inuprc says false', {}, { native: false }, true, null],
+    ] as const)('is %s', async (_label, flags, config, interactive, download) => {
       if (config) mocks.loadProjectConfig.mockReturnValue(config)
+      setInteractive(interactive)
       await runCli({ ...baseOptions, ...flags })
-      if (expected) {
-        expect(mocks.configureNativeCore).toHaveBeenCalledWith({ enabled: true })
-      } else {
+      if (download === null) {
         expect(mocks.configureNativeCore).not.toHaveBeenCalled()
+      } else {
+        expect(mocks.configureNativeCore).toHaveBeenCalledWith({ enabled: true, download })
       }
     })
   })

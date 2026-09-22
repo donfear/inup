@@ -118,8 +118,8 @@ async function decompressBody(raw: Buffer, encoding: string | undefined): Promis
 
 /**
  * Turn a 200 body into version data and persist its ETag entry for the next
- * run's conditional request. Uses the Rust core when one is enabled
- * (`--native` or `.inuprc`); if it fails, the TypeScript path handles the body.
+ * run's conditional request. Uses the Rust core when one is loaded; if it
+ * fails, the TypeScript path handles the body.
  *
  * The Rust decoder reads only the fields of the abbreviated document and drops
  * `time`, so a full-packument body is always decoded in TypeScript — otherwise

@@ -41,7 +41,7 @@ describe('buildConfigTemplate', () => {
     expect(config.showOptionalDependencyVulnerabilities).toBe(false)
     // concurrency ships commented out — enabling it would pin parallelism.
     expect(config.concurrency).toBeUndefined()
-    // native ships commented out — the core stays opt-in.
+    // native ships commented out — the core stays on by default.
     expect(config.native).toBeUndefined()
     warn.mockRestore()
   })

@@ -69,9 +69,9 @@ export interface InupProjectConfig {
   concurrency?: number
 
   /**
-   * Use the native (Rust) registry core for this project. Experimental and off
-   * by default; the first run downloads the prebuilt addon for this platform
-   * once. The --native / --no-native flags override this.
+   * Use the native (Rust) registry core for this project. On by default (the
+   * first run downloads the prebuilt addon for this platform once); set false to
+   * turn it off. The --native / --no-native flags override this.
    */
   native?: boolean
 }
