@@ -3,7 +3,6 @@ export { ConfirmationInputHandler, type InputAction, InputHandler } from './inpu
 export { renderReadmeKeyTable } from './keymap'
 export { UIRenderer } from './renderer'
 export {
-  createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
   type InteractiveSessionHandle,

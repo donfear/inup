@@ -109,7 +109,6 @@ function measureVersionColumns(state: PackageSelectionState, need: VersionColumn
       VersionUtils.getVisualLength(state.currentVersionSpecifier) + VERSION_COLUMN_OVERHEAD
     )
   )
-  if (state.loadState !== 'ready') return
   if (state.hasRangeUpdate) {
     const range = VersionUtils.applyVersionPrefix(state.currentVersionSpecifier, state.rangeVersion)
     need.range = cap(
@@ -185,7 +184,6 @@ function getCatalogBadge(catalog: string | undefined): string {
 
 export function renderPackageLine(
   state: PackageSelectionState,
-  _index: number,
   isCurrentRow: boolean,
   terminalWidth: number = 80,
   options: PackageListRenderOptions = {},
@@ -225,8 +223,6 @@ export function renderPackageLine(
   const isCurrentSelected = state.selectedOption === 'none'
   const isRangeSelected = state.selectedOption === 'range'
   const isLatestSelected = state.selectedOption === 'latest'
-  const isPending = state.loadState === 'pending'
-  const isFailed = state.loadState === 'failed'
 
   const currentColumnWidth = columnWidths?.current ?? MIN_VERSION_COLUMN_WIDTH
   const rangeColumnWidth = columnWidths?.range ?? MIN_VERSION_COLUMN_WIDTH
@@ -244,13 +240,7 @@ export function renderPackageLine(
 
   let rangeDot = ''
   let rangeVersionText = ''
-  if (isPending) {
-    rangeDot = getThemeColor('dotEmpty')('◌')
-    rangeVersionText = chalk.gray('loading')
-  } else if (isFailed) {
-    rangeDot = getThemeColor('dotEmpty')('◌')
-    rangeVersionText = chalk.gray('unavailable')
-  } else if (state.hasRangeUpdate) {
+  if (state.hasRangeUpdate) {
     rangeDot = isRangeSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const rangeVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
@@ -266,13 +256,7 @@ export function renderPackageLine(
 
   let latestDot = ''
   let latestVersionText = ''
-  if (isPending) {
-    latestDot = getThemeColor('dotEmpty')('◌')
-    latestVersionText = chalk.gray('loading')
-  } else if (isFailed) {
-    latestDot = getThemeColor('dotEmpty')('◌')
-    latestVersionText = chalk.gray('unavailable')
-  } else if (state.hasMajorUpdate) {
+  if (state.hasMajorUpdate) {
     latestDot = isLatestSelected ? getThemeColor('dot')('●') : getThemeColor('dotEmpty')('○')
     const latestVersionWithPrefix = VersionUtils.applyVersionPrefix(
       state.currentVersionSpecifier,
@@ -344,7 +328,7 @@ export function renderPackageLine(
   const currentWithPadding = `${currentSection} ${currentPaddingText}`
 
   let rangeSection = ''
-  if (isPending || isFailed || state.hasRangeUpdate) {
+  if (state.hasRangeUpdate) {
     rangeSection = `${rangeDot} ${rangeVersionText}`
     const rangeSectionLength = VersionUtils.getVisualLength(rangeSection) + 1
     const rangePadding = Math.max(0, rangeColumnWidth - rangeSectionLength)
@@ -357,7 +341,7 @@ export function renderPackageLine(
   }
 
   let latestSection = ''
-  if (isPending || isFailed || state.hasMajorUpdate) {
+  if (state.hasMajorUpdate) {
     latestSection = `${latestDot} ${latestVersionText}`
     const latestSectionLength = VersionUtils.getVisualLength(latestSection) + 1
     const latestPadding = Math.max(0, latestColumnWidth - latestSectionLength)
@@ -370,17 +354,4 @@ export function renderPackageLine(
   }
 
   return `${prefix}${packageNameSection}   ${currentWithPadding}   ${rangeSection}   ${latestSection}`
-}
-
-export function renderSectionHeader(
-  title: string,
-  sectionType: 'main' | 'peer' | 'optional'
-): string {
-  const colorFn =
-    sectionType === 'main' ? chalk.cyan : sectionType === 'peer' ? chalk.magenta : chalk.yellow
-  return `  ${colorFn.bold(title)}`
-}
-
-export function renderSpacer(): string {
-  return ''
 }

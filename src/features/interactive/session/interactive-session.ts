@@ -89,8 +89,6 @@ export async function runInteractiveSession(
     let previousViewportMode: 'list' | 'info-modal' | 'theme-modal' | null = null
     let previousModalViewportLineCount: number | null = null
 
-    stateManager.setRenderableItems([])
-
     const claimInteractiveScreen = () => {
       // Claimed exactly once per session; the guard is a safety net in case a
       // future caller re-claims.
@@ -211,7 +209,6 @@ export async function runInteractiveSession(
       )
       previousViewportMode = mode
       previousModalViewportLineCount = viewportLineCount
-      stateManager.markRendered([])
     }
 
     // Rows inserted since the last frame may sit above the focused package:
@@ -374,8 +371,6 @@ export async function runInteractiveSession(
           uiState.currentRow,
           uiState.scrollOffset,
           uiState.maxVisibleItems,
-          uiState.forceFullRender,
-          [],
           activeFilterLabel,
           packageManager,
           uiState.filterMode,
@@ -402,7 +397,6 @@ export async function runInteractiveSession(
         previousViewportMode = 'list'
         previousModalViewportLineCount = null
         focusedState = filteredStates[uiState.currentRow]
-        stateManager.markRendered(lines)
       }
 
       stateManager.setInitialRender(false)

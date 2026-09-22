@@ -6,20 +6,8 @@ import { makeSelectionState } from '../../../../fixtures/selection-state-factory
 const renderer = new UIRenderer()
 
 describe('UIRenderer', () => {
-  it('renders section headers with their title', () => {
-    for (const sectionType of ['main', 'peer', 'optional'] as const) {
-      expect(stripAnsi(renderer.renderSectionHeader('Dependencies', sectionType))).toContain(
-        'Dependencies'
-      )
-    }
-  })
-
-  it('renders a spacer line', () => {
-    expect(typeof renderer.renderSpacer()).toBe('string')
-  })
-
   it('renders the package list interface', () => {
-    const lines = renderer.renderInterface([makeSelectionState()], 0, 0, 10, false)
+    const lines = renderer.renderInterface([makeSelectionState()], 0, 0, 10)
 
     expect(lines.length).toBeGreaterThan(0)
     expect(lines.map(stripAnsi).join('\n')).toContain('test-pkg')
@@ -42,8 +30,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       pmInfo,
       undefined,
@@ -61,8 +47,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -84,8 +68,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -107,8 +89,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -134,8 +114,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -153,8 +131,6 @@ describe('UIRenderer', () => {
       0,
       0,
       10,
-      false,
-      undefined,
       undefined,
       undefined,
       undefined,
@@ -194,8 +170,6 @@ describe('UIRenderer', () => {
           0,
           0,
           10,
-          false,
-          undefined,
           undefined,
           undefined,
           undefined,
@@ -235,8 +209,6 @@ describe('UIRenderer', () => {
           0,
           0,
           10,
-          false,
-          undefined,
           undefined,
           undefined,
           undefined,
@@ -253,16 +225,8 @@ describe('UIRenderer', () => {
   })
 
   it('omits the cooldown header note when nothing is held', () => {
-    const lines = renderer.renderInterface([makeSelectionState()], 0, 0, 10, false)
+    const lines = renderer.renderInterface([makeSelectionState()], 0, 0, 10)
     expect(stripAnsi(lines.join('\n'))).not.toContain('held by cooldown')
-  })
-
-  it('renders the packages table for empty, current, and outdated inputs', () => {
-    expect(stripAnsi(renderer.renderPackagesTable([]))).toContain('All packages are up to date!')
-    expect(stripAnsi(renderer.renderPackagesTable([{ isOutdated: false }]))).toContain(
-      'All packages are up to date!'
-    )
-    expect(stripAnsi(renderer.renderPackagesTable([{ isOutdated: true }]))).toContain('inup')
   })
 
   it('renders the confirmation screen', () => {

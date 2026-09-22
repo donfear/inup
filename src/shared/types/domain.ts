@@ -85,8 +85,6 @@ export interface CatalogEntrySummary {
   range: string
 }
 
-export type PackageLoadState = 'pending' | 'ready' | 'failed'
-
 export interface PackageUpgradeChoice {
   name: string
   packageJsonPath: string // File to upgrade (package.json, or pnpm-workspace.yaml for catalog entries)

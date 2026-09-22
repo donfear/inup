@@ -135,22 +135,7 @@ describe('InteractiveUI selection state builders', () => {
     const states = ui.createSelectionStates([makePackageInfo()])
 
     expect(states).toHaveLength(1)
-    expect(states[0]).toMatchObject({ name: 'test-pkg', loadState: 'ready' })
-  })
-
-  it('builds pending placeholders for streaming packages', () => {
-    const ui = new InteractiveUI(npmInfo)
-
-    const states = ui.createPendingSelectionStates([
-      {
-        name: 'stream-pkg',
-        currentVersion: '^1.0.0',
-        type: 'dependencies',
-        packageJsonPath: '/repo/package.json',
-      },
-    ])
-
-    expect(states[0]).toMatchObject({ name: 'stream-pkg', loadState: 'pending' })
+    expect(states[0]).toMatchObject({ name: 'test-pkg' })
   })
 })
 
@@ -279,19 +264,6 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
     expect(attachRefresh).toHaveBeenLastCalledWith(undefined)
     expect(attachRefresh).toHaveBeenCalledWith(hook)
     expect(choices[0].targetVersion).toBe('^1.1.0')
-  })
-})
-
-describe('InteractiveUI.displayPackagesTable', () => {
-  it('prints the rendered table', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    try {
-      await new InteractiveUI(npmInfo).displayPackagesTable([])
-
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('All packages are up to date!'))
-    } finally {
-      log.mockRestore()
-    }
   })
 })
 

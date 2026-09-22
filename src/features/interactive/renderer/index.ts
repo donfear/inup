@@ -1,11 +1,9 @@
 import type {
   AuditProgress,
-  PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
   PackageSelectionState,
   PackageUpgradeChoice,
-  RenderableItem,
 } from '../../../shared/types'
 import type { InfoModalTab, ModalRenderResult } from '../modal'
 import * as Modal from '../modal'
@@ -17,21 +15,11 @@ import * as PackageList from './package-list'
  * Main UI renderer class that composes all rendering parts
  */
 export class UIRenderer {
-  renderSectionHeader(title: string, sectionType: 'main' | 'peer' | 'optional'): string {
-    return PackageList.renderSectionHeader(title, sectionType)
-  }
-
-  renderSpacer(): string {
-    return PackageList.renderSpacer()
-  }
-
   renderInterface(
     states: PackageSelectionState[],
     currentRow: number,
     scrollOffset: number,
     maxVisibleItems: number,
-    forceFullRender: boolean,
-    renderableItems?: RenderableItem[],
     activeFilterLabel?: string,
     packageManager?: PackageManagerInfo,
     filterMode?: boolean,
@@ -48,8 +36,6 @@ export class UIRenderer {
       currentRow,
       scrollOffset,
       maxVisibleItems,
-      forceFullRender,
-      renderableItems,
       activeFilterLabel,
       packageManager,
       filterMode,
@@ -61,10 +47,6 @@ export class UIRenderer {
       options,
       notice
     )
-  }
-
-  renderPackagesTable(packages: PackageInfo[]): string {
-    return PackageList.renderPackagesTable(packages)
   }
 
   renderConfirmation(choices: PackageUpgradeChoice[]): string {

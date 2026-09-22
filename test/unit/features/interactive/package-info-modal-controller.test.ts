@@ -152,14 +152,11 @@ describe('PackageInfoModalController', () => {
       releaseNotesViewIndex: 1,
     }
 
-    expect(controller.canNavigate(state, 'newer')).toBe(true)
-    expect(controller.canNavigate(state, 'older')).toBe(true)
     expect(controller.navigateVersion(state, 'newer')).toBe(0)
     expect(state.releaseNotesViewIndex).toBe(0)
     expect(controller.navigateVersion(state, 'newer')).toBe(-1)
     expect(controller.navigateVersion(state, 'older')).toBe(1)
     expect(controller.navigateVersion(state, 'older')).toBe(2)
-    expect(controller.canNavigate(state, 'older')).toBe(false)
     expect(controller.navigateVersion(state, 'older')).toBe(-1)
   })
 
@@ -374,8 +371,6 @@ describe('PackageInfoModalController', () => {
     expect(controller.navigateVersion(bare, 'older')).toBe(-1)
     expect(controller.isVersionLoaded(bare, 0)).toBe(false)
     expect(controller.getVersionCount(bare)).toBe(0)
-    expect(controller.canNavigate(bare, 'older')).toBe(false)
-    expect(controller.canNavigate(bare, 'newer')).toBe(false)
   })
 
   it('rejects out-of-range indices and already-loaded versions', async () => {
@@ -401,13 +396,9 @@ describe('PackageInfoModalController', () => {
       releaseNotesViewIndex: 0,
     })
 
-    expect(controller.canNavigate(state, 'newer')).toBe(false)
-    expect(controller.canNavigate(state, 'older')).toBe(true)
     expect(controller.navigateVersion(state, 'newer')).toBe(-1)
 
     state.releaseNotesViewIndex = 1
-    expect(controller.canNavigate(state, 'newer')).toBe(true)
-    expect(controller.canNavigate(state, 'older')).toBe(false)
     expect(controller.navigateVersion(state, 'older')).toBe(-1)
   })
 
@@ -499,7 +490,6 @@ describe('PackageInfoModalController', () => {
     const controller = new PackageInfoModalController()
     const state = makeSelectionState({ releaseNotesVersions: ['2.0.0', '1.0.0'] })
 
-    expect(controller.canNavigate(state, 'older')).toBe(true)
     expect(controller.navigateVersion(state, 'older')).toBe(1)
   })
 

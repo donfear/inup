@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { StateManager } from '../../../../src/features/interactive/state'
-import type { PackageSelectionState, RenderableItem } from '../../../../src/shared/types'
-import { makeSelectionState } from '../../../fixtures/selection-state-factory'
+import type { PackageSelectionState } from '../../../../src/shared/types'
 
 // StateManager owns a ThemeManager, which persists through the configManager
 // singleton — mock it so tests never touch the user's real config file.
@@ -23,7 +22,6 @@ const ready = (over: Partial<PackageSelectionState> = {}): PackageSelectionState
   rangeVersion: '1.1.0',
   latestVersion: '2.0.0',
   selectedOption: 'none',
-  loadState: 'ready',
   hasRangeUpdate: true,
   hasMajorUpdate: true,
   type: 'dependencies',
@@ -47,13 +45,8 @@ describe('StateManager.toggleSelection', () => {
     expect(states[0].selectedOption).toBe('none')
   })
 
-  it('resetForResize falls back to renderable items, then the visible row count', () => {
+  it('resetForResize falls back to the visible row count', () => {
     const sm = new StateManager(0, 24)
-    sm.setRenderableItems([{ type: 'package', state: ready(), originalIndex: 0 } as RenderableItem])
-    sm.resetForResize(0)
-    expect(sm.getUIState().scrollOffset).toBe(0)
-
-    sm.setRenderableItems([])
     sm.resetForResize()
     expect(sm.getUIState().scrollOffset).toBe(0)
   })
@@ -72,9 +65,10 @@ describe('StateManager.toggleSelection', () => {
     expect(states[0].selectedOption).toBe('range')
   })
 
-  it('ignores non-ready rows', () => {
+  it('ignores a cursor that points past the list', () => {
     const sm = new StateManager(0, 24)
-    const states = [ready({ loadState: 'pending' })]
+    sm.navigateBottom(5) // move the cursor to row 4
+    const states = [ready()]
     sm.toggleSelection(states)
     expect(states[0].selectedOption).toBe('none')
   })
@@ -170,9 +164,7 @@ describe('StateManager.updateSelection', () => {
     expect(select(ready({ selectedOption: 'none', hasMajorUpdate: false }), 'left')).toBe('range')
   })
 
-  it('ignores rows that are still loading and empty lists', () => {
-    expect(select(ready({ loadState: 'pending' }), 'right')).toBe('none')
-
+  it('ignores empty lists', () => {
     const sm = new StateManager(0, 24)
     sm.updateSelection([], 'right') // must not throw
   })
@@ -189,13 +181,13 @@ describe('StateManager.updateSelection', () => {
 })
 
 describe('StateManager bulk selection edge cases', () => {
-  it('bulk minor skips rows without a range update and rows still loading', () => {
+  it('bulk minor skips rows without a range update', () => {
     const sm = new StateManager(0, 24)
-    const states = [ready(), ready({ hasRangeUpdate: false }), ready({ loadState: 'pending' })]
+    const states = [ready(), ready({ hasRangeUpdate: false })]
 
     sm.bulkSelectMinor(states)
 
-    expect(states.map((s) => s.selectedOption)).toEqual(['range', 'none', 'none'])
+    expect(states.map((s) => s.selectedOption)).toEqual(['range', 'none'])
   })
 
   it('bulk latest falls back to range when no major update exists', () => {
@@ -211,16 +203,13 @@ describe('StateManager bulk selection edge cases', () => {
     expect(states.map((s) => s.selectedOption)).toEqual(['latest', 'range', 'none'])
   })
 
-  it('bulk unselect clears only ready rows', () => {
+  it('bulk unselect clears every row', () => {
     const sm = new StateManager(0, 24)
-    const states = [
-      ready({ selectedOption: 'latest' }),
-      ready({ selectedOption: 'range', loadState: 'pending' }),
-    ]
+    const states = [ready({ selectedOption: 'latest' }), ready({ selectedOption: 'range' })]
 
     sm.bulkUnselectAll(states)
 
-    expect(states.map((s) => s.selectedOption)).toEqual(['none', 'range'])
+    expect(states.map((s) => s.selectedOption)).toEqual(['none', 'none'])
   })
 
   it('bulk operations tolerate empty lists', () => {
@@ -261,21 +250,6 @@ describe('StateManager display state', () => {
     sm.resetForResize(10)
 
     expect(sm.getUIState().forceFullRender).toBe(true)
-  })
-
-  it('stores rendered lines and renderable items', () => {
-    const sm = new StateManager(0, 24)
-    const items: RenderableItem[] = [
-      { type: 'package', state: makeSelectionState(), originalIndex: 0 },
-    ]
-
-    sm.setRenderableItems(items)
-    sm.markRendered(['line-1', 'line-2'])
-
-    const ui = sm.getUIState()
-    expect(ui.renderableItems).toBe(items)
-    expect(ui.renderedLines).toEqual(['line-1', 'line-2'])
-    expect(sm.packageIndexToVisualIndex(0)).toBe(0)
   })
 })
 
@@ -466,14 +440,10 @@ describe('StateManager.getUIState', () => {
     expect(sm.getUIState()).toEqual(
       expect.objectContaining({
         currentRow: 0,
-        previousRow: -1,
         scrollOffset: 0,
-        previousScrollOffset: 0,
         maxVisibleItems: 17,
         terminalHeight: 24,
         forceFullRender: true,
-        renderedLines: [],
-        renderableItems: [],
         showInfoModal: false,
         infoModalRow: -1,
         isLoadingModalInfo: false,

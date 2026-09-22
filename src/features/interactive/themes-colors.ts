@@ -221,20 +221,3 @@ export function getTerminalResetCode(): string {
 export function inupLogo(): string {
   return chalk.hex('#4ade80').bold(PACKAGE_NAME)
 }
-
-export const themeColors = {
-  primary: () => getThemeColor('primary'),
-  secondary: () => getThemeColor('secondary'),
-  success: () => getThemeColor('success'),
-  warning: () => getThemeColor('warning'),
-  error: () => getThemeColor('error'),
-  border: () => getThemeColor('border'),
-  text: () => getThemeColor('text'),
-  textSecondary: () => getThemeColor('textSecondary'),
-  packageName: () => getThemeColor('packageName'),
-  versionRange: () => getThemeColor('versionRange'),
-  versionLatest: () => getThemeColor('versionLatest'),
-  dot: () => getThemeColor('dot'),
-  dotEmpty: () => getThemeColor('dotEmpty'),
-  bg: () => getThemeColor('bg'),
-}

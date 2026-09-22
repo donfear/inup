@@ -21,7 +21,6 @@ export type InputAction =
   | { type: 'toggle_vulnerable_filter' }
   | { type: 'toggle_cooldown_held_filter' }
   | { type: 'notify_empty_selection' }
-  | { type: 'confirm' }
   | { type: 'bulk_select_minor' }
   | { type: 'bulk_select_latest' }
   | { type: 'bulk_unselect_all' }
@@ -37,7 +36,6 @@ export type InputAction =
   | { type: 'theme_navigate_up' }
   | { type: 'theme_navigate_down' }
   | { type: 'theme_confirm' }
-  | { type: 'cancel' }
   | { type: 'resize'; height: number }
   | { type: 'enter_filter_mode'; preserveQuery?: boolean }
   | { type: 'exit_filter_mode'; clearQuery?: boolean }
@@ -105,7 +103,6 @@ export class InputHandler {
             return
 
           case 't':
-          case 'T':
             // Allow 't' to toggle theme modal closed as well
             this.onAction({ type: 'toggle_theme_modal' })
             return
@@ -169,7 +166,6 @@ export class InputHandler {
             this.onAction({ type: 'toggle_info_modal' })
             return
           case 'i':
-          case 'I':
             this.onAction({ type: 'toggle_info_modal' })
             return
           case 'tab':
@@ -284,9 +280,7 @@ export class InputHandler {
     // Enter confirms the selection (guarding against an empty selection). It runs
     // the cleanup/confirm path directly rather than going through onAction.
     if (key.name === 'return') {
-      const selectedCount = states.filter(
-        (s) => s.loadState === 'ready' && s.selectedOption !== 'none'
-      ).length
+      const selectedCount = states.filter((s) => s.selectedOption !== 'none').length
       if (selectedCount === 0) {
         this.onAction({ type: 'notify_empty_selection' })
         return

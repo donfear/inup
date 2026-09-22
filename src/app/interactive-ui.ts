@@ -2,7 +2,6 @@ import type { Key } from 'node:readline'
 import { VulnerabilityAuditController } from '../features/audit'
 import {
   ConfirmationInputHandler,
-  createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
   type InteractiveSessionHandle,
@@ -81,10 +80,6 @@ export class InteractiveUI {
     this.saveExact = options?.saveExact ?? false
   }
 
-  public async displayPackagesTable(packages: PackageInfo[]): Promise<void> {
-    console.log(this.renderer.renderPackagesTable(packages))
-  }
-
   public async selectPackagesToUpgrade(
     packages: PackageInfo[],
     previousSelections?: Map<string, 'none' | 'range' | 'latest'>
@@ -119,20 +114,6 @@ export class InteractiveUI {
         this.vulnerabilityAuditController.getCachedSummary(name, version, type),
       previousSelections,
       includeUpToDate
-    )
-  }
-
-  public createPendingSelectionStates(
-    packages: Array<
-      Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath' | 'catalog'>
-    >,
-    previousSelections?: Map<string, 'none' | 'range' | 'latest'>
-  ): PackageSelectionState[] {
-    return createPendingSelectionStates(
-      packages,
-      (name, version, type) =>
-        this.vulnerabilityAuditController.getCachedSummary(name, version, type),
-      previousSelections
     )
   }
 

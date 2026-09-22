@@ -151,8 +151,6 @@ async function main() {
         0,
         0,
         20,
-        false,
-        undefined,
         undefined,
         undefined,
         false,
