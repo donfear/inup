@@ -215,7 +215,8 @@ describe('PackageManagerDetector', () => {
     it('should return correct info for bun', () => {
       const info = PackageManagerDetector.getInfo('bun')
       expect(info.name).toBe('bun')
-      expect(info.lockFile).toBe('bun.lockb')
+      // Bun >= 1.2's text lockfile; detection also still accepts the legacy bun.lockb.
+      expect(info.lockFile).toBe('bun.lock')
       expect(info.installCommand).toBe('bun install')
     })
   })

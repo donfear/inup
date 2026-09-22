@@ -1,26 +1,31 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import chalk from 'chalk'
+import type { PackageManager, PackageManagerInfo } from './types'
 
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun'
+/**
+ * Lock files in detection priority order — the single table both `detect()` and each
+ * manager's `lockFile` read from. A manager's first entry is its current format.
+ */
+const LOCK_FILES: ReadonlyArray<{ file: string; pm: PackageManager }> = [
+  { file: 'pnpm-lock.yaml', pm: 'pnpm' },
+  // Bun >= 1.2 writes a text `bun.lock`; older versions wrote the binary `bun.lockb`.
+  { file: 'bun.lock', pm: 'bun' },
+  { file: 'bun.lockb', pm: 'bun' },
+  { file: 'yarn.lock', pm: 'yarn' },
+  { file: 'package-lock.json', pm: 'npm' },
+]
 
-export interface PackageManagerInfo {
-  name: PackageManager
-  displayName: string
-  lockFile: string
-  workspaceFile: string | null // null means check package.json workspaces field
-  installCommand: string
-  // Install used after writing upgrades; opts out of CI frozen/immutable installs so the
-  // lockfile can be regenerated. Falls back to installCommand when not set. See domain.ts.
-  writeInstallCommand?: string
-  color: typeof chalk
+function primaryLockFile(pm: PackageManager): string {
+  // Every manager has an entry above, so find() never misses.
+  return (LOCK_FILES.find((entry) => entry.pm === pm) as { file: string }).file
 }
 
 const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   npm: {
     name: 'npm',
     displayName: 'npm',
-    lockFile: 'package-lock.json',
+    lockFile: primaryLockFile('npm'),
     workspaceFile: null, // Uses package.json workspaces field
     installCommand: 'npm install',
     color: chalk.red,
@@ -28,7 +33,7 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   yarn: {
     name: 'yarn',
     displayName: 'yarn',
-    lockFile: 'yarn.lock',
+    lockFile: primaryLockFile('yarn'),
     workspaceFile: null, // Uses package.json workspaces field
     installCommand: 'yarn install',
     // Yarn Berry defaults to immutable installs in CI; --no-immutable lets the lockfile update.
@@ -38,7 +43,7 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   pnpm: {
     name: 'pnpm',
     displayName: 'pnpm',
-    lockFile: 'pnpm-lock.yaml',
+    lockFile: primaryLockFile('pnpm'),
     workspaceFile: 'pnpm-workspace.yaml',
     installCommand: 'pnpm install',
     // pnpm defaults to --frozen-lockfile in CI; --no-frozen-lockfile lets the lockfile update.
@@ -48,7 +53,7 @@ const PACKAGE_MANAGERS: Record<PackageManager, PackageManagerInfo> = {
   bun: {
     name: 'bun',
     displayName: 'bun',
-    lockFile: 'bun.lockb',
+    lockFile: primaryLockFile('bun'),
     workspaceFile: null, // Uses package.json workspaces field
     installCommand: 'bun install',
     color: chalk.magenta,
@@ -114,16 +119,10 @@ export class PackageManagerDetector {
    * Detect from lock files (with priority and recency)
    */
   private static detectFromLockFiles(cwd: string): PackageManagerInfo | null {
-    const lockFileChecks = [
-      { pm: PACKAGE_MANAGERS.pnpm, path: join(cwd, 'pnpm-lock.yaml') },
-      { pm: PACKAGE_MANAGERS.bun, path: join(cwd, 'bun.lockb') },
-      // Bun >= 1.2 writes a text `bun.lock` instead of the binary `bun.lockb`.
-      { pm: PACKAGE_MANAGERS.bun, path: join(cwd, 'bun.lock') },
-      { pm: PACKAGE_MANAGERS.yarn, path: join(cwd, 'yarn.lock') },
-      { pm: PACKAGE_MANAGERS.npm, path: join(cwd, 'package-lock.json') },
-    ]
-
-    const existingLocks = lockFileChecks
+    const existingLocks = LOCK_FILES.map(({ file, pm }) => ({
+      pm: PACKAGE_MANAGERS[pm],
+      path: join(cwd, file),
+    }))
       .filter(({ path }) => existsSync(path))
       .map(({ pm, path }) => ({
         pm,
