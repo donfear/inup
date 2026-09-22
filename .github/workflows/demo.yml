@@ -71,14 +71,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GIF_PATH: docs/demo/interactive-upgrade.gif
-          MP4_PATH: docs/demo/interactive-upgrade.mp4
           PR_BRANCH: automated-demo-gif
           SOURCE_REF: ${{ github.ref_name }}
           SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
-          if git diff --quiet -- "$GIF_PATH" "$MP4_PATH"; then
+          if git diff --quiet -- "$GIF_PATH"; then
             echo "No demo recording changes to publish."
             exit 0
           fi
@@ -86,25 +85,22 @@ jobs:
           git config user.email "${{ secrets.GH_EMAIL }}"
           git config user.name "${{ secrets.GH_USERNAME }}"
 
-          # Preserve the freshly recorded GIF and the mp4 the website hero
-          # plays (record-demo.sh emits both), then branch cleanly off main
+          # Preserve the freshly recorded GIF, then branch cleanly off main
           # so the pull request contains only the recording change
           # (regardless of which branch this workflow was dispatched from).
           cp "$GIF_PATH" "$RUNNER_TEMP/demo.gif"
-          cp "$MP4_PATH" "$RUNNER_TEMP/demo.mp4"
           git fetch origin main
           git checkout -f -B "$PR_BRANCH" origin/main
           mkdir -p "$(dirname "$GIF_PATH")"
           cp "$RUNNER_TEMP/demo.gif" "$GIF_PATH"
-          cp "$RUNNER_TEMP/demo.mp4" "$MP4_PATH"
-          git add "$GIF_PATH" "$MP4_PATH"
+          git add "$GIF_PATH"
 
           if git diff --cached --quiet; then
             echo "Recorded GIF is identical to the one on main; nothing to publish."
             exit 0
           fi
 
-          git commit -m "docs: update demo recording (gif + mp4)"
+          git commit -m "docs: update demo recording"
           git push --force origin "$PR_BRANCH"
 
           BODY_FILE="$RUNNER_TEMP/pr-body.md"

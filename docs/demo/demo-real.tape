@@ -9,7 +9,7 @@ Set PlaybackSpeed 1.0
 # the hi-DPI look comes from drawing everything twice as large — FontSize 32 on
 # a 2480x1020 canvas is ~2x the pixels-per-glyph of a 1x render, i.e. Retina
 # sharp. record-demo.sh downscales the GIF back to 1240 wide (small README
-# asset) and keeps the mp4 at full 2x for the website hero. Keep Width/Height a
+# asset). Keep Width/Height a
 # clean 2x of the old 1240x510 so the framing is unchanged. Padding scales too
 # (40 = 2x20) so inup's full-height panel borders keep their breathing room.
 Set Width 2480

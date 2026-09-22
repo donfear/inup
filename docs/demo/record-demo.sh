@@ -13,8 +13,7 @@ CLI_ENTRY="$REPO_ROOT/dist/cli.js"
 
 echo "Recording demo with clean paths..."
 
-# Both outputs are required: the README embeds the gif and the website
-# hero plays the mp4. Fail before recording rather than after.
+# The README embeds the gif. Fail before recording rather than after.
 for tool in vhs ffmpeg ffprobe; do
     if ! command -v "$tool" >/dev/null 2>&1; then
         echo "error: $tool is required (brew install $tool)" >&2
@@ -22,7 +21,7 @@ for tool in vhs ffmpeg ffprobe; do
     fi
 done
 
-# Scratch for the render itself (fresh GIF, palette, mp4, throwaway HOME).
+# Scratch for the render itself (fresh GIF, palette, throwaway HOME).
 # Unique per run so a failed render can never leave a previous GIF behind for
 # the conversion steps to pick up and republish as new.
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/inup-demo.XXXXXX")"
@@ -99,17 +98,6 @@ if [ "$ACTUAL_SIZE" != "$EXPECTED_SIZE" ]; then
 fi
 
 GIF="$REPO_ROOT/docs/demo/interactive-upgrade.gif"
-MP4="$TEMP_DIR/interactive-upgrade.mp4"
-
-# The mp4 (website hero) is encoded from the full 2x GIF, before the GIF is
-# downscaled — so the hero keeps every rendered pixel. lanczos scaling + crf 20
-# is visibly sharper than the old crf 28; still tiny next to the GIF.
-echo "Converting to mp4 for the website (full 2x)..."
-ffmpeg -xerror -y -i "$RAW_GIF" \
-    -movflags faststart -pix_fmt yuv420p \
-    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos" -crf 20 -an \
-    "$MP4"
-
 # The README embeds the GIF, so keep that asset small: downscale the 2x render
 # back to 1240 wide. A dedicated palette (palettegen/paletteuse) keeps the text
 # crisp at the smaller size instead of the muddy default 256-color quantization.
@@ -123,10 +111,8 @@ ffmpeg -xerror -y -i "$RAW_GIF" -frames:v 1 -update 1 \
 ffmpeg -xerror -y -i "$RAW_GIF" -i "$PALETTE" \
     -lavfi "scale=1240:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3" \
     "$GIF_SMALL"
-# Only publish after both conversions have succeeded and produced output.
+# Only publish after the conversion has succeeded and produced output.
 test -s "$GIF_SMALL"
-test -s "$MP4"
 mv "$GIF_SMALL" "$GIF"
-mv "$MP4" "$REPO_ROOT/docs/demo/interactive-upgrade.mp4"
 
-echo "Demo recorded: docs/demo/interactive-upgrade.gif (1240px) + .mp4 (2x)"
+echo "Demo recorded: docs/demo/interactive-upgrade.gif (1240px)"

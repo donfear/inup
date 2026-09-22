@@ -19,7 +19,7 @@ describe.skipIf(process.platform === 'win32')('demo recording output safety', ()
   let repo: string
   let bin: string
 
-  const asset = (extension: string) => join(repo, `docs/demo/interactive-upgrade.${extension}`)
+  const gif = () => join(repo, 'docs/demo/interactive-upgrade.gif')
   const stub = (name: string, body: string) =>
     writeFileSync(join(bin, name), `#!/bin/bash\nset -eu\n${body}\n`, { mode: 0o755 })
 
@@ -33,8 +33,7 @@ describe.skipIf(process.platform === 'win32')('demo recording output safety', ()
     for (const file of ['record-demo.sh', 'demo-real.tape']) {
       copyFileSync(join(process.cwd(), 'docs/demo', file), join(repo, 'docs/demo', file))
     }
-    writeFileSync(asset('gif'), 'old gif')
-    writeFileSync(asset('mp4'), 'old mp4')
+    writeFileSync(gif(), 'old gif')
     stub('pnpm', 'printf "%s\\n" "$*" >> "$TEST_DEMO_LOG"')
     stub('git', 'printf "test-commit\\n"')
     stub('rsync', 'exit 0')
@@ -68,7 +67,7 @@ esac`
       `
 output="\${!#}"
 case "$TEST_DEMO_MODE:$output" in
-  mp4-failure:*.mp4|palette-failure:*/palette.png|gif-failure:*/interactive-upgrade-1240.gif) exit 1 ;;
+  palette-failure:*/palette.png|gif-failure:*/interactive-upgrade-1240.gif) exit 1 ;;
 esac
 printf 'fresh conversion' > "$output"`
     )
@@ -96,29 +95,23 @@ printf 'fresh conversion' > "$output"`
     })
   }
 
-  it.each([
-    'missing',
-    'empty',
-    'invalid',
-    'wrong-size',
-    'mp4-failure',
-    'palette-failure',
-    'gif-failure',
-  ])('fails without replacing either tracked asset when recording is %s', (mode) => {
-    const result = record(mode)
-    expect(result.error).toBeUndefined()
-    expect(result.status).not.toBe(0)
-    expect(readFileSync(asset('gif'), 'utf8')).toBe('old gif')
-    expect(readFileSync(asset('mp4'), 'utf8')).toBe('old mp4')
-    const output = readFileSync(join(scratch, 'output-path'), 'utf8').trim()
-    expect(existsSync(dirname(output))).toBe(false)
-    expect(existsSync(join(scratch, 'workspace', 'my-app'))).toBe(false)
-    if (mode === 'missing' || mode === 'empty') {
-      expect(result.stderr).toContain('VHS did not create a fresh GIF')
+  it.each(['missing', 'empty', 'invalid', 'wrong-size', 'palette-failure', 'gif-failure'])(
+    'fails without replacing the tracked GIF when recording is %s',
+    (mode) => {
+      const result = record(mode)
+      expect(result.error).toBeUndefined()
+      expect(result.status).not.toBe(0)
+      expect(readFileSync(gif(), 'utf8')).toBe('old gif')
+      const output = readFileSync(join(scratch, 'output-path'), 'utf8').trim()
+      expect(existsSync(dirname(output))).toBe(false)
+      expect(existsSync(join(scratch, 'workspace', 'my-app'))).toBe(false)
+      if (mode === 'missing' || mode === 'empty') {
+        expect(result.stderr).toContain('VHS did not create a fresh GIF')
+      }
     }
-  })
+  )
 
-  it('builds the checkout and publishes both assets only after fresh output and successful conversions', () => {
+  it('builds the checkout and publishes the GIF only after fresh output and a successful conversion', () => {
     const result = record('success')
     expect(result.error).toBeUndefined()
     expect(result.status, result.stderr).toBe(0)
@@ -126,8 +119,7 @@ printf 'fresh conversion' > "$output"`
     expect(readFileSync(join(scratch, 'commands'), 'utf8')).toBe(
       'build\ninstall --prefer-offline\n'
     )
-    expect(readFileSync(asset('gif'), 'utf8')).toBe('fresh conversion')
-    expect(readFileSync(asset('mp4'), 'utf8')).toBe('fresh conversion')
+    expect(readFileSync(gif(), 'utf8')).toBe('fresh conversion')
     const output = readFileSync(join(scratch, 'output-path'), 'utf8').trim()
     expect(output).not.toContain(repo)
     expect(existsSync(dirname(output))).toBe(false)

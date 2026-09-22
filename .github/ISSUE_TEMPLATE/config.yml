@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Documentation, comparisons & changelog
-    url: https://donfear.github.io/inup/
-    about: Options, CI usage, the GitHub Action, and how inup compares to other upgraders.
+  - name: Documentation
+    url: https://github.com/donfear/inup/blob/main/docs/guide/README.md
+    about: Options, configuration, CI usage and the GitHub Action.
   - name: Question / discussion
     url: https://github.com/donfear/inup/discussions
     about: Ask a question or share how you use inup.

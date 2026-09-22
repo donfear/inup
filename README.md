@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://donfear.github.io/inup/"><img src="docs/brand/inup-logo.webp" alt="inup logo" width="170"></a>
+  <img src="docs/brand/inup-logo.webp" alt="inup logo" width="170">
 </p>
 
 # inup
@@ -76,7 +76,7 @@ Review the diff and run your tests after upgrading.
 
 inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
-Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/).
+Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
 ## Let a release age before you take it
 
@@ -86,7 +86,7 @@ A version published an hour ago is the one most likely to be a compromised relea
 npx inup --minimum-release-age 10080   # nothing published in the last 7 days
 ```
 
-Keep it in [`.inuprc`](https://donfear.github.io/inup/docs/configuration/) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
+Keep it in [`.inuprc`](docs/guide/configuration.md) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
 
 inup tells you what it held back rather than quietly showing you fewer updates, so a package waiting out its cooldown never looks the same as a package that is up to date.
 
@@ -127,7 +127,7 @@ In your repo's **Settings → Actions → General → Workflow permissions**, en
 
 `minor` stays within existing version ranges. Use `patch` for patch updates only, or `latest` to include major upgrades.
 
-If you need the PR to trigger CI, pass a personal access token through the action's `token` input. See the [Action guide](https://donfear.github.io/inup/docs/github-action/) for all inputs and outputs.
+If you need the PR to trigger CI, pass a personal access token through the action's `token` input. See the [Action guide](docs/guide/github-action.md) for all inputs and outputs.
 
 </details>
 
@@ -140,7 +140,7 @@ npx inup --native     # this run
 npx inup --no-native  # this run, even if .inuprc turns it on
 ```
 
-To keep it on for a project, add `"native": true` to [`.inuprc`](https://donfear.github.io/inup/docs/configuration/#native).
+To keep it on for a project, add `"native": true` to [`.inuprc`](docs/guide/configuration.md#native).
 
 The first run with native on downloads the core for your platform (about 1.5 MB), verifies it against your registry's checksum and caches it; from the next run on, inup uses it. Supported on macOS, Linux and Windows (x64 and arm64). If it can't be used, inup quietly falls back to the standard core.
 
@@ -152,13 +152,13 @@ npx inup --json   # Print a JSON report; don't change files
 npx inup --apply  # Apply in-range updates and run install
 ```
 
-[CLI reference](https://donfear.github.io/inup/docs/cli/) · [CI guide](https://donfear.github.io/inup/docs/ci/) · [Troubleshooting](https://donfear.github.io/inup/docs/faq/)
+[CLI reference](docs/guide/cli.md) · [CI guide](docs/guide/ci.md) · [Troubleshooting](docs/guide/faq.md)
 
 ---
 
 No telemetry or tracking. inup contacts your package registry for metadata, npm for security advisories and download counts, and GitHub for release notes.
 
-[Documentation](https://donfear.github.io/inup/) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/donfear/inup/issues) · [MIT license](LICENSE)
+[Documentation](docs/guide/README.md) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/donfear/inup/issues) · [MIT license](LICENSE)
 
 <details>
 <summary>Tests and coverage</summary>
@@ -169,15 +169,3 @@ No telemetry or tracking. inup contacts your package registry for metadata, npm 
 <!-- TEST-BADGES:END -->
 
 </details>
-
-<!-- Feature cards consumed by the website. Order matches its card icons. -->
-<!-- FEATURES:START -->
-<!--
-- **Check security before updating** — See known vulnerabilities beside a package and whether an available update resolves them.
-- **Find a package** — Press / to search the list by name.
-- **Focus the list** — Show or hide development, peer, and optional dependencies as you browse.
-- **Read the release notes** — Press i to see package details and changelogs in the terminal.
-- **Select updates in bulk** — Select updates within your existing version ranges, or include the latest majors.
-- **Choose your version** — Pick an in-range update or the latest version for each package.
--->
-<!-- FEATURES:END -->
