@@ -232,9 +232,9 @@ describe('GitHubClient.fetchReleases', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ message: 'rate limited' }))
     expect(await client.fetchReleases(REPO_URL, signal)).toBeNull()
 
-    client.clearCache()
+    // A fresh client, since the first result is cached.
     fetchMock.mockResolvedValueOnce(jsonResponse(null, false))
-    expect(await client.fetchReleases(REPO_URL, signal)).toBeNull()
+    expect(await new GitHubClient().fetchReleases(REPO_URL, signal)).toBeNull()
   })
 
   it('keeps earlier pages when a later page errors', async () => {
@@ -253,16 +253,6 @@ describe('GitHubClient.fetchReleases', () => {
 
     fetchMock.mockRejectedValue(abortError())
     await expect(client.fetchReleases(REPO_URL, signal)).rejects.toThrow('aborted')
-  })
-
-  it('refetches after clearCache', async () => {
-    fetchMock.mockResolvedValue(jsonResponse([makeRelease()]))
-    await client.fetchReleases(REPO_URL, signal)
-
-    client.clearCache()
-    await client.fetchReleases(REPO_URL, signal)
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })
 

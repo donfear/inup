@@ -42,11 +42,6 @@ export class GitHubClient {
   private releasesCache = new Map<string, GitHubRelease[] | null>()
   private rawChangelogCache = new Map<string, string | null>()
 
-  clearCache(): void {
-    this.releasesCache.clear()
-    this.rawChangelogCache.clear()
-  }
-
   async fetchReleaseByTag(
     repoUrl: string,
     tag: string,

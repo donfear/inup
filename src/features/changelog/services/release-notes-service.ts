@@ -15,12 +15,6 @@ export class ReleaseNotesService {
     private readonly githubClient = new GitHubClient()
   ) {}
 
-  clearCache(): void {
-    this.releaseNotesCache.clear()
-    this.releaseNotesInFlight.clear()
-    this.githubClient.clearCache()
-  }
-
   async fetchReleaseNotesForVersion(
     packageName: string,
     version: string,
