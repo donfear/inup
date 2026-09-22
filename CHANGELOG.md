@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- An unknown `--target` or `--package-manager` value is rejected with the list of allowed choices, and an empty value is rejected too instead of silently meaning the default.
+
 ## [1.8.1] - 2026-09-18
 
 ### Added
