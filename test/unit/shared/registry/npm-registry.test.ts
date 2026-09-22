@@ -45,12 +45,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { debugLog } from '../../../../src/shared/debug-logger'
-import type { ControlTick } from '../../../../src/shared/http/adaptive-controller'
 import {
   readEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
 } from '../../../../src/shared/http/etag-store'
+import type { ControlTick } from '../../../../src/shared/http/hill-climb-controller'
 import { sleep } from '../../../../src/shared/http/retry'
 import {
   clearPackageCache,
@@ -421,7 +421,6 @@ describe('npm-registry', () => {
 
     const emitted: Array<[string, string]> = []
     const result = await fetchPackageVersions(['pkg-a', 'pkg-b', 'pkg-c'], {
-      maxConcurrency: 3,
       onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
     })
 
@@ -443,8 +442,6 @@ describe('npm-registry', () => {
     )
     const emitted: string[] = []
     const run = fetchPackageVersions(['a', 'b', 'c'], {
-      adaptive: false,
-      maxConcurrency: 3,
       onPackageReady: ({ packageName }) => emitted.push(packageName),
     })
     await new Promise((resolve) => setImmediate(resolve))
@@ -471,8 +468,6 @@ describe('npm-registry', () => {
     )
     const emitted: string[] = []
     const run = fetchPackageVersions(['a', 'b', 'c'], {
-      adaptive: false,
-      maxConcurrency: 3,
       onPackageReady: ({ packageName }) => {
         emitted.push(packageName)
         if (packageName === 'a') throw new Error('consumer failed')
@@ -498,8 +493,6 @@ describe('npm-registry', () => {
 
     const emitted: Array<[string, string]> = []
     await fetchPackageVersions(['a', 'b'], {
-      adaptive: false,
-      maxConcurrency: 2,
       onPackageReady: ({ packageName, data }) => emitted.push([packageName, data.latestVersion]),
     })
 
@@ -529,23 +522,11 @@ describe('npm-registry', () => {
 
     const names = (n: number) => Array.from({ length: n }, (_, i) => `pkg-${i + 1}`)
 
-    it('adaptive:false pins in-flight to maxConcurrency (the control arm)', async () => {
-      const getPeak = withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
-
-      await fetchPackageVersions(names(40), {
-        adaptive: false,
-        maxConcurrency: 10,
-      })
-
-      expect(getPeak()).toBeLessThanOrEqual(10)
-    })
-
     it('small runs (<= ceil) skip the controller — no control ticks', async () => {
       withConcurrencyTracking(makeOkBody({ versions: { '1.0.0': {} } }))
       const ticks: ControlTick[] = []
 
       await fetchPackageVersions(names(12), {
-        adaptive: true,
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -557,7 +538,6 @@ describe('npm-registry', () => {
       const ticks: ControlTick[] = []
 
       await fetchPackageVersions(names(120), {
-        adaptive: true,
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -584,7 +564,6 @@ describe('npm-registry', () => {
       const ticks: ControlTick[] = []
 
       await fetchPackageVersions(names(120), {
-        adaptive: true,
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -612,7 +591,6 @@ describe('npm-registry', () => {
       })
 
       await fetchPackageVersions(names(60), {
-        adaptive: true,
         onControlTick: (t) => ticks.push(t),
       })
 
@@ -632,7 +610,6 @@ describe('npm-registry', () => {
       const timed: string[] = []
 
       const result = await fetchPackageVersions(names(60), {
-        adaptive: true,
         onPackageTiming: (name) => timed.push(name),
       })
 
@@ -651,7 +628,6 @@ describe('npm-registry', () => {
       const timed: string[] = []
 
       const result = await fetchPackageVersions(['congested-pkg', 'missing-pkg'], {
-        adaptive: true,
         onPackageTiming: (name) => timed.push(name),
       })
 
@@ -672,7 +648,7 @@ describe('npm-registry', () => {
         return makeOkBody({ versions: { '1.0.0': {} } })
       })
 
-      const result = await fetchPackageVersions(names(60), { adaptive: true })
+      const result = await fetchPackageVersions(names(60))
 
       expect(result.size).toBe(60)
     })
@@ -786,44 +762,6 @@ describe('npm-registry', () => {
       expect(ticks.some((t) => t.reason === 'revert' || t.reason === 'step-down')).toBe(false)
     })
 
-    it('INUP_FASTLINK=0 disables fast link while keeping the controller on', async () => {
-      vi.stubEnv('INUP_FASTLINK', '0')
-      try {
-        withStreamedBigBodies(20, 100_000)
-        const ticks: ControlTick[] = []
-
-        await runFetch(names(60), { onControlTick: (t) => ticks.push(t) })
-
-        expect(ticks.length).toBeGreaterThan(0)
-        expect(ticks.some((t) => t.fastLink)).toBe(false)
-        expect(ticks[0].goodputBps).toBeGreaterThan(1_000_000)
-      } finally {
-        vi.unstubAllEnvs()
-      }
-    })
-
-    it('INUP_PACE_BPS paces streamed chunks at the given bytes per second', async () => {
-      vi.stubEnv('INUP_PACE_BPS', '1000')
-      try {
-        const json = JSON.stringify({ versions: { '1.0.0': {} }, pad: 'x'.repeat(466) })
-        expect(Buffer.byteLength(json)).toBe(500)
-        requestMock.mockResolvedValue({ statusCode: 200, body: json, chunks: [Buffer.from(json)] })
-        let settled = false
-        const done = fetchPackageVersions(['demo-pkg']).then((r) => {
-          settled = true
-          return r
-        })
-
-        await vi.advanceTimersByTimeAsync(400)
-        expect(settled).toBe(false) // 500 bytes at 1000 B/s need 500 ms
-        await vi.advanceTimersByTimeAsync(150)
-        expect(settled).toBe(true)
-        expect((await done).get('demo-pkg')?.latestVersion).toBe('1.0.0')
-      } finally {
-        vi.unstubAllEnvs()
-      }
-    })
-
     it('concurrency option pins the limit and disables the controller', async () => {
       const getPeak = withFastLink(5)
       const ticks: ControlTick[] = []
@@ -932,20 +870,6 @@ describe('npm-registry', () => {
       // The controller backed off on the transient errors — no 429 needed.
       expect(ticks.some((t) => t.reason === 'soft-down')).toBe(true)
       expect(ticks.some((t) => t.reason === 'hard-down')).toBe(false)
-    })
-
-    it('controllerMode aimd selects the control arm (smart start at the ceiling)', async () => {
-      requestMock.mockResolvedValue(makeOkBody({ versions: { '1.0.0': {} } }))
-      const ticks: ControlTick[] = []
-
-      await runFetch(names(120), {
-        controllerMode: 'aimd',
-        onControlTick: (t) => ticks.push(t),
-      })
-
-      expect(ticks.length).toBeGreaterThan(0)
-      expect(ticks[0].limit).toBe(24) // AIMD smart-starts at the ceiling
-      expect(ticks.some((t) => t.reason === 'double')).toBe(false)
     })
 
     it('applies a failed profile validation to the semaphore immediately', async () => {
@@ -1199,7 +1123,6 @@ describe('npm-registry', () => {
       afterEach(() => {
         nativeTransportMock.mockReset()
         nativeTransportMock.mockReturnValue(null)
-        delete process.env.INUP_PACE_BPS
       })
 
       it('sends the whole attempt to Rust: URL, credentials and the cache file', async () => {
@@ -1320,15 +1243,6 @@ describe('npm-registry', () => {
         useTransport(outcome({ kind: 'cancelled' }))
         const result = await fetchPackageVersions(['demo-pkg'])
         expect(result.get('demo-pkg')?.latestVersion).toBe('unknown')
-      })
-
-      it('keeps the JS transport when dev link pacing is on', async () => {
-        process.env.INUP_PACE_BPS = '0'
-        const { fetch } = useTransport(outcome({}))
-        requestMock.mockImplementation(async () => makeOkBody({ versions: { '4.0.0': {} } }))
-        const result = await fetchPackageVersions(['demo-pkg'])
-        expect(fetch).not.toHaveBeenCalled()
-        expect(result.get('demo-pkg')?.latestVersion).toBe('4.0.0')
       })
 
       it('feeds natively streamed bytes to the adaptive controller', async () => {

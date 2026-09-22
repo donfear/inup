@@ -1,10 +1,5 @@
 import chalk from 'chalk'
-import {
-  getPerformanceTracker,
-  isPerfLoggingEnabled,
-  perfEnv,
-  writePerfLog,
-} from '../features/debug'
+import { getPerformanceTracker } from '../features/debug'
 import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
 import { PackageDetector, PackageUpgrader } from '../features/upgrade'
 import { countHeldPackages } from '../shared/cooldown'
@@ -139,17 +134,6 @@ export class UpgradeRunner {
             performanceTracker.mark('allLoaded')
             this.ui.setCooldownHeldCount(countHiddenCooldownHolds(latestPackages))
             this.ui.setCooldownUnsupported(this.isCooldownInert())
-            if (isPerfLoggingEnabled()) {
-              writePerfLog(
-                {
-                  ...this.detector.getPerfConfig(),
-                  packageManager: this.packageManager.name,
-                  mode: 'interactive',
-                  env: perfEnv(),
-                },
-                performanceTracker.snapshot()
-              )
-            }
             session?.refresh()
           }
         }, scanController.signal)

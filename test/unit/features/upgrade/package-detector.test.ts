@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   findClosestMinorVersion: vi.fn(),
   fetchPackageVersions: vi.fn(),
   loadPnpmCatalogs: vi.fn(),
-  isPerfLoggingEnabled: vi.fn(() => false),
   getNetworkProfile: vi.fn(() => null),
   setNetworkProfile: vi.fn(),
   performanceTracker: {
@@ -61,7 +60,6 @@ vi.mock('../../../../src/shared/registry/npm-registry', () => ({
 
 vi.mock('../../../../src/features/debug', () => ({
   getPerformanceTracker: () => mocks.performanceTracker,
-  isPerfLoggingEnabled: mocks.isPerfLoggingEnabled,
 }))
 
 vi.mock('../../../../src/shared/config', async (importOriginal) => {
@@ -119,11 +117,9 @@ describe('PackageDetector streaming', () => {
         packageNames: string[],
         options: {
           onPackageReady: (result: any) => void
-          maxConcurrency: number
         }
       ) => {
         expect(packageNames).toEqual(['@scope/pkg', 'zod'])
-        expect(options.maxConcurrency).toBe(10)
         const onPackageReady = options.onPackageReady
 
         onPackageReady({
@@ -528,7 +524,6 @@ describe('PackageDetector edge paths', () => {
   })
 
   beforeEach(() => {
-    mocks.isPerfLoggingEnabled.mockReturnValue(false)
     Object.values(mocks.performanceTracker).forEach((fn) => {
       fn.mockClear()
     })
@@ -558,21 +553,11 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
-  it('defaults cwd to process.cwd() and exposes the perf config', () => {
+  it('defaults cwd to process.cwd()', () => {
     const detector = new PackageDetector()
 
     expect(mocks.findPackageJson).toHaveBeenCalledWith(process.cwd())
     expect(detector.hasPackageJson()).toBe(true)
-    expect(detector.getPerfConfig()).toEqual({
-      cwd: process.cwd(),
-      adaptive: true,
-      maxConcurrency: 10,
-      poolConnections: expect.any(Number),
-      controllerMode: 'hillclimb',
-      pinnedConcurrency: null,
-      hadNetworkProfile: false,
-      profileLearnedLimit: null,
-    })
   })
 
   it('reports no package.json and refuses to stream without one', async () => {
@@ -588,8 +573,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('forwards control ticks and per-package latency to the tracker in every run', async () => {
-    // Not gated on INUP_PERF: the in-app performance modal reads these timings.
-    mocks.isPerfLoggingEnabled.mockReturnValue(false)
+    // Always forwarded: the in-app performance modal reads these timings.
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       dep('zod', '^1.0.0'),
       dep('never-resolved', '^1.0.0'),
@@ -1393,9 +1377,6 @@ describe('PackageDetector prerelease handling', () => {
 })
 
 describe('PackageDetector concurrency plumbing', () => {
-  const originalController = process.env.INUP_CONTROLLER
-  const originalNetProfile = process.env.INUP_NET_PROFILE
-
   const storedProfile = {
     schemaVersion: 1 as const,
     learnedLimit: 6,
@@ -1408,8 +1389,6 @@ describe('PackageDetector concurrency plumbing', () => {
   let fetchOptions: Record<string, unknown>
 
   beforeEach(() => {
-    delete process.env.INUP_CONTROLLER
-    delete process.env.INUP_NET_PROFILE
     mocks.getNetworkProfile.mockReset()
     mocks.getNetworkProfile.mockReturnValue(null)
     mocks.setNetworkProfile.mockReset()
@@ -1437,13 +1416,6 @@ describe('PackageDetector concurrency plumbing', () => {
     )
   })
 
-  afterEach(() => {
-    if (originalController === undefined) delete process.env.INUP_CONTROLLER
-    else process.env.INUP_CONTROLLER = originalController
-    if (originalNetProfile === undefined) delete process.env.INUP_NET_PROFILE
-    else process.env.INUP_NET_PROFILE = originalNetProfile
-  })
-
   const run = async (options?: ConstructorParameters<typeof PackageDetector>[0]) => {
     const detector = new PackageDetector({ cwd: '/repo', ...options })
     await detector.streamOutdatedPackages(() => {})
@@ -1453,17 +1425,6 @@ describe('PackageDetector concurrency plumbing', () => {
   it('passes a pinned concurrency through to the registry fetcher', async () => {
     await run({ concurrency: 5 })
     expect(fetchOptions.concurrency).toBe(5)
-  })
-
-  it('defaults to the hillclimb controller', async () => {
-    await run()
-    expect(fetchOptions.controllerMode).toBe('hillclimb')
-  })
-
-  it('INUP_CONTROLLER=aimd selects the control arm', async () => {
-    process.env.INUP_CONTROLLER = 'aimd'
-    await run()
-    expect(fetchOptions.controllerMode).toBe('aimd')
   })
 
   it('injects the stored network profile', async () => {
@@ -1480,23 +1441,10 @@ describe('PackageDetector concurrency plumbing', () => {
     expect(mocks.setNetworkProfile).toHaveBeenCalledWith(storedProfile)
   })
 
-  it('INUP_NET_PROFILE=0 disables both profile read and write', async () => {
-    process.env.INUP_NET_PROFILE = '0'
-    mocks.getNetworkProfile.mockReturnValue(storedProfile)
-    await run()
-    expect(fetchOptions.networkProfile).toBeNull()
-    expect(fetchOptions.onNetworkProfile).toBeUndefined()
-  })
-
-  it('exposes the new knobs in the perf config', async () => {
-    mocks.getNetworkProfile.mockReturnValue(storedProfile)
-    const detector = await run({ concurrency: 7 })
-    expect(detector.getPerfConfig()).toMatchObject({
-      controllerMode: 'hillclimb',
-      pinnedConcurrency: 7,
-      hadNetworkProfile: true,
-      profileLearnedLimit: 6,
-    })
+  it('ignores the deprecated adaptive option', async () => {
+    await run({ adaptive: false })
+    expect(fetchOptions).not.toHaveProperty('adaptive')
+    expect(fetchOptions.concurrency).toBeUndefined()
   })
 
   const streamWithTick = async (tick: Record<string, unknown>) => {

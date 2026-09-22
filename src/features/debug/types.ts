@@ -1,4 +1,4 @@
-import type { ControlTick } from '../../shared/http/controller-contract'
+import type { ControlTick } from '../../shared/http/hill-climb-controller'
 
 export type PerformancePhase =
   | 'firstResult'
@@ -9,13 +9,13 @@ export type PerformancePhase =
   | 'registryFetch'
 
 // One adaptive-concurrency control decision (separate channel from PackageTiming).
-// The canonical definitions live with the controllers; re-exported here so the
-// perf tracker/modal and the controllers can never drift apart structurally.
+// The canonical definitions live with the controller; re-exported here so the
+// perf tracker/modal and the controller can never drift apart structurally.
 export type {
   ConcurrencyControllerState,
   ControlTick,
   ControlTickReason,
-} from '../../shared/http/controller-contract'
+} from '../../shared/http/hill-climb-controller'
 
 export interface PerformanceCounts {
   packageJsonFiles?: number

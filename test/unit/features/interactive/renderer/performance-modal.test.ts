@@ -13,7 +13,7 @@ describe('renderPerformanceModal', () => {
     expect(text).toContain('⚡ Performance')
     expect(text).toContain('Package manager: unknown')
     expect(text).toContain('(no registry responses timed yet)')
-    expect(text).toContain('(fixed — adaptive off or run too small)')
+    expect(text).toContain('(fixed — pinned or run too small)')
     expect(text).toContain('(none)')
     expect(text).toContain('—')
   })
@@ -93,9 +93,9 @@ describe('renderPerformanceModal', () => {
   it('summarizes concurrency control ticks', () => {
     const snapshot = makeSnapshot({
       controlTicks: [
-        { atMs: 0, limit: 4, ewmaMs: 100, retries: 0, reason: 'up' },
-        { atMs: 5, limit: 16, ewmaMs: 120, retries: 0, reason: 'up' },
-        { atMs: 9, limit: 8, ewmaMs: 250, retries: 2, reason: 'hard-down' },
+        { atMs: 0, limit: 4, ewmaMs: 100, retries: 0, reason: 'up', state: 'climb-up' },
+        { atMs: 5, limit: 16, ewmaMs: 120, retries: 0, reason: 'up', state: 'climb-up' },
+        { atMs: 9, limit: 8, ewmaMs: 250, retries: 2, reason: 'hard-down', state: 'hold' },
       ],
     })
     const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)
@@ -106,8 +106,6 @@ describe('renderPerformanceModal', () => {
     expect(text).toMatch(/Final EWMA\s+250 ms/)
     expect(text).toMatch(/Control ticks\s+3/)
     expect(text).toMatch(/Hard back-offs\s+1/)
-    // Plain AIMD ticks carry no state — the modal labels the arm accordingly.
-    expect(text).toMatch(/Controller\s+aimd/)
   })
 
   it('shows bytes goodput in MB/s and flags a fast-link hold', () => {
@@ -131,7 +129,7 @@ describe('renderPerformanceModal', () => {
     expect(text).toMatch(/Last goodput\s+5\.7 MB\/s/)
   })
 
-  it('shows hill-climb state and goodput when the ticks carry them', () => {
+  it('shows the controller state and goodput', () => {
     const snapshot = makeSnapshot({
       controlTicks: [
         { atMs: 0, limit: 8, ewmaMs: 700, retries: 0, reason: 'double', state: 'slow-start' },
@@ -149,24 +147,21 @@ describe('renderPerformanceModal', () => {
     })
     const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)
 
-    expect(text).toMatch(/Controller\s+hillclimb/)
     expect(text).toMatch(/State\s+hold/)
     expect(text).toMatch(/Last goodput\s+9\.5\/s/)
   })
 
-  it('renders placeholders when the final hill-climb tick carries no window data', () => {
-    // Defensive rendering: snapshots may come from perf logs written by other
-    // versions, where a final hard-down tick has neither state nor goodput.
+  it('renders a goodput placeholder when the final tick carries no window data', () => {
+    // A hard-down decides from the error alone, so its tick has no goodput.
     const snapshot = makeSnapshot({
       controlTicks: [
         { atMs: 0, limit: 8, ewmaMs: 700, retries: 0, reason: 'double', state: 'slow-start' },
-        { atMs: 5, limit: 4, ewmaMs: 900, retries: 1, reason: 'hard-down' },
+        { atMs: 5, limit: 4, ewmaMs: 900, retries: 1, reason: 'hard-down', state: 'hold' },
       ],
     })
     const text = plain(renderPerformanceModal(snapshot, 100, 60).lines)
 
-    expect(text).toMatch(/Controller\s+hillclimb/) // any state-carrying tick decides the arm
-    expect(text).toMatch(/State\s+—/)
+    expect(text).toMatch(/State\s+hold/)
     expect(text).toMatch(/Last goodput\s+—/)
   })
 
