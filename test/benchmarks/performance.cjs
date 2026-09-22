@@ -2,33 +2,21 @@
 // Synthetic, offline fixtures. No user config/cache writes or real installs.
 // Every case runs BENCH_RUNS times (default 5); wall and CPU are reported as
 // the median with the min-max spread so a single noisy run cannot mislead.
-const fs = require('node:fs')
 const { performance } = require('node:perf_hooks')
-const ts = require('typescript')
-
-require.extensions['.ts'] = (mod, file) => {
-  mod._compile(
-    ts.transpileModule(fs.readFileSync(file, 'utf8'), {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-        esModuleInterop: true,
-      },
-    }).outputText,
-    file
-  )
-}
+// Benchmarks the compiled output in dist/ (what ships to users); `pnpm bench`
+// builds it first. Patching a module's exports works because tsc's CommonJS
+// output calls imports through the exports object.
 require('chalk').default.level = 0
 // Never read or write the real learned network profile.
-const { configManager } = require('../../src/shared/config/user-config.ts')
+const { configManager } = require('../../dist/shared/config/user-config.js')
 configManager.getNetworkProfile = () => null
 configManager.setNetworkProfile = () => {}
-require('../../src/shared/http/etag-store.ts').setEtagCacheEnabled(false)
-require('../../src/shared/registry/registry-config.ts').registryTargetFor = () => ({
+require('../../dist/shared/http/etag-store.js').setEtagCacheEnabled(false)
+require('../../dist/shared/registry/registry-config.js').registryTargetFor = () => ({
   origin: 'https://benchmark.invalid',
   pathPrefix: '',
 })
-const { ConsoleUtils } = require('../../src/shared/terminal/index.ts')
+const { ConsoleUtils } = require('../../dist/shared/terminal/index.js')
 ConsoleUtils.showProgress = () => {}
 ConsoleUtils.clearProgress = () => {}
 let dependencies = []
@@ -38,7 +26,7 @@ const versions = Object.fromEntries([
   ...Array.from({ length: 50 }, (_, i) => [`1.${i}.0`, {}]),
 ])
 const body = Buffer.from(JSON.stringify({ versions }))
-require('../../src/shared/http/http-request.ts').httpRequest = async (_origin, { path }) => {
+require('../../dist/shared/http/http-request.js').httpRequest = async (_origin, { path }) => {
   const delay = responseDelay(path)
   if (delay) await new Promise((resolve) => setTimeout(resolve, delay))
   return {
@@ -52,19 +40,33 @@ require('../../src/shared/http/http-request.ts').httpRequest = async (_origin, {
     },
   }
 }
-require('../../src/shared/fs/scan.ts').findAllPackageJsonFilesAsync = async () => [
+require('../../dist/shared/fs/scan.js').findAllPackageJsonFilesAsync = async () => [
   `${process.cwd()}/package.json`,
 ]
-require('../../src/shared/fs/io.ts').collectAllDependenciesAsync = async () => dependencies
-const { PackageDetector } = require('../../src/features/upgrade/package-detector.ts')
-const list = require('../../src/features/interactive/renderer/package-list/index.ts')
-const { makeSelectionState } = require('../fixtures/selection-state-factory.ts')
+require('../../dist/shared/fs/io.js').collectAllDependenciesAsync = async () => dependencies
+const { PackageDetector } = require('../../dist/features/upgrade/package-detector.js')
+const list = require('../../dist/features/interactive/renderer/package-list/index.js')
+// Mirrors test/fixtures/selection-state-factory.ts (plain JS: dist/ has no test fixtures).
+const makeSelectionState = (overrides) => ({
+  name: 'test-pkg',
+  packageJsonPath: '/repo/package.json',
+  packageJsonPaths: ['/repo/package.json'],
+  currentVersionSpecifier: '^1.0.0',
+  currentVersion: '1.0.0',
+  rangeVersion: '1.1.0',
+  latestVersion: '2.0.0',
+  selectedOption: 'none',
+  hasRangeUpdate: true,
+  hasMajorUpdate: true,
+  type: 'dependencies',
+  ...overrides,
+})
 // Present on branches with sorted insertion; the baseline has no such list.
 let SelectionList = null
 try {
-  SelectionList = require('../../src/features/interactive/session/selection-list.ts').SelectionList
+  SelectionList = require('../../dist/features/interactive/session/selection-list.js').SelectionList
 } catch {}
-const { getPerformanceTracker } = require('../../src/features/debug/index.ts')
+const { getPerformanceTracker } = require('../../dist/features/debug/index.js')
 const RUNS = Math.max(1, Number(process.env.BENCH_RUNS ?? 5))
 const results = []
 const median = (values) => {

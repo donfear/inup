@@ -21,7 +21,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage --reporter=default --reporter=json --outputFile.json=coverage/test-results.json",
-    "bench": "node --expose-gc test/benchmarks/performance.cjs",
+    "bench": "pnpm build && node --expose-gc test/benchmarks/performance.cjs",
     "native:build": "napi build --platform --release --no-js --manifest-path native/napi/Cargo.toml --output-dir native/out",
     "native:check": "cargo fmt --manifest-path native/Cargo.toml --all --check && cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings && cargo test --manifest-path native/Cargo.toml --workspace --release",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
