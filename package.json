@@ -26,10 +26,7 @@
     "native:check": "cargo fmt --manifest-path native/Cargo.toml --all --check && cargo clippy --manifest-path native/Cargo.toml --workspace --release --all-targets -- -D warnings && cargo test --manifest-path native/Cargo.toml --workspace --release",
     "lint:deps": "depcruise src --config .dependency-cruiser.cjs",
     "docs:keys": "UPDATE_README=1 vitest run keymap-readme",
-    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme",
-    "site:dev": "pnpm --filter @inup/website dev",
-    "site:build": "pnpm --filter @inup/website build",
-    "site:preview": "pnpm --filter @inup/website preview"
+    "docs:badges": "pnpm test:coverage && UPDATE_README=1 vitest run badges-readme"
   },
   "author": "Donfear",
   "keywords": [
@@ -57,7 +54,7 @@
     "dependabot"
   ],
   "license": "MIT",
-  "homepage": "https://donfear.github.io/inup/",
+  "homepage": "https://github.com/donfear/inup#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/donfear/inup.git"

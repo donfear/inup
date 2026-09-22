@@ -22,7 +22,7 @@ change what they do because of it?* If no, it does not belong in the file.
 | Bugs a user could actually hit | CI, workflows, release plumbing |
 | Performance a user can feel | Dependency bumps with no behavior change |
 | Anything that breaks existing usage | Formatting, linting, docs-internal edits |
-| Security fixes, always | Website content (unless it's the site launching) |
+| Security fixes, always | |
 
 A release where nothing passes that test gets **no section at all**. It
 still ships to npm and still has a git tag — it just has nothing to say
@@ -148,9 +148,6 @@ them immediately. The symptom is the useful half.
 
    That prints the section's body without its heading — the release page
    already shows the version as its title.
-
-   The website's changelog page renders GitHub Releases, not this file, so
-   that paste is what makes the published notes human-written too.
 
 ## Native core packages
 
