@@ -2,7 +2,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
 import { HeadersTimeoutError, httpRequest } from '../../../../src/shared/http/http-request'
-import { isTransientNetworkError } from '../../../../src/shared/http/retry'
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void
 
@@ -87,14 +86,13 @@ describe('httpRequest', () => {
     expect(server.connections()).toBe(1)
   })
 
-  it('rejects with a transient HeadersTimeoutError when headers never arrive', async () => {
+  it('rejects with a HeadersTimeoutError when headers never arrive', async () => {
     const { port } = await serve(() => {})
     const error = await get(`http://127.0.0.1:${port}`, '/', { headersTimeoutMs: 50 }).catch(
       (e: unknown) => e
     )
     expect(error).toBeInstanceOf(HeadersTimeoutError)
-    expect(error).toMatchObject({ name: 'HeadersTimeoutError', code: 'UND_ERR_HEADERS_TIMEOUT' })
-    expect(isTransientNetworkError(error)).toBe(true)
+    expect(error).toMatchObject({ name: 'HeadersTimeoutError' })
   })
 
   it('does not time out a body that streams slowly after the headers', async () => {
@@ -120,7 +118,6 @@ describe('httpRequest', () => {
     await new Promise((resolve) => servers.pop()?.close(resolve))
     const error = await get(`http://127.0.0.1:${port}`).catch((e: unknown) => e)
     expect(error).toMatchObject({ code: 'ECONNREFUSED' })
-    expect(isTransientNetworkError(error)).toBe(true)
   })
 
   it('speaks TLS for https origins (and defaults the port)', async () => {

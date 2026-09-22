@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
   deduplicatePackages,
@@ -20,7 +19,6 @@ function makeState(overrides: Partial<PackageSelectionState> = {}): PackageSelec
     rangeVersion: '1.4.0',
     latestVersion: '2.0.0',
     selectedOption: 'latest',
-    loadState: 'ready',
     hasRangeUpdate: true,
     hasMajorUpdate: true,
     type: 'dependencies',
@@ -70,11 +68,8 @@ describe('createUpgradeChoices', () => {
     expect(choices[1].targetVersion).toBe('1.4.0')
   })
 
-  it('skips states that are not ready or not selected', () => {
-    const choices = createUpgradeChoices([
-      makeState({ selectedOption: 'none' }),
-      makeState({ loadState: 'pending' }),
-    ])
+  it('skips states that are not selected', () => {
+    const choices = createUpgradeChoices([makeState({ selectedOption: 'none' })])
 
     expect(choices).toHaveLength(0)
   })
@@ -192,7 +187,6 @@ describe('createSelectionStates', () => {
     expect(state.currentVersionSpecifier).toBe('^1.0.0')
     expect(state.rangeVersion).toBe('1.1.0')
     expect(state.latestVersion).toBe('2.0.0')
-    expect(state.loadState).toBe('ready')
   })
 
   it('keeps non-coercible versions as-is', () => {
@@ -269,73 +263,6 @@ describe('createSelectionStates', () => {
   })
 })
 
-describe('createPendingSelectionStates', () => {
-  it('creates loading placeholders', () => {
-    const [state] = createPendingSelectionStates(
-      [
-        {
-          name: 'demo',
-          currentVersion: '^1.0.0',
-          type: 'dependencies',
-          packageJsonPath: '/repo/package.json',
-        },
-      ],
-      noSummary
-    )
-
-    expect(state.loadState).toBe('pending')
-    expect(state.rangeVersion).toBe('loading')
-    expect(state.latestVersion).toBe('loading')
-    expect(state.hasRangeUpdate).toBe(false)
-    expect(state.hasMajorUpdate).toBe(false)
-    expect(state.currentVersion).toBe('1.0.0')
-  })
-
-  it('deduplicates pending entries across workspaces', () => {
-    const states = createPendingSelectionStates(
-      [
-        {
-          name: 'demo',
-          currentVersion: '^1.0.0',
-          type: 'dependencies',
-          packageJsonPath: '/a/package.json',
-        },
-        {
-          name: 'demo',
-          currentVersion: '^1.0.0',
-          type: 'dependencies',
-          packageJsonPath: '/b/package.json',
-        },
-      ],
-      noSummary
-    )
-
-    expect(states).toHaveLength(1)
-    expect(states[0].packageJsonPaths).toEqual(['/a/package.json', '/b/package.json'])
-  })
-
-  it('restores previous selections for pending states', () => {
-    const previous = new Map<string, 'none' | 'range' | 'latest'>([
-      ['demo@^1.0.0@dependencies', 'range'],
-    ])
-
-    const [state] = createPendingSelectionStates(
-      [
-        {
-          name: 'demo',
-          currentVersion: '^1.0.0',
-          type: 'dependencies',
-          packageJsonPath: '/repo/package.json',
-        },
-      ],
-      noSummary,
-      previous
-    )
-
-    expect(state.selectedOption).toBe('range')
-  })
-})
-
 describe('prerelease preservation', () => {
   it('keeps prerelease tags on current/range/latest versions (coerce used to strip them)', () => {
     const [state] = createSelectionStates(
@@ -352,22 +279,6 @@ describe('prerelease preservation', () => {
     expect(state.currentVersion).toBe('1.0.0-beta.2')
     expect(state.rangeVersion).toBe('1.0.0-rc.3')
     expect(state.latestVersion).toBe('1.0.0-rc.3')
-  })
-
-  it('keeps prerelease tags in pending states', () => {
-    const [state] = createPendingSelectionStates(
-      [
-        {
-          name: 'next',
-          currentVersion: '16.0.0-preview.9',
-          type: 'dependencies',
-          packageJsonPath: '/repo/package.json',
-        },
-      ],
-      noSummary
-    )
-
-    expect(state.currentVersion).toBe('16.0.0-preview.9')
   })
 
   it('writes a prerelease upgrade with the original range prefix', () => {
@@ -415,22 +326,5 @@ describe('ordering and version fallbacks', () => {
       'beta',
       'zod',
     ])
-  })
-
-  it('keeps a non-coercible current version in pending states', () => {
-    const [state] = createPendingSelectionStates(
-      [
-        {
-          name: 'left-pad',
-          currentVersion: 'latest',
-          type: 'dependencies',
-          packageJsonPath: '/repo/package.json',
-        },
-      ],
-      noSummary
-    )
-
-    expect(state.currentVersion).toBe('latest')
-    expect(state.loadState).toBe('pending')
   })
 })

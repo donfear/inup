@@ -122,10 +122,10 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       if (!uiState.showInfoModal) {
         const modalSessionId = stateManager.toggleInfoModal()
         const currentState = filteredStates[uiState.currentRow]
-        const canFetchMetadata = currentState?.loadState === 'ready'
+        const canFetchMetadata = currentState !== undefined
         stateManager.setModalLoading(canFetchMetadata, modalSessionId)
 
-        if (currentState && canFetchMetadata) {
+        if (currentState) {
           packageInfoModalController
             .hydrate(currentState)
             .then((update) => {
@@ -256,7 +256,6 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
     case 'toggle_cooldown_held_filter':
       stateManager.toggleCooldownHeldFilter()
       break
-    case 'cancel':
     case 'quit':
       packageInfoModalController.cancel()
       handleCancel()

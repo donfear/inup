@@ -3,7 +3,6 @@ import {
   existsSync,
   promises as fsPromises,
   readdirSync,
-  realpathSync,
   type Stats,
   statSync,
 } from 'node:fs'
@@ -125,98 +124,6 @@ function shouldTraverse(
     onSkippedPackageDir(relativePath)
   }
   return false
-}
-
-export function findAllPackageJsonFiles(
-  rootDir: string = process.cwd(),
-  excludePatterns: string[] = [],
-  maxDepth: number = 10,
-  onProgress?: (current: string, found: number) => void,
-  options: PackageJsonScanOptions = {}
-): string[] {
-  const packageJsonFiles: string[] = []
-  const visitedPaths = new Set<string>()
-  let directoriesScanned = 0
-  let lastProgressAt = 0
-  const progressIntervalMs = 250
-  const scanSet = buildScanSet(options.scanDirs)
-
-  const excludeRegexes = excludePatterns.map((pattern) => new RegExp(pattern, 'i'))
-
-  function shouldExcludePath(relativePath: string): boolean {
-    const posix = toPosixPath(relativePath)
-    return excludeRegexes.some((regex) => regex.test(posix))
-  }
-
-  function reportProgress(currentDir: string, force: boolean = false): void {
-    if (!onProgress) return
-
-    const now = Date.now()
-    if (!force && now - lastProgressAt < progressIntervalMs) {
-      return
-    }
-
-    lastProgressAt = now
-    const relativePath = relative(rootDir, currentDir) || '.'
-    onProgress(relativePath, packageJsonFiles.length)
-  }
-
-  function traverseDirectory(dir: string, depth: number = 0): void {
-    if (depth > maxDepth) {
-      return
-    }
-
-    try {
-      // Prevent symlink cycles by tracking visited real paths
-      const realPath = realpathSync(dir)
-      if (visitedPaths.has(realPath)) {
-        return
-      }
-      visitedPaths.add(realPath)
-
-      directoriesScanned++
-
-      // Report progress every 10 directories or on first scan
-      if (onProgress && (directoriesScanned % 10 === 0 || directoriesScanned === 1)) {
-        reportProgress(dir, true)
-      }
-
-      const entries = readdirSync(dir, { withFileTypes: true })
-
-      for (const entry of entries) {
-        reportProgress(dir)
-        const file = entry.name
-        const fullPath = join(dir, file)
-        const relativePath = relative(rootDir, fullPath)
-
-        if (shouldExcludePath(relativePath)) {
-          continue
-        }
-
-        // The dirent type comes free with readdir; only symlinks need a stat to follow them.
-        let target: Dirent | Stats
-        try {
-          target = entry.isSymbolicLink() ? statSync(fullPath) : entry
-        } catch {
-          // Skip files/dirs we can't stat (broken symlinks, permission issues)
-          continue
-        }
-
-        if (target.isDirectory()) {
-          if (shouldTraverse(file, fullPath, relativePath, scanSet, options.onSkippedPackageDir)) {
-            traverseDirectory(fullPath, depth + 1)
-          }
-        } else if (file === 'package.json' && target.isFile()) {
-          packageJsonFiles.push(fullPath)
-        }
-      }
-    } catch {
-      // Skip directories that can't be read (permission issues, etc.)
-    }
-  }
-
-  traverseDirectory(rootDir)
-  return packageJsonFiles
 }
 
 export async function findAllPackageJsonFilesAsync(

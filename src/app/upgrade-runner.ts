@@ -195,7 +195,7 @@ export class UpgradeRunner {
       }
 
       // Perform upgrade
-      await this.upgrader.upgradePackages(selectedChoices, latestPackages)
+      await this.upgrader.upgradePackages(selectedChoices)
     } catch (error) {
       printWarnings()
       console.error(chalk.red(`Error: ${error}`))

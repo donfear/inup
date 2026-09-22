@@ -14,7 +14,6 @@ const baseState: PackageSelectionState = {
   rangeVersion: '16.2.0',
   latestVersion: '16.2.3',
   selectedOption: 'range',
-  loadState: 'ready',
   hasRangeUpdate: true,
   hasMajorUpdate: true,
   type: 'dependencies',

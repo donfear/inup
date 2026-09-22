@@ -134,7 +134,7 @@ export class HeadlessRunner {
     // With --json, run the upgrader quietly: its own progress + the install child's stdout go to
     // stderr, leaving stdout for the JSON document only.
     const upgrader = new PackageUpgrader(packageManager, { quiet: json })
-    await upgrader.upgradePackages(choices, outdated)
+    await upgrader.upgradePackages(choices)
   }
 
   /**

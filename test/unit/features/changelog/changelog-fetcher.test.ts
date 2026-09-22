@@ -21,7 +21,6 @@ describe('ChangelogFetcher', () => {
 
   beforeEach(() => {
     fetcher = new ChangelogFetcher()
-    fetcher.clearCache()
     fetchMock.mockReset()
     vi.stubGlobal('fetch', fetchMock)
   })
@@ -178,67 +177,6 @@ describe('ChangelogFetcher', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(2)
       expect(firstResult).toEqual(secondResult)
-    })
-  })
-
-  describe('getRepositoryReleaseUrl()', () => {
-    it('should return release URL for cached package', async () => {
-      fetchMock
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            description: 'Demo package',
-            repository: { url: 'https://github.com/demo/repo.git' },
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ downloads: 7 }),
-        })
-
-      await fetcher.fetchPackageMetadata('demo-pkg')
-
-      const releaseUrl = fetcher.getRepositoryReleaseUrl('demo-pkg', '1.0.0')
-
-      expect(releaseUrl).toBe('https://github.com/demo/repo/releases/tag/v1.0.0')
-    })
-
-    it('should return null for uncached package', () => {
-      const releaseUrl = fetcher.getRepositoryReleaseUrl('unknown-package', '1.0.0')
-
-      expect(releaseUrl).toBeNull()
-    })
-  })
-
-  describe('cacheMetadata()', () => {
-    it('should cache metadata directly', () => {
-      const rawData = {
-        description: 'Test package',
-        homepage: 'https://example.com',
-        repository: { url: 'https://github.com/test/repo' },
-        keywords: ['test'],
-        author: { name: 'Test Author' },
-        license: 'MIT',
-      }
-
-      fetcher.cacheMetadata('test-package', rawData)
-
-      const releaseUrl = fetcher.getRepositoryReleaseUrl('test-package', '1.0.0')
-
-      expect(releaseUrl).toBeTruthy()
-      expect(releaseUrl).toContain('github.com/test/repo')
-    })
-
-    it('should handle minimal metadata', () => {
-      const rawData = {
-        description: 'Test',
-      }
-
-      fetcher.cacheMetadata('test-package', rawData)
-
-      const releaseUrl = fetcher.getRepositoryReleaseUrl('test-package', '1.0.0')
-
-      expect(releaseUrl).toBeNull()
     })
   })
 
@@ -500,45 +438,6 @@ describe('ChangelogFetcher', () => {
       const retry = await fetcher.fetchReleaseNotesForVersion('demo-pkg', '1.9.0')
 
       expect(retry).toContain('Successful retry')
-      expect(fetchMock).toHaveBeenCalledTimes(5)
-    })
-  })
-
-  describe('clearCache()', () => {
-    it('should clear both success and failure caches', async () => {
-      fetchMock
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            description: 'Demo package',
-            repository: { url: 'https://github.com/demo/repo.git' },
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ downloads: 7 }),
-        })
-        .mockResolvedValueOnce({
-          ok: false,
-          json: async () => ({}),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({
-            description: 'Demo package',
-            repository: { url: 'https://github.com/demo/repo.git' },
-          }),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ downloads: 7 }),
-        })
-
-      await fetcher.fetchPackageMetadata('demo-pkg')
-      await fetcher.fetchPackageMetadata('missing-pkg')
-      fetcher.clearCache()
-      await fetcher.fetchPackageMetadata('demo-pkg')
-
       expect(fetchMock).toHaveBeenCalledTimes(5)
     })
   })

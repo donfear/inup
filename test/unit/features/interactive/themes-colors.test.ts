@@ -10,7 +10,6 @@ import {
   hexToRgb,
   inupLogo,
   type ThemeColorKey,
-  themeColors,
 } from '../../../../src/features/interactive/themes-colors'
 import { stripAnsi } from '../../../../src/shared/terminal/text'
 
@@ -101,12 +100,6 @@ describe('getThemeColor', () => {
         expect(colorFn, `${themeName}.${key}`).toBeTypeOf('function')
         expect(stripAnsi(colorFn('sample'))).toBe('sample')
       }
-    }
-  })
-
-  it('exposes lazy accessors that follow the active theme', () => {
-    for (const accessor of Object.values(themeColors)) {
-      expect(stripAnsi(accessor()('text'))).toBe('text')
     }
   })
 })

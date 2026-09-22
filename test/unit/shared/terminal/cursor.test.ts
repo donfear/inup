@@ -84,18 +84,14 @@ describe('CursorUtils escape codes', () => {
       CursorUtils.exitAlternateScreen()
       CursorUtils.hide()
       CursorUtils.show()
-      CursorUtils.moveToHome()
       CursorUtils.clearScreen()
-      CursorUtils.clearToEndOfScreen()
 
       expect(stdout.writes).toEqual([
         '\x1b[?1049h',
         RAW_EXIT_ALT_SCREEN,
         '\x1b[?25l',
         RAW_SHOW_CURSOR,
-        '\x1b[H',
         '\x1b[2J\x1b[H',
-        '\x1b[J',
       ])
     } finally {
       stdout.restore()

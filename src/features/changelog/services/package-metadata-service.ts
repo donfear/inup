@@ -1,18 +1,13 @@
 import { InflightMap } from '../../../shared/http/inflight'
 import { NpmRegistryClient } from '../clients/npm-registry-client'
 import { mapPackageManifestToMetadata } from '../parsers/package-metadata'
-import type { PackageManifestInput, PackageMetadata } from '../types'
+import type { PackageMetadata } from '../types'
 
 export class PackageMetadataService {
   private cache = new Map<string, PackageMetadata | null>()
   private inFlight = new InflightMap<PackageMetadata | null>()
 
   constructor(private readonly npmRegistryClient = new NpmRegistryClient()) {}
-
-  clearCache(): void {
-    this.cache.clear()
-    this.inFlight.clear()
-  }
 
   getCached(packageName: string, version?: string): PackageMetadata | null {
     for (const key of [
@@ -42,20 +37,6 @@ export class PackageMetadataService {
     return this.inFlight.dedupe(cacheKey, () =>
       this.fetchAndCachePackageMetadata(packageName, version, signal)
     )
-  }
-
-  cacheMetadata(packageName: string, rawData: PackageManifestInput): void {
-    const metadata = this.buildMetadata(packageName, rawData)
-    this.cache.set(packageName, metadata)
-  }
-
-  getRepositoryReleaseUrl(packageName: string, version: string): string | null {
-    const metadata = this.getCached(packageName, version)
-    if (!metadata?.releaseNotes) {
-      return null
-    }
-
-    return `${metadata.releaseNotes}/tag/v${version}`
   }
 
   private getCacheKey(packageName: string, version?: string): string {
@@ -124,9 +105,5 @@ export class PackageMetadataService {
       version?.trim() || 'latest',
       signal
     )
-  }
-
-  private buildMetadata(packageName: string, rawData: PackageManifestInput): PackageMetadata {
-    return mapPackageManifestToMetadata(packageName, rawData)
   }
 }

@@ -113,13 +113,6 @@ class ConfigManager {
     config.networkProfile = profile
     this.writeConfig(config)
   }
-
-  clearNetworkProfile(): void {
-    const config = this.readConfig()
-    if (config.networkProfile === undefined) return
-    config.networkProfile = undefined
-    this.writeConfig(config)
-  }
 }
 
 // Export singleton instance

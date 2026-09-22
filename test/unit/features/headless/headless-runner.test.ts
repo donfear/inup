@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  getOutdatedPackages: vi.fn(),
+  scanResult: vi.fn(),
   getCooldownDiagnostics: vi.fn(() => null),
   streamOutdatedPackages: vi.fn(),
   getOutdatedPackagesOnly: vi.fn(),
@@ -13,7 +13,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../../src/features/upgrade/package-detector', () => ({
   PackageDetector: class {
-    getOutdatedPackages = mocks.getOutdatedPackages
     streamOutdatedPackages = mocks.streamOutdatedPackages
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
@@ -128,11 +127,11 @@ describe('HeadlessRunner.run', () => {
     mocks.getOutdatedPackagesOnly.mockImplementation((pkgs: any[]) =>
       pkgs.filter((p) => p.isOutdated)
     )
-    mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, UP_TO_DATE])
+    mocks.scanResult.mockResolvedValue([OUTDATED, UP_TO_DATE])
     // The streaming form the runner uses: an `initial` event carrying every
     // declared dependency's specifier, then `complete` with the resolved set.
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {
-      const packages = await mocks.getOutdatedPackages()
+      const packages = await mocks.scanResult()
       onEvent({
         type: 'initial',
         payload: {
@@ -341,7 +340,7 @@ describe('HeadlessRunner.run', () => {
       minimumReleaseAge: 10080,
       publishTimesAvailable: false,
     })
-    mocks.getOutdatedPackages.mockResolvedValue([])
+    mocks.scanResult.mockResolvedValue([])
     mocks.getOutdatedPackagesOnly.mockReturnValue([])
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -361,7 +360,7 @@ describe('HeadlessRunner.run', () => {
 
   it('stays quiet and omits the cooldown block when no cooldown is configured', async () => {
     mocks.getCooldownDiagnostics.mockReturnValue(null)
-    mocks.getOutdatedPackages.mockResolvedValue([])
+    mocks.scanResult.mockResolvedValue([])
     mocks.getOutdatedPackagesOnly.mockReturnValue([])
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -384,7 +383,7 @@ describe('HeadlessRunner.run', () => {
     await new HeadlessRunner({ cwd: '/repo' }).run({ check: true })
     expect(process.exitCode).toBe(1)
 
-    mocks.getOutdatedPackages.mockResolvedValue([UP_TO_DATE])
+    mocks.scanResult.mockResolvedValue([UP_TO_DATE])
     process.exitCode = 0
     await new HeadlessRunner({ cwd: '/repo' }).run({ check: true })
     expect(process.exitCode).toBe(0)
@@ -420,7 +419,7 @@ describe('HeadlessRunner.run', () => {
 
   describe('--apply', () => {
     it('target=minor bumps in-range and skips major-only packages', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
@@ -440,7 +439,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=patch bumps only within the current major.minor line', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MINOR_ONLY, MAJOR_ONLY, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([OUTDATED, MINOR_ONLY, MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
@@ -459,7 +458,7 @@ describe('HeadlessRunner.run', () => {
 
     it('target=patch skips packages without version-list data', async () => {
       const { allVersions: _omitted, ...withoutVersions } = OUTDATED
-      mocks.getOutdatedPackages.mockResolvedValue([withoutVersions])
+      mocks.scanResult.mockResolvedValue([withoutVersions])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
@@ -469,7 +468,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=latest skips packages whose latest version is empty', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([{ ...OUTDATED, latestVersion: '' }])
+      mocks.scanResult.mockResolvedValue([{ ...OUTDATED, latestVersion: '' }])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
@@ -479,7 +478,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=latest bumps to latest including majors', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
@@ -507,7 +506,7 @@ describe('HeadlessRunner.run', () => {
           count: 1,
         },
       }
-      mocks.getOutdatedPackages.mockResolvedValue([held])
+      mocks.scanResult.mockResolvedValue([held])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       for (const target of ['minor', 'patch', 'latest'] as const) {
@@ -536,7 +535,7 @@ describe('HeadlessRunner.run', () => {
           count: 1,
         },
       }
-      mocks.getOutdatedPackages.mockResolvedValue([held])
+      mocks.scanResult.mockResolvedValue([held])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, json: true, target: 'latest' })
@@ -559,7 +558,7 @@ describe('HeadlessRunner.run', () => {
         hasMajorUpdate: false,
         majorIgnored: true,
       }
-      mocks.getOutdatedPackages.mockResolvedValue([majorIgnored])
+      mocks.scanResult.mockResolvedValue([majorIgnored])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
@@ -586,7 +585,7 @@ describe('HeadlessRunner.run', () => {
         hasMajorUpdate: false,
         majorIgnored: true,
       }
-      mocks.getOutdatedPackages.mockResolvedValue([suppressedMajorOnly, suppressedEmptyRange])
+      mocks.scanResult.mockResolvedValue([suppressedMajorOnly, suppressedEmptyRange])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
@@ -596,7 +595,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('--save-exact writes bare versions without the range prefix', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+      mocks.scanResult.mockResolvedValue([OUTDATED])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo', saveExact: true }).run({
@@ -610,7 +609,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('does not call the upgrader when nothing is in-range to apply', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([MAJOR_ONLY, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
@@ -620,7 +619,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('--apply --json emits exactly one JSON document and runs the upgrader in quiet mode', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+      mocks.scanResult.mockResolvedValue([OUTDATED])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor', json: true })
@@ -638,7 +637,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('--apply without --json runs the upgrader in non-quiet mode', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED])
+      mocks.scanResult.mockResolvedValue([OUTDATED])
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
 
@@ -646,7 +645,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('defaults to target=minor when --apply is given without a target', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([OUTDATED, MAJOR_ONLY])
+      mocks.scanResult.mockResolvedValue([OUTDATED, MAJOR_ONLY])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true })
@@ -658,7 +657,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('skips packages whose target version is empty', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([{ ...OUTDATED, rangeVersion: '' }, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([{ ...OUTDATED, rangeVersion: '' }, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
@@ -668,7 +667,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=minor writes a prerelease bump with the original prefix preserved', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE, UP_TO_DATE])
+      mocks.scanResult.mockResolvedValue([PRERELEASE, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'minor' })
@@ -684,7 +683,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=patch resolves the highest same-tuple prerelease from the pool', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      mocks.scanResult.mockResolvedValue([PRERELEASE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'patch' })
@@ -696,7 +695,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('target=latest takes the effective latest on the prerelease channel', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      mocks.scanResult.mockResolvedValue([PRERELEASE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest' })
@@ -710,7 +709,7 @@ describe('HeadlessRunner.run', () => {
     })
 
     it('--save-exact writes the bare prerelease version', async () => {
-      mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+      mocks.scanResult.mockResolvedValue([PRERELEASE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
       await new HeadlessRunner({ cwd: '/repo', saveExact: true }).run({
@@ -725,7 +724,7 @@ describe('HeadlessRunner.run', () => {
   })
 
   it('plain report shows a prerelease bump without the (major) tag', async () => {
-    mocks.getOutdatedPackages.mockResolvedValue([PRERELEASE])
+    mocks.scanResult.mockResolvedValue([PRERELEASE])
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     await new HeadlessRunner({ cwd: '/repo' }).run({})
@@ -738,7 +737,7 @@ describe('HeadlessRunner.run', () => {
   })
 
   it('stringifies non-Error failures before exiting', async () => {
-    mocks.getOutdatedPackages.mockRejectedValue('string failure')
+    mocks.scanResult.mockRejectedValue('string failure')
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 

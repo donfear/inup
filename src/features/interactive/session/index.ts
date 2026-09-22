@@ -7,7 +7,6 @@ export {
 } from './interactive-session'
 export { SelectionList } from './selection-list'
 export {
-  createPendingSelectionStates,
   createSelectionStates,
   createUpgradeChoices,
   deduplicatePackages,

@@ -2,7 +2,6 @@ import type {
   CatalogEntrySummary,
   CooldownHold,
   DependencyType,
-  PackageLoadState,
   VulnerabilitySummary,
 } from './domain'
 
@@ -35,7 +34,6 @@ export interface PackageSelectionState {
   rangeVersion: string
   latestVersion: string
   selectedOption: 'none' | 'range' | 'latest'
-  loadState: PackageLoadState
   hasRangeUpdate: boolean
   hasMajorUpdate: boolean
   type: DependencyType
@@ -77,14 +75,3 @@ export interface PersistedFilters {
   /** Show packages whose only newer versions the release-age cooldown withheld. */
   showCooldownHeld: boolean
 }
-
-export interface GroupedPackages {
-  main: PackageSelectionState[] // dependencies + devDependencies
-  peer: PackageSelectionState[] // peerDependencies
-  optional: PackageSelectionState[] // optionalDependencies
-}
-
-export type RenderableItem =
-  | { type: 'header'; title: string; sectionType: 'main' | 'peer' | 'optional' }
-  | { type: 'spacer' }
-  | { type: 'package'; state: PackageSelectionState; originalIndex: number }

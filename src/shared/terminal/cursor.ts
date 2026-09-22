@@ -31,24 +31,10 @@ export const CursorUtils = {
   },
 
   /**
-   * Move cursor to home position (top-left corner)
-   */
-  moveToHome(): void {
-    process.stdout.write('\x1b[H')
-  },
-
-  /**
    * Clear the full screen and move the cursor to the top-left corner.
    */
   clearScreen(): void {
     process.stdout.write('\x1b[2J\x1b[H')
-  },
-
-  /**
-   * Clear display from cursor to end of screen
-   */
-  clearToEndOfScreen(): void {
-    process.stdout.write('\x1b[J')
   },
 
   /**

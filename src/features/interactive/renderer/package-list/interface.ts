@@ -2,11 +2,9 @@ import chalk from 'chalk'
 import { truncatePlainText } from '../../../../shared/terminal'
 import type {
   AuditProgress,
-  PackageInfo,
   PackageLoadProgress,
   PackageManagerInfo,
   PackageSelectionState,
-  RenderableItem,
 } from '../../../../shared/types'
 import { getFooterHints } from '../../keymap'
 import { getThemeColor, inupLogo } from '../../themes-colors'
@@ -16,8 +14,6 @@ import {
   type PackageListRenderOptions,
   padLineToWidth,
   renderPackageLine,
-  renderSectionHeader,
-  renderSpacer,
 } from './rows'
 
 function scanLabel(progress: PackageLoadProgress | undefined, width: number): string | undefined {
@@ -39,8 +35,6 @@ export function renderInterface(
   currentRow: number,
   scrollOffset: number,
   maxVisibleItems: number,
-  _forceFullRender: boolean,
-  renderableItems?: RenderableItem[],
   activeFilterLabel?: string,
   packageManager?: PackageManagerInfo,
   filterMode?: boolean,
@@ -121,10 +115,8 @@ export function renderInterface(
   const totalPackages = states.length
   const scanStatus = scanLabel(loadingProgress, terminalWidth - 2)
   const totalBeforeFilter = totalPackagesBeforeFilter || totalPackages
-  const totalVisualItems =
-    renderableItems && renderableItems.length > 0 ? renderableItems.length : totalPackages
   const startItem = scrollOffset + 1
-  const endItem = Math.min(scrollOffset + maxVisibleItems, totalVisualItems)
+  const endItem = Math.min(scrollOffset + maxVisibleItems, totalPackages)
 
   let statusLine = ''
   if (filterMode) {
@@ -134,7 +126,7 @@ export function renderInterface(
         '  ' +
         chalk.bold.white('Esc ') +
         chalk.gray('Clear')
-    } else if (totalVisualItems > maxVisibleItems) {
+    } else if (totalPackages > maxVisibleItems) {
       statusLine =
         getThemeColor('textSecondary')(
           `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
@@ -158,14 +150,14 @@ export function renderInterface(
   } else if (totalPackages < totalBeforeFilter) {
     // Footer already lists D/P/O, M, L, U — status line just shows count + Esc.
     const matchCount =
-      totalVisualItems > maxVisibleItems
+      totalPackages > maxVisibleItems
         ? getThemeColor('textSecondary')(
             `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} matches`
           )
         : getThemeColor('textSecondary')(`Showing all ${chalk.white(totalPackages)} matches`)
     statusLine = `${matchCount}  ${chalk.bold.white('Esc ')}${chalk.gray('Clear filter')}`
   } else {
-    if (totalVisualItems > maxVisibleItems) {
+    if (totalPackages > maxVisibleItems) {
       statusLine =
         chalk.gray(
           `Showing ${chalk.white(startItem)}-${chalk.white(endItem)} of ${chalk.white(totalPackages)} packages`
@@ -203,41 +195,10 @@ export function renderInterface(
   // columns hold still while scrolling and long prerelease versions get room.
   const columnWidths = options.columnWidths ?? computeVersionColumnWidths(states, terminalWidth)
 
-  if (renderableItems && renderableItems.length > 0) {
-    for (
-      let i = scrollOffset;
-      i < Math.min(scrollOffset + maxVisibleItems, renderableItems.length);
-      i++
-    ) {
-      const item = renderableItems[i]
-      if (item.type === 'header') {
-        output.push(renderSectionHeader(item.title, item.sectionType))
-      } else if (item.type === 'spacer') {
-        output.push(renderSpacer())
-      } else if (item.type === 'package') {
-        const line = renderPackageLine(
-          item.state,
-          item.originalIndex,
-          item.originalIndex === currentRow,
-          terminalWidth,
-          options,
-          columnWidths
-        )
-        output.push(line)
-      }
-    }
-  } else {
-    for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
-      const line = renderPackageLine(
-        states[i],
-        i,
-        i === currentRow,
-        terminalWidth,
-        options,
-        columnWidths
-      )
-      output.push(line)
-    }
+  for (let i = scrollOffset; i < Math.min(scrollOffset + maxVisibleItems, states.length); i++) {
+    output.push(
+      renderPackageLine(states[i], i === currentRow, terminalWidth, options, columnWidths)
+    )
   }
 
   if (loadingProgress?.isLoading && !(totalPackages === 0 && scanStatus)) {
@@ -264,18 +225,4 @@ export function renderInterface(
   }
 
   return output.map((line) => padLineToWidth(line, terminalWidth))
-}
-
-export function renderPackagesTable(packages: PackageInfo[]): string {
-  if (packages.length === 0) {
-    return chalk.green('✅ All packages are up to date!')
-  }
-
-  const outdatedPackages = packages.filter((p) => p.isOutdated)
-
-  if (outdatedPackages.length === 0) {
-    return chalk.green('✅ All packages are up to date!')
-  }
-
-  return `${inupLogo()}\n`
 }

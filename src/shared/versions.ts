@@ -1,23 +1,11 @@
 import * as semver from 'semver'
 import { extractEnginesNode, normalizeDeprecatedMessage } from './manifest'
 
-export function extractMajorVersion(version: string | undefined): string | null {
-  if (!version) return null
-  const coerced = semver.coerce(version)
-  if (!coerced) return null
-  return semver.major(coerced).toString()
-}
-
 export function toComparableVersion(version: string): string | null {
   const validVersion = semver.valid(version)
   if (validVersion) return validVersion
   const coerced = semver.coerce(version)
   return coerced ? coerced.version : null
-}
-
-export function versionIdentity(version: string): string {
-  const comparable = toComparableVersion(version)
-  return comparable ?? `raw:${version}`
 }
 
 export interface ParsedVersions {
@@ -117,11 +105,6 @@ export function parseCurrentVersion(specifier: string): semver.SemVer | null {
   return semver.coerce(specifier)
 }
 
-/** Whether a specifier pins a prerelease (e.g. '^1.0.0-beta.2', '16.0.0-preview.9'). */
-export function isPrereleaseCurrent(specifier: string): boolean {
-  return (parseCurrentVersion(specifier)?.prerelease.length ?? 0) > 0
-}
-
 /**
  * Build the pool of upgrade candidates for one dependency.
  * Stable current version: the stable list, untouched — prereleases stay invisible.
@@ -212,49 +195,6 @@ export function partitionVersionsByReleaseAge(
     }
   }
   return { eligible, withheld }
-}
-
-/**
- * Checks if a version is outdated compared to the latest version.
- * Handles version prefixes (^, ~, >=, etc.) and preserves prerelease tags,
- * so '1.0.0-beta.2' is correctly outdated against '1.0.0-rc.3'.
- */
-export function isVersionOutdated(current: string, latest: string): boolean {
-  try {
-    const cleanCurrent = parseCurrentVersion(current)?.version || current
-    const cleanLatest = toComparableVersion(latest) || latest
-
-    return semver.gt(cleanLatest, cleanCurrent)
-  } catch {
-    return false
-  }
-}
-
-/**
- * Get the optimized range version for a package
- */
-export function getOptimizedRangeVersion(
-  _packageName: string,
-  currentRange: string,
-  allVersions: string[],
-  latestVersion: string
-): string {
-  try {
-    // Find the highest version that satisfies the current range. satisfies()
-    // returns false (never throws) for invalid input, so no guard is needed.
-    const satisfyingVersions = allVersions.filter((version: string) =>
-      semver.satisfies(version, currentRange)
-    )
-
-    if (satisfyingVersions.length === 0) {
-      return latestVersion
-    }
-
-    // Return the highest satisfying version
-    return satisfyingVersions.sort(semver.rcompare)[0]
-  } catch {
-    return latestVersion
-  }
 }
 
 /**

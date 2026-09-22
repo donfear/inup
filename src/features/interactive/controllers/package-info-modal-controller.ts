@@ -206,16 +206,6 @@ export class PackageInfoModalController {
     return state.releaseNotesVersions?.length ?? 0
   }
 
-  /**
-   * Check if navigation in a direction is possible.
-   */
-  canNavigate(state: PackageSelectionState, direction: 'newer' | 'older'): boolean {
-    if (!state.releaseNotesVersions || state.releaseNotesVersions.length === 0) return false
-    const currentIndex = state.releaseNotesViewIndex ?? 0
-    if (direction === 'newer') return currentIndex > 0
-    return currentIndex < state.releaseNotesVersions.length - 1
-  }
-
   private buildReleaseNotesVersionQueue(
     allVersions: string[],
     currentVersion: string,

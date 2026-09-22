@@ -104,25 +104,4 @@ describe('PackageMetadataService', () => {
 
     expect(metadata?.author).toBeUndefined()
   })
-
-  it('caches metadata provided directly and derives the release URL', async () => {
-    const { service } = makeService()
-
-    service.cacheMetadata('demo', {
-      repository: { url: 'git+https://github.com/octo/demo.git' },
-    })
-
-    const releaseUrl = service.getRepositoryReleaseUrl('demo', '1.0.0')
-    expect(releaseUrl === null || releaseUrl.includes('tag/v1.0.0')).toBe(true)
-  })
-
-  it('clearCache forces a refetch', async () => {
-    const { service, fetchPackageManifest } = makeService()
-
-    await service.fetchPackageMetadata('demo', '1.0.0')
-    service.clearCache()
-    await service.fetchPackageMetadata('demo', '1.0.0')
-
-    expect(fetchPackageManifest).toHaveBeenCalledTimes(2)
-  })
 })

@@ -20,7 +20,6 @@ function makeHarness(repositoryUrl: string | null = GITHUB_REPO) {
     fetchPackageMetadata: vi.fn(async () => (repositoryUrl ? { repositoryUrl } : null)),
   }
   const githubClient = {
-    clearCache: vi.fn(),
     fetchReleasePageHtml: vi.fn(async () => null as string | null),
     fetchReleaseByTag: vi.fn(async () => null as string | null),
     fetchReleases: vi.fn(async () => null as GitHubRelease[] | null),
@@ -216,18 +215,6 @@ describe('ReleaseNotesService caching', () => {
     expect(first).toBe('api notes')
     expect(second).toBe('api notes')
     expect(githubClient.fetchReleasePageHtml).toHaveBeenCalledTimes(2) // one pass, two tags
-  })
-
-  it('clears its caches and the GitHub client cache together', async () => {
-    const { service, githubClient } = makeHarness()
-    githubClient.fetchReleaseByTag.mockResolvedValue('api notes')
-    await service.fetchReleaseNotesForVersion('demo', '1.0.0')
-
-    service.clearCache()
-    await service.fetchReleaseNotesForVersion('demo', '1.0.0')
-
-    expect(githubClient.clearCache).toHaveBeenCalled()
-    expect(githubClient.fetchReleasePageHtml).toHaveBeenCalledTimes(4)
   })
 })
 

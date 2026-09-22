@@ -2,18 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   applyVersionPrefix,
   buildRangeCandidates,
-  extractMajorVersion,
   findClosestMinorVersion,
   findHighestPatchVersion,
-  getOptimizedRangeVersion,
   highestOverallVersion,
-  isPrereleaseCurrent,
-  isVersionOutdated,
   parseCurrentVersion,
   parseVersions,
   partitionVersionsByReleaseAge,
   toComparableVersion,
-  versionIdentity,
 } from '../../../src/shared/versions'
 
 describe('version utils', () => {
@@ -231,22 +226,6 @@ describe('version utils', () => {
     })
   })
 
-  describe('isPrereleaseCurrent()', () => {
-    it('detects prerelease specifiers regardless of tag name', () => {
-      expect(isPrereleaseCurrent('1.0.0-alpha.1')).toBe(true)
-      expect(isPrereleaseCurrent('^1.0.0-beta.2')).toBe(true)
-      expect(isPrereleaseCurrent('~1.0.0-rc.3')).toBe(true)
-      expect(isPrereleaseCurrent('16.0.0-preview.9')).toBe(true)
-      expect(isPrereleaseCurrent('2.0.0-canary.20260729')).toBe(true)
-    })
-
-    it('is false for stable and unparseable specifiers', () => {
-      expect(isPrereleaseCurrent('1.0.0')).toBe(false)
-      expect(isPrereleaseCurrent('^1.2.0')).toBe(false)
-      expect(isPrereleaseCurrent('workspace:*')).toBe(false)
-    })
-  })
-
   describe('buildRangeCandidates()', () => {
     const stable = ['1.1.0', '1.0.1', '1.0.0', '0.19.5']
     const prereleases = ['1.1.0-alpha.1', '1.0.0-rc.3', '1.0.0-beta.2', '1.0.0-alpha.2']
@@ -296,84 +275,6 @@ describe('version utils', () => {
       expect(highestOverallVersion(['1.0.0'])).toBe('1.0.0')
       expect(highestOverallVersion([], [])).toBeNull()
       expect(highestOverallVersion([])).toBeNull()
-    })
-  })
-
-  describe('isVersionOutdated()', () => {
-    it('should return true when latest is greater than current', () => {
-      expect(isVersionOutdated('1.0.0', '2.0.0')).toBe(true)
-      expect(isVersionOutdated('1.5.0', '1.6.0')).toBe(true)
-      expect(isVersionOutdated('1.0.1', '1.0.2')).toBe(true)
-    })
-
-    it('should return false when versions are equal', () => {
-      expect(isVersionOutdated('1.0.0', '1.0.0')).toBe(false)
-      expect(isVersionOutdated('2.5.3', '2.5.3')).toBe(false)
-    })
-
-    it('should return false when current is newer than latest', () => {
-      expect(isVersionOutdated('2.0.0', '1.0.0')).toBe(false)
-      expect(isVersionOutdated('1.6.0', '1.5.0')).toBe(false)
-    })
-
-    it('should handle version prefixes correctly', () => {
-      expect(isVersionOutdated('^1.0.0', '2.0.0')).toBe(true)
-      expect(isVersionOutdated('~1.5.0', '1.6.0')).toBe(true)
-      expect(isVersionOutdated('>=1.0.0', '1.0.1')).toBe(true)
-    })
-
-    it('should handle invalid versions gracefully', () => {
-      expect(isVersionOutdated('invalid', '1.0.0')).toBe(false)
-      expect(isVersionOutdated('1.0.0', 'invalid')).toBe(false)
-      expect(isVersionOutdated('invalid', 'invalid')).toBe(false)
-    })
-
-    it('should handle prereleases with native semver ordering', () => {
-      // alpha < beta < rc < preview-style tags < the final release
-      expect(isVersionOutdated('1.0.0-beta.1', '1.0.0')).toBe(true)
-      expect(isVersionOutdated('1.0.0-alpha.1', '1.0.0-beta.1')).toBe(true)
-      expect(isVersionOutdated('1.0.0-beta.2', '1.0.0-rc.3')).toBe(true)
-      expect(isVersionOutdated('16.0.0-preview.9', '16.0.0-preview.10')).toBe(true)
-      expect(isVersionOutdated('1.0.0-beta.1', '2.0.0')).toBe(true)
-      // Newer or equal prereleases are not outdated
-      expect(isVersionOutdated('1.0.0-rc.1', '1.0.0-beta.2')).toBe(false)
-      expect(isVersionOutdated('1.0.0-rc.3', '1.0.0-rc.3')).toBe(false)
-      // Range prefixes keep the prerelease tag (coerce used to strip it)
-      expect(isVersionOutdated('^1.0.0-beta.2', '1.0.0-rc.3')).toBe(true)
-    })
-  })
-
-  describe('getOptimizedRangeVersion()', () => {
-    const allVersions = ['1.0.0', '1.1.0', '1.2.0', '2.0.0', '2.1.0', '3.0.0']
-
-    it('should return highest version satisfying the range', () => {
-      const result = getOptimizedRangeVersion('test-package', '^1.0.0', allVersions, '3.0.0')
-      expect(result).toBe('1.2.0')
-    })
-
-    it('should return highest version for tilde range', () => {
-      const result = getOptimizedRangeVersion('test-package', '~1.1.0', allVersions, '3.0.0')
-      expect(result).toBe('1.1.0')
-    })
-
-    it('should return latest when no versions satisfy the range', () => {
-      const result = getOptimizedRangeVersion('test-package', '^4.0.0', allVersions, '3.0.0')
-      expect(result).toBe('3.0.0')
-    })
-
-    it('should handle exact version ranges', () => {
-      const result = getOptimizedRangeVersion('test-package', '2.0.0', allVersions, '3.0.0')
-      expect(result).toBe('2.0.0')
-    })
-
-    it('should handle >= ranges', () => {
-      const result = getOptimizedRangeVersion('test-package', '>=2.0.0', allVersions, '3.0.0')
-      expect(result).toBe('3.0.0')
-    })
-
-    it('should fallback to latest on invalid range', () => {
-      const result = getOptimizedRangeVersion('test-package', 'invalid', allVersions, '3.0.0')
-      expect(result).toBe('3.0.0')
     })
   })
 
@@ -537,16 +438,6 @@ describe('version utils', () => {
 })
 
 describe('version identity helpers', () => {
-  it('extractMajorVersion pulls the major from loose specifiers', () => {
-    expect(extractMajorVersion('^2.1.0')).toBe('2')
-    expect(extractMajorVersion('v3')).toBe('3')
-  })
-
-  it('extractMajorVersion returns null for unusable input', () => {
-    expect(extractMajorVersion('')).toBeNull()
-    expect(extractMajorVersion('not-a-version')).toBeNull()
-  })
-
   it('toComparableVersion normalizes valid and coercible versions', () => {
     expect(toComparableVersion('1.2.3')).toBe('1.2.3')
     expect(toComparableVersion('^1.2.3')).toBe('1.2.3')
@@ -556,19 +447,9 @@ describe('version identity helpers', () => {
   it('toComparableVersion returns null for garbage', () => {
     expect(toComparableVersion('workspace:*')).toBeNull()
   })
-
-  it('versionIdentity falls back to a raw marker for non-semver input', () => {
-    expect(versionIdentity('1.2.3')).toBe('1.2.3')
-    expect(versionIdentity('^1.2.3')).toBe('1.2.3')
-    expect(versionIdentity('workspace:*')).toBe('raw:workspace:*')
-  })
 })
 
 describe('invalid version tolerance', () => {
-  it('getOptimizedRangeVersion skips versions that crash the range check', () => {
-    expect(getOptimizedRangeVersion('pkg', '^1.0.0', ['garbage', '1.2.0'], '2.0.0')).toBe('1.2.0')
-  })
-
   it('findClosestMinorVersion skips invalid versions in the patch fallback pass', () => {
     expect(findClosestMinorVersion('1.0.0', ['garbage', '1.0.5'])).toBe('1.0.5')
   })
@@ -577,18 +458,6 @@ describe('invalid version tolerance', () => {
     const result = parseVersions('{}')
     expect(result.latestVersion).toBe('unknown')
     expect(result.allVersions).toEqual([])
-  })
-
-  it('getOptimizedRangeVersion treats an invalid range as unsatisfiable', () => {
-    expect(getOptimizedRangeVersion('pkg', 'not-a-range!!!', ['1.0.0', '1.1.0'], '9.9.9')).toBe(
-      '9.9.9'
-    )
-  })
-
-  it('getOptimizedRangeVersion falls back to latest when the version list is broken', () => {
-    expect(getOptimizedRangeVersion('pkg', '^1.0.0', null as unknown as string[], '9.9.9')).toBe(
-      '9.9.9'
-    )
   })
 
   it('findClosestMinorVersion keeps the highest patch when candidates arrive out of order', () => {

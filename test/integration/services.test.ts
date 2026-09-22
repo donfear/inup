@@ -15,7 +15,6 @@ describe('Services Integration Tests', () => {
 
     beforeEach(() => {
       fetcher = new ChangelogFetcher()
-      fetcher.clearCache()
     })
 
     it(

@@ -1,4 +1,3 @@
-import chalk from 'chalk'
 import * as semver from 'semver'
 import { isPackageIgnored } from '../../shared/config'
 import { configManager } from '../../shared/config/user-config'
@@ -97,21 +96,6 @@ export class PackageDetector {
 
   public hasPackageJson(): boolean {
     return this.packageJsonPath !== null && this.packageJson !== null
-  }
-
-  public async getOutdatedPackages(): Promise<PackageInfo[]> {
-    const packages: PackageInfo[] = []
-
-    await this.streamOutdatedPackages((event) => {
-      if (event.type === 'warning') console.warn(chalk.yellow(event.payload.message))
-      if (event.type === 'package') {
-        packages.push(...event.payload.packageInfo)
-      } else if (event.type === 'complete') {
-        packages.splice(0, packages.length, ...event.payload.packages)
-      }
-    })
-
-    return packages
   }
 
   public async streamOutdatedPackages(
@@ -252,10 +236,7 @@ export class PackageDetector {
       },
     })
     const tDeps = Date.now()
-    const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, {
-      includePeerDeps: true,
-      includeOptionalDeps: true,
-    })
+    const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles)
     debugLog.perf('PackageDetector', `dependency collection (${allDepsRaw.length} raw deps)`, tDeps)
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
     performanceTracker.recordCounts({ rawDependencies: allDepsRaw.length })

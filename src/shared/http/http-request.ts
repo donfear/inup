@@ -39,7 +39,6 @@ export interface HttpRequestOptions {
 /** Rejection reason for a stalled request; classified as a transient network error. */
 export class HeadersTimeoutError extends Error {
   override readonly name = 'HeadersTimeoutError'
-  readonly code = 'UND_ERR_HEADERS_TIMEOUT'
 }
 
 const agents = {

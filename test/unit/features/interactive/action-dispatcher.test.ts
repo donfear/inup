@@ -339,10 +339,8 @@ describe('dispatchAction info modal', () => {
     expect(render).toHaveBeenCalledTimes(1)
   })
 
-  it('skips hydration for rows that are still loading', () => {
-    const { dispatch, stateManager, packageInfoModalController } = makeHarness([
-      makeSelectionState({ loadState: 'pending' }),
-    ])
+  it('skips hydration when no row is under the cursor', () => {
+    const { dispatch, stateManager, packageInfoModalController } = makeHarness([])
 
     dispatch({ type: 'toggle_info_modal' })
 
@@ -544,7 +542,7 @@ describe('dispatchAction cancel', () => {
   it('cancels modal work and delegates without re-rendering', () => {
     const { dispatch, packageInfoModalController, handleCancel, render } = makeHarness()
 
-    dispatch({ type: 'cancel' })
+    dispatch({ type: 'quit' })
 
     expect(packageInfoModalController.cancel).toHaveBeenCalled()
     expect(handleCancel).toHaveBeenCalled()

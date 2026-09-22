@@ -8,7 +8,6 @@ import { detectJsonFormat, findWorkspaceRoot, stringifyWithFormat } from '../../
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
 import type {
   DependencyType,
-  PackageInfo,
   PackageJson,
   PackageManagerInfo,
   PackageUpgradeChoice,
@@ -39,10 +38,7 @@ export class PackageUpgrader {
     this.log = this.quiet ? (msg) => console.error(msg) : (msg) => console.log(msg)
   }
 
-  public async upgradePackages(
-    choices: PackageUpgradeChoice[],
-    _packageInfos: PackageInfo[]
-  ): Promise<void> {
+  public async upgradePackages(choices: PackageUpgradeChoice[]): Promise<void> {
     if (choices.length === 0) {
       this.log(chalk.yellow('No packages to upgrade.'))
       return

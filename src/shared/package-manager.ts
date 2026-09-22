@@ -217,11 +217,4 @@ export class PackageManagerDetector {
     }
     return false
   }
-
-  /**
-   * Check if directory is in a workspace
-   */
-  static isInWorkspace(cwd: string, packageManager: PackageManager): boolean {
-    return PackageManagerDetector.findWorkspaceRoot(cwd, packageManager) !== null
-  }
 }

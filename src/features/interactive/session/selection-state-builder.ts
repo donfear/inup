@@ -97,7 +97,6 @@ export function createSelectionStates(
       rangeVersion: rangeClean,
       latestVersion: latestClean,
       selectedOption: previousSelection,
-      loadState: 'ready',
       hasRangeUpdate: pkg.hasRangeUpdate,
       hasMajorUpdate: pkg.hasMajorUpdate,
       type: pkg.type,
@@ -114,55 +113,13 @@ export function createSelectionStates(
   })
 }
 
-export function createPendingSelectionStates(
-  packages: Array<
-    Pick<PackageInfo, 'name' | 'currentVersion' | 'type' | 'packageJsonPath' | 'catalog'>
-  >,
-  getCachedSummary: CachedSummaryFn,
-  previousSelections?: Map<string, 'none' | 'range' | 'latest'>
-): PackageSelectionState[] {
-  const uniquePackages = deduplicatePackages(
-    packages.map((pkg) => ({
-      ...pkg,
-      rangeVersion: pkg.currentVersion,
-      latestVersion: pkg.currentVersion,
-      isOutdated: false,
-      hasRangeUpdate: false,
-      hasMajorUpdate: false,
-    }))
-  )
-
-  return Array.from(uniquePackages.values()).map(({ pkg, packageJsonPaths }) => {
-    const currentClean = parseCurrentVersion(pkg.currentVersion)?.version || pkg.currentVersion
-    const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
-    const previousSelection = previousSelections?.get(key) || 'none'
-
-    return {
-      name: pkg.name,
-      packageJsonPath: pkg.packageJsonPath,
-      packageJsonPaths: Array.from(packageJsonPaths),
-      currentVersionSpecifier: pkg.currentVersion,
-      currentVersion: currentClean,
-      rangeVersion: 'loading',
-      latestVersion: 'loading',
-      selectedOption: previousSelection,
-      loadState: 'pending',
-      hasRangeUpdate: false,
-      hasMajorUpdate: false,
-      type: pkg.type,
-      catalog: pkg.catalog,
-      vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
-    }
-  })
-}
-
 export function createUpgradeChoices(
   selectedStates: PackageSelectionState[],
   saveExact: boolean = false
 ): PackageUpgradeChoice[] {
   const choices: PackageUpgradeChoice[] = []
   selectedStates
-    .filter((state) => state.loadState === 'ready' && state.selectedOption !== 'none')
+    .filter((state) => state.selectedOption !== 'none')
     .forEach((state) => {
       const targetVersion =
         state.selectedOption === 'range' ? state.rangeVersion : state.latestVersion

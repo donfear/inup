@@ -1,7 +1,6 @@
 import type {
   PackageSelectionState,
   PersistedFilters,
-  RenderableItem,
   VulnerabilityDisplayOptions,
 } from '../../../shared/types'
 import { FilterManager } from './filter-manager'
@@ -16,20 +15,14 @@ export interface DisplayState {
 
 export interface RenderState {
   forceFullRender: boolean // Whether to force a full re-render (clear screen) instead of diff
-  renderedLines: string[]
-  renderableItems: RenderableItem[]
 }
 
 export interface UIState {
   currentRow: number
-  previousRow: number
   scrollOffset: number
-  previousScrollOffset: number
   maxVisibleItems: number
   terminalHeight: number
   forceFullRender: boolean
-  renderedLines: string[]
-  renderableItems: RenderableItem[]
   showInfoModal: boolean
   infoModalRow: number
   isLoadingModalInfo: boolean
@@ -75,8 +68,6 @@ export class StateManager {
 
     this.renderState = {
       forceFullRender: true,
-      renderedLines: [],
-      renderableItems: [],
     }
   }
 
@@ -89,14 +80,10 @@ export class StateManager {
 
     return {
       currentRow: navState.currentRow,
-      previousRow: navState.previousRow,
       scrollOffset: navState.scrollOffset,
-      previousScrollOffset: navState.previousScrollOffset,
       maxVisibleItems: this.displayState.maxVisibleItems,
       terminalHeight: this.displayState.terminalHeight,
       forceFullRender: this.renderState.forceFullRender,
-      renderedLines: this.renderState.renderedLines,
-      renderableItems: this.renderState.renderableItems,
       showInfoModal: modalState.showInfoModal,
       infoModalRow: modalState.infoModalRow,
       isLoadingModalInfo: modalState.isLoadingModalInfo,
@@ -128,11 +115,6 @@ export class StateManager {
     return this.notice
   }
 
-  setRenderableItems(items: RenderableItem[]): void {
-    this.renderState.renderableItems = items
-    this.navigationManager.setRenderableItems(items)
-  }
-
   // Navigation delegation
   navigateUp(totalItems: number): void {
     this.navigationManager.navigateUp(totalItems)
@@ -156,10 +138,6 @@ export class StateManager {
 
   navigatePageDown(totalItems: number): void {
     this.navigationManager.navigatePageDown(totalItems)
-  }
-
-  packageIndexToVisualIndex(packageIndex: number): number {
-    return this.navigationManager.packageIndexToVisualIndex(packageIndex)
   }
 
   /**
@@ -187,7 +165,7 @@ export class StateManager {
 
     const currentRow = this.navigationManager.getCurrentRow()
     const currentState = states[currentRow]
-    if (currentState?.loadState !== 'ready') return
+    if (!currentState) return
 
     if (direction === 'left') {
       // Move selection left with wraparound: latest -> range -> none -> latest
@@ -234,7 +212,7 @@ export class StateManager {
   bulkSelectMinor(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.loadState === 'ready' && state.hasRangeUpdate) {
+      if (state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -243,9 +221,9 @@ export class StateManager {
   bulkSelectLatest(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.loadState === 'ready' && state.hasMajorUpdate) {
+      if (state.hasMajorUpdate) {
         state.selectedOption = 'latest'
-      } else if (state.loadState === 'ready' && state.hasRangeUpdate) {
+      } else if (state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
     })
@@ -254,9 +232,7 @@ export class StateManager {
   bulkUnselectAll(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
-      if (state.loadState === 'ready') {
-        state.selectedOption = 'none'
-      }
+      state.selectedOption = 'none'
     })
   }
 
@@ -265,7 +241,7 @@ export class StateManager {
   toggleSelection(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     const currentState = states[this.navigationManager.getCurrentRow()]
-    if (currentState?.loadState !== 'ready') return
+    if (!currentState) return
 
     if (currentState.selectedOption !== 'none') {
       currentState.selectedOption = 'none'
@@ -471,20 +447,12 @@ export class StateManager {
     return false // No change
   }
 
-  markRendered(renderedLines: string[]): void {
-    this.renderState.renderedLines = renderedLines
-    this.navigationManager.markRendered()
-  }
-
   setInitialRender(isInitial: boolean): void {
     this.renderState.forceFullRender = isInitial
   }
 
   resetForResize(totalFilteredItems?: number): void {
-    const totalItems =
-      totalFilteredItems ||
-      this.renderState.renderableItems.length ||
-      this.displayState.maxVisibleItems
+    const totalItems = totalFilteredItems || this.displayState.maxVisibleItems
     this.navigationManager.resetForResize(totalItems)
     this.renderState.forceFullRender = true
   }

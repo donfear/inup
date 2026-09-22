@@ -28,8 +28,8 @@ inputs:
   node-version:
     description: 'Node.js version to set up for the run.'
     required: false
-    # inup depends on undici@8, which requires Node >=22.19. Defaulting below that crashes the run
-    # with "webidl.util.markAsUncloneable is not a function" at startup.
+    # inup requires Node >=22.19 (engines.node). Releases before 1.7.3 also depended on undici@8,
+    # which crashes below that with "webidl.util.markAsUncloneable is not a function" at startup.
     default: '22'
   inup-version:
     description: 'inup version to run via npx (e.g. "1" or "latest"). Pin for reproducible runs.'

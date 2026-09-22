@@ -38,7 +38,6 @@ describe('VersionColumnLayout', () => {
         rangeVersion: '16.0.0-preview.12',
         latestVersion: '17.0.0-canary.3',
       }),
-      makeSelectionState({ loadState: 'pending' }),
     ]
 
     expect(new VersionColumnLayout().get(rows, 100)).toEqual(computeVersionColumnWidths(rows, 100))

@@ -3,13 +3,10 @@ import {
   computeVersionColumnWidths,
   renderInterface,
   renderPackageLine,
-  renderPackagesTable,
-  renderSectionHeader,
-  renderSpacer,
 } from '../../../../src/features/interactive/renderer/package-list'
 import { VersionUtils } from '../../../../src/features/interactive/renderer/version-format'
 import { stripAnsi } from '../../../../src/shared/terminal/text'
-import type { PackageManagerInfo, RenderableItem } from '../../../../src/shared/types'
+import type { PackageManagerInfo } from '../../../../src/shared/types'
 import { makeSelectionState } from '../../../fixtures/selection-state-factory'
 
 const baseState = makeSelectionState({ name: 'demo-pkg' })
@@ -26,14 +23,13 @@ interface RenderOptions {
   currentRow?: number
   scrollOffset?: number
   maxVisibleItems?: number
-  renderableItems?: RenderableItem[]
   activeFilterLabel?: string
   packageManager?: PackageManagerInfo
   filterMode?: boolean
   filterQuery?: string
   totalPackagesBeforeFilter?: number
-  loadingProgress?: Parameters<typeof renderInterface>[12]
-  auditProgress?: Parameters<typeof renderInterface>[13]
+  loadingProgress?: Parameters<typeof renderInterface>[10]
+  auditProgress?: Parameters<typeof renderInterface>[11]
   notice?: string | null
   terminalWidth?: number
 }
@@ -44,8 +40,6 @@ function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
     opts.currentRow ?? 0,
     opts.scrollOffset ?? 0,
     opts.maxVisibleItems ?? 10,
-    false,
-    opts.renderableItems,
     opts.activeFilterLabel,
     opts.packageManager,
     opts.filterMode,
@@ -62,42 +56,6 @@ function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
 }
 
 describe('package-list renderer', () => {
-  it('renders pending rows with loading placeholders', () => {
-    const line = renderPackageLine(
-      {
-        ...baseState,
-        loadState: 'pending',
-        rangeVersion: 'loading',
-        latestVersion: 'loading',
-        hasRangeUpdate: false,
-        hasMajorUpdate: false,
-      },
-      0,
-      true,
-      120
-    )
-
-    expect(line).toContain('loading')
-  })
-
-  it('renders failed rows as unavailable and keeps layout stable', () => {
-    const line = renderPackageLine(
-      {
-        ...baseState,
-        loadState: 'failed',
-        rangeVersion: 'unknown',
-        latestVersion: 'unknown',
-        hasRangeUpdate: false,
-        hasMajorUpdate: false,
-      },
-      0,
-      false,
-      120
-    )
-
-    expect(line).toContain('unavailable')
-  })
-
   it('renders every state variant at the same visual width so columns align', () => {
     const variants = [
       baseState,
@@ -111,14 +69,7 @@ describe('package-list renderer', () => {
         },
       }),
       makeSelectionState({ name: 'demo-pkg', deprecated: 'use something else instead' }),
-      makeSelectionState({
-        name: 'demo-pkg',
-        loadState: 'failed',
-        rangeVersion: 'unknown',
-        latestVersion: 'unknown',
-        hasRangeUpdate: false,
-        hasMajorUpdate: false,
-      }),
+      makeSelectionState({ name: 'demo-pkg', hasRangeUpdate: false, hasMajorUpdate: false }),
       makeSelectionState({ name: '@scope/a-rather-long-package-name-for-testing' }),
       makeSelectionState({ name: 'demo-pkg', type: 'devDependencies' }),
       makeSelectionState({ name: 'demo-pkg', catalog: 'default' }),
@@ -131,8 +82,8 @@ describe('package-list renderer', () => {
     // measured differently from how it renders would shift the whole column.
     for (const terminalWidth of [90, 120]) {
       const widths = variants.flatMap((state) => [
-        VersionUtils.getVisualLength(renderPackageLine(state, 0, false, terminalWidth)),
-        VersionUtils.getVisualLength(renderPackageLine(state, 0, true, terminalWidth)),
+        VersionUtils.getVisualLength(renderPackageLine(state, false, terminalWidth)),
+        VersionUtils.getVisualLength(renderPackageLine(state, true, terminalWidth)),
       ])
       expect(new Set(widths).size).toBe(1)
     }
@@ -141,7 +92,6 @@ describe('package-list renderer', () => {
   it('marks catalog entries with a [C] badge', () => {
     const line = renderPackageLine(
       makeSelectionState({ name: 'demo-pkg', catalog: 'default' }),
-      0,
       false,
       120
     )
@@ -152,7 +102,6 @@ describe('package-list renderer', () => {
   it('shows the catalog badge alongside the dep-type badge', () => {
     const line = renderPackageLine(
       makeSelectionState({ name: 'demo-pkg', catalog: 'react19', type: 'devDependencies' }),
-      0,
       false,
       120
     )
@@ -161,7 +110,7 @@ describe('package-list renderer', () => {
   })
 
   it('shows no catalog badge for regular dependencies', () => {
-    expect(stripAnsi(renderPackageLine(baseState, 0, false, 120))).not.toContain('[C]')
+    expect(stripAnsi(renderPackageLine(baseState, false, 120))).not.toContain('[C]')
   })
 
   it('uses fixed-width vulnerability badges so rows stay aligned', () => {
@@ -175,7 +124,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120
     )
@@ -190,7 +138,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120
     )
@@ -210,7 +157,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120
     )
@@ -231,7 +177,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120
     )
@@ -252,7 +197,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120,
       { showPeerDependencyVulnerabilities: true }
@@ -274,7 +218,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120
     )
@@ -295,7 +238,6 @@ describe('package-list renderer', () => {
           advisories: [],
         },
       },
-      0,
       false,
       120,
       { showOptionalDependencyVulnerabilities: true }
@@ -306,20 +248,7 @@ describe('package-list renderer', () => {
   })
 
   it('pads rendered list rows to the terminal width', () => {
-    const lines = renderInterface(
-      [baseState],
-      0,
-      0,
-      10,
-      false,
-      [],
-      'Deps',
-      undefined,
-      false,
-      '',
-      1,
-      120
-    )
+    const lines = renderInterface([baseState], 0, 0, 10, 'Deps', undefined, false, '', 1, 120)
 
     expect(lines.every((line) => VersionUtils.getVisualLength(line) >= 120)).toBe(true)
   })
@@ -496,38 +425,13 @@ describe('renderInterface status line', () => {
 })
 
 describe('renderInterface body', () => {
-  it('renders grouped items with section headers and spacers', () => {
-    const items: RenderableItem[] = [
-      { type: 'header', title: 'Dependencies', sectionType: 'main' },
-      { type: 'package', state: makeSelectionState({ name: 'grouped-pkg' }), originalIndex: 0 },
-      { type: 'spacer' },
-      { type: 'header', title: 'Peer Dependencies', sectionType: 'peer' },
-      { type: 'package', state: makeSelectionState({ name: 'peer-pkg' }), originalIndex: 1 },
+  it('windows rows by scroll offset', () => {
+    const states = [
+      makeSelectionState({ name: 'first-pkg' }),
+      makeSelectionState({ name: 'second-pkg' }),
     ]
 
-    const text = renderPlain([baseState, baseState], {
-      renderableItems: items,
-      maxVisibleItems: 10,
-    })
-
-    expect(text).toContain('Dependencies')
-    expect(text).toContain('Peer Dependencies')
-    expect(text).toContain('grouped-pkg')
-    expect(text).toContain('peer-pkg')
-  })
-
-  it('windows grouped items by scroll offset', () => {
-    const items: RenderableItem[] = [
-      { type: 'header', title: 'Dependencies', sectionType: 'main' },
-      { type: 'package', state: makeSelectionState({ name: 'first-pkg' }), originalIndex: 0 },
-      { type: 'package', state: makeSelectionState({ name: 'second-pkg' }), originalIndex: 1 },
-    ]
-
-    const text = renderPlain([baseState, baseState], {
-      renderableItems: items,
-      scrollOffset: 2,
-      maxVisibleItems: 1,
-    })
+    const text = renderPlain(states, { scrollOffset: 1, maxVisibleItems: 1 })
 
     expect(text).toContain('second-pkg')
     expect(text).not.toContain('first-pkg')
@@ -618,33 +522,6 @@ describe('renderInterface body', () => {
   })
 })
 
-describe('renderPackagesTable', () => {
-  it('reports up-to-date for empty and current package lists', () => {
-    expect(stripAnsi(renderPackagesTable([]))).toContain('All packages are up to date!')
-    expect(stripAnsi(renderPackagesTable([{ isOutdated: false }]))).toContain(
-      'All packages are up to date!'
-    )
-  })
-
-  it('renders the banner when outdated packages exist', () => {
-    expect(stripAnsi(renderPackagesTable([{ isOutdated: true }]))).toContain('inup')
-  })
-})
-
-describe('section primitives', () => {
-  it('renders section headers for every section type', () => {
-    for (const sectionType of ['main', 'peer', 'optional'] as const) {
-      expect(stripAnsi(renderSectionHeader('Section Title', sectionType))).toContain(
-        'Section Title'
-      )
-    }
-  })
-
-  it('renders an empty spacer row', () => {
-    expect(stripAnsi(renderSpacer()).trim()).toBe('')
-  })
-})
-
 describe('renderPackageLine option columns', () => {
   it('leaves both option columns blank for up-to-date packages', () => {
     const line = renderPackageLine(
@@ -655,7 +532,6 @@ describe('renderPackageLine option columns', () => {
         rangeVersion: '1.0.0',
         latestVersion: '1.0.0',
       },
-      0,
       false,
       120
     )
@@ -670,7 +546,6 @@ describe('renderPackageLine option columns', () => {
   it('shows only the latest column for major-only updates', () => {
     const line = renderPackageLine(
       { ...baseState, hasRangeUpdate: false, rangeVersion: '1.0.0' },
-      0,
       false,
       120
     )
@@ -681,7 +556,7 @@ describe('renderPackageLine option columns', () => {
   })
 
   it('marks the selected option with a filled dot', () => {
-    const selected = renderPackageLine({ ...baseState, selectedOption: 'latest' }, 0, false, 120)
+    const selected = renderPackageLine({ ...baseState, selectedOption: 'latest' }, false, 120)
 
     expect(stripAnsi(selected)).toContain('● ^2.0.0')
   })
@@ -745,20 +620,7 @@ describe('version column sizing for long prerelease versions', () => {
   })
 
   it('middle-truncates a version that cannot fit its column', () => {
-    const lines = renderInterface(
-      [longState],
-      0,
-      0,
-      10,
-      false,
-      undefined,
-      undefined,
-      undefined,
-      false,
-      '',
-      1,
-      84
-    )
+    const lines = renderInterface([longState], 0, 0, 10, undefined, undefined, false, '', 1, 84)
     const row = lines.map(stripAnsi).find((line) => line.includes('next'))
 
     expect(row).toBeDefined()
@@ -772,8 +634,8 @@ describe('version column sizing for long prerelease versions', () => {
     for (const terminalWidth of [84, 100, 120]) {
       const widths = computeVersionColumnWidths([baseState, longState], terminalWidth)
       const rowWidths = [baseState, longState].flatMap((state) => [
-        VersionUtils.getVisualLength(renderPackageLine(state, 0, false, terminalWidth, {}, widths)),
-        VersionUtils.getVisualLength(renderPackageLine(state, 0, true, terminalWidth, {}, widths)),
+        VersionUtils.getVisualLength(renderPackageLine(state, false, terminalWidth, {}, widths)),
+        VersionUtils.getVisualLength(renderPackageLine(state, true, terminalWidth, {}, widths)),
       ])
       expect(new Set(rowWidths).size).toBe(1)
     }
@@ -801,26 +663,12 @@ describe('version column sizing for long prerelease versions', () => {
     })
     for (const terminalWidth of [84, 100, 111, 120, 139, 160]) {
       const widths = computeVersionColumnWidths([loaded, longState], terminalWidth)
-      const badgedRow = renderPackageLine(loaded, 0, false, terminalWidth, {}, widths)
-      const plainRow = renderPackageLine(longState, 0, false, terminalWidth, {}, widths)
+      const badgedRow = renderPackageLine(loaded, false, terminalWidth, {}, widths)
+      const plainRow = renderPackageLine(longState, false, terminalWidth, {}, widths)
 
       expect(VersionUtils.getVisualLength(badgedRow)).toBeLessThanOrEqual(terminalWidth)
       expect(VersionUtils.getVisualLength(badgedRow)).toBe(VersionUtils.getVisualLength(plainRow))
     }
-  })
-
-  it('ignores range/latest lengths of rows that are not ready', () => {
-    const pendingLong = makeSelectionState({
-      loadState: 'pending',
-      currentVersionSpecifier: '^1.0.0',
-      rangeVersion: '16.0.0-preview.10',
-      latestVersion: '16.0.0-preview.10',
-      hasRangeUpdate: true,
-      hasMajorUpdate: true,
-    })
-    const widths = computeVersionColumnWidths([pendingLong], 120)
-
-    expect(widths).toEqual({ current: 16, range: 16, latest: 16 })
   })
 })
 
@@ -828,8 +676,8 @@ describe('package-list render fallbacks', () => {
   it('renders a scoped name without a slash on both row states', () => {
     const state = makeSelectionState({ name: '@solo' })
 
-    expect(stripAnsi(renderPackageLine(state, 0, true, 120))).toContain('@solo')
-    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('@solo')
+    expect(stripAnsi(renderPackageLine(state, true, 120))).toContain('@solo')
+    expect(stripAnsi(renderPackageLine(state, false, 120))).toContain('@solo')
   })
 
   it('pads the current-version column with spaces when dashes do not fit', () => {
@@ -837,7 +685,7 @@ describe('package-list render fallbacks', () => {
     // version + trailing space) — no room for dashes, spaces only.
     const state = makeSelectionState({ currentVersionSpecifier: '>=10.20.30-b1' })
 
-    expect(stripAnsi(renderPackageLine(state, 0, false, 120))).toContain('>=10.20.30-b1')
+    expect(stripAnsi(renderPackageLine(state, false, 120))).toContain('>=10.20.30-b1')
   })
 
   it('colors the header with the provided color for unknown package managers', () => {
@@ -857,13 +705,5 @@ describe('package-list render fallbacks', () => {
     const rendered = renderPlain([baseState], { filterMode: true, filterQuery: '' })
 
     expect(rendered).toContain('Search:')
-  })
-
-  it('skips renderable items of unknown type', () => {
-    const rendered = renderPlain([baseState], {
-      renderableItems: [{ type: 'mystery' } as unknown as RenderableItem],
-    })
-
-    expect(rendered).not.toContain('mystery')
   })
 })

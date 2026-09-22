@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatVersionDiff,
   truncateMiddle,
   VersionUtils,
 } from '../../../../../src/features/interactive/renderer/version-format'
-import { stripAnsi } from '../../../../../src/shared/terminal/text'
-
-// Wraps every segment the diff highlighter colors, so assertions are
-// independent of whether chalk emits ANSI codes in this environment.
-const marker = (text: string) => `[${text}]`
 
 describe('truncateMiddle', () => {
   it('returns short strings unchanged', () => {
@@ -39,44 +33,9 @@ describe('truncateMiddle', () => {
   })
 })
 
-describe('formatVersionDiff', () => {
-  it('renders identical versions without highlighting', () => {
-    expect(stripAnsi(formatVersionDiff('1.2.3', '1.2.3', marker))).toBe('1.2.3')
-  })
-
-  it('treats missing segments as zero and skips highlighting equal versions', () => {
-    expect(stripAnsi(formatVersionDiff('1.0', '1.0.0', marker))).toBe('1.0.0')
-  })
-
-  it('highlights everything from a major bump onward', () => {
-    expect(stripAnsi(formatVersionDiff('1.2.3', '2.0.0', marker))).toBe('[2][.][0][.][0]')
-  })
-
-  it('keeps the major segment plain on a minor bump', () => {
-    expect(stripAnsi(formatVersionDiff('1.2.3', '1.3.0', marker))).toBe('1[.][3][.][0]')
-  })
-
-  it('keeps major and minor plain on a patch bump', () => {
-    expect(stripAnsi(formatVersionDiff('1.2.3', '1.2.4', marker))).toBe('1.2[.][4]')
-  })
-
-  it('pads a shorter current version with zeros', () => {
-    expect(stripAnsi(formatVersionDiff('1.2', '1.2.3', marker))).toBe('1.2[.][3]')
-  })
-
-  it('pads a shorter target version with zeros', () => {
-    expect(stripAnsi(formatVersionDiff('1.2.3', '1.2', marker))).toBe('1.2[.][0]')
-  })
-
-  it('coerces non-numeric segments to zero', () => {
-    expect(stripAnsi(formatVersionDiff('x', '1', marker))).toBe('[1]')
-  })
-})
-
 describe('VersionUtils', () => {
   it('bundles the formatting helpers', () => {
     expect(VersionUtils.truncateMiddle).toBe(truncateMiddle)
-    expect(VersionUtils.formatVersionDiff).toBe(formatVersionDiff)
     expect(VersionUtils.getVisualLength('\u001b[31mab\u001b[39m')).toBe(2)
     expect(VersionUtils.stripAnsi('\u001b[31mab\u001b[39m')).toBe('ab')
     expect(VersionUtils.applyVersionPrefix('^1.0.0', '2.0.0')).toBe('^2.0.0')

@@ -97,7 +97,7 @@ function startSession(
 /** The last package-list frame the renderer was asked for, by name instead of position. */
 function lastFrame(render: ReturnType<typeof vi.spyOn<UIRenderer, 'renderInterface'>>) {
   const call = render.mock.lastCall!
-  return { states: call[0], row: call[1], scroll: call[2], options: call[14] }
+  return { states: call[0], row: call[1], scroll: call[2], options: call[12] }
 }
 
 let fake: FakeStdin
