@@ -27,4 +27,4 @@ minimumReleaseAgeExclude:
   - astro@7.2.3
   - marked@18.0.10
   - vitest@5.0.0
-  - wrap-ansi@10.0.1
+  - wrap-ansi@10.0.1 || 10.0.2
