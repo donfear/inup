@@ -61,8 +61,7 @@ vi.mock('../../../src/features/upgrade/upgrader', () => ({
 
 vi.mock('../../../src/shared/package-manager', () => ({
   PackageManagerDetector: {
-    detect: mocks.detectPackageManager,
-    getInfo: mocks.detectPackageManager,
+    resolve: mocks.detectPackageManager,
   },
 }))
 
@@ -94,7 +93,6 @@ describe('UpgradeRunner terminal handoff', () => {
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = {
         phase: 'resolving',
-        discovered: 1,
         resolved: 0,
         total: 1,
         failed: 0,
@@ -165,7 +163,7 @@ describe('UpgradeRunner terminal handoff', () => {
         type: 'complete',
         payload: {
           packages: [heldPackage],
-          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: false },
+          progress: { resolved: 1, total: 1, failed: 0, isLoading: false },
         },
       })
     })
@@ -212,7 +210,7 @@ describe('UpgradeRunner terminal handoff', () => {
             inWorkspace('/repo/apps/web/package.json'),
             inWorkspace('/repo/apps/api/package.json'),
           ],
-          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: false },
+          progress: { resolved: 1, total: 1, failed: 0, isLoading: false },
         },
       })
     })
@@ -251,7 +249,7 @@ describe('UpgradeRunner terminal handoff', () => {
         payload: {
           packageName: 'axios',
           packageInfo: [partiallyHeld],
-          progress: { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: true },
+          progress: { resolved: 1, total: 1, failed: 0, isLoading: true },
         },
       })
     })
@@ -313,7 +311,7 @@ describe('UpgradeRunner terminal handoff', () => {
           allDependencies: [],
           uniquePackages: ['next'],
           currentVersions: new Map(),
-          progress: { discovered: 1, resolved: 0, total: 1, failed: 0, isLoading: true },
+          progress: { resolved: 0, total: 1, failed: 0, isLoading: true },
         },
       })
       onEvent({
@@ -322,7 +320,6 @@ describe('UpgradeRunner terminal handoff', () => {
           packageName: 'next',
           packageInfo: [],
           progress: {
-            discovered: 1,
             resolved: 1,
             total: 1,
             failed: 0,
@@ -336,7 +333,6 @@ describe('UpgradeRunner terminal handoff', () => {
         payload: {
           packages: [],
           progress: {
-            discovered: 1,
             resolved: 1,
             total: 1,
             failed: 0,
@@ -509,14 +505,14 @@ describe('UpgradeRunner terminal handoff', () => {
           allDependencies: [],
           uniquePackages: [],
           currentVersions: new Map(),
-          progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: true },
+          progress: { resolved: 0, total: 0, failed: 0, isLoading: true },
         },
       })
       onEvent({
         type: 'complete',
         payload: {
           packages: [],
-          progress: { discovered: 0, resolved: 0, total: 0, failed: 0, isLoading: false },
+          progress: { resolved: 0, total: 0, failed: 0, isLoading: false },
         },
       })
     })
@@ -592,14 +588,12 @@ describe('UpgradeRunner terminal handoff', () => {
     errorSpy.mockRestore()
   })
 
-  it('uses the forced package manager instead of detecting one', () => {
+  it('resolves the package manager from its options (override or detection)', () => {
     new UpgradeRunner({ cwd: '/repo', packageManager: 'pnpm' })
-    expect(mocks.detectPackageManager).toHaveBeenCalledWith('pnpm')
-  })
-
-  it('defaults to process.cwd() when constructed without options', () => {
-    new UpgradeRunner()
-    expect(mocks.detectPackageManager).toHaveBeenCalledWith(process.cwd())
+    expect(mocks.detectPackageManager).toHaveBeenCalledWith({
+      cwd: '/repo',
+      packageManager: 'pnpm',
+    })
   })
 
   it('appends each streamed package to the selection UI and refreshes it', async () => {
@@ -617,7 +611,7 @@ describe('UpgradeRunner terminal handoff', () => {
     // The detector's final list is authoritative once loading completes.
     const completed = [streamedPackage, { ...streamedPackage, name: 'zod' }]
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
-      const progress = { discovered: 2, resolved: 0, total: 2, failed: 0, isLoading: true }
+      const progress = { resolved: 0, total: 2, failed: 0, isLoading: true }
       onEvent({
         type: 'initial',
         payload: {
@@ -702,7 +696,7 @@ describe('UpgradeRunner terminal handoff', () => {
     }
     // The stream delivers one package but never completes: progress stays loading.
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
-      const progress = { discovered: 1, resolved: 0, total: 1, failed: 0, isLoading: true }
+      const progress = { resolved: 0, total: 1, failed: 0, isLoading: true }
       onEvent({
         type: 'initial',
         payload: {

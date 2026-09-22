@@ -1,9 +1,8 @@
 import type { ParsedVersions } from '../versions'
-import type { DependencyEntry, NetworkProfile, PackageInfo } from './domain'
+import type { NetworkProfile, PackageInfo } from './domain'
 
 export interface PackageLoadProgress {
   phase: 'discovering' | 'collecting' | 'resolving' | 'done'
-  discovered: number
   resolved: number
   total: number
   failed: number
@@ -23,8 +22,6 @@ export interface AuditProgress {
 }
 
 export interface StreamOutdatedPackagesInitialPayload {
-  allDependencies: DependencyEntry[]
-  uniquePackages: string[]
   currentVersions: Map<string, string>
   progress: PackageLoadProgress
 }

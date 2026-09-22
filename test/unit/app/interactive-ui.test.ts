@@ -253,7 +253,7 @@ describe('InteractiveUI.selectPackagesToUpgradeProgressive', () => {
   it('forwards streaming progress and the refresh attachment to the session', async () => {
     const ui = new InteractiveUI(npmInfo)
     const states = [makeSelectionState({ selectedOption: 'range' })]
-    const progress = { discovered: 1, resolved: 1, total: 2, failed: 0, isLoading: true }
+    const progress = { resolved: 1, total: 2, failed: 0, isLoading: true }
     const attachRefresh = vi.fn()
     const hook = { refresh: vi.fn(), abort: vi.fn() }
     sessionMock.mockImplementation(
@@ -417,7 +417,7 @@ describe('InteractiveUI refresh plumbing', () => {
     const attachRefresh = vi.fn()
     await ui.selectPackagesToUpgradeProgressive(
       new SelectionList(states),
-      { discovered: 1, resolved: 1, total: 1, failed: 0, isLoading: true },
+      { resolved: 1, total: 1, failed: 0, isLoading: true },
       attachRefresh
     )
     expect(attachRefresh).toHaveBeenCalledWith({ refresh, abort: expect.any(Function) })

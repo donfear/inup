@@ -48,7 +48,9 @@ export class HeadlessRunner {
       // detector knows before it touches the registry. Start it from the `initial`
       // event so it overlaps the fetch instead of adding a round-trip at the end.
       // Best-effort like the audit itself: a failure resolves to an empty map.
-      let advisories: Promise<Map<string, PackageVulnerabilities>> | undefined
+      // The detector always emits `initial` before `complete`; the empty default only
+      // gives the variable a value until then.
+      let advisories: Promise<Map<string, PackageVulnerabilities>> = Promise.resolve(new Map())
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
         if (event.type === 'warning') {
@@ -153,7 +155,7 @@ export class HeadlessRunner {
     const choices = this.buildChoices(outdated, target)
     if (choices.length === 0) return
 
-    const packageManager = this.resolvePackageManager()
+    const packageManager = PackageManagerDetector.resolve(this.options)
     // With --json, run the upgrader quietly: its own progress + the install child's stdout go to
     // stderr, leaving stdout for the JSON document only.
     const upgrader = new PackageUpgrader(packageManager, { quiet: json })
@@ -214,13 +216,5 @@ export class HeadlessRunner {
     // minor: in-range bump only; major-only updates are skipped.
     if (!pkg.hasRangeUpdate) return null
     return pkg.rangeVersion || null
-  }
-
-  /** Resolve the package manager the same way the interactive runner does. */
-  private resolvePackageManager() {
-    const cwd = this.options?.cwd || process.cwd()
-    return this.options?.packageManager
-      ? PackageManagerDetector.getInfo(this.options.packageManager)
-      : PackageManagerDetector.detect(cwd)
   }
 }

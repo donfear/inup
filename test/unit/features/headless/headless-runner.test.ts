@@ -38,8 +38,10 @@ vi.mock('../../../../src/features/upgrade/upgrader', () => ({
 
 vi.mock('../../../../src/shared/package-manager', () => ({
   PackageManagerDetector: {
-    detect: vi.fn().mockReturnValue({ name: 'npm', displayName: 'npm' }),
-    getInfo: vi.fn((name: string) => ({ name, displayName: name })),
+    resolve: vi.fn((options?: { packageManager?: string }) => {
+      const name = options?.packageManager ?? 'npm'
+      return { name, displayName: name }
+    }),
   },
 }))
 
@@ -140,8 +142,6 @@ describe('HeadlessRunner.run', () => {
       onEvent({
         type: 'initial',
         payload: {
-          allDependencies: [],
-          uniquePackages: packages.map((p: any) => p.name),
           currentVersions: new Map(packages.map((p: any) => [p.name, p.currentVersion])),
           progress: {},
         },
@@ -198,7 +198,6 @@ describe('HeadlessRunner.run', () => {
             payload: {
               progress: {
                 phase,
-                discovered: 0,
                 resolved: 0,
                 failed: 0,
                 total: 0,
@@ -221,7 +220,6 @@ describe('HeadlessRunner.run', () => {
             packages: [],
             progress: {
               phase: 'done',
-              discovered: 0,
               resolved: 0,
               failed: 0,
               total: 0,
@@ -320,8 +318,6 @@ describe('HeadlessRunner.run', () => {
       onEvent({
         type: 'initial',
         payload: {
-          allDependencies: [],
-          uniquePackages: ['axios', 'left-pad'],
           currentVersions: new Map([
             ['axios', '^0.27.0'],
             ['left-pad', '^1.3.0'],
@@ -760,16 +756,15 @@ describe('HeadlessRunner.run', () => {
     errorSpy.mockRestore()
   })
 
-  it('resolves the package manager from options and defaults cwd when applying', async () => {
+  it('resolves the package manager from its options when applying', async () => {
     // The package manager is only resolved when --apply hands work to the upgrader.
     const { PackageManagerDetector } = await import('../../../../src/shared/package-manager')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     await new HeadlessRunner({ packageManager: 'pnpm' }).run({ apply: true })
-    expect(vi.mocked(PackageManagerDetector.getInfo)).toHaveBeenCalledWith('pnpm')
-
-    await new HeadlessRunner().run({ apply: true })
-    expect(vi.mocked(PackageManagerDetector.detect)).toHaveBeenCalledWith(process.cwd())
+    expect(vi.mocked(PackageManagerDetector.resolve)).toHaveBeenCalledWith({
+      packageManager: 'pnpm',
+    })
     logSpy.mockRestore()
   })
   it('writes a perf log when INUP_PERF is enabled', async () => {
