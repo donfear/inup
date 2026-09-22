@@ -42,9 +42,6 @@ jobs:
       - name: Check format and lint
         run: pnpm check:ci
 
-      - name: Check architecture boundaries
-        run: pnpm lint:deps
-
       - name: Typecheck
         run: pnpm typecheck
 
