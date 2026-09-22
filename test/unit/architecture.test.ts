@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -48,20 +48,23 @@ function resolveLocal(fromFile: string, specifier: string): string | null {
   if (!specifier.startsWith('.')) return null
   const target = resolve(dirname(fromFile), specifier)
   // Non-source imports (package.json via resolveJsonModule) sit outside the layering.
-  if (!target.startsWith(`${SRC}/`) || /\.json$/.test(target)) return null
+  if (!target.startsWith(`${SRC}${sep}`) || /\.json$/.test(target)) return null
   const base = target.replace(/\.js$/, '')
   for (const candidate of [`${base}.ts`, join(base, 'index.ts')]) {
     if (existsSync(candidate)) return candidate
   }
-  throw new Error(`Unresolved import '${specifier}' in ${relative(ROOT, fromFile)}`)
+  throw new Error(`Unresolved import '${specifier}' in ${toRepoPath(fromFile)}`)
 }
+
+/** Repo-relative with forward slashes, so the rules below read the same on Windows. */
+const toRepoPath = (path: string) => relative(ROOT, path).split(sep).join('/')
 
 function collectEdges(): Edge[] {
   return listSources(SRC).flatMap((file) => {
     const source = readFileSync(file, 'utf8')
     return [...source.matchAll(SPECIFIER)].flatMap(([, specifier]) => {
       const target = resolveLocal(file, specifier)
-      return target ? [{ from: relative(ROOT, file), to: relative(ROOT, target) }] : []
+      return target ? [{ from: toRepoPath(file), to: toRepoPath(target) }] : []
     })
   })
 }
