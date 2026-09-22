@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { executeCommand, executeCommandAsync } from '../../../src/shared/exec'
+import { executeCommand } from '../../../src/shared/exec'
 
 describe('exec utils', () => {
   describe('executeCommand()', () => {
@@ -33,34 +33,6 @@ describe('exec utils', () => {
     it('should handle commands with pipes', () => {
       const result = executeCommand('node -e "console.log(\'test\')" | cat')
       expect(result.trim()).toBe('test')
-    })
-  })
-
-  describe('executeCommandAsync()', () => {
-    it('should execute a simple command asynchronously', async () => {
-      const result = await executeCommandAsync('node -e "console.log(\'hello async\')"')
-      expect(result.trim()).toBe('hello async')
-    })
-
-    it('should reject for invalid command', async () => {
-      await expect(executeCommandAsync('nonexistent-command-xyz')).rejects.toThrow('Command failed')
-    })
-
-    it('should return output from successful command', async () => {
-      const result = await executeCommandAsync('node --version')
-      expect(result).toMatch(/^v\d+\.\d+\.\d+/)
-    })
-
-    it('should handle multiple async commands', async () => {
-      const results = await Promise.all([
-        executeCommandAsync('node -e "console.log(\'test1\')"'),
-        executeCommandAsync('node -e "console.log(\'test2\')"'),
-        executeCommandAsync('node -e "console.log(\'test3\')"'),
-      ])
-
-      expect(results[0].trim()).toBe('test1')
-      expect(results[1].trim()).toBe('test2')
-      expect(results[2].trim()).toBe('test3')
     })
   })
 })
@@ -124,24 +96,5 @@ describe('exec cross-platform robustness', () => {
     expect(() => executeCommand(`node -e "console.log('partial'); process.exit(1)"`)).toThrow(
       'Command failed'
     )
-  })
-
-  it('rejects with the failing command in the async error too', async () => {
-    await expect(executeCommandAsync('node -e "process.exit(7)"')).rejects.toThrow(
-      'Command failed: node -e "process.exit(7)"'
-    )
-  })
-})
-
-describe('executeCommandAsync stderr handling', () => {
-  it('rejects when a command produces only stderr output', async () => {
-    await expect(executeCommandAsync(`node -e "console.error('boom')"`)).rejects.toThrow(
-      'Command failed'
-    )
-  })
-
-  it('tolerates stderr noise when stdout has content', async () => {
-    const output = await executeCommandAsync(`node -e "console.error('warn'); console.log('ok')"`)
-    expect(output.trim()).toBe('ok')
   })
 })

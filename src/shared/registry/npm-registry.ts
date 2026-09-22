@@ -15,13 +15,7 @@ import { HillClimbController } from '../http/hill-climb-controller'
 import { httpRequest } from '../http/http-request'
 import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
-import {
-  isCongestionStatus,
-  isRetryableStatus,
-  isTransientNetworkError,
-  parseRetryAfterMs,
-  sleep,
-} from '../http/retry'
+import { isCongestionStatus, isRetryableStatus, parseRetryAfterMs, sleep } from '../http/retry'
 import { clamp } from '../math'
 import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
@@ -149,7 +143,7 @@ async function decompressBody(raw: Buffer, encoding: string | undefined): Promis
 /**
  * Turn a 200 body into version data and persist its ETag entry for the next
  * run's conditional request. Uses the Rust core when one is enabled
- * (INUP_CORE, dev only); if it fails, the TypeScript path handles the body.
+ * (`--native` or `.inuprc`); if it fails, the TypeScript path handles the body.
  *
  * The Rust decoder reads only the fields of the abbreviated document and drops
  * `time`, so a full-packument body is always decoded in TypeScript — otherwise
@@ -343,13 +337,10 @@ async function attemptWithNodeHttp(
       revalidated: false,
       bytes: raw.length,
     }
-  } catch (error) {
+  } catch {
     signal?.throwIfAborted()
-    if (isTransientNetworkError(error)) {
-      return { kind: 'transient' }
-    }
-    // Unknown error: treat as transient so we try the fallback rather than
-    // silently returning 'unknown'.
+    // Every network failure is treated as transient, known or not, so we try
+    // the fallback rather than silently returning 'unknown'.
     return { kind: 'transient' }
   }
 }

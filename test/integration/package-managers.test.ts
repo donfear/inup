@@ -172,9 +172,6 @@ describe('Package Manager Integration Tests', () => {
 
       const root = PackageManagerDetector.findWorkspaceRoot(pkgDir, 'npm')
       expect(root).toBe(testDir)
-
-      const isInWorkspace = PackageManagerDetector.isInWorkspace(pkgDir, 'npm')
-      expect(isInWorkspace).toBe(true)
     })
 
     it('should detect yarn berry workspace format', () => {

@@ -236,7 +236,6 @@ export async function runCli(options: CliOptions): Promise<void> {
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
-    debug: options.debug || process.env.INUP_DEBUG === '1',
     saveExact: options.saveExact ?? false,
     // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
     minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,

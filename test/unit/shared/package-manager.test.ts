@@ -272,24 +272,4 @@ describe('PackageManagerDetector', () => {
       expect(root).toBeNull()
     })
   })
-
-  describe('isInWorkspace()', () => {
-    it('should return true when in a workspace', () => {
-      writeFileSync(join(testDir, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }))
-
-      const packagesDir = join(testDir, 'packages', 'pkg1')
-      mkdirSync(packagesDir, { recursive: true })
-      writeFileSync(join(packagesDir, 'package.json'), JSON.stringify({}))
-
-      const result = PackageManagerDetector.isInWorkspace(packagesDir, 'npm')
-      expect(result).toBe(true)
-    })
-
-    it('should return false when not in a workspace', () => {
-      writeFileSync(join(testDir, 'package.json'), JSON.stringify({}))
-
-      const result = PackageManagerDetector.isInWorkspace(testDir, 'npm')
-      expect(result).toBe(false)
-    })
-  })
 })

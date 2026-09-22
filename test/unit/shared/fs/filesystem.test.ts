@@ -11,9 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  collectAllDependencies,
   collectAllDependenciesAsync,
-  findAllPackageJsonFiles,
   findAllPackageJsonFilesAsync,
   findPackageJson,
   findWorkspaceRoot,
@@ -99,8 +97,8 @@ describe('filesystem utils', () => {
     })
   })
 
-  describe('collectAllDependencies()', () => {
-    it('should collect dependencies and devDependencies by default', () => {
+  describe('collectAllDependenciesAsync()', () => {
+    it('should collect dependencies and devDependencies by default', async () => {
       const packageJson = {
         name: 'test',
         dependencies: {
@@ -114,7 +112,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = collectAllDependencies([path])
+      const result = await collectAllDependenciesAsync([path])
 
       expect(result).toHaveLength(3)
       expect(result).toContainEqual({
@@ -131,7 +129,7 @@ describe('filesystem utils', () => {
       })
     })
 
-    it('should include peerDependencies when option is enabled', () => {
+    it('should include peerDependencies', async () => {
       const packageJson = {
         name: 'test',
         peerDependencies: {
@@ -141,7 +139,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = collectAllDependencies([path], { includePeerDeps: true })
+      const result = await collectAllDependenciesAsync([path])
 
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({
@@ -150,7 +148,7 @@ describe('filesystem utils', () => {
       })
     })
 
-    it('should include optionalDependencies when option is enabled', () => {
+    it('should include optionalDependencies', async () => {
       const packageJson = {
         name: 'test',
         optionalDependencies: {
@@ -160,7 +158,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = collectAllDependencies([path], { includeOptionalDeps: true })
+      const result = await collectAllDependenciesAsync([path])
 
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({
@@ -169,7 +167,7 @@ describe('filesystem utils', () => {
       })
     })
 
-    it('should skip malformed package.json files', () => {
+    it('should skip malformed package.json files', async () => {
       const validPath = join(testDir, 'valid', 'package.json')
       const invalidPath = join(testDir, 'invalid', 'package.json')
 
@@ -179,51 +177,13 @@ describe('filesystem utils', () => {
       writeFileSync(validPath, JSON.stringify({ name: 'valid', dependencies: { chalk: '5.0.0' } }))
       writeFileSync(invalidPath, 'invalid json{')
 
-      const result = collectAllDependencies([validPath, invalidPath])
+      const result = await collectAllDependenciesAsync([validPath, invalidPath])
 
       expect(result).toHaveLength(1)
       expect(result[0].name).toBe('chalk')
     })
 
-    it('should handle multiple package.json files', () => {
-      const pkg1Path = join(testDir, 'pkg1', 'package.json')
-      const pkg2Path = join(testDir, 'pkg2', 'package.json')
-
-      mkdirSync(join(testDir, 'pkg1'), { recursive: true })
-      mkdirSync(join(testDir, 'pkg2'), { recursive: true })
-
-      writeFileSync(pkg1Path, JSON.stringify({ name: 'pkg1', dependencies: { chalk: '5.0.0' } }))
-      writeFileSync(
-        pkg2Path,
-        JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } })
-      )
-
-      const result = collectAllDependencies([pkg1Path, pkg2Path])
-
-      expect(result).toHaveLength(2)
-      expect(result.find((d) => d.name === 'chalk')).toBeDefined()
-      expect(result.find((d) => d.name === 'commander')).toBeDefined()
-    })
-  })
-
-  describe('collectAllDependenciesAsync()', () => {
-    it('should collect dependencies asynchronously', async () => {
-      const packageJson = {
-        name: 'test',
-        dependencies: {
-          chalk: '^5.0.0',
-        },
-      }
-      const path = join(testDir, 'package.json')
-      writeFileSync(path, JSON.stringify(packageJson))
-
-      const result = await collectAllDependenciesAsync([path])
-
-      expect(result).toHaveLength(1)
-      expect(result[0].name).toBe('chalk')
-    })
-
-    it('should handle multiple files in parallel', async () => {
+    it('should handle multiple package.json files', async () => {
       const pkg1Path = join(testDir, 'pkg1', 'package.json')
       const pkg2Path = join(testDir, 'pkg2', 'package.json')
 
@@ -239,155 +199,73 @@ describe('filesystem utils', () => {
       const result = await collectAllDependenciesAsync([pkg1Path, pkg2Path])
 
       expect(result).toHaveLength(2)
+      expect(result.find((d) => d.name === 'chalk')).toBeDefined()
+      expect(result.find((d) => d.name === 'commander')).toBeDefined()
     })
   })
 
-  describe('findAllPackageJsonFiles()', () => {
-    it('should find package.json in root directory', () => {
+  describe('findAllPackageJsonFilesAsync() basics', () => {
+    it('should find package.json in root directory', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
 
-      const result = findAllPackageJsonFiles(testDir)
+      const result = await findAllPackageJsonFilesAsync(testDir)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBe(join(testDir, 'package.json'))
     })
 
-    it('should find package.json files recursively', () => {
-      writeFileSync(join(testDir, 'package.json'), '{}')
-
-      const packagesDir = join(testDir, 'packages')
-      mkdirSync(join(packagesDir, 'pkg-a'), { recursive: true })
-      mkdirSync(join(packagesDir, 'pkg-b'), { recursive: true })
-
-      writeFileSync(join(packagesDir, 'pkg-a', 'package.json'), '{}')
-      writeFileSync(join(packagesDir, 'pkg-b', 'package.json'), '{}')
-
-      const result = findAllPackageJsonFiles(testDir)
-
-      expect(result).toHaveLength(3)
-    })
-
-    it('should skip node_modules directories', () => {
-      writeFileSync(join(testDir, 'package.json'), '{}')
-
-      const nodeModulesDir = join(testDir, 'node_modules', 'some-package')
-      mkdirSync(nodeModulesDir, { recursive: true })
-      writeFileSync(join(nodeModulesDir, 'package.json'), '{}')
-
-      const result = findAllPackageJsonFiles(testDir)
-
-      expect(result).toHaveLength(1)
-      expect(result[0]).toBe(join(testDir, 'package.json'))
-    })
-
-    it('should skip hidden directories', () => {
-      writeFileSync(join(testDir, 'package.json'), '{}')
-
-      const hiddenDir = join(testDir, '.turbo', 'nested-package')
-      mkdirSync(hiddenDir, { recursive: true })
-      writeFileSync(join(hiddenDir, 'package.json'), '{}')
-
-      const result = findAllPackageJsonFiles(testDir)
-
-      expect(result).toEqual([join(testDir, 'package.json')])
-    })
-
-    it('should skip directories matching exclude patterns', () => {
+    it('should skip directories matching exclude patterns', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
 
       const testPkgDir = join(testDir, 'test-package')
       mkdirSync(testPkgDir, { recursive: true })
       writeFileSync(join(testPkgDir, 'package.json'), '{}')
 
-      const result = findAllPackageJsonFiles(testDir, ['^test-'])
+      const result = await findAllPackageJsonFilesAsync(testDir, ['^test-'])
 
       expect(result).toHaveLength(1)
       expect(result[0]).toBe(join(testDir, 'package.json'))
     })
 
-    it('should handle empty directories', () => {
-      const result = findAllPackageJsonFiles(testDir)
+    it('should handle empty directories', async () => {
+      const result = await findAllPackageJsonFilesAsync(testDir)
       expect(result).toHaveLength(0)
     })
 
-    it('should call progress callback', () => {
+    it('should call progress callback', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
 
       const progressCalls: Array<{ current: string; found: number }> = []
 
-      findAllPackageJsonFiles(testDir, [], 10, (current, found) => {
+      await findAllPackageJsonFilesAsync(testDir, [], 10, (current, found) => {
         progressCalls.push({ current, found })
       })
 
       expect(progressCalls.length).toBeGreaterThan(0)
     })
 
-    it('should keep reporting progress while scanning a large directory', () => {
-      writeFileSync(join(testDir, 'package.json'), '{}')
-
-      const largeDir = join(testDir, 'large-dir')
-      mkdirSync(largeDir, { recursive: true })
-      for (let i = 0; i < 20; i++) {
-        writeFileSync(join(largeDir, `file-${i}.txt`), 'content')
-      }
-
-      const progressCalls: Array<{ current: string; found: number }> = []
-      let now = 0
-      const dateNowSpy = vi.spyOn(Date, 'now').mockImplementation(() => {
-        now += 100
-        return now
-      })
-
-      try {
-        findAllPackageJsonFiles(testDir, [], 10, (current, found) => {
-          progressCalls.push({ current, found })
-        })
-      } finally {
-        dateNowSpy.mockRestore()
-      }
-
-      expect(progressCalls.length).toBeGreaterThan(1)
-      expect(progressCalls.some((call) => call.current === 'large-dir')).toBe(true)
-    })
-
-    it('should respect max depth limit', () => {
-      // Create deeply nested structure
-      let currentDir = testDir
-      for (let i = 0; i < 15; i++) {
-        currentDir = join(currentDir, `level-${i}`)
-        mkdirSync(currentDir, { recursive: true })
-        writeFileSync(join(currentDir, 'package.json'), '{}')
-      }
-
-      const result = findAllPackageJsonFiles(testDir, [], 5)
-
-      // Should find less than 15 due to depth limit
-      expect(result.length).toBeLessThan(15)
-    })
-
-    it('ignores a directory literally named package.json', () => {
+    it('ignores a directory literally named package.json', async () => {
       // A directory can legally be called package.json; collecting it would feed a
       // directory path into readFileSync later.
       mkdirSync(join(testDir, 'weird', 'package.json'), { recursive: true })
       writeFileSync(join(testDir, 'package.json'), '{}')
 
-      const result = findAllPackageJsonFiles(testDir)
+      const result = await findAllPackageJsonFilesAsync(testDir)
 
       expect(result).toEqual([join(testDir, 'package.json')])
     })
 
-    it('finds packages inside non-ASCII directory names (sync and async)', async () => {
+    it('finds packages inside non-ASCII directory names', async () => {
       const unicodeDir = join(testDir, 'pákkage-日本-🚀')
       mkdirSync(unicodeDir, { recursive: true })
       writeFileSync(join(unicodeDir, 'package.json'), '{}')
 
-      expect(findAllPackageJsonFiles(testDir)).toEqual([join(unicodeDir, 'package.json')])
       expect(await findAllPackageJsonFilesAsync(testDir)).toEqual([
         join(unicodeDir, 'package.json'),
       ])
     })
 
-    it('applies forward-slash exclude patterns to nested paths on every platform', () => {
+    it('applies forward-slash exclude patterns to nested paths on every platform', async () => {
       // Users write excludes with `/` (e.g. ^packages/skipme); on Windows the relative
       // path is backslashed, so matching depends on the internal posix normalization.
       const keep = join(testDir, 'packages', 'keep')
@@ -397,7 +275,7 @@ describe('filesystem utils', () => {
       writeFileSync(join(keep, 'package.json'), '{}')
       writeFileSync(join(skip, 'package.json'), '{}')
 
-      const result = findAllPackageJsonFiles(testDir, ['^packages/skipme(?:/|$)'])
+      const result = await findAllPackageJsonFilesAsync(testDir, ['^packages/skipme(?:/|$)'])
 
       expect(result).toEqual([join(keep, 'package.json')])
     })
@@ -412,19 +290,13 @@ describe('filesystem utils', () => {
       return join(libPkgDir, 'package.json')
     }
 
-    it('skips a package under lib/ by default', () => {
+    it('skips a package under lib/ by default', async () => {
       seedLibPackage()
-      const result = findAllPackageJsonFiles(testDir)
+      const result = await findAllPackageJsonFilesAsync(testDir)
       expect(result).toEqual([join(testDir, 'package.json')])
     })
 
-    it('finds a package under lib/ when scanDirs includes "lib" (sync)', () => {
-      const libPkg = seedLibPackage()
-      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, { scanDirs: ['lib'] })
-      expect(result).toContain(libPkg)
-    })
-
-    it('finds a package under lib/ when scanDirs includes "lib" (async)', async () => {
+    it('finds a package under lib/ when scanDirs includes "lib"', async () => {
       const libPkg = seedLibPackage()
       const result = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         scanDirs: ['lib'],
@@ -432,26 +304,26 @@ describe('filesystem utils', () => {
       expect(result).toContain(libPkg)
     })
 
-    it('fires onSkippedPackageDir for a pruned dir that holds a package.json', () => {
+    it('fires onSkippedPackageDir for a pruned dir that holds a package.json', async () => {
       seedLibPackage()
       const skipped: string[] = []
-      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
       expect(skipped).toContain('lib')
     })
 
-    it('does not fire onSkippedPackageDir when the dir is re-included via scanDirs', () => {
+    it('does not fire onSkippedPackageDir when the dir is re-included via scanDirs', async () => {
       seedLibPackage()
       const skipped: string[] = []
-      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         scanDirs: ['lib'],
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
       expect(skipped).toHaveLength(0)
     })
 
-    it('skips dunder-prefixed tooling dirs, whose manifests are not real packages', () => {
+    it('skips dunder-prefixed tooling dirs, whose manifests are not real packages', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
       for (const dir of ['__fixtures__', '__mocks__', '__tests__', '__generated__']) {
         const pkg = join(testDir, 'src', dir, 'monorepo')
@@ -459,7 +331,7 @@ describe('filesystem utils', () => {
         writeFileSync(join(pkg, 'package.json'), '{}')
       }
       const skipped: string[] = []
-      const result = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      const result = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
       expect(result).toEqual([join(testDir, 'package.json')])
@@ -475,15 +347,12 @@ describe('filesystem utils', () => {
         writeFileSync(join(dir, 'package.json'), '{}')
       }
       const options = { scanDirs: ['__generated__', '.tooling'] }
-      const sync = findAllPackageJsonFiles(testDir, [], 10, undefined, options)
-      const async = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, options)
-      for (const result of [sync, async]) {
-        expect(result).toContain(join(generated, 'package.json'))
-        expect(result).toContain(join(hidden, 'package.json'))
-      }
+      const result = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, options)
+      expect(result).toContain(join(generated, 'package.json'))
+      expect(result).toContain(join(hidden, 'package.json'))
     })
 
-    it('does not warn for node_modules or build-output dirs even when they hold a package.json', () => {
+    it('does not warn for node_modules or build-output dirs even when they hold a package.json', async () => {
       writeFileSync(join(testDir, 'package.json'), '{}')
       // node_modules always holds package.json files — warning here would be pure noise
       const nm = join(testDir, 'node_modules', 'pkg')
@@ -495,7 +364,7 @@ describe('filesystem utils', () => {
       writeFileSync(join(dist, 'package.json'), '{}')
 
       const skipped: string[] = []
-      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
       expect(skipped).toHaveLength(0)
@@ -614,13 +483,13 @@ describe('filesystem utils', () => {
   })
 
   describe('scan edge paths', () => {
-    it('warns when a pruned lib dir holds a package.json directly', () => {
+    it('warns when a pruned lib dir holds a package.json directly', async () => {
       writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
       mkdirSync(join(testDir, 'lib'))
       writeFileSync(join(testDir, 'lib', 'package.json'), JSON.stringify({ name: 'inner' }))
       const skipped: string[] = []
 
-      const files = findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      const files = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
 
@@ -628,7 +497,7 @@ describe('filesystem utils', () => {
       expect(skipped).toEqual(['lib'])
     })
 
-    it('does not warn for a pruned lib dir whose children hold no packages', () => {
+    it('does not warn for a pruned lib dir whose children hold no packages', async () => {
       writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
       mkdirSync(join(testDir, 'lib'))
       mkdirSync(join(testDir, 'lib', '.hidden'))
@@ -637,21 +506,21 @@ describe('filesystem utils', () => {
       writeFileSync(join(testDir, 'lib', 'nested', 'index.js'), '')
       const skipped: string[] = []
 
-      findAllPackageJsonFiles(testDir, [], 10, undefined, {
+      await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
         onSkippedPackageDir: (dir) => skipped.push(dir),
       })
 
       expect(skipped).toEqual([])
     })
 
-    it('treats an unreadable pruned lib dir as packageless', () => {
+    it('treats an unreadable pruned lib dir as packageless', async () => {
       writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
       mkdirSync(join(testDir, 'lib'))
       chmodSync(join(testDir, 'lib'), 0o000)
       const skipped: string[] = []
 
       try {
-        findAllPackageJsonFiles(testDir, [], 10, undefined, {
+        await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
           onSkippedPackageDir: (dir) => skipped.push(dir),
         })
         expect(skipped).toEqual([])
@@ -660,7 +529,7 @@ describe('filesystem utils', () => {
       }
     })
 
-    it('survives symlink cycles and broken symlinks in both scanners', async () => {
+    it('survives symlink cycles and broken symlinks', async () => {
       writeFileSync(join(testDir, 'package.json'), JSON.stringify({ name: 'root' }))
       mkdirSync(join(testDir, 'a'))
       // Cycle: a/loop points back at the root that is already being scanned.
@@ -668,11 +537,9 @@ describe('filesystem utils', () => {
       // Broken symlink: stat fails, entry must be skipped.
       symlinkSync(join(testDir, 'gone'), join(testDir, 'broken'), 'file')
 
-      const syncFiles = findAllPackageJsonFiles(testDir)
-      const asyncFiles = await findAllPackageJsonFilesAsync(testDir)
+      const files = await findAllPackageJsonFilesAsync(testDir)
 
-      expect(syncFiles).toEqual([join(testDir, 'package.json')])
-      expect(asyncFiles).toEqual([join(testDir, 'package.json')])
+      expect(files).toEqual([join(testDir, 'package.json')])
     })
 
     it('resolves to an empty list for a vanished root (async)', async () => {

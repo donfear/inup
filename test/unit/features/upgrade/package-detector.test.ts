@@ -90,6 +90,12 @@ vi.mock('../../../../src/shared/config/user-config', () => ({
 import { PackageDetector } from '../../../../src/features/upgrade/package-detector'
 import { debugLog } from '../../../../src/shared/debug-logger'
 import { ConsoleUtils } from '../../../../src/shared/terminal'
+import type { StreamOutdatedPackagesCallback } from '../../../../src/shared/types'
+
+// Surface scan warnings the way the runners do, so tests can assert on them via console.warn.
+const logWarnings: StreamOutdatedPackagesCallback = (event) => {
+  if (event.type === 'warning') console.warn(event.payload.message)
+}
 
 describe('PackageDetector streaming', () => {
   beforeEach(() => {
@@ -290,7 +296,7 @@ describe('PackageDetector streaming', () => {
     })
     mocks.findClosestMinorVersion.mockClear()
     const detector = new PackageDetector({ cwd: '/repo' })
-    const first = await detector.getOutdatedPackages()
+    const first = await detector.streamOutdatedPackages(logWarnings)
     expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(2)
     expect(first.map((pkg) => [pkg.packageJsonPath, pkg.type, pkg.catalog])).toEqual([
       ['/repo/a/package.json', 'dependencies', undefined],
@@ -303,7 +309,7 @@ describe('PackageDetector streaming', () => {
     expect(first[0]).not.toBe(first[1])
     expect(first[0].catalogEntries).toBeUndefined()
     range = '1.6.0'
-    const second = await detector.getOutdatedPackages()
+    const second = await detector.streamOutdatedPackages(logWarnings)
     expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(4)
     expect(second[0].rangeVersion).toBe('1.6.0')
     expect(first[0].rangeVersion).toBe('1.5.0')
@@ -317,12 +323,14 @@ describe('PackageDetector streaming', () => {
       })
       return new Map()
     })
-    expect(await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()).toEqual([])
+    expect(await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)).toEqual(
+      []
+    )
   })
 
-  it('keeps getOutdatedPackages compatible with the streamed implementation', async () => {
+  it('returns the resolved packages from the streamed scan', async () => {
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages).toHaveLength(2)
     expect(packages[0].name).toBe('@scope/pkg')
@@ -385,7 +393,7 @@ describe('PackageDetector streaming', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages).toHaveLength(2)
     expect(packages[0]).toMatchObject({
@@ -436,7 +444,7 @@ describe('PackageDetector streaming', () => {
 
     const detector = new PackageDetector({ cwd: '/repo' })
 
-    expect(await detector.getOutdatedPackages()).toEqual([])
+    expect(await detector.streamOutdatedPackages(logWarnings)).toEqual([])
   })
 
   it('keeps one entry per catalog even when referenced under different dep types', async () => {
@@ -470,7 +478,7 @@ describe('PackageDetector streaming', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     // The catalog entry is written once to pnpm-workspace.yaml no matter how
     // many packages reference it; the first referencing type wins for display.
@@ -512,7 +520,7 @@ describe('PackageDetector streaming', () => {
 
       const detector = new PackageDetector({ cwd: '/repo', ignorePackages: ['react'] })
 
-      expect(await detector.getOutdatedPackages()).toEqual([])
+      expect(await detector.streamOutdatedPackages(logWarnings)).toEqual([])
     } finally {
       vi.mocked(isPackageIgnored).mockImplementation(() => false)
     }
@@ -615,7 +623,7 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
     expect(mocks.performanceTracker.recordControlTick).toHaveBeenCalledWith({ inFlight: 1 })
@@ -668,7 +676,7 @@ describe('PackageDetector edge paths', () => {
       ])
 
       const detector = new PackageDetector({ cwd: '/repo', ignorePackages: ['left-pad'] })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       expect(packages.map((pkg) => pkg.name)).toEqual(['shared-lib'])
       expect(packages[0].catalogReferencedBy).toEqual(['/repo/packages/a/package.json'])
@@ -708,7 +716,7 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
   })
@@ -737,7 +745,7 @@ describe('PackageDetector edge paths', () => {
         cwd: '/repo',
         ignoreMajorPackages: ['@tiptap/core'],
       })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       expect(packages).toHaveLength(1)
       expect(packages[0]).toMatchObject({
@@ -776,7 +784,7 @@ describe('PackageDetector edge paths', () => {
         cwd: '/repo',
         ignoreMajorPackages: ['@tiptap/core'],
       })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       expect(packages[0]).toMatchObject({
         isOutdated: true,
@@ -811,7 +819,7 @@ describe('PackageDetector edge paths', () => {
         cwd: '/repo',
         ignoreMajorPackages: ['@tiptap/core'],
       })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       expect(packages[0]).toMatchObject({
         name: 'react',
@@ -859,7 +867,7 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages).toHaveLength(2)
     expect(packages.every((pkg) => pkg.latestVersion === 'unknown')).toBe(true)
@@ -881,7 +889,7 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       currentVersion: 'latest',
@@ -906,7 +914,7 @@ describe('PackageDetector edge paths', () => {
     )
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages).toHaveLength(2)
     for (const pkg of packages) {
@@ -931,7 +939,7 @@ describe('PackageDetector edge paths', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       name: 'zod',
@@ -1009,7 +1017,7 @@ describe('PackageDetector edge paths', () => {
           return ['/repo/package.json']
         }
       )
-      await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()
+      await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)
       expect(warn.mock.calls.flat().join('\n')).toContain('1 package.json-bearing directory')
 
       warn.mockClear()
@@ -1026,7 +1034,7 @@ describe('PackageDetector edge paths', () => {
           return ['/repo/package.json']
         }
       )
-      await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()
+      await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)
       const message = warn.mock.calls.flat().join('\n')
       expect(message).toContain('2 package.json-bearing directories')
       expect(message).toContain('- apps/ancient')
@@ -1121,7 +1129,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages).toHaveLength(1)
     expect(packages[0]).toMatchObject({
@@ -1156,7 +1164,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: true,
@@ -1178,7 +1186,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: false,
@@ -1200,7 +1208,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: true,
@@ -1227,7 +1235,7 @@ describe('PackageDetector prerelease handling', () => {
       })
 
       const detector = new PackageDetector({ cwd: '/repo', ignoreMajorPackages: ['lib'] })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       expect(packages[0]).toMatchObject({
         isOutdated: true,
@@ -1255,7 +1263,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: false,
@@ -1273,7 +1281,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: false,
@@ -1297,7 +1305,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: true,
@@ -1323,7 +1331,7 @@ describe('PackageDetector prerelease handling', () => {
       })
 
       const detector = new PackageDetector({ cwd: '/repo', ignoreMajorPackages: ['lib'] })
-      const packages = await detector.getOutdatedPackages()
+      const packages = await detector.streamOutdatedPackages(logWarnings)
 
       // 1.0.0-beta.2 → 1.1.0-alpha.1 never crosses a major; ignoreMajor must
       // not hide it.
@@ -1348,7 +1356,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: true,
@@ -1367,7 +1375,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       latestVersion: '1.0.0-rc.3',
@@ -1382,7 +1390,7 @@ describe('PackageDetector prerelease handling', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.getOutdatedPackages()
+    const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
       isOutdated: false,
@@ -1606,12 +1614,14 @@ describe('PackageDetector release-age cooldown', () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({ axios: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } })
 
-    await new PackageDetector({ cwd: '/repo' }).getOutdatedPackages()
+    await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)
     expect(mocks.fetchPackageVersions.mock.calls[0][1]).toMatchObject({ fullMetadata: false })
 
     mocks.fetchPackageVersions.mockClear()
     mockRegistry({ axios: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } })
-    await new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 }).getOutdatedPackages()
+    await new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 }).streamOutdatedPackages(
+      logWarnings
+    )
     expect(mocks.fetchPackageVersions.mock.calls[0][1]).toMatchObject({ fullMetadata: true })
   })
 
@@ -1632,7 +1642,7 @@ describe('PackageDetector release-age cooldown', () => {
     const packages = await new PackageDetector({
       cwd: '/repo',
       minimumReleaseAge: 60,
-    }).getOutdatedPackages()
+    }).streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({ latestVersion: '1.1.0', rangeVersion: '1.1.0' })
     expect(packages[0].heldByCooldown).toEqual({
@@ -1664,7 +1674,7 @@ describe('PackageDetector release-age cooldown', () => {
     const packages = await new PackageDetector({
       cwd: '/repo',
       minimumReleaseAge: 60,
-    }).getOutdatedPackages()
+    }).streamOutdatedPackages(logWarnings)
 
     expect(packages[0].latestVersion).not.toBe('1.0.0-rc.3')
     expect(packages[0].isOutdated).toBe(false)
@@ -1688,7 +1698,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0]).toMatchObject({ latestVersion: '1.0.0', isOutdated: false })
       })
@@ -1709,7 +1719,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].deprecated).toBeUndefined()
         expect(packages[0].enginesNode).toBeUndefined()
@@ -1728,7 +1738,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].latestVersion).toBe('1.2.0')
         expect(packages[0].deprecated).toBe('use something else')
@@ -1756,7 +1766,7 @@ describe('PackageDetector release-age cooldown', () => {
     const packages = await new PackageDetector({
       cwd: '/repo',
       minimumReleaseAge: 60,
-    }).getOutdatedPackages()
+    }).streamOutdatedPackages(logWarnings)
 
     // Every location still carries the hold — each names a different file.
     expect(packages.filter((pkg) => pkg.heldByCooldown !== undefined)).toHaveLength(3)
@@ -1787,7 +1797,7 @@ describe('PackageDetector release-age cooldown', () => {
     const packages = await new PackageDetector({
       cwd: '/repo',
       minimumReleaseAge: 60,
-    }).getOutdatedPackages()
+    }).streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({ name: 'typescript', latestVersion: '6.0.3' })
     expect(packages[0].heldByCooldown).toBeUndefined()
@@ -1813,7 +1823,7 @@ describe('PackageDetector release-age cooldown', () => {
     const packages = await new PackageDetector({
       cwd: '/repo',
       minimumReleaseAge: 60,
-    }).getOutdatedPackages()
+    }).streamOutdatedPackages(logWarnings)
 
     expect(packages[0].heldByCooldown).toMatchObject({ version: '7.0.0-dev.2', count: 1 })
   })
@@ -1841,7 +1851,7 @@ describe('PackageDetector release-age cooldown', () => {
       minimumReleaseAge: 60,
       minimumReleaseAgeExclude: ['@myco/*'],
     })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].latestVersion).toBe('1.2.0')
         expect(packages[0].heldByCooldown).toBeUndefined()
@@ -1859,7 +1869,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].latestVersion).toBe('1.2.0')
         expect(packages[0].heldByCooldown).toBeUndefined()
@@ -1880,7 +1890,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         // 1.2.0 has no timestamp so it stays eligible and remains the latest — the
         // withheld 1.1.0 is behind it and irrelevant to this user.
@@ -1908,7 +1918,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].latestVersion).toBe('1.0.0-alpha.2')
         expect(packages[0].heldByCooldown).toMatchObject({ version: '1.0.0-alpha.3' })
@@ -1933,7 +1943,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0]).toMatchObject({
           latestVersion: '1.0.0-alpha.1',
@@ -1961,7 +1971,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0]).toMatchObject({ latestVersion: 'x', isOutdated: false })
         expect(packages[0].heldByCooldown).toMatchObject({ version: '2.5.1' })
@@ -1978,7 +1988,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-    return detector.getOutdatedPackages().then((packages) => {
+    return detector.streamOutdatedPackages(logWarnings).then((packages) => {
       expect(packages[0].latestVersion).toBe('2.0.0')
       expect(packages[0].heldByCooldown).toBeUndefined()
       expect(detector.getCooldownDiagnostics()).toEqual({
@@ -2003,7 +2013,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-    return detector.getOutdatedPackages().then(() => {
+    return detector.streamOutdatedPackages(logWarnings).then(() => {
       expect(detector.getCooldownDiagnostics()).toMatchObject({ publishTimesAvailable: true })
     })
   })
@@ -2013,7 +2023,7 @@ describe('PackageDetector release-age cooldown', () => {
     mockRegistry({ axios: { latestVersion: '2.0.0', allVersions: ['2.0.0'] } })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    return detector.getOutdatedPackages().then(() => {
+    return detector.streamOutdatedPackages(logWarnings).then(() => {
       expect(detector.getCooldownDiagnostics()).toBeNull()
     })
   })
@@ -2024,7 +2034,7 @@ describe('PackageDetector release-age cooldown', () => {
     mockRegistry({ axios: { latestVersion: 'unknown', allVersions: [] } })
 
     const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-    return detector.getOutdatedPackages().then(() => {
+    return detector.streamOutdatedPackages(logWarnings).then(() => {
       expect(detector.getCooldownDiagnostics()).toMatchObject({ publishTimesAvailable: true })
     })
   })
@@ -2046,7 +2056,7 @@ describe('PackageDetector release-age cooldown', () => {
     })
 
     return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .getOutdatedPackages()
+      .streamOutdatedPackages(logWarnings)
       .then((packages) => {
         expect(packages[0].heldByCooldown).toMatchObject({ version: '1.1.0-rc.1', count: 2 })
       })

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   isCongestionStatus,
   isRetryableStatus,
-  isTransientNetworkError,
   parseRetryAfterMs,
   sleep,
 } from '../../../../src/shared/http/retry'
@@ -70,55 +69,6 @@ describe('parseRetryAfterMs', () => {
 
   it('returns null for unparseable values', () => {
     expect(parseRetryAfterMs('soon')).toBeNull()
-  })
-})
-
-describe('isTransientNetworkError', () => {
-  it('rejects non-Error values', () => {
-    expect(isTransientNetworkError('ECONNRESET')).toBe(false)
-    expect(isTransientNetworkError(null)).toBe(false)
-    expect(isTransientNetworkError({ name: 'AbortError' })).toBe(false)
-  })
-
-  it('matches transient error names', () => {
-    for (const name of [
-      'AbortError',
-      'HeadersTimeoutError',
-      'BodyTimeoutError',
-      'ConnectTimeoutError',
-      'SocketError',
-    ]) {
-      const error = new Error('boom')
-      error.name = name
-      expect(isTransientNetworkError(error)).toBe(true)
-    }
-  })
-
-  it('matches transient error codes', () => {
-    for (const code of [
-      'UND_ERR_HEADERS_TIMEOUT',
-      'UND_ERR_BODY_TIMEOUT',
-      'UND_ERR_CONNECT_TIMEOUT',
-      'UND_ERR_SOCKET',
-      'ENOTFOUND',
-      'EAI_AGAIN',
-      'ECONNRESET',
-      'ECONNREFUSED',
-      'ETIMEDOUT',
-      'EPIPE',
-    ]) {
-      const error = new Error('boom') as Error & { code?: string }
-      error.code = code
-      expect(isTransientNetworkError(error)).toBe(true)
-    }
-  })
-
-  it('rejects permanent errors', () => {
-    const error = new Error('boom') as Error & { code?: string }
-    error.code = 'EACCES'
-
-    expect(isTransientNetworkError(error)).toBe(false)
-    expect(isTransientNetworkError(new Error('plain'))).toBe(false)
   })
 })
 
