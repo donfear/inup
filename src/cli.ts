@@ -106,7 +106,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     return
   }
 
-  if (options.debug || process.env.INUP_DEBUG === '1') {
+  if (options.debug) {
     enableDebugLogging()
   }
 
@@ -236,16 +236,11 @@ export async function runCli(options: CliOptions): Promise<void> {
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
-    debug: options.debug || process.env.INUP_DEBUG === '1',
+    debug: options.debug,
     saveExact: options.saveExact ?? false,
     // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
     minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,
     minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
-    // Adaptive concurrency defaults ON; INUP_ADAPTIVE=0 disables it (fixed
-    // limit, A/B baseline). Related dev toggles read further down the stack:
-    // INUP_CONTROLLER=aimd|hillclimb picks the controller arm and
-    // INUP_NET_PROFILE=0 disables learned-profile persistence.
-    adaptive: process.env.INUP_ADAPTIVE !== '0',
     // Pinned parallelism: flag > .inuprc; undefined lets the controller adapt.
     concurrency: concurrency ?? projectConfig.concurrency,
   }

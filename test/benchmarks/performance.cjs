@@ -18,9 +18,11 @@ require.extensions['.ts'] = (mod, file) => {
     file
   )
 }
-process.env.INUP_NET_PROFILE = '0'
-process.env.INUP_PERF = '0'
 require('chalk').default.level = 0
+// Never read or write the real learned network profile.
+const { configManager } = require('../../src/shared/config/user-config.ts')
+configManager.getNetworkProfile = () => null
+configManager.setNetworkProfile = () => {}
 require('../../src/shared/http/etag-store.ts').setEtagCacheEnabled(false)
 require('../../src/shared/registry/registry-config.ts').registryTargetFor = () => ({
   origin: 'https://benchmark.invalid',

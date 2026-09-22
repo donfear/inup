@@ -18,12 +18,6 @@ vi.mock('../../../../src/features/upgrade/package-detector', () => ({
     getOutdatedPackagesOnly = mocks.getOutdatedPackagesOnly
     hasPackageJson = mocks.hasPackageJson
     getCooldownDiagnostics = mocks.getCooldownDiagnostics
-    getPerfConfig = vi.fn().mockReturnValue({
-      cwd: '/repo',
-      adaptive: false,
-      maxConcurrency: 8,
-      poolConnections: 5,
-    })
   },
 }))
 
@@ -771,25 +765,5 @@ describe('HeadlessRunner.run', () => {
     await new HeadlessRunner().run({ apply: true })
     expect(vi.mocked(PackageManagerDetector.detect)).toHaveBeenCalledWith(process.cwd())
     logSpy.mockRestore()
-  })
-  it('writes a perf log when INUP_PERF is enabled', async () => {
-    const { mkdtempSync, readdirSync, rmSync } = await import('node:fs')
-    const { tmpdir } = await import('node:os')
-    const { join } = await import('node:path')
-    const perfDir = mkdtempSync(join(tmpdir(), 'inup-headless-perf-'))
-    vi.stubEnv('INUP_PERF', '1')
-    vi.stubEnv('INUP_PERF_DIR', perfDir)
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-    try {
-      await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
-
-      const files = readdirSync(perfDir)
-      expect(files.some((name) => name.startsWith('run-') && name.includes('headless'))).toBe(true)
-    } finally {
-      logSpy.mockRestore()
-      vi.unstubAllEnvs()
-      rmSync(perfDir, { recursive: true, force: true })
-    }
   })
 })

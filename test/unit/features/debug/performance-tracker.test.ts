@@ -70,7 +70,14 @@ describe('PerformanceTracker', () => {
   })
 
   it('collects control ticks and package timings in arrival order', () => {
-    tracker.recordControlTick({ atMs: 1, limit: 8, ewmaMs: 90, retries: 0, reason: 'up' })
+    tracker.recordControlTick({
+      atMs: 1,
+      limit: 8,
+      ewmaMs: 90,
+      retries: 0,
+      reason: 'up',
+      state: 'climb-up',
+    })
     tracker.recordPackageTiming({ name: 'demo', latencyMs: 33 })
     tracker.recordPackageTiming({ name: 'other', latencyMs: 12 })
 

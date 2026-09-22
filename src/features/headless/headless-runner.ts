@@ -1,10 +1,4 @@
 import chalk from 'chalk'
-import {
-  getPerformanceTracker,
-  isPerfLoggingEnabled,
-  perfEnv,
-  writePerfLog,
-} from '../../features/debug'
 import { PackageManagerDetector } from '../../shared/package-manager'
 import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
@@ -37,12 +31,6 @@ export class HeadlessRunner {
       if (!this.detector.hasPackageJson()) {
         throw new Error('No package.json found in current directory')
       }
-
-      // Start perf tracking so headless runs produce clean timing data too
-      // (the interactive runner starts it itself; headless previously did not).
-      const perfEnabled = isPerfLoggingEnabled()
-      const performanceTracker = getPerformanceTracker()
-      if (perfEnabled) performanceTracker.start()
 
       // The bulk advisory request needs only name → declared specifier, which the
       // detector knows before it touches the registry. Start it from the `initial`
@@ -84,19 +72,6 @@ export class HeadlessRunner {
         }
       })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)
-
-      if (perfEnabled) {
-        performanceTracker.mark('allLoaded')
-        writePerfLog(
-          {
-            ...this.detector.getPerfConfig(),
-            packageManager: null,
-            mode: 'headless',
-            env: perfEnv(),
-          },
-          performanceTracker.snapshot()
-        )
-      }
 
       // Audit the current versions (one bulk request, best-effort) and cross-reference each
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
