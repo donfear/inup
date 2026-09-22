@@ -16,7 +16,6 @@ import {
 } from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
-import { loadInupLocalEnv } from './shared/local-env'
 import { checkForUpdateAsync } from './shared/registry/version-checker'
 import { applyColorSetting, TerminalInput } from './shared/terminal'
 import type { PackageManager, UpgradeOptions } from './shared/types'
@@ -30,11 +29,6 @@ if (typeof enableCompileCache === 'function') {
     /* best-effort */
   }
 }
-
-// Load developer-only toggles from <inup-repo>/.env.local before anything reads
-// env. Best-effort, gitignored, never overrides real env. Lets perf/debug be
-// "set once" across every project without shell config.
-loadInupLocalEnv()
 
 const program = new Command()
 
@@ -356,17 +350,9 @@ process.on('unhandledRejection', (reason) => {
 })
 
 // Handle Ctrl+C gracefully
-let sigintReceived = false
 process.on('SIGINT', () => {
-  if (sigintReceived) {
-    // Force exit on second Ctrl+C
-    console.log(chalk.red('\n\nForce exiting...'))
-    process.exit(1)
-  } else {
-    sigintReceived = true
-    console.log(chalk.yellow('\n\nOperation cancelled by user. Press Ctrl+C again to force exit.'))
-    process.exit(0)
-  }
+  console.log(chalk.yellow('\n\nOperation cancelled by user.'))
+  process.exit(0)
 })
 
 // Also handle SIGTERM
