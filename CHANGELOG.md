@@ -16,6 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Pressing Esc or an arrow key at a `[y/N]` prompt (the dirty working tree warning, or `--init` asking to overwrite a config) no longer crashes inup. Esc answers no, and arrow keys are ignored.
 - Running inup inside one package of a pnpm, Yarn or Bun monorepo now uses the monorepo's package manager. Before, it fell back to npm with a warning and ran `npm install` in that package, which failed on `workspace:` versions or left a stray `package-lock.json`. inup looks in parent folders up to the repository root for the lockfile or `packageManager` field, and never uses a lockfile left in your home folder.
 - The vulnerability audit now finds advisories for dependencies declared with a combined range such as `^1.2.0 || ^2.0.0` or `>=1.2.0 <2`. It checks the lowest version the range allows; before, the range was sent as it was and matched nothing, so known vulnerabilities went unreported.
+- Uncommenting a field in the `.inuprc` that `inup --init` writes no longer breaks the file. Config files now accept trailing commas, so you can switch on any commented-out field, or several, by deleting the `//`.
+- A config file inup can't parse now stops the run with an error naming the file and where parsing failed (exit code 2). Before, inup printed a warning and carried on with a config from a parent directory, or with none, so a setting such as `minimumReleaseAge` could be off without you noticing.
+- An unknown field in the config file, such as a misspelled `minimumReleaseAge`, now prints a warning naming the field and the file, with a suggestion when it looks like a typo. It used to be ignored silently.
 
 ### Security
 

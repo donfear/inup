@@ -103,6 +103,20 @@ async function runInit(cwd: string): Promise<void> {
   console.log(chalk.dim('Every field is documented inline; comments are allowed in this file.'))
 }
 
+/**
+ * The project config, or exit 2 (error) when the nearest config file can't be parsed. Never
+ * falls back to defaults or a parent config: the broken file may be the one turning the
+ * cooldown on, and running without it would look exactly like a normal run.
+ */
+function loadProjectConfigOrExit(cwd: string) {
+  try {
+    return loadProjectConfig(cwd)
+  } catch (error) {
+    console.error(chalk.red((error as Error).message))
+    process.exit(2)
+  }
+}
+
 export async function runCli(options: CliOptions): Promise<void> {
   // Resolve colored-output intent before anything renders.
   applyColorSetting(options.color)
@@ -142,6 +156,10 @@ export async function runCli(options: CliOptions): Promise<void> {
     }
   }
 
+  // Load project config from .inuprc. Before the dirty-tree prompt, so a broken config fails
+  // the run before it asks anything.
+  const projectConfig = loadProjectConfigOrExit(cwd)
+
   // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
   if (interactive) {
     const gitState = getGitWorkingTreeState(cwd)
@@ -156,9 +174,6 @@ export async function runCli(options: CliOptions): Promise<void> {
       }
     }
   }
-
-  // Load project config from .inuprc
-  const projectConfig = loadProjectConfig(cwd)
 
   // Merge CLI exclude patterns with config
   const excludePatterns = [...splitList(options.exclude), ...(projectConfig.exclude || [])]

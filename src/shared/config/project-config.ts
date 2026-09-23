@@ -84,28 +84,41 @@ const CONFIG_FILES = [
 
 /**
  * Load project configuration from .inuprc, .inuprc.json, or inup.config.json
- * Searches in the specified directory and parent directories up to root
+ * Searches in the specified directory and parent directories up to root.
+ * Throws when the nearest config file can't be read or parsed.
  */
 export function loadProjectConfig(cwd: string): InupProjectConfig {
   return findUp(cwd, loadConfigIn) ?? {}
 }
 
-/** The first config file in `dir` that parses, normalized; undefined to keep searching upward. */
+/** The first config file in `dir`, normalized; undefined to keep searching upward. */
 function loadConfigIn(dir: string): InupProjectConfig | undefined {
   for (const configFile of CONFIG_FILES) {
     const configPath = join(dir, configFile)
     if (existsSync(configPath)) {
-      try {
-        const content = readFileSync(configPath, 'utf-8')
-        const config = JSON.parse(stripJsonComments(content)) as InupProjectConfig
-        return normalizeConfig(config)
-      } catch (error) {
-        // Invalid JSON or read error - continue searching
-        console.warn(`Warning: Failed to parse ${configPath}: ${error}`)
-      }
+      return normalizeConfig(parseConfigFile(configPath), configPath)
     }
   }
   return undefined
+}
+
+/**
+ * Read and parse one config file. A file that exists but can't be used is an
+ * error, never a reason to keep searching: falling through to a sibling or
+ * parent config would silently drop whatever this one sets — a cooldown, say.
+ */
+function parseConfigFile(configPath: string): InupProjectConfig {
+  let config: unknown
+  try {
+    const content = readFileSync(configPath, 'utf-8')
+    config = JSON.parse(stripTrailingCommas(stripJsonComments(content)))
+  } catch (error) {
+    throw new Error(`Invalid config file ${configPath}: ${(error as Error).message}`)
+  }
+  if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+    throw new Error(`Invalid config file ${configPath}: expected a JSON object`)
+  }
+  return config
 }
 
 /**
@@ -183,6 +196,44 @@ export function stripJsonComments(content: string): string {
   return result
 }
 
+/**
+ * Blank out trailing commas (a comma whose next non-whitespace character closes
+ * an object or array), so any commented-out field in the `--init` template can
+ * be enabled by deleting its `//`, whatever comes after it. Run after
+ * stripJsonComments, when comments are already whitespace. String-aware, and
+ * blanks rather than deletes so error positions still match the file.
+ */
+export function stripTrailingCommas(content: string): string {
+  const closesNext = /\s*[}\]]/y
+  let result = ''
+  let inString = false
+
+  for (let i = 0; i < content.length; i++) {
+    const char = content[i]
+
+    if (inString) {
+      if (char === '\\') {
+        result += content.slice(i, i + 2)
+        i++
+        continue
+      }
+      if (char === '"') inString = false
+    } else if (char === '"') {
+      inString = true
+    } else if (char === ',') {
+      closesNext.lastIndex = i + 1
+      if (closesNext.test(content)) {
+        result += ' '
+        continue
+      }
+    }
+
+    result += char
+  }
+
+  return result
+}
+
 /** List-valued fields: kept when they are arrays, with any non-string entries dropped. */
 const STRING_LIST_KEYS = [
   'ignore',
@@ -192,11 +243,65 @@ const STRING_LIST_KEYS = [
   'minimumReleaseAgeExclude',
 ] as const
 
+/** Every field the loader reads. A Record, so a field added to the interface can't be missed. */
+const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
+  ignore: true,
+  ignoreMajor: true,
+  exclude: true,
+  scanDirs: true,
+  minimumReleaseAge: true,
+  minimumReleaseAgeExclude: true,
+  showPeerDependencyVulnerabilities: true,
+  showOptionalDependencyVulnerabilities: true,
+  concurrency: true,
+  native: true,
+}
+
+/** The known key `key` is most likely a typo of (at most two edits apart), if any. */
+function suggestKey(key: string): string | undefined {
+  // Ignore case and separators, so "minimum-release-age" still finds its match.
+  const simplify = (name: string) => name.toLowerCase().replace(/[-_]/g, '')
+  let best: string | undefined
+  let bestDistance = 3
+  for (const known of Object.keys(KNOWN_KEYS)) {
+    const distance = editDistance(simplify(key), simplify(known))
+    if (distance < bestDistance) {
+      best = known
+      bestDistance = distance
+    }
+  }
+  return best
+}
+
+/** Levenshtein distance: the fewest single-character edits turning `a` into `b`. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i]
+    for (let j = 1; j <= b.length; j++) {
+      const substitution = previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, substitution)
+    }
+    previous = current
+  }
+  return previous[b.length]
+}
+
 /**
  * Normalize and validate the config
  */
-function normalizeConfig(config: InupProjectConfig): InupProjectConfig {
+function normalizeConfig(config: InupProjectConfig, configPath: string): InupProjectConfig {
   const normalized: InupProjectConfig = {}
+
+  // Unknown keys are ignored but never silently: a typo like "minimumReleaseAg"
+  // would otherwise read as "no cooldown configured".
+  for (const key of Object.keys(config)) {
+    if (!Object.hasOwn(KNOWN_KEYS, key)) {
+      const suggestion = suggestKey(key)
+      const hint = suggestion ? ` (did you mean "${suggestion}"?)` : ''
+      console.warn(`Warning: ignoring unknown key "${key}" in ${configPath}${hint}`)
+    }
+  }
 
   for (const key of STRING_LIST_KEYS) {
     const value = config[key]

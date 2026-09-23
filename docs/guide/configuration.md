@@ -6,9 +6,11 @@ inup needs no configuration to run. When you want persistent project rules, add 
 2. `.inuprc.json`
 3. `inup.config.json`
 
+The first file found wins and inup stops looking: configs are never merged, and no other file stands in for a broken one. If that file can't be parsed, inup exits with an error (code 2) naming the file and where parsing failed, instead of running without your settings. A field inup doesn't recognize, usually a typo, is ignored with a warning that names it.
+
 Every mode honors it — the interactive picker, `--json`, `--check` and `--apply`. A package the config excludes is never reported or written.
 
-Despite the JSON format, `//` line comments and `/* ... */` block comments are allowed — inup strips them before parsing, so the file can document itself.
+Despite the JSON format, `//` line comments, `/* ... */` block comments and trailing commas are allowed — inup strips them before parsing, so the file can document itself.
 
 The quickest start is `inup --init`: it writes a commented `.inuprc` template with every field documented inline (and asks before overwriting an existing config).
 
