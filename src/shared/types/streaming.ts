@@ -15,14 +15,19 @@ export interface PackageLoadProgress {
 }
 
 export interface AuditProgress {
+  /** Includes the failed ones: done, but without a result. */
   completed: number
   total: number
+  failed: number
   isRunning: boolean
   hasData: boolean
 }
 
 export interface StreamOutdatedPackagesInitialPayload {
   currentVersions: Map<string, string>
+  /** Every distinct (name, declared specifier) pair: a monorepo can declare one package at
+   * several versions, and each is audited on its own. */
+  declaredVersions: Array<{ name: string; version: string }>
   progress: PackageLoadProgress
 }
 

@@ -3,7 +3,11 @@ import { PackageManagerDetector } from '../../shared/package-manager'
 import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
-import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
+import {
+  auditVulnerabilities,
+  fetchVulnerabilitiesPerVersion,
+  type PackageVulnerabilities,
+} from '../audit'
 import { PackageDetector, PackageUpgrader } from '../upgrade'
 import { buildHeadlessReport, failedLookupNames, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
@@ -32,9 +36,10 @@ export class HeadlessRunner {
         throw new Error('No package.json found in current directory')
       }
 
-      // The bulk advisory request needs only name → declared specifier, which the
-      // detector knows before it touches the registry. Start it from the `initial`
-      // event so it overlaps the fetch instead of adding a round-trip at the end.
+      // The bulk advisory request needs only name → declared specifier (every one of
+      // them, so each declaration gets its own advisories), which the detector knows
+      // before it touches the registry. Start it from the `initial` event so it
+      // overlaps the fetch instead of adding a round-trip at the end.
       // Best-effort like the audit itself: a failure resolves to an empty map.
       // The detector always emits `initial` before `complete`; the empty default only
       // gives the variable a value until then.
@@ -69,7 +74,7 @@ export class HeadlessRunner {
               break
           }
         } else if (event.type === 'initial') {
-          advisories = fetchVulnerabilities(event.payload.currentVersions)
+          advisories = fetchVulnerabilitiesPerVersion(event.payload.declaredVersions)
         } else if (event.type === 'complete') {
           packages = event.payload.packages
           ConsoleUtils.clearProgress()
@@ -77,7 +82,7 @@ export class HeadlessRunner {
       })
       const outdated = this.detector.getOutdatedPackagesOnly(packages)
 
-      // Audit the current versions (one bulk request, best-effort) and cross-reference each
+      // Audit the current versions (bulk requests, best-effort) and cross-reference each
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
       const vulnerabilities = await auditVulnerabilities(outdated, advisories)
 

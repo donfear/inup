@@ -192,10 +192,14 @@ export function renderInterface(
   }
 
   if (auditProgress && auditProgress.total > 0) {
+    // A failed request leaves rows without badges, exactly like a clean audit — say so,
+    // or "no badge" would read as "no advisories".
     const auditLabel = auditProgress.isRunning
-      ? `Audit ${auditProgress.completed}/${auditProgress.total}`
-      : `Audit ${auditProgress.total}/${auditProgress.total}`
-    statusLine += `  ${getThemeColor('textSecondary')(auditLabel)}`
+      ? getThemeColor('textSecondary')(`Audit ${auditProgress.completed}/${auditProgress.total}`)
+      : auditProgress.failed > 0
+        ? getThemeColor('warning')('Audit failed')
+        : getThemeColor('textSecondary')(`Audit ${auditProgress.total}/${auditProgress.total}`)
+    statusLine += `  ${auditLabel}`
   }
 
   // A one-shot notice (e.g. "nothing selected") replaces the status line for a

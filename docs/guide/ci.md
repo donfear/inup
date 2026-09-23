@@ -48,7 +48,7 @@ Each reported package carries its health signals:
 
 - `deprecated` — the npm deprecation message, if any
 - `enginesNode` — the package's declared `engines.node`
-- `vulnerability` — known advisories on the currently-installed version, from the same bulk advisory endpoint `npm audit` uses, on the registry that serves each package
+- `vulnerability` — known advisories on the version that entry declares, from the same bulk advisory endpoint `npm audit` uses, on the registry that serves each package (a package declared at two versions in a monorepo is checked at both)
 
 Every advisory is **cross-referenced against the upgrade targets**, so you know whether the upgrade actually fixes it:
 

@@ -53,7 +53,7 @@ describe('auditVulnerabilities', () => {
     const advisories = Promise.resolve(
       new Map([
         [
-          'axios',
+          'axios@^0.27.0',
           {
             packageName: 'axios',
             highestSeverity: 'high',
@@ -92,7 +92,7 @@ describe('auditVulnerabilities', () => {
     const advisories = Promise.resolve(
       new Map([
         [
-          'axios',
+          'axios@^0.27.0',
           {
             packageName: 'axios',
             highestSeverity: 'high',
@@ -127,7 +127,7 @@ describe('auditVulnerabilities', () => {
     const advisories = Promise.resolve(
       new Map([
         [
-          'axios',
+          'axios@^0.27.0',
           {
             packageName: 'axios',
             highestSeverity: 'high',
@@ -137,7 +137,10 @@ describe('auditVulnerabilities', () => {
           },
         ],
         // An entry with no vulnerabilities must be skipped, not summarized.
-        ['left-pad', { packageName: 'left-pad', highestSeverity: 'low', vulnerabilities: [] }],
+        [
+          'left-pad@^0.27.0',
+          { packageName: 'left-pad', highestSeverity: 'low', vulnerabilities: [] },
+        ],
       ])
     )
 
@@ -147,5 +150,28 @@ describe('auditVulnerabilities', () => {
     expect(result.has(pkg)).toBe(true)
     expect(result.has(duplicate)).toBe(true)
     expect(result.has(quiet)).toBe(false)
+  })
+
+  it('matches each declaration on its own version, not just its name', async () => {
+    const upgraded = { ...pkg, currentVersion: '^1.16.0', packageJsonPath: '/repo/b/package.json' }
+    const advisories = Promise.resolve(
+      new Map([
+        [
+          'axios@^0.27.0',
+          {
+            packageName: 'axios',
+            highestSeverity: 'high',
+            vulnerabilities: [
+              { id: 1, title: 'A', severity: 'high', url: 'u1', vulnerable_versions: '<1.0.0' },
+            ],
+          },
+        ],
+      ])
+    )
+
+    const result = await auditVulnerabilities([pkg, upgraded], advisories as any)
+
+    expect(result.has(pkg)).toBe(true)
+    expect(result.has(upgraded)).toBe(false)
   })
 })

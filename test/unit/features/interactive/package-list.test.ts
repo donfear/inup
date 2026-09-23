@@ -410,6 +410,15 @@ describe('renderInterface status line', () => {
     expect(text).toContain('Audit 5/5')
   })
 
+  it('flags a failed audit instead of showing it complete', () => {
+    const text = renderPlain([baseState], {
+      auditProgress: { completed: 5, total: 5, failed: 2, isRunning: false, hasData: true },
+    })
+
+    expect(text).toContain('Audit failed')
+    expect(text).not.toContain('Audit 5/5')
+  })
+
   it('omits audit progress when nothing was audited', () => {
     const text = renderPlain([baseState], {
       auditProgress: { completed: 0, total: 0, isRunning: false, hasData: false },

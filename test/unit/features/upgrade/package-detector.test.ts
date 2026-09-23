@@ -305,8 +305,17 @@ describe('PackageDetector streaming', () => {
     })
     mocks.findRangeTargetVersion.mockClear()
     const detector = new PackageDetector({ cwd: '/repo' })
-    const first = await detector.streamOutdatedPackages(logWarnings)
+    let declaredVersions: unknown
+    const first = await detector.streamOutdatedPackages((event) => {
+      if (event.type === 'initial') declaredVersions = event.payload.declaredVersions
+      logWarnings(event)
+    })
     expect(mocks.findRangeTargetVersion).toHaveBeenCalledTimes(2)
+    // Every distinct declared version is audited, not only the first declaration's.
+    expect(declaredVersions).toEqual([
+      { name: 'shared', version: '^1.0.0' },
+      { name: 'shared', version: '^2.0.0' },
+    ])
     expect(first.map((pkg) => [pkg.packageJsonPath, pkg.type, pkg.catalog])).toEqual([
       ['/repo/a/package.json', 'dependencies', undefined],
       ['/repo/b/package.json', 'devDependencies', undefined],
