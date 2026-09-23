@@ -1,6 +1,7 @@
 import * as semver from 'semver'
 import type { PackageInfo, VulnerabilitySeverity } from '../../shared/types'
 import { toComparableVersion } from '../../shared/versions'
+import { auditKey } from './per-version-audit'
 import type { HeadlessAdvisory, HeadlessVulnerability } from './types'
 import type { PackageVulnerabilities, VulnerabilityInfo } from './vulnerability-checker'
 
@@ -8,10 +9,12 @@ import type { PackageVulnerabilities, VulnerabilityInfo } from './vulnerability-
  * Cross-reference the advisories for the outdated packages' currently-installed versions against
  * the upgrade targets — so callers can state whether upgrading actually *fixes* the issue.
  *
- * `prefetched` is the bulk advisory request (`fetchVulnerabilities`), started by the caller from
- * the dependency set before the registry fetch so it overlaps instead of adding a round-trip.
- * Best-effort: that request swallows network errors and resolves to an empty map, so a failed
- * audit never blocks the report. Returns only the vulnerable packages, keyed by package.
+ * `prefetched` is the bulk advisory request (`fetchVulnerabilitiesPerVersion`, keyed by
+ * `auditKey`), started by the caller from the dependency set before the registry fetch so it
+ * overlaps instead of adding a round-trip. Each package is matched on its own declared version,
+ * so lodash@^3 and lodash@^4 in two workspaces never share advisories. Best-effort: that request
+ * swallows network errors and resolves to an empty map, so a failed audit never blocks the
+ * report. Returns only the vulnerable packages, keyed by package.
  */
 export async function auditVulnerabilities(
   outdated: PackageInfo[],
@@ -24,7 +27,7 @@ export async function auditVulnerabilities(
   if (advisories.size === 0) return result
 
   for (const pkg of outdated) {
-    const found = advisories.get(pkg.name)
+    const found = advisories.get(auditKey(pkg.name, pkg.currentVersion))
     if (!found || found.vulnerabilities.length === 0 || !found.highestSeverity) continue
     result.set(pkg, summarizeVulnerability(pkg, found.vulnerabilities, found.highestSeverity))
   }

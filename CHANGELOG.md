@@ -53,6 +53,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - A dependency whose value isn't a version string, such as `"foo": null`, no longer stops the whole run with "Cannot read properties of null". inup skips that entry and checks the rest.
 - A package.json saved with a UTF-8 byte order mark (some Windows editors add one) is read like any other. Before, a nested one was quietly left out of the scan and one at the root stopped the run with "Unexpected token". Upgrading such a file keeps the mark.
 - A package inup could not look up on the registry (outage, expired token, not published) no longer counts as up to date. `--check` exits 2 instead of passing, headless runs print a warning naming the packages, `--json` lists them in a new `failed` array with a `summary.failed` count, and the interactive picker keeps the "unavailable" count on screen and no longer ends with "Everything is up to date". Your own workspace packages that were never published don't count as failed.
+- In a monorepo that declares one package at different versions, for example `lodash@^3` in one workspace and `lodash@^4` in another, the vulnerability audit now checks each version. Before, it checked only one of them and showed those advisories on every entry for that package, in the list and in `--json`. A vulnerable version could look clean, and a safe one could look vulnerable.
+- When the vulnerability audit gets no answer, because the network failed or a registry does not support advisory checks, the status line now says `Audit failed` instead of showing the audit as complete with nothing found. If nothing could be checked, press `s` to try again.
 
 ### Security
 

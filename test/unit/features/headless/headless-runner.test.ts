@@ -154,6 +154,7 @@ describe('HeadlessRunner.run', () => {
         type: 'initial',
         payload: {
           currentVersions: new Map(packages.map((p: any) => [p.name, p.currentVersion])),
+          declaredVersions: packages.map((p: any) => ({ name: p.name, version: p.currentVersion })),
           progress: {},
         },
       })
@@ -305,12 +306,14 @@ describe('HeadlessRunner.run', () => {
     await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
 
     // The audit checks the currently-installed specifier of every declared
-    // dependency (it starts before the registry says which are outdated).
+    // dependency (it starts before the registry says which are outdated), and
+    // stays best-effort: no rejection is asked for.
     expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(
       new Map([
         ['axios', '^0.27.0'],
         ['left-pad', '^1.3.0'],
-      ])
+      ]),
+      {}
     )
 
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
@@ -338,6 +341,10 @@ describe('HeadlessRunner.run', () => {
             ['axios', '^0.27.0'],
             ['left-pad', '^1.3.0'],
           ]),
+          declaredVersions: [
+            { name: 'axios', version: '^0.27.0' },
+            { name: 'left-pad', version: '^1.3.0' },
+          ],
           progress: {},
         },
       })

@@ -164,7 +164,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1876_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1889_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

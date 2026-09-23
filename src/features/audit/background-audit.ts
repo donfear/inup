@@ -1,33 +1,31 @@
 import { debugLog } from '../../shared/debug-logger'
-
-export interface AuditPackageInput {
-  name: string
-  version: string
-}
+import type { AuditProgress } from '../../shared/types'
+import { type AuditPackageInput, auditKey } from './per-version-audit'
 
 export interface AuditBatch {
-  packages: Map<string, string>
-  packageNames: string[]
+  packages: AuditPackageInput[]
+  keys: string[]
 }
 
+/** Work is keyed by `auditKey` (name + declared version), so each version is audited once. */
 export class BackgroundAuditTracker {
-  private pending = new Map<string, string>()
+  private pending = new Map<string, AuditPackageInput>()
   private inFlight = new Set<string>()
   private completed = new Set<string>()
+  private failed = new Set<string>()
 
   enqueue(packages: AuditPackageInput[]): number {
     let added = 0
 
     for (const pkg of packages) {
       if (!pkg.name || !pkg.version) continue
-      if (
-        this.pending.has(pkg.name) ||
-        this.inFlight.has(pkg.name) ||
-        this.completed.has(pkg.name)
-      ) {
+      const key = auditKey(pkg.name, pkg.version)
+      if (this.pending.has(key) || this.inFlight.has(key) || this.completed.has(key)) {
         continue
       }
-      this.pending.set(pkg.name, pkg.version)
+      // A failed audit is not a result: queueing it again retries it.
+      this.failed.delete(key)
+      this.pending.set(key, { name: pkg.name, version: pkg.version })
       added++
     }
 
@@ -39,35 +37,44 @@ export class BackgroundAuditTracker {
   }
 
   reserveNextBatch(limit: number = 20): AuditBatch {
-    const packages = new Map<string, string>()
-    const packageNames: string[] = []
+    const packages: AuditPackageInput[] = []
+    const keys: string[] = []
 
-    for (const [name, version] of this.pending) {
-      packages.set(name, version)
-      packageNames.push(name)
-      this.pending.delete(name)
-      this.inFlight.add(name)
+    for (const [key, pkg] of this.pending) {
+      packages.push(pkg)
+      keys.push(key)
+      this.pending.delete(key)
+      this.inFlight.add(key)
 
-      if (packageNames.length >= limit) {
+      if (keys.length >= limit) {
         break
       }
     }
 
-    return { packages, packageNames }
+    return { packages, keys }
   }
 
-  markCompleted(packageNames: string[]): void {
-    for (const packageName of packageNames) {
-      this.inFlight.delete(packageName)
-      this.completed.add(packageName)
+  markCompleted(keys: string[]): void {
+    for (const key of keys) {
+      this.inFlight.delete(key)
+      this.completed.add(key)
     }
   }
 
-  getProgress(): { completed: number; total: number; isRunning: boolean; hasData: boolean } {
-    const total = this.pending.size + this.inFlight.size + this.completed.size
+  markFailed(keys: string[]): void {
+    for (const key of keys) {
+      this.inFlight.delete(key)
+      this.failed.add(key)
+    }
+  }
+
+  getProgress(): AuditProgress {
+    // A failed package is done (it counts toward the progress) but produced no data.
+    const done = this.completed.size + this.failed.size
     return {
-      completed: this.completed.size,
-      total,
+      completed: done,
+      total: this.pending.size + this.inFlight.size + done,
+      failed: this.failed.size,
       isRunning: this.pending.size > 0 || this.inFlight.size > 0,
       hasData: this.completed.size > 0,
     }

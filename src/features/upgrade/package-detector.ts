@@ -50,6 +50,7 @@ interface PreparedDependencies {
   currentVersions: Map<string, string>
   /** `name` of every scanned package.json: the repo's own packages. */
   localPackageNames: Set<string>
+  declaredVersions: Array<{ name: string; version: string }>
 }
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
@@ -129,6 +130,7 @@ export class PackageDetector {
     const prepared = await this.prepareDependencies(onEvent)
     const initialPayload: StreamOutdatedPackagesInitialPayload = {
       currentVersions: prepared.currentVersions,
+      declaredVersions: prepared.declaredVersions,
       progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
     }
 
@@ -379,8 +381,12 @@ export class PackageDetector {
 
     // First declaration wins, matching the order dependencies were collected.
     const currentVersions = new Map<string, string>()
-    for (const [name, [first]] of dependenciesByName) {
-      currentVersions.set(name, first.version)
+    const declaredVersions: Array<{ name: string; version: string }> = []
+    for (const [name, group] of dependenciesByName) {
+      currentVersions.set(name, group[0].version)
+      for (const version of new Set(group.map((dep) => dep.version))) {
+        declaredVersions.push({ name, version })
+      }
     }
 
     return {
@@ -388,6 +394,7 @@ export class PackageDetector {
       uniquePackages,
       currentVersions,
       localPackageNames,
+      declaredVersions,
     }
   }
 

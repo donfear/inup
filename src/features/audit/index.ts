@@ -1,5 +1,6 @@
-export { type AuditBatch, type AuditPackageInput, BackgroundAuditTracker } from './background-audit'
+export { type AuditBatch, BackgroundAuditTracker } from './background-audit'
 export { auditVulnerabilities, upgradeClears } from './headless-audit'
+export { type AuditPackageInput, fetchVulnerabilitiesPerVersion } from './per-version-audit'
 export {
   createVulnerabilitySummary,
   getVulnerabilityBadge,
