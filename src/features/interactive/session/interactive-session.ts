@@ -225,8 +225,33 @@ export async function runInteractiveSession(
       stateManager.shiftRows(index - stateManager.getUIState().currentRow, filteredStates.length)
     }
 
+    // A scan that finished without one upgradable row leaves nothing to pick, so the session
+    // ends itself and the runner prints its "up to date" summary, rather than parking on an
+    // empty list until q. Held-only rows don't keep it open (the summary counts them) unless
+    // the user is looking at them with `c`. Rows a filter or search merely hides still count,
+    // and an open modal or search box is the user's to close: the next list frame ends it.
+    const nothingLeftToShow = (): boolean => {
+      if (!loadingProgress || loadingProgress.isLoading) return false
+      const uiState = stateManager.getUIState()
+      if (
+        uiState.showThemeModal ||
+        uiState.showHelpModal ||
+        uiState.showDebugModal ||
+        uiState.showInfoModal ||
+        uiState.filterMode
+      ) {
+        return false
+      }
+      const heldRowsShown = stateManager.isCooldownHeldFilterActive()
+      return states.every((state) => state.heldOnly && !heldRowsShown)
+    }
+
     const renderInterface = () => {
       cancelBackgroundRender()
+      if (nothingLeftToShow()) {
+        handleCancel()
+        return
+      }
       syncCursorToList()
       const uiState = stateManager.getUIState()
       const filteredStates = stateManager.getFilteredStates(states, vulnerabilityDisplayOptions)
