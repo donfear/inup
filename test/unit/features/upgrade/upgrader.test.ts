@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -20,8 +21,15 @@ vi.mock('child_process', async (importOriginal) => {
   return { ...actual, spawnSync: spawnSyncMock }
 })
 
+// Real fs, except a test can arm the next writeFileSync to fail halfway like a full disk.
+vi.mock('node:fs', async (importOriginal) => {
+  const { withDiskFull } = await import('../../../helpers/disk-full')
+  return withDiskFull(await importOriginal())
+})
+
 import { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
 import type { PackageManagerInfo, PackageUpgradeChoice } from '../../../../src/shared/types'
+import { diskFull } from '../../../helpers/disk-full'
 
 const makePackageManager = (overrides: Partial<PackageManagerInfo> = {}): PackageManagerInfo => ({
   name: 'npm',
@@ -751,6 +759,39 @@ catalogs:
       expect(readFileSync(pkgPath, 'utf-8')).toBe(original)
     } finally {
       logSpy.mockRestore()
+    }
+  })
+
+  it('leaves package.json intact when the disk fills up mid-write', async () => {
+    const pkgPath = join(testDir, 'package.json')
+    const original = `${JSON.stringify({ name: 'fixture', dependencies: { lodash: '^4.17.20' } }, null, 2)}\n`
+    writeFileSync(pkgPath, original)
+    const upgrader = new PackageUpgrader(makePackageManager())
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      diskFull.armed = true
+      await expect(
+        upgrader.upgradePackages([
+          {
+            name: 'lodash',
+            packageJsonPath: pkgPath,
+            dependencyType: 'dependencies',
+            upgradeType: 'range',
+            targetVersion: '^4.17.21',
+            currentVersionSpecifier: '^4.17.20',
+          },
+        ])
+      ).rejects.toThrow('ENOSPC')
+
+      // The failed write never touched the real file, and left no temp file behind.
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(original)
+      expect(readdirSync(testDir)).toEqual(['package.json'])
+    } finally {
+      diskFull.armed = false
+      logSpy.mockRestore()
+      errorSpy.mockRestore()
     }
   })
 

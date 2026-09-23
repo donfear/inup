@@ -1,8 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parse, parseDocument } from 'yaml'
 import { debugLog } from './debug-logger'
 import { findUp } from './fs/find-up'
+import { writeFileAtomic } from './fs/write-atomic'
 
 export const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml'
 
@@ -101,7 +102,8 @@ export class PnpmCatalogs {
  *
  * Edits go through the yaml Document API so comments, key order, and the
  * formatting of untouched nodes survive the round-trip. Entries that no longer
- * exist in the file (edited since the scan) are skipped, never invented.
+ * exist in the file (edited since the scan) are skipped, never invented. The write
+ * is atomic, so a failure part-way can't leave a truncated pnpm-workspace.yaml.
  */
 export function writeCatalogUpdates(
   workspaceFilePath: string,
@@ -130,7 +132,7 @@ export function writeCatalogUpdates(
     doc.setIn(keyPath, update.range)
   }
 
-  writeFileSync(workspaceFilePath, doc.toString())
+  writeFileAtomic(workspaceFilePath, doc.toString())
 }
 
 /** Nearest pnpm-workspace.yaml at or above `startDir`, or null. */
