@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.4] - 2026-09-23
+
 ### Added
 
 - The status line counts the packages you have selected, and says how many of them the current filter hides, since `Enter` upgrades those too.
@@ -505,7 +507,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.2...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.4...HEAD
+[1.8.4]: https://github.com/donfear/inup/compare/v1.8.3...v1.8.4
 [1.8.2]: https://github.com/donfear/inup/compare/v1.8.1...v1.8.2
 [1.8.1]: https://github.com/donfear/inup/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/donfear/inup/compare/v1.7.3...v1.8.0
