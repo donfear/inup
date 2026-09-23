@@ -137,14 +137,14 @@ describe('InputHandler keymap dispatch', () => {
     expect(onConfirm).toHaveBeenCalledWith(states)
   })
 
-  it('Ctrl+C cancels and exits the process', () => {
+  it('Ctrl+C cancels and exits 130, so a cancelled run never reads as success', () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     const { handler, onCancel } = makeHandler()
 
     press(handler, '\x03', { name: 'c', ctrl: true })
 
     expect(onCancel).toHaveBeenCalled()
-    expect(exit).toHaveBeenCalledWith(0)
+    expect(exit).toHaveBeenCalledWith(130)
   })
 
   it('Escape clears an applied filter but is otherwise a no-op', () => {
@@ -407,7 +407,7 @@ describe('ConfirmationInputHandler', () => {
     expect(onConfirm).toHaveBeenCalledWith(false)
   })
 
-  it('cancels and exits on Ctrl+C', () => {
+  it('cancels and exits 130 on Ctrl+C', () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     const onConfirm = vi.fn()
 
@@ -417,7 +417,7 @@ describe('ConfirmationInputHandler', () => {
     } as Key)
 
     expect(onConfirm).toHaveBeenCalledWith(false)
-    expect(exit).toHaveBeenCalledWith(0)
+    expect(exit).toHaveBeenCalledWith(130)
   })
 
   it('ignores empty input, missing keys, and unmapped keys', () => {

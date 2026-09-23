@@ -199,7 +199,7 @@ export class UpgradeRunner {
     } catch (error) {
       printWarnings()
       console.error(chalk.red(`Error: ${error}`))
-      process.exit(1)
+      process.exit(2)
     } finally {
       scanController.abort()
     }

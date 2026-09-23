@@ -32,9 +32,11 @@ inup [options]
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Everything up to date |
+| `0` | Success (with `--check`: everything up to date). Quitting the picker with `q` exits 0 too |
 | `1` | Updates exist (with `--check`) |
-| `2` | Error |
+| `2` | Error, including an unknown flag or an invalid flag value |
+| `130` | Cancelled with Ctrl+C |
+| `143` | Stopped with `SIGTERM` |
 
 ## Headless by default in pipelines
 

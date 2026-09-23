@@ -222,7 +222,18 @@ describe('runInteractiveSession lifecycle', () => {
     const result = await promise
     expect(result.every((s) => s.selectedOption === 'none')).toBe(true)
     expect(packageInfoModalController.cancel).toHaveBeenCalled()
-    expect(exit).toHaveBeenCalledWith(0)
+    expect(exit).toHaveBeenCalledWith(130)
+    exit.mockRestore()
+  })
+
+  it('quits with q without exiting the process, so a normal quit still exits 0', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    const { promise } = startSession([makeSelectionState({ selectedOption: 'latest' })])
+
+    await fake.sendKeys('q')
+
+    expect((await promise).every((s) => s.selectedOption === 'none')).toBe(true)
+    expect(exit).not.toHaveBeenCalled()
     exit.mockRestore()
   })
 
