@@ -11,6 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - The native core is on by default. The first interactive run downloads it for your platform and later runs use it; scripted runs (`--json`, `--check`, `--apply`, CI) use it once cached but never download it themselves. Turn it off with `--no-native` for one run or `"native": false` in `.inuprc`.
 
+### Fixed
+
+- Pressing Esc or an arrow key at a `[y/N]` prompt (the dirty working tree warning, or `--init` asking to overwrite a config) no longer crashes inup. Esc answers no, and arrow keys are ignored.
+
 ## [1.8.2] - 2026-09-22
 
 ### Changed

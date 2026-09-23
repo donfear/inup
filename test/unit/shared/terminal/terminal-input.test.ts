@@ -133,6 +133,22 @@ describe('promptForImmediateConfirmation', () => {
     await expect(promise).resolves.toBe(true)
   })
 
+  it('resolves false on Esc', async () => {
+    const promise = TerminalInput.promptForImmediateConfirmation('Continue? ', true)
+    // A bare ESC is only emitted after readline's escapeCodeTimeout.
+    await fake.sendKeys('\x1b', 50)
+
+    await expect(promise).resolves.toBe(false)
+  })
+
+  it('ignores arrow keys until a decision arrives', async () => {
+    const promise = TerminalInput.promptForImmediateConfirmation('Continue? ')
+    await fake.sendKeys('\x1b[A')
+    await fake.sendKeys('y')
+
+    await expect(promise).resolves.toBe(true)
+  })
+
   it('falls back to the line prompt when raw mode is unavailable', async () => {
     fake.stdin.setRawMode.mockImplementationOnce(() => {
       throw new Error('no tty')
