@@ -49,7 +49,7 @@ export interface HeadlessReport {
   summary: {
     total: number // Packages scanned
     outdated: number // Packages with an available update
-    major: number // Of the outdated, how many are a major bump
+    major: number // Of the outdated, how many have a latest beyond the in-range target
     vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
     heldByCooldown: number // Packages with ≥1 version withheld by minimumReleaseAge (0 when disabled)
   }

@@ -125,7 +125,7 @@ jobs:
 
 In your repo's **Settings → Actions → General → Workflow permissions**, enable **Allow GitHub Actions to create and approve pull requests**.
 
-`minor` stays within existing version ranges. Use `patch` for patch updates only, or `latest` to include major upgrades.
+`minor` stays within existing version ranges, following each range's operator: `^0.2.3` stays on `0.2.x` and `~1.2.3` on `1.2.x` ([full rule](docs/guide/ci.md#--apply)). Use `patch` for patch updates only, or `latest` to include major upgrades.
 
 If you need the PR to trigger CI, pass a personal access token through the action's `token` input. See the [Action guide](docs/guide/github-action.md) for all inputs and outputs.
 
@@ -164,7 +164,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1789_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1835_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

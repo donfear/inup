@@ -198,57 +198,88 @@ export function partitionVersionsByReleaseAge(
 }
 
 /**
- * Find the closest minor version (same major, higher minor) that satisfies the current range
- * Falls back to patch updates if no minor updates are available
+ * The first version a caret range treats as breaking for `version`: its next major — or, below
+ * 1.0.0, where the leftmost non-zero part carries breaking changes, the next 0.y minor (the next
+ * patch for 0.0.z). The `-0` makes it an exclusive bound that also shuts out that line's own
+ * prereleases, like npm's own `<2.0.0-0`.
  */
-export function findClosestMinorVersion(
-  installedVersion: string,
-  allVersions: string[]
+function nextBreakingVersion({ major, minor, patch }: semver.SemVer): string {
+  if (major > 0) return `${major + 1}.0.0-0`
+  if (minor > 0) return `0.${minor + 1}.0-0`
+  return `0.0.${patch + 1}-0`
+}
+
+/**
+ * Whether `version` breaks compatibility with the installed version under semver's caret rules:
+ * a new major, a new 0.y minor, or a new 0.0.z patch. This is what `.inuprc` `ignoreMajor`
+ * suppresses.
+ */
+export function isBreakingUpdate(installed: semver.SemVer, version: string): boolean {
+  return semver.gte(version, nextBreakingVersion(installed))
+}
+
+/**
+ * Exclusive upper bound of the range target, following the specifier's operator. Only simple
+ * specifiers (isSimpleVersionSpecifier) are ever resolved, so the first character is the operator:
+ * - `^1.2.3` → 2.0.0-0 (same major), `^0.2.3` → 0.3.0-0 (same 0.y), `^0.0.3` → 0.0.4-0 (itself)
+ * - `~1.2.3` → 1.3.0-0 (same major.minor)
+ * - exact pins, `=` and `>=` → the next major: the "minor" target for pinned projects
+ */
+function rangeTargetCeiling(specifier: string, installed: semver.SemVer): string {
+  if (specifier.startsWith('^')) return nextBreakingVersion(installed)
+  if (specifier.startsWith('~')) return `${installed.major}.${installed.minor + 1}.0-0`
+  return `${installed.major + 1}.0.0-0`
+}
+
+/**
+ * Newest candidate above the installed version and below `ceiling` (exclusive). Compared by
+ * semver precedence, so the input order does not matter and prereleases rank natively
+ * (1.0.0-beta.2 < 1.0.0-rc.3 < 1.0.0).
+ */
+function newestBelow(
+  installed: semver.SemVer,
+  candidates: string[],
+  ceiling: string
 ): string | null {
-  try {
-    const installed = parseCurrentVersion(installedVersion)
-    if (!installed) {
-      return null
+  const installedIsStable = installed.prerelease.length === 0
+  const upperBound = new semver.SemVer(ceiling)
+  let best: semver.SemVer | null = null
+  let bestVersion: string | null = null
+  for (const version of candidates) {
+    const parsed = semver.parse(version)
+    if (!parsed) continue // Skip invalid versions
+    // A stable install is never offered a prerelease, even if one leaks into the list.
+    if (installedIsStable && parsed.prerelease.length > 0) continue
+    if (
+      semver.gt(parsed, installed) &&
+      semver.lt(parsed, upperBound) &&
+      (best === null || semver.gt(parsed, best))
+    ) {
+      best = parsed
+      bestVersion = version
     }
+  }
+  return bestVersion
+}
 
-    const installedIsStable = installed.prerelease.length === 0
-    const installedMajor = installed.major
-    const installedMinor = installed.minor
-
-    let bestMinorVersion: string | null = null
-    let bestMinorValue = -1
-
-    // Single pass to find best minor version in same major
-    for (const version of allVersions) {
-      try {
-        // A stable install is never offered a prerelease, even if one leaks
-        // into the candidate list.
-        if (installedIsStable && semver.prerelease(version) !== null) continue
-        const major = semver.major(version)
-        const minor = semver.minor(version)
-        if (major === installedMajor && minor > installedMinor && minor > bestMinorValue) {
-          bestMinorValue = minor
-          bestMinorVersion = version
-        }
-      } catch {
-        // Skip invalid versions
-      }
-    }
-
-    if (bestMinorVersion) {
-      return bestMinorVersion
-    }
-
-    // Fallback: highest patch version in the same major.minor that's higher than installed
-    return findHighestPatchVersion(installedVersion, allVersions)
-  } catch {
+/**
+ * The range target: what the "range" column offers, what `--apply --target minor` writes and
+ * what the GitHub Action applies unattended. The newest candidate the specifier's operator
+ * allows (see `rangeTargetCeiling`), or null when nothing newer is in reach. Prerelease installs
+ * get npm range semantics from their candidate pool (`buildRangeCandidates`).
+ */
+export function findRangeTargetVersion(specifier: string, candidates: string[]): string | null {
+  const installed = parseCurrentVersion(specifier)
+  if (!installed) {
     return null
   }
+  return newestBelow(installed, candidates, rangeTargetCeiling(specifier, installed))
 }
 
 /**
  * Find the highest patch version in the installed version's own major.minor line.
- * This is the `--target patch` policy: never crosses a minor (or major) boundary.
+ * This is the `--target patch` policy: never crosses a minor (or major) boundary, and never
+ * leaves the declared range either — `^0.0.3` allows no newer patch.
  */
 export function findHighestPatchVersion(
   installedVersion: string,
@@ -258,33 +289,13 @@ export function findHighestPatchVersion(
   if (!installed) {
     return null
   }
-
-  const installedIsStable = installed.prerelease.length === 0
-
-  let bestPatchVersion: string | null = null
-  for (const version of allVersions) {
-    try {
-      const parsed = semver.parse(version)
-      if (!parsed) continue
-      // A stable install is never offered a prerelease.
-      if (installedIsStable && parsed.prerelease.length > 0) continue
-      // Same major and minor, strictly newer. semver.gt orders prereleases
-      // natively, so 1.0.0-beta.2 < 1.0.0-rc.3 < 1.0.0 all resolve correctly.
-      if (
-        parsed.major === installed.major &&
-        parsed.minor === installed.minor &&
-        semver.gt(parsed, installed)
-      ) {
-        if (!bestPatchVersion || semver.gt(version, bestPatchVersion)) {
-          bestPatchVersion = version
-        }
-      }
-    } catch {
-      // Skip invalid versions
-    }
-  }
-
-  return bestPatchVersion
+  const nextMinor = `${installed.major}.${installed.minor + 1}.0-0`
+  const rangeCeiling = rangeTargetCeiling(installedVersion, installed)
+  return newestBelow(
+    installed,
+    allVersions,
+    semver.lt(rangeCeiling, nextMinor) ? rangeCeiling : nextMinor
+  )
 }
 
 /**

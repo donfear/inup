@@ -39,7 +39,7 @@ export interface CooldownHold {
 export interface PackageInfo {
   name: string
   currentVersion: string // Raw version specifier from package.json (with ^/~ prefixes)
-  rangeVersion: string // Version that satisfies current range
+  rangeVersion: string // Newest version the specifier's operator allows (the range target)
   latestVersion: string // Absolute latest version
   type: 'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
   packageJsonPath: string // Path to the package.json file (pnpm-workspace.yaml for catalog entries)
@@ -48,7 +48,7 @@ export interface PackageInfo {
   catalogReferencedBy?: string[] // package.json paths that reference this catalog entry
   isOutdated: boolean
   hasRangeUpdate: boolean // If range version is different from current
-  hasMajorUpdate: boolean // If latest version is a major update
+  hasMajorUpdate: boolean // If latest is newer than the range target (beyond the declared range)
   majorIgnored?: boolean // Major update exists but is suppressed by .inuprc ignoreMajor
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL

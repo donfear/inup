@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   readPackageJson: vi.fn(),
   findAllPackageJsonFilesAsync: vi.fn(),
   collectAllDependenciesAsync: vi.fn(),
-  findClosestMinorVersion: vi.fn(),
+  findRangeTargetVersion: vi.fn(),
   fetchPackageVersions: vi.fn(),
   loadPnpmCatalogs: vi.fn(),
   getNetworkProfile: vi.fn(() => null),
@@ -34,7 +34,7 @@ vi.mock('../../../../src/shared/versions', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...(actual as object),
-    findClosestMinorVersion: mocks.findClosestMinorVersion,
+    findRangeTargetVersion: mocks.findRangeTargetVersion,
   }
 })
 
@@ -123,7 +123,7 @@ describe('PackageDetector streaming', () => {
         packageJsonPath: '/repo/package.json',
       },
     ])
-    mocks.findClosestMinorVersion.mockImplementation(
+    mocks.findRangeTargetVersion.mockImplementation(
       (version: string, versions: string[]) => versions[0] ?? version
     )
     mocks.fetchPackageVersions.mockImplementation(
@@ -301,10 +301,10 @@ describe('PackageDetector streaming', () => {
       options.onPackageReady({ packageName: 'shared', data })
       return new Map([['shared', data]])
     })
-    mocks.findClosestMinorVersion.mockClear()
+    mocks.findRangeTargetVersion.mockClear()
     const detector = new PackageDetector({ cwd: '/repo' })
     const first = await detector.streamOutdatedPackages(logWarnings)
-    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(2)
+    expect(mocks.findRangeTargetVersion).toHaveBeenCalledTimes(2)
     expect(first.map((pkg) => [pkg.packageJsonPath, pkg.type, pkg.catalog])).toEqual([
       ['/repo/a/package.json', 'dependencies', undefined],
       ['/repo/b/package.json', 'devDependencies', undefined],
@@ -317,7 +317,7 @@ describe('PackageDetector streaming', () => {
     expect(first[0].catalogEntries).toBeUndefined()
     range = '1.6.0'
     const second = await detector.streamOutdatedPackages(logWarnings)
-    expect(mocks.findClosestMinorVersion).toHaveBeenCalledTimes(4)
+    expect(mocks.findRangeTargetVersion).toHaveBeenCalledTimes(4)
     expect(second[0].rangeVersion).toBe('1.6.0')
     expect(first[0].rangeVersion).toBe('1.5.0')
   })
@@ -558,8 +558,8 @@ describe('PackageDetector edge paths', () => {
     mocks.findAllPackageJsonFilesAsync.mockReset()
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
-    mocks.findClosestMinorVersion.mockReset()
-    mocks.findClosestMinorVersion.mockImplementation(
+    mocks.findRangeTargetVersion.mockReset()
+    mocks.findRangeTargetVersion.mockImplementation(
       (version: string, versions: string[]) => versions[0] ?? version
     )
     mocks.fetchPackageVersions.mockReset()
@@ -779,7 +779,7 @@ describe('PackageDetector edge paths', () => {
     try {
       mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
       // No in-range update: the only available bump crosses the major boundary.
-      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.findRangeTargetVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
         async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.0.0'] }
@@ -818,7 +818,7 @@ describe('PackageDetector edge paths', () => {
     )
     try {
       mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
-      mocks.findClosestMinorVersion.mockImplementation(() => '2.6.0')
+      mocks.findRangeTargetVersion.mockImplementation(() => '2.6.0')
       mocks.fetchPackageVersions.mockImplementation(
         async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '3.0.0', allVersions: ['3.0.0', '2.6.0', '2.0.0'] }
@@ -856,7 +856,7 @@ describe('PackageDetector edge paths', () => {
     )
     try {
       mocks.collectAllDependenciesAsync.mockResolvedValue([dep('react', '^17.0.0')])
-      mocks.findClosestMinorVersion.mockImplementation(() => null)
+      mocks.findRangeTargetVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
         async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
           const data = { latestVersion: '18.0.0', allVersions: ['18.0.0', '17.0.0'] }
@@ -932,7 +932,7 @@ describe('PackageDetector edge paths', () => {
 
   it('falls back to raw version strings when semver cannot coerce them', async () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
-    mocks.findClosestMinorVersion.mockReturnValue('weird-version')
+    mocks.findRangeTargetVersion.mockReturnValue('weird-version')
     mocks.fetchPackageVersions.mockImplementation(
       async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: 'next', allVersions: ['next'] }
@@ -957,7 +957,7 @@ describe('PackageDetector edge paths', () => {
       dep('major-only', '^1.0.0', '/repo/packages/a/package.json'),
       dep('major-only', '^1.0.0', '/repo/packages/b/package.json'),
     ])
-    mocks.findClosestMinorVersion.mockReturnValue(null)
+    mocks.findRangeTargetVersion.mockReturnValue(null)
     mocks.fetchPackageVersions.mockImplementation(
       async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
         const data = { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] }
@@ -987,7 +987,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('marks a dependency failed when version resolution throws', async () => {
-    mocks.findClosestMinorVersion.mockImplementation(() => {
+    mocks.findRangeTargetVersion.mockImplementation(() => {
       throw new Error('boom')
     })
 
@@ -1203,12 +1203,12 @@ describe('PackageDetector prerelease handling', () => {
 
   beforeEach(async () => {
     // These tests exercise the real version arithmetic end to end — restore the
-    // actual findClosestMinorVersion behind the suite-wide mock.
+    // actual findRangeTargetVersion behind the suite-wide mock.
     const actualVersions = await vi.importActual<typeof import('../../../../src/shared/versions')>(
       '../../../../src/shared/versions'
     )
-    mocks.findClosestMinorVersion.mockReset()
-    mocks.findClosestMinorVersion.mockImplementation(actualVersions.findClosestMinorVersion)
+    mocks.findRangeTargetVersion.mockReset()
+    mocks.findRangeTargetVersion.mockImplementation(actualVersions.findRangeTargetVersion)
     mocks.loadPnpmCatalogs.mockReturnValue(null)
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
@@ -1506,6 +1506,115 @@ describe('PackageDetector prerelease handling', () => {
   })
 })
 
+describe('PackageDetector range target follows the specifier operator', () => {
+  const dep = (name: string, version: string) => ({
+    name,
+    version,
+    type: 'dependencies',
+    packageJsonPath: '/repo/package.json',
+  })
+
+  const REGISTRY = {
+    'zero-lib': {
+      latestVersion: '0.9.1',
+      allVersions: ['0.9.1', '0.9.0', '0.3.0', '0.2.9', '0.2.3'],
+    },
+    'zero-zero': { latestVersion: '0.0.5', allVersions: ['0.0.5', '0.0.4', '0.0.3'] },
+    lib: { latestVersion: '1.9.0', allVersions: ['1.9.0', '1.3.0', '1.2.9', '1.2.3'] },
+  }
+
+  const resolve = async (name: keyof typeof REGISTRY, specifier: string, ignoreMajor?: string) => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep(name, specifier)])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        for (const packageName of packageNames) {
+          options.onPackageReady({ packageName, data: REGISTRY[name] })
+        }
+        return new Map(packageNames.map((packageName) => [packageName, REGISTRY[name]]))
+      }
+    )
+    const detector = new PackageDetector({
+      cwd: '/repo',
+      ignoreMajorPackages: ignoreMajor ? [ignoreMajor] : [],
+    })
+    const [pkg] = await detector.streamOutdatedPackages(logWarnings)
+    return pkg
+  }
+
+  beforeEach(async () => {
+    // Real version arithmetic end to end, behind the suite-wide mock.
+    const actualVersions = await vi.importActual<typeof import('../../../../src/shared/versions')>(
+      '../../../../src/shared/versions'
+    )
+    mocks.findRangeTargetVersion.mockReset()
+    mocks.findRangeTargetVersion.mockImplementation(actualVersions.findRangeTargetVersion)
+    mocks.loadPnpmCatalogs.mockReturnValue(null)
+    mocks.findPackageJson.mockReturnValue('/repo/package.json')
+    mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
+    mocks.findAllPackageJsonFilesAsync.mockReset()
+    mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
+    mocks.fetchPackageVersions.mockReset()
+  })
+
+  it.each([
+    // Anything newer than the range target stays visible as the latest update.
+    ['zero-lib', '^0.2.3', { rangeVersion: '0.2.9', hasRangeUpdate: true, hasMajorUpdate: true }],
+    ['zero-lib', '^0.2.9', { rangeVersion: '^0.2.9', hasRangeUpdate: false, hasMajorUpdate: true }],
+    ['zero-lib', '0.2.3', { rangeVersion: '0.9.1', hasRangeUpdate: true, hasMajorUpdate: false }],
+    [
+      'zero-zero',
+      '^0.0.3',
+      { rangeVersion: '^0.0.3', hasRangeUpdate: false, hasMajorUpdate: true },
+    ],
+    ['lib', '~1.2.3', { rangeVersion: '1.2.9', hasRangeUpdate: true, hasMajorUpdate: true }],
+    ['lib', '^1.2.3', { rangeVersion: '1.9.0', hasRangeUpdate: true, hasMajorUpdate: false }],
+    ['lib', '>=1.2.3', { rangeVersion: '1.9.0', hasRangeUpdate: true, hasMajorUpdate: false }],
+  ] as const)('%s %s', async (name, specifier, expected) => {
+    const pkg = await resolve(name, specifier)
+    expect(pkg).toMatchObject({
+      ...expected,
+      isOutdated: true,
+      latestVersion: REGISTRY[name].latestVersion,
+    })
+  })
+
+  describe('with ignoreMajor', () => {
+    beforeEach(async () => {
+      const { isPackageIgnored } = await import('../../../../src/shared/config')
+      vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+        patterns.includes(name)
+      )
+    })
+
+    afterEach(async () => {
+      const { isPackageIgnored } = await import('../../../../src/shared/config')
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    })
+
+    it('suppresses a new 0.y minor: it is breaking under ^0.y.z', async () => {
+      expect(await resolve('zero-lib', '^0.2.3', 'zero-lib')).toMatchObject({
+        isOutdated: true,
+        rangeVersion: '0.2.9',
+        hasMajorUpdate: false,
+        majorIgnored: true,
+      })
+      expect(await resolve('zero-lib', '^0.2.9', 'zero-lib')).toMatchObject({
+        isOutdated: false,
+        majorIgnored: true,
+      })
+    })
+
+    it('keeps a new minor past ~x.y.z: out of range, but not breaking', async () => {
+      expect(await resolve('lib', '~1.2.3', 'lib')).toMatchObject({
+        rangeVersion: '1.2.9',
+        hasMajorUpdate: true,
+        majorIgnored: false,
+        latestVersion: '1.9.0',
+      })
+    })
+  })
+})
+
 describe('PackageDetector concurrency plumbing', () => {
   const storedProfile = {
     schemaVersion: 1 as const,
@@ -1534,7 +1643,7 @@ describe('PackageDetector concurrency plumbing', () => {
         packageJsonPath: '/repo/package.json',
       },
     ])
-    mocks.findClosestMinorVersion.mockImplementation(
+    mocks.findRangeTargetVersion.mockImplementation(
       (version: string, versions: string[]) => versions[0] ?? version
     )
     mocks.fetchPackageVersions.mockReset()
@@ -1666,8 +1775,8 @@ describe('PackageDetector release-age cooldown', () => {
     const actualVersions = await vi.importActual<typeof import('../../../../src/shared/versions')>(
       '../../../../src/shared/versions'
     )
-    mocks.findClosestMinorVersion.mockReset()
-    mocks.findClosestMinorVersion.mockImplementation(actualVersions.findClosestMinorVersion)
+    mocks.findRangeTargetVersion.mockReset()
+    mocks.findRangeTargetVersion.mockImplementation(actualVersions.findRangeTargetVersion)
     mocks.loadPnpmCatalogs.mockReturnValue(null)
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })

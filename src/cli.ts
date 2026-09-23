@@ -337,7 +337,7 @@ program
   .addOption(
     new Option(
       '--target <level>',
-      'with --apply: how far to bump — minor (in-range) | patch (same major.minor only) | latest (default: minor)'
+      'with --apply: how far to bump — minor (in-range: ^1.2.3 → 1.x, ^0.2.3 → 0.2.x, ~1.2.3 → 1.2.x) | patch (same major.minor only) | latest (default: minor)'
     ).choices(['minor', 'patch', 'latest'] satisfies ApplyTarget[])
   )
   // Exit codes: 0 ok, 1 updates exist (--check), 2 error. Commander exits 1 on a usage error,
