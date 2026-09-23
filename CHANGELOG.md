@@ -14,6 +14,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Pressing Esc or an arrow key at a `[y/N]` prompt (the dirty working tree warning, or `--init` asking to overwrite a config) no longer crashes inup. Esc answers no, and arrow keys are ignored.
+- Running inup inside one package of a pnpm, Yarn or Bun monorepo now uses the monorepo's package manager. Before, it fell back to npm with a warning and ran `npm install` in that package, which failed on `workspace:` versions or left a stray `package-lock.json`. inup looks in parent folders up to the repository root for the lockfile or `packageManager` field, and never uses a lockfile left in your home folder.
 
 ## [1.8.2] - 2026-09-22
 
