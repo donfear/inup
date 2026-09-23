@@ -71,6 +71,130 @@ describe('extractVersionSection', () => {
     expect(extractVersionSection(tricky, '1.2.3')).toBeNull()
   })
 
+  // [label, changelog, version, expected section]
+  it.each([
+    [
+      '## 1.2.30 listed before ## 1.2.3',
+      '## 1.2.30\n- thirty\n## 1.2.3\n- three',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## [1.2.30] listed before ## [1.2.3]',
+      '## [1.2.30]\n- thirty\n## [1.2.3]\n- three',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## v1.2.30 listed before ## v1.2.3',
+      '## v1.2.30\n- thirty\n## v1.2.3\n- three',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## [1.2.3-beta.1] listed before ## [1.2.3]',
+      '## [1.2.3-beta.1]\n- beta\n## [1.2.3]\n- three',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## 1.2.3-beta.1 listed before ## 1.2.3',
+      '## 1.2.3-beta.1\n- beta\n## 1.2.3\n- three',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## 1.2.3-beta.10 listed before ## 1.2.3-beta.1',
+      '## 1.2.3-beta.10\n- ten\n## 1.2.3-beta.1\n- one',
+      '1.2.3-beta.1',
+      '- one',
+    ],
+    ['only a prerelease of the version', '## 1.2.3-beta.1\n- beta\n', '1.2.3', null],
+    ['only a longer version', '## 1.2.30\n- thirty\n', '1.2.3', null],
+  ])('matches the whole version, not a prefix: %s', (_label, text, version, expected) => {
+    expect(extractVersionSection(text, version)).toBe(expected)
+  })
+
+  // [label, changelog, version, expected section]
+  it.each([
+    ['bare ## heading', '## 1.2.3\n- three\n', '1.2.3', '- three'],
+    ['## v-prefixed heading', '## v1.2.3\n- three\n', '1.2.3', '- three'],
+    [
+      'Keep a Changelog: ## [1.2.3] - date',
+      '## [1.2.3] - 2024-01-01\n- three\n',
+      '1.2.3',
+      '- three',
+    ],
+    ['## [v1.2.3]', '## [v1.2.3]\n- three\n', '1.2.3', '- three'],
+    [
+      '## [1.2.3](compare link) - date',
+      '## [1.2.3](https://github.com/o/r/compare/v1.2.2...v1.2.3) - 2024-01-01\n- three\n',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      '## [1.2.3](compare link) (date)',
+      '## [1.2.3](https://github.com/o/r/compare/v1.2.2...v1.2.3) (2024-01-01)\n- three\n',
+      '1.2.3',
+      '- three',
+    ],
+    [
+      'heading with a tab after the version',
+      '## 1.2.3\t(2024-01-01)\n- three\n',
+      '1.2.3',
+      '- three',
+    ],
+    ['# heading', '# 1.2.3\n- three\n', '1.2.3', '- three'],
+    ['### heading', '### 1.2.3\n- three\n', '1.2.3', '- three'],
+    ['#### heading is not a release heading', '#### 1.2.3\n- three\n', '1.2.3', null],
+    ['version on the line after an empty heading', '##\n1.2.3\n- three\n', '1.2.3', null],
+    ['heading naming the package, not supported', '## @scope/pkg@1.2.3\n- three\n', '1.2.3', null],
+    [
+      'Keep a Changelog: ### subsections stay in the section',
+      '## [Unreleased]\n\n## [1.2.3] - 2024-01-02\n\n### Added\n\n- a\n\n### Fixed\n\n- b\n\n## [1.2.2] - 2024-01-01\n\n### Fixed\n\n- old\n',
+      '1.2.3',
+      '### Added\n\n- a\n\n### Fixed\n\n- b',
+    ],
+    [
+      'changesets: ### Patch Changes stay in the section',
+      '# @scope/pkg\n\n## 1.2.3\n\n### Patch Changes\n\n- abc123: fix\n\n## 1.2.2\n\n### Patch Changes\n\n- old\n',
+      '1.2.3',
+      '### Patch Changes\n\n- abc123: fix',
+    ],
+    [
+      'conventional-changelog: a ## patch release ends at the next # release',
+      '## [1.2.3](l) (d)\n\n### Bug Fixes\n\n* fix\n\n# [1.2.0](l) (d)\n\n### Features\n\n* older\n',
+      '1.2.3',
+      '### Bug Fixes\n\n* fix',
+    ],
+    [
+      'conventional-changelog: a # minor release keeps its ### subsections',
+      '# [1.3.0](l) (d)\n\n### Features\n\n* feat\n\n## [1.2.3](l) (d)\n\n* fix\n',
+      '1.3.0',
+      '### Features\n\n* feat',
+    ],
+    [
+      'a # release keeps its ## subsections',
+      '# 2.0.0\n\n## Breaking changes\n\n- dropped x\n\n# 1.0.0\n\n- first\n',
+      '2.0.0',
+      '## Breaking changes\n\n- dropped x',
+    ],
+    [
+      'standard-version: a ### patch release keeps its ### subsections',
+      '### [1.0.2](l) (d)\n\n### Bug Fixes\n\n* fix c\n\n### [1.0.1](l) (d)\n\n### Bug Fixes\n\n* fix b\n\n## [1.0.0](l) (d)\n\n* first\n',
+      '1.0.2',
+      '### Bug Fixes\n\n* fix c',
+    ],
+    [
+      'standard-version: a ## release ends at the next ### release',
+      '## [1.1.0](l) (d)\n\n### Features\n\n* feat\n\n### [1.0.1](l) (d)\n\n### Bug Fixes\n\n* fix\n',
+      '1.1.0',
+      '### Features\n\n* feat',
+    ],
+  ])('heading shape: %s', (_label, text, version, expected) => {
+    expect(extractVersionSection(text, version)).toBe(expected)
+  })
+
   it('returns null for an empty section body', () => {
     const empty = '## 1.0.0\n\n## 0.9.0\n\n- old\n'
 
