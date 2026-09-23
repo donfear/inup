@@ -923,3 +923,126 @@ describe('progressive rendering', () => {
     }
   })
 })
+
+describe('closing once the scan finds nothing to upgrade', () => {
+  // A package the cooldown emptied out: listed so `c` can show it, nothing to select.
+  const heldRow = (name: string) =>
+    makeSelectionState({
+      name,
+      heldOnly: true,
+      rangeVersion: '1.0.0',
+      latestVersion: '1.0.0',
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+    })
+
+  // Keys are emitted directly: sendKeys waits on setTimeout, which these tests fake.
+  const press = (str: string) =>
+    fake.stdin.emit('keypress', str, { name: /^[a-z]$/.test(str) ? str : undefined, sequence: str })
+
+  /** A session still loading over `states`, driven the way the runner drives it. */
+  function startLoading(states: PackageSelectionState[]) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const progress: PackageLoadProgress = {
+      phase: 'resolving',
+      resolved: 0,
+      total: 3,
+      failed: 0,
+      isLoading: true,
+    }
+    let refresh!: () => void
+    let settled = false
+    const session = startSession(states, {
+      loadingProgress: progress,
+      attachRefresh: (fn) => {
+        refresh = fn
+      },
+    })
+    session.promise.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      }
+    )
+    const tick = async () => {
+      refresh()
+      vi.advanceTimersByTime(16)
+      await Promise.resolve()
+    }
+    const finishLoading = async () => {
+      Object.assign(progress, { phase: 'done', resolved: 3, isLoading: false })
+      await tick()
+    }
+    return { ...session, tick, finishLoading, isSettled: () => settled }
+  }
+
+  it('stays open while loading, then closes by itself and restores the terminal', async () => {
+    const { promise, tick, finishLoading, isSettled } = startLoading([])
+    press('\x1b[B')
+    await tick()
+    expect(isSettled()).toBe(false)
+
+    stdout.clear()
+    await finishLoading()
+    expect(await promise).toEqual([])
+    // No empty "Showing all 0 packages · Enter Confirm" frame left waiting for q.
+    expect(stripAnsi(stdout.output())).not.toContain('Showing all')
+    expect(stdout.output()).toContain('\x1b[?1049l') // alternate screen released
+    expect(stdout.output()).toContain('\x1b[?25h') // cursor shown again
+    expect(fake.stdin.listenerCount('keypress')).toBe(0)
+    expect(fake.stdin.setRawMode).toHaveBeenLastCalledWith(false)
+    expect(configManager.setFilters).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('closes when the only rows are cooldown-held ones the user is not looking at', async () => {
+    const { promise, finishLoading } = startLoading([heldRow('held-a'), heldRow('held-b')])
+    await finishLoading()
+    const result = await promise
+    expect(result.map((state) => state.selectedOption)).toEqual(['none', 'none'])
+  })
+
+  it('stays open while held rows are on show with c, and closes once they are hidden', async () => {
+    const { promise, finishLoading, isSettled } = startLoading([heldRow('held-a')])
+    press('c')
+    await finishLoading()
+    expect(isSettled()).toBe(false)
+    expect(stripAnsi(stdout.output())).toContain('held-a')
+
+    press('c')
+    expect(await promise).toHaveLength(1)
+  })
+
+  it('stays open when a filter or search only hides rows that can be upgraded', async () => {
+    const { promise, finishLoading, isSettled } = startLoading([
+      makeSelectionState({ name: 'dev-tool', type: 'devDependencies' }),
+    ])
+    press('d') // hide devDependencies: the list is empty, but not for lack of upgrades
+    press('/')
+    press('z')
+    press('/') // apply a search that matches nothing
+    await finishLoading()
+    expect(isSettled()).toBe(false)
+
+    press('q')
+    await promise
+  })
+
+  it.each([
+    ['help overlay', '?'],
+    ['performance panel', '!'],
+    ['theme picker', 't'],
+    ['search box', '/'],
+  ])('leaves an open %s to the user, then closes once it is dismissed', async (_, key) => {
+    const { promise, finishLoading, isSettled } = startLoading([])
+    press(key)
+    await finishLoading()
+    expect(isSettled()).toBe(false)
+
+    press(key)
+    expect(await promise).toEqual([])
+    expect(fake.stdin.listenerCount('keypress')).toBe(0)
+  })
+})
