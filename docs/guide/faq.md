@@ -56,4 +56,4 @@ Node `22.19` or newer (`engines.node`). `npx inup` uses your local Node; the [Gi
 
 ## Still stuck?
 
-Run with `--debug` to write a verbose log (`/tmp/inup-debug-YYYY-MM-DD.log`), then [open an issue](https://github.com/donfear/inup/issues) with it attached.
+Run with `--debug` to write a verbose log (`inup/inup-debug-YYYY-MM-DD.log` in your system temp directory; inup prints the full path when it starts), then [open an issue](https://github.com/donfear/inup/issues) with it attached.

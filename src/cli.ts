@@ -308,7 +308,10 @@ program
       PACKAGE_MANAGER_NAMES
     )
   )
-  .option('--debug', 'write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log')
+  .option(
+    '--debug',
+    'write verbose debug log to inup/inup-debug-YYYY-MM-DD.log in the system temp dir'
+  )
   .option('--no-color', 'disable colored output (also respects NO_COLOR / FORCE_COLOR)')
   .option('--save-exact', 'write exact versions instead of preserving the range prefix (^/~)')
   .option(

@@ -26,7 +26,7 @@ inup [options]
 | `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via `.inuprc`) |
 | `--save-exact` | Write exact versions instead of preserving the range prefix (`^`/`~`) |
 | `--no-color` | Disable colored output (also respects `NO_COLOR` / `FORCE_COLOR`) |
-| `--debug` | Write a verbose debug log to `/tmp/inup-debug-YYYY-MM-DD.log` |
+| `--debug` | Write a verbose debug log to `inup/inup-debug-YYYY-MM-DD.log` in your system temp directory (the exact path is printed when the run starts) |
 
 ## Exit codes
 
