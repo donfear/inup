@@ -49,9 +49,13 @@ vi.mock('../../src/shared/git', () => ({
 import { runCli } from '../../src/cli'
 
 const originalIsTTY = process.stdout.isTTY
+const originalStdinIsTTY = process.stdin.isTTY
 const originalCI = process.env.CI
-const setInteractive = (interactive: boolean) =>
+// The picker needs a terminal on both ends: keys in, frames out.
+const setInteractive = (interactive: boolean) => {
+  Object.defineProperty(process.stdin, 'isTTY', { value: interactive, configurable: true })
   Object.defineProperty(process.stdout, 'isTTY', { value: interactive, configurable: true })
+}
 
 describe('CLI startup', () => {
   beforeEach(() => {
@@ -63,6 +67,7 @@ describe('CLI startup', () => {
   })
 
   afterEach(() => {
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinIsTTY, configurable: true })
     Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
     if (originalCI === undefined) delete process.env.CI
     else process.env.CI = originalCI

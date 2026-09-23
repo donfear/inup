@@ -34,6 +34,9 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Release notes are found in changelogs that put versions under `#` or `###` headings, as conventional-changelog and standard-version write them, not only `##`.
 - When a run finds nothing to upgrade, the picker closes by itself once the scan finishes and prints the summary, instead of waiting on an empty list for you to press `q`. A panel or search you have open is left for you to close first, and the picker stays open while `c` is showing packages held by the cooldown.
 - `--help` now gives the real location of the `--debug` log, an `inup` folder in your system temp directory, instead of `/tmp`.
+- `CI=false` and `CI=0`, which Create React App setups and some shells export, no longer switch inup to the headless report; any other non-empty `CI` value still does.
+- inup opens the interactive picker only when both stdin and stdout are terminals. With stdin redirected (`inup < /dev/null`) it prints the report instead of opening a picker that could never receive a key and then exiting 0 as if nothing needed doing. `inup --init` likewise refuses to overwrite an existing config instead of asking a question nobody can answer.
+- When the terminal can't provide keyboard input, inup fails with an error saying the picker needs an interactive terminal and pointing to `--json` and `--check`, instead of promising a "fallback interface" that didn't exist and exiting as if nothing was selected.
 
 ### Security
 

@@ -1,6 +1,6 @@
 # CLI reference
 
-inup is a single command. Without flags it opens the interactive picker; with `--json`, `--check` or `--apply` (or when stdout isn't a TTY) it runs headless.
+inup is a single command. Without flags it opens the interactive picker; with `--json`, `--check` or `--apply` (or when stdin or stdout isn't a TTY) it runs headless.
 
 ```bash
 inup [options]
@@ -40,6 +40,6 @@ inup [options]
 
 ## Headless by default in pipelines
 
-When stdout isn't a TTY or `$CI` is set, inup never opens the interactive UI — it prints a report instead, so it can't hang a pipeline. `inup | cat` gives a plain line-based report; `--json` gives the structured document.
+When stdin or stdout isn't a TTY or `$CI` is set (to anything but `false` or `0`), inup never opens the interactive UI — it prints a report instead, so it can't hang a pipeline. `inup | cat` gives a plain line-based report; `--json` gives the structured document.
 
 See [CI & scripting](ci.md) for the JSON schema and `--apply` semantics, and [Configuration](configuration.md) for the `.inuprc` file that all modes honor.

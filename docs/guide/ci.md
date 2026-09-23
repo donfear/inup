@@ -2,7 +2,7 @@
 
 Run inup non-interactively to gate builds on outdated or vulnerable dependencies, generate a machine-readable dependency report, or auto-apply safe upgrades.
 
-inup runs headless automatically when stdout isn't a TTY or `$CI` is set, so it never hangs in a pipeline waiting on the interactive UI. Both `--json` and `--check` are **read-only** — they report, they never edit `package.json` or install.
+inup runs headless automatically when stdin or stdout isn't a TTY or `$CI` is set, so it never hangs in a pipeline waiting on the interactive UI. Both `--json` and `--check` are **read-only** — they report, they never edit `package.json` or install.
 
 ```bash
 inup --check                 # exit 1 if anything is outdated → fails the build

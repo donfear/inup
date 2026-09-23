@@ -406,7 +406,7 @@ describe('runInteractiveSession modals', () => {
   })
 })
 
-describe('runInteractiveSession fallback', () => {
+describe('runInteractiveSession startup failures', () => {
   it('rejects initial rendering failures after restoring raw mode and the alternate screen', async () => {
     const renderer = new UIRenderer()
     vi.spyOn(renderer, 'renderInterface').mockImplementation(() => {
@@ -418,9 +418,11 @@ describe('runInteractiveSession fallback', () => {
     expect(fake.stdin.setRawMode).toHaveBeenLastCalledWith(false)
     expect(stdout.output()).toContain('\x1b[?1049l')
   })
-  it('resolves immediately with the original states when raw mode is unavailable', async () => {
+  // There is no line-based picker to fall back to. Resolving would read as "nothing selected"
+  // and exit 0, so the run must fail and say why.
+  it('rejects with the reason and the headless alternatives when raw mode is unavailable', async () => {
     const startSpy = vi.spyOn(TerminalInput, 'startKeypressSession').mockImplementation(() => {
-      throw new Error('raw mode unavailable')
+      throw new Error('setRawMode EIO')
     })
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const refreshCalls: Array<(() => void) | undefined> = []
@@ -431,10 +433,19 @@ describe('runInteractiveSession fallback', () => {
         onRefreshViewReady: (refresh) => refreshCalls.push(refresh),
       })
 
-      const result = await promise
+      const error = await promise.then(
+        () => undefined,
+        (reason: unknown) => reason
+      )
 
-      expect(result).toBe(states)
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('fallback interface'))
+      expect(error).toBeInstanceOf(Error)
+      const { message, cause } = error as Error
+      expect(message).toContain('needs an interactive terminal')
+      expect(message).toContain('setRawMode EIO')
+      expect(message).toContain('--json')
+      expect(message).toContain('--check')
+      expect(cause).toBeInstanceOf(Error)
+      expect(log).not.toHaveBeenCalledWith(expect.stringContaining('fallback interface'))
       expect(refreshCalls).toEqual([expect.any(Function), undefined])
       expect(stdout.output()).toContain('\x1b[?1049l') // alt screen released on failure
     } finally {
@@ -443,24 +454,19 @@ describe('runInteractiveSession fallback', () => {
     }
   })
 
-  it('falls back cleanly when even claiming the alternate screen fails', async () => {
+  it('rejects cleanly when even claiming the alternate screen fails', async () => {
     const enterSpy = vi.spyOn(CursorUtils, 'enterAlternateScreen').mockImplementation(() => {
-      throw new Error('not a terminal')
+      throw 'not a terminal'
     })
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
     try {
       const states = [makeSelectionState({ selectedOption: 'range' })]
       const { promise } = startSession(states)
 
-      const result = await promise
-
-      expect(result).toBe(states)
-      expect(log).toHaveBeenCalledWith(expect.stringContaining('fallback interface'))
+      await expect(promise).rejects.toThrow(/needs an interactive terminal \(not a terminal\)/)
       // The alternate screen was never claimed, so it must not be "released".
       expect(stdout.output()).not.toContain('\x1b[?1049l')
     } finally {
-      log.mockRestore()
       enterSpy.mockRestore()
     }
   })
@@ -904,22 +910,20 @@ describe('progressive rendering', () => {
     }
   })
 
-  it('cancels a scheduled frame if terminal setup falls back', async () => {
+  it('cancels a scheduled frame if terminal setup fails', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const start = vi.spyOn(TerminalInput, 'startKeypressSession').mockImplementation(() => {
       throw new Error('raw mode unavailable')
     })
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       const { promise } = startSession([], { attachRefresh: (refresh) => refresh() })
-      await promise
+      await expect(promise).rejects.toThrow('needs an interactive terminal')
       expect(vi.getTimerCount()).toBe(0)
       stdout.clear()
       vi.advanceTimersByTime(16)
       expect(stdout.output()).toBe('')
     } finally {
       start.mockRestore()
-      log.mockRestore()
     }
   })
 })

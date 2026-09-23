@@ -58,12 +58,19 @@ vi.mock('../../src/shared/terminal/terminal-input', () => ({
 import { runCli } from '../../src/cli'
 import { stripAnsi } from '../../src/shared/terminal/text'
 
-// The dirty-tree preflight is an interactive-only concern; force a TTY (and clear $CI) so these
-// tests exercise the interactive branch regardless of where the suite runs.
+// The dirty-tree preflight is an interactive-only concern; force a TTY on both ends (and clear
+// $CI) so these tests exercise the interactive branch regardless of where the suite runs.
 const originalIsTTY = process.stdout.isTTY
+const originalStdinIsTTY = process.stdin.isTTY
 const originalCI = process.env.CI
-const setInteractive = (interactive: boolean) =>
+const setStdinTTY = (value: boolean | undefined) =>
+  Object.defineProperty(process.stdin, 'isTTY', { value, configurable: true })
+const setInteractive = (interactive: boolean) => {
+  setStdinTTY(interactive)
   Object.defineProperty(process.stdout, 'isTTY', { value: interactive, configurable: true })
+}
+
+afterEach(() => setStdinTTY(originalStdinIsTTY))
 
 // The prompt is chalk-colored, so compare its visible text rather than the raw string.
 const expectDirtyTreePrompt = () => {
@@ -203,14 +210,42 @@ describe('CLI headless routing', () => {
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
   })
 
-  it('routes to runHeadless when $CI is set even in a TTY', async () => {
-    process.env.CI = '1'
+  it('routes to runHeadless when stdin is not a terminal (inup < /dev/null)', async () => {
+    // The picker could never receive a key: it would open, then exit 0 once loading finished.
+    setStdinTTY(false)
 
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
 
     expect(mocks.headlessRun).toHaveBeenCalledTimes(1)
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
   })
+
+  it.each(['1', 'true', 'TRUE'])(
+    'routes to runHeadless when $CI is %s even in a TTY',
+    async (ci) => {
+      process.env.CI = ci
+
+      await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
+
+      expect(mocks.headlessRun).toHaveBeenCalledTimes(1)
+      expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+    }
+  )
+
+  // Create React App setups and some shell profiles export CI=false to opt out of CI behavior.
+  it.each(['false', 'FALSE', '0', ''])(
+    'opens the picker when $CI is %j, which is not a CI run',
+    async (ci) => {
+      process.env.CI = ci
+      mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+
+      await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
+
+      expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
+      expect(mocks.headlessRun).not.toHaveBeenCalled()
+    }
+  )
 
   it('routes to runHeadless with json/check flags even in a TTY', async () => {
     await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10', json: true, check: true })
@@ -588,6 +623,34 @@ describe('CLI --init', () => {
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
     errorSpy.mockRestore()
     exitSpy.mockRestore()
+  })
+
+  it('refuses to overwrite when stdin is not a terminal, since nobody can answer', async () => {
+    writeFileSync(join(testDir, '.inuprc'), '{"ignore": ["mine"]}')
+    setStdinTTY(false)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli(initOptions())).rejects.toThrow('process.exit')
+
+    expect(readFileSync(join(testDir, '.inuprc'), 'utf-8')).toBe('{"ignore": ["mine"]}')
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+
+  it('asks before overwriting when $CI is false', async () => {
+    writeFileSync(join(testDir, '.inuprc'), '{"ignore": ["mine"]}')
+    process.env.CI = 'false'
+    mocks.promptForImmediateConfirmation.mockResolvedValue(false)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runCli(initOptions())
+
+    expect(mocks.promptForImmediateConfirmation).toHaveBeenCalledTimes(1)
+    logSpy.mockRestore()
   })
 
   it('writes .inuprc but warns when a different config filename exists', async () => {

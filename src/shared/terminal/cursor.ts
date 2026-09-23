@@ -1,3 +1,5 @@
+import { isCI } from './interactive'
+
 export const RAW_EXIT_ALT_SCREEN = '\x1b[?1049l'
 export const RAW_SHOW_CURSOR = '\x1b[?25h'
 
@@ -65,7 +67,7 @@ export const ConsoleUtils = {
    * when stderr is a TTY outside CI — the \r animation is just noise in logs.
    */
   showProgress(message: string): void {
-    if (!process.stderr.isTTY || process.env.CI) return
+    if (!process.stderr.isTTY || isCI()) return
     process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${message}`)
   },
 
@@ -73,7 +75,7 @@ export const ConsoleUtils = {
    * Clear the current progress line
    */
   clearProgress(): void {
-    if (!process.stderr.isTTY || process.env.CI) return
+    if (!process.stderr.isTTY || isCI()) return
     process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r`)
   },
 }

@@ -580,8 +580,15 @@ export async function runInteractiveSession(
         reject(error)
         return
       }
-      console.log(chalk.yellow('Raw mode not available, using fallback interface...'))
-      resolve(states)
+      // Keys cannot be read. There is no line-based picker to fall back to, and resolving here
+      // would read as "nothing selected" and exit 0, so fail the run and say what works instead.
+      const reason = error instanceof Error ? error.message : String(error)
+      reject(
+        new Error(
+          `The package picker needs an interactive terminal (${reason}). Use --json or --check for a report instead.`,
+          { cause: error }
+        )
+      )
     }
   })
 }
