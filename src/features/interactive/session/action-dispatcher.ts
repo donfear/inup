@@ -121,35 +121,36 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       break
     case 'toggle_info_modal':
       if (!uiState.showInfoModal) {
-        const modalSessionId = stateManager.toggleInfoModal()
         const currentState = filteredStates[uiState.currentRow]
-        const canFetchMetadata = currentState !== undefined
-        stateManager.setModalLoading(canFetchMetadata, modalSessionId)
+        // Nothing under the cursor (empty or fully filtered list): a modal opened
+        // here would never render, yet it would swallow keys until closed.
+        if (!currentState) break
 
-        if (currentState) {
-          packageInfoModalController
-            .hydrate(currentState)
-            .then((update) => {
-              if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
+        const modalSessionId = stateManager.toggleInfoModal()
+        stateManager.setModalLoading(true, modalSessionId)
 
-              if (update) Object.assign(currentState, update.patch)
+        packageInfoModalController
+          .hydrate(currentState)
+          .then((update) => {
+            if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
 
-              stateManager.setModalLoading(false, modalSessionId)
-              requestRender()
+            if (update) Object.assign(currentState, update.patch)
 
-              if (
-                stateManager.getInfoModalSessionId() === modalSessionId &&
-                packageInfoModalController.getVersionCount(currentState) > 0
-              ) {
-                void packageInfoModalController.loadVersionAtIndex(currentState, 0, requestRender)
-              }
-            })
-            .catch(() => {
-              if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
-              stateManager.setModalLoading(false, modalSessionId)
-              requestRender()
-            })
-        }
+            stateManager.setModalLoading(false, modalSessionId)
+            requestRender()
+
+            if (
+              stateManager.getInfoModalSessionId() === modalSessionId &&
+              packageInfoModalController.getVersionCount(currentState) > 0
+            ) {
+              void packageInfoModalController.loadVersionAtIndex(currentState, 0, requestRender)
+            }
+          })
+          .catch(() => {
+            if (isResolved() || stateManager.getInfoModalSessionId() !== modalSessionId) return
+            stateManager.setModalLoading(false, modalSessionId)
+            requestRender()
+          })
       } else {
         packageInfoModalController.cancel()
         stateManager.toggleInfoModal()

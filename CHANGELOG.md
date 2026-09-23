@@ -37,6 +37,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - `CI=false` and `CI=0`, which Create React App setups and some shells export, no longer switch inup to the headless report; any other non-empty `CI` value still does.
 - inup opens the interactive picker only when both stdin and stdout are terminals. With stdin redirected (`inup < /dev/null`) it prints the report instead of opening a picker that could never receive a key and then exiting 0 as if nothing needed doing. `inup --init` likewise refuses to overwrite an existing config instead of asking a question nobody can answer.
 - When the terminal can't provide keyboard input, inup fails with an error saying the picker needs an interactive terminal and pointing to `--json` and `--check`, instead of promising a "fallback interface" that didn't exist and exiting as if nothing was selected.
+- You can type `/` in the search, so scoped names like `@types/node` can be found. `/` used to end the search, and the letters after it were taken as shortcuts, so typing `types/node` could switch off devDependencies (`d`) and optionalDependencies (`o`) and keep them off on the next run. Press `Enter` to apply a search and `Esc` to clear it.
+- Pressing `i` when the list is empty no longer opens an invisible info panel that ate the next key, so `q` quits on the first press.
 
 ### Security
 
