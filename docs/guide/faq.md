@@ -28,6 +28,8 @@ It auto-detects from your lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock
 
 Yes. inup resolves registries and credentials with npm's own model, reading the `.npmrc` of the project it scans (the `--dir` one when given) plus your user and global `.npmrc`: scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, legacy `_auth`), with `${ENV_VAR}` values expanded. A token is only ever sent to the registry its config binds it to. Security advisories are checked on the registry that serves each package too, so a private package's name never goes to the public registry. No extra setup — if npm can install it, inup can read it.
 
+If a registry refuses access (401 or 403), inup prints one warning naming that registry and how many packages it refused, so an expired or missing token doesn't look like packages that don't exist. The warning goes to stderr, so `--json` output stays clean, and it never includes the token.
+
 ## It printed JSON / a plain list instead of opening the UI
 
 That's the headless fallback, and it's intentional. inup runs headless — never opening the interactive UI — when **any** of these is true:

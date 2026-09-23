@@ -1097,6 +1097,60 @@ describe('PackageDetector edge paths', () => {
     }
   })
 
+  it('warns once per registry that refused access, before the scan completes', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('@a/one', '^1.0.0'),
+      dep('@a/two', '^1.0.0'),
+      dep('@b/three', '^1.0.0'),
+      dep('zod', '^1.0.0'),
+    ])
+    mocks.fetchPackageVersions.mockImplementation(
+      async (
+        packageNames: string[],
+        options: {
+          onPackageReady: (result: any) => void
+          onAccessDenied: (denial: { packageName: string; origin: string; status: number }) => void
+        }
+      ) => {
+        // Completion order, not origin order: the warnings still come out sorted.
+        options.onAccessDenied({
+          packageName: '@b/three',
+          origin: 'https://b.example',
+          status: 403,
+        })
+        options.onAccessDenied({ packageName: '@a/two', origin: 'https://a.example', status: 403 })
+        options.onAccessDenied({ packageName: '@a/one', origin: 'https://a.example', status: 401 })
+        const unavailable = { latestVersion: 'unknown', allVersions: [] }
+        for (const packageName of packageNames) {
+          options.onPackageReady({ packageName, data: unavailable })
+        }
+        return new Map(packageNames.map((name) => [name, unavailable]))
+      }
+    )
+    const events: string[] = []
+
+    await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages((event) => {
+      events.push(event.type === 'warning' ? event.payload.message : event.type)
+    })
+
+    expect(events.filter((event) => event !== 'status' && event !== 'package')).toEqual([
+      'initial',
+      'Warning: https://a.example refused access (401/403) for 2 package(s) — check the auth token for this registry in your .npmrc',
+      'Warning: https://b.example refused access (403) for 1 package(s) — check the auth token for this registry in your .npmrc',
+      'complete',
+    ])
+  })
+
+  it('stays quiet when no registry refused access', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
   it('fails when the file scan times out', async () => {
     vi.useFakeTimers()
     try {

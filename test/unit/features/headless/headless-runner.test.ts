@@ -258,6 +258,10 @@ describe('HeadlessRunner.run', () => {
         ])
         expect(messages.every((message) => getVisualLength(message) <= 60)).toBe(true)
         expect(messages.at(-1)).toBe('')
+        // The warning starts on a cleared line, not after the progress text.
+        const warnedAt = warn.mock.invocationCallOrder[0]
+        const writesBeforeWarning = write.mock.invocationCallOrder.filter((at) => at < warnedAt)
+        expect(messages[writesBeforeWarning.length - 1]).toBe('')
       } else {
         expect(write).not.toHaveBeenCalled()
       }

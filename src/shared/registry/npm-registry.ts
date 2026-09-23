@@ -80,6 +80,8 @@ type RegistryAttemptOutcome =
       bytes: number
     }
   | { kind: 'not-found' }
+  /** 401/403: the registry refused the request. Final like not-found, but reported. */
+  | { kind: 'denied'; origin: string; status: number }
   | { kind: 'retryable' }
   | { kind: 'congested'; retryAfterMs: number | null }
   | { kind: 'transient' }
@@ -94,6 +96,22 @@ export type AttemptObserver = (outcome: RegistryAttemptOutcome) => void
 
 /** Called with each body chunk's byte length as it arrives. */
 type OnChunk = (bytes: number) => void
+
+/** A package lookup the registry refused (401/403). */
+export interface RegistryAccessDenial {
+  packageName: string
+  /** Registry origin only: never a path, credentials or the auth header. */
+  origin: string
+  status: number
+}
+
+/**
+ * A final non-2xx answer. 401/403 mean the registry refused the credentials (or
+ * their absence), which is not the same as the package not existing: an expired
+ * token must not pass for a missing package.
+ */
+const finalFailure = (origin: string, status: number): RegistryAttemptOutcome =>
+  status === 401 || status === 403 ? { kind: 'denied', origin, status } : { kind: 'not-found' }
 
 /**
  * Read a response body to a Buffer chunk by chunk, so the caller can account
@@ -195,7 +213,7 @@ async function attemptNative(
         bytes: result.bytes,
       }
     case 'not-found':
-      return { kind: 'not-found' }
+      return finalFailure(target.origin, result.status)
     case 'retryable':
       return { kind: 'retryable' }
     case 'congested':
@@ -294,7 +312,7 @@ async function attemptWithNodeHttp(
       if (isRetryableStatus(statusCode)) {
         return { kind: 'retryable' }
       }
-      return { kind: 'not-found' }
+      return finalFailure(target.origin, statusCode)
     }
 
     const raw = await readBody(body, onChunk)
@@ -334,7 +352,7 @@ async function fetchFromRegistryWithRetries(
     signal?.throwIfAborted()
     const outcome = await attemptRegistryFetch(target, path, fullMetadata, onChunk, signal)
     onAttempt?.(outcome)
-    if (outcome.kind === 'success' || outcome.kind === 'not-found') {
+    if (outcome.kind === 'success' || outcome.kind === 'not-found' || outcome.kind === 'denied') {
       return outcome
     }
     lastOutcome = outcome
@@ -376,7 +394,7 @@ async function fetchPackageFromRegistry(
     return withoutControlCharacters(outcome.data)
   }
 
-  // Not found, or exhausted retries against real errors: report unavailable.
+  // Not found, refused, or exhausted retries against real errors: report unavailable.
   // The registry is the single source of truth — there is no secondary fetch.
   return { latestVersion: 'unknown', allVersions: [] }
 }
@@ -420,6 +438,9 @@ function withoutControlCharacters(data: PackageVersionData): PackageVersionData 
  *   instrumentation.
  * - `onNetworkProfile` (optional) fires once at the end of a run whose
  *   hill-climb controller settled on a limit worth persisting.
+ * - `onAccessDenied` (optional) fires for each package whose registry refused
+ *   the request (401/403). Refusals are not retried; the package reports
+ *   unavailable like a 404.
  */
 export async function fetchPackageVersions(
   packageNames: string[],
@@ -429,6 +450,8 @@ export async function fetchPackageVersions(
     onControlTick?: (tick: ControlTick) => void
     /** Per-package successful round-trip latency, for perf diagnostics. */
     onPackageTiming?: (name: string, latencyMs: number) => void
+    /** Fires once per package whose registry refused access (401/403). */
+    onAccessDenied?: (denial: RegistryAccessDenial) => void
     /**
      * Fetch the FULL packument instead of the abbreviated install-v1 format. Larger payloads,
      * but includes per-version publish times — required by release-age policies. Default: false.
@@ -475,9 +498,9 @@ export async function fetchPackageVersions(
 
   // --- per-attempt observer ---------------------------------------------------
   // Feeds the adaptive controller AND (optionally) reports per-package latency
-  // for diagnostics. Built per package so the timing callback knows the name.
+  // and refusals. Built per package so the callbacks know the name.
   const observerFor = (packageName: string): AttemptObserver | undefined => {
-    if (!controller && !options.onPackageTiming) return undefined
+    if (!controller && !options.onPackageTiming && !options.onAccessDenied) return undefined
     return (outcome) => {
       if (outcome.kind === 'success') {
         // A success can also demand an immediate limit change (the hill-climb
@@ -495,6 +518,8 @@ export async function fetchPackageVersions(
         controller?.record('retryable')
       } else if (outcome.kind === 'transient') {
         controller?.record('transient')
+      } else if (outcome.kind === 'denied') {
+        options.onAccessDenied?.({ packageName, origin: outcome.origin, status: outcome.status })
       }
     }
   }
