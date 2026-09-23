@@ -81,7 +81,8 @@ export const TerminalInput = {
 
       try {
         const session = TerminalInput.startKeypressSession((str, key) => {
-          const normalized = str.trim().toLowerCase()
+          // readline passes no str for Esc, arrows and other special keys.
+          const normalized = (str ?? '').trim().toLowerCase()
 
           if (key.name === 'return' || key.name === 'enter') {
             finish(defaultValue)
@@ -98,7 +99,7 @@ export const TerminalInput = {
             return
           }
 
-          if (key.ctrl && key.name === 'c') {
+          if (key.name === 'escape' || (key.ctrl && key.name === 'c')) {
             finish(false)
           }
         })
