@@ -53,7 +53,7 @@ One entry per outdated package.
 | `current` | `string` | Raw specifier from `package.json`, including the `^`/`~` prefix. |
 | `range` | `string` | Newest version that still satisfies `current`'s range (the in-range target). |
 | `latest` | `string` | Absolute latest published version. |
-| `type` | `string` | One of `dependencies`, `devDependencies`, `optionalDependencies`, `peerDependencies`. |
+| `type` | `string` | One of `dependencies`, `devDependencies`, `optionalDependencies`, `peerDependencies`. `--apply` never writes `peerDependencies` entries; they are reported only. |
 | `packageJsonPath` | `string` | File the range is declared in — `pnpm-workspace.yaml` for catalog entries. |
 | `catalog` | `string?` | Present only for pnpm catalog entries: the catalog name (`default` or a named catalog). |
 | `hasMajorUpdate` | `boolean` | `true` when `latest` is a major bump beyond `range`. |

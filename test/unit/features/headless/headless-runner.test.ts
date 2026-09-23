@@ -118,6 +118,24 @@ const MAJOR_ONLY = {
   hasMajorUpdate: true,
 }
 
+// A library declaring the same package twice: a runtime dependency, and the peer range it
+// advertises to its host. Bumping the peer floor would silently drop support for every older
+// host version, so `--apply` must write the dependency and leave the peer range alone.
+const LODASH_DEP = {
+  name: 'lodash',
+  currentVersion: '^4.0.0',
+  rangeVersion: '4.18.1',
+  latestVersion: '5.0.0',
+  allVersions: ['4.0.0', '4.0.1', '4.18.1', '5.0.0'],
+  type: 'dependencies',
+  packageJsonPath: '/repo/package.json',
+  isOutdated: true,
+  hasRangeUpdate: true,
+  hasMajorUpdate: true,
+}
+
+const LODASH_PEER = { ...LODASH_DEP, type: 'peerDependencies' }
+
 describe('HeadlessRunner.run', () => {
   const originalExitCode = process.exitCode
 
@@ -605,6 +623,36 @@ describe('HeadlessRunner.run', () => {
 
       const choices = mocks.upgradePackages.mock.calls[0][0]
       expect(choices[0].targetVersion).toBe('0.27.2')
+      logSpy.mockRestore()
+    })
+
+    it.each(['minor', 'patch', 'latest'] as const)(
+      'target=%s bumps the dependency and never rewrites the peer range',
+      async (target) => {
+        mocks.scanResult.mockResolvedValue([LODASH_DEP, LODASH_PEER])
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+        await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target })
+
+        const choices = mocks.upgradePackages.mock.calls[0][0]
+        expect(choices).toEqual([
+          expect.objectContaining({ name: 'lodash', dependencyType: 'dependencies' }),
+        ])
+        logSpy.mockRestore()
+      }
+    )
+
+    it('does not call the upgrader when only peer ranges are outdated, but still reports them', async () => {
+      mocks.scanResult.mockResolvedValue([LODASH_PEER])
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, target: 'latest', json: true })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+      expect(report.outdated).toEqual([
+        expect.objectContaining({ name: 'lodash', type: 'peerDependencies' }),
+      ])
       logSpy.mockRestore()
     })
 

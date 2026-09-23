@@ -15,6 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - The native core is on by default. The first interactive run downloads it for your platform and later runs use it; scripted runs (`--json`, `--check`, `--apply`, CI) use it once cached but never download it themselves. Turn it off with `--no-native` for one run or `"native": false` in `.inuprc`.
 - `Space` selects the in-range update instead of the latest one, so it no longer picks a breaking major version by default. `→` still takes you to latest, and a package whose only update is a major one still gets latest.
+- In the picker, `m` and `l` no longer select `peerDependencies` rows. You can still pick a peer range by hand.
 
 ### Fixed
 
@@ -39,6 +40,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - When the terminal can't provide keyboard input, inup fails with an error saying the picker needs an interactive terminal and pointing to `--json` and `--check`, instead of promising a "fallback interface" that didn't exist and exiting as if nothing was selected.
 - You can type `/` in the search, so scoped names like `@types/node` can be found. `/` used to end the search, and the letters after it were taken as shortcuts, so typing `types/node` could switch off devDependencies (`d`) and optionalDependencies (`o`) and keep them off on the next run. Press `Enter` to apply a search and `Esc` to clear it.
 - Pressing `i` when the list is empty no longer opens an invisible info panel that ate the next key, so `q` quits on the first press.
+- `--apply` and the GitHub Action no longer rewrite `peerDependencies`. A peer range says which versions of the host your package supports, so bumping it (for example `^4.0.0` to `^4.18.1`) quietly dropped support for every older version. Outdated peer ranges still show up in `--json` and the plain report, and the Action's PR body no longer lists them as applied.
 
 ### Security
 

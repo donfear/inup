@@ -146,12 +146,18 @@ export class HeadlessRunner {
    * - patch: take the highest patch in the current major.minor line; skip packages whose only
    *   update crosses a minor (or major) boundary. Uses upgradeType 'range'.
    * - latest: take `latestVersion`; uses upgradeType 'latest' (majors included).
+   *
+   * peerDependencies are never written, at any target: they stay in the report only.
    */
   private buildChoices(outdated: PackageInfo[], target: ApplyTarget): PackageUpgradeChoice[] {
     const saveExact = this.options?.saveExact ?? false
     const choices: PackageUpgradeChoice[] = []
 
     for (const pkg of outdated) {
+      // A peer range says which host versions a library supports; it is not a version to install.
+      // Raising its floor silently drops support for every older host, so that stays a person's call.
+      if (pkg.type === 'peerDependencies') continue
+
       const targetVersion = this.resolveTargetVersion(pkg, target)
       if (!targetVersion) continue
 

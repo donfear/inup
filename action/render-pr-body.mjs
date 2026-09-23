@@ -56,8 +56,10 @@ export function applyVersionPrefix(current, target) {
  * no explicit "applied" flag, so we derive it: under minor/patch, `range` is the version satisfying
  * the current spec, and it's only a real change when it differs from the current spec's version
  * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
+ * Peer ranges never are: `--apply` does not rewrite peerDependencies.
  */
 export function wasApplied(e) {
+  if (e.type === 'peerDependencies') return false
   const cleanCurrent = stripVersionPrefix(e.current)
   return e.range !== cleanCurrent && e.range !== e.current
 }
@@ -77,11 +79,13 @@ export function sourceLabel(e) {
  * dependency type. Reviewers only care about the unique change, so we key on name+range+latest and
  * keep the first entry — preserving its vulnerability/major flags, which are package-level facts.
  * Catalog entries stay distinct from same-range direct deps: they are written to different files.
+ * Peer entries stay distinct too: they are never written, so one must not stand in for a real bump.
  */
 export function dedupe(entries) {
   const seen = new Map()
   for (const e of entries) {
-    const key = `${e.name}@${e.range}@${e.latest}@${e.catalog ?? ''}`
+    const peer = e.type === 'peerDependencies' ? '@peer' : ''
+    const key = `${e.name}@${e.range}@${e.latest}@${e.catalog ?? ''}${peer}`
     if (!seen.has(key)) seen.set(key, e)
   }
   return [...seen.values()]

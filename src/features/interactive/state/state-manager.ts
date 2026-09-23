@@ -209,9 +209,12 @@ export class StateManager {
     }
   }
 
+  // Bulk selection skips peer rows (and leaves a manual peer choice as it is). Raising a peer
+  // range's floor drops support for older hosts, so it should only happen when picked by hand.
   bulkSelectMinor(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
+      if (state.type === 'peerDependencies') return
       if (state.hasRangeUpdate) {
         state.selectedOption = 'range'
       }
@@ -221,6 +224,7 @@ export class StateManager {
   bulkSelectLatest(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
+      if (state.type === 'peerDependencies') return
       if (state.hasMajorUpdate) {
         state.selectedOption = 'latest'
       } else if (state.hasRangeUpdate) {

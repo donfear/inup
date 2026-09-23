@@ -34,6 +34,8 @@ That's it. Also enable Settings → Actions → General → **Workflow permissio
 
 When inup finds applicable upgrades, the workflow commits the changed manifest/lockfile and opens or updates one pull request. The PR body contains a summary line, the list of upgrades applied in the PR, and a full table of available updates — including whether a major is available and whether an upgrade fixes a known vulnerability.
 
+Peer ranges (`peerDependencies`) are never rewritten, so publishing from the upgraded branch can't quietly narrow the host versions your package supports. Outdated peer ranges still appear in the table, never marked as applied.
+
 Catalog-sourced upgrades (pnpm `catalog:` deps) are applied to `pnpm-workspace.yaml` and marked `catalog:<name>` in the PR body so reviewers know which file the diff touches.
 
 With `minimum-release-age` set, the PR body also gets a **Held by release-age cooldown** table listing versions that exist but were deliberately not applied, and how old each one is. A cooldown that skipped silently would read to a reviewer as "nothing newer available" — the opposite of what the control means.
