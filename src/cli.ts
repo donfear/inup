@@ -21,7 +21,7 @@ import { enableDebugLogging } from './shared/debug-logger'
 import { getGitWorkingTreeState } from './shared/git'
 import { PACKAGE_MANAGER_NAMES } from './shared/package-manager'
 import { checkForUpdateAsync } from './shared/registry/version-checker'
-import { applyColorSetting, TerminalInput } from './shared/terminal'
+import { applyColorSetting, isInteractiveTerminal, TerminalInput } from './shared/terminal'
 import type { PackageManager, UpgradeOptions } from './shared/types'
 
 // Reuse V8's compiled bytecode across invocations (Node ≥ 22.1; a no-op where
@@ -68,14 +68,14 @@ function splitList(value: string | undefined): string[] {
 /**
  * `--init`: write a fully commented starter config to <cwd>/.inuprc.
  * When a config file already exists in that directory, ask before overwriting;
- * without a TTY there is no way to confirm, so refuse instead of clobbering.
+ * without a terminal on both ends there is no way to confirm, so refuse instead of clobbering.
  */
 async function runInit(cwd: string): Promise<void> {
   const existing = findExistingConfigFile(cwd)
   const targetPath = join(cwd, INIT_CONFIG_FILENAME)
 
   if (existing) {
-    if (!process.stdout.isTTY || process.env.CI) {
+    if (!isInteractiveTerminal()) {
       console.error(chalk.red(`Config already exists: ${existing}`))
       console.error(chalk.yellow('Refusing to overwrite without confirmation. Delete it first,'))
       console.error(chalk.yellow('or run `inup --init` in an interactive terminal to confirm.'))
@@ -132,10 +132,10 @@ export async function runCli(options: CliOptions): Promise<void> {
     enableDebugLogging()
   }
 
-  // Headless when piped, in CI, or when a non-interactive flag is set. The TUI only renders in
-  // interactive mode; everything else routes through the headless path (read-only, unless --apply).
-  const interactive =
-    !!process.stdout.isTTY && !process.env.CI && !options.json && !options.check && !options.apply
+  // Headless when stdin or stdout is not a terminal, in CI, or when a non-interactive flag is set.
+  // The TUI only renders in interactive mode; everything else routes through the headless path
+  // (read-only, unless --apply).
+  const interactive = isInteractiveTerminal() && !options.json && !options.check && !options.apply
 
   // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc"; an
   // explicit 0 means "disable the configured cooldown for this run", so presence is what

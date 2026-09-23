@@ -99,6 +99,6 @@ Packages exempt from `minimumReleaseAge` — typically your own first-party pack
 
 ## Environment variables
 
-- `CI` — when set, inup runs headless (report mode) instead of opening the UI
+- `CI` — when set to anything other than `false`, `0` or an empty value, inup runs headless (report mode) instead of opening the UI
 - `NO_COLOR` — any non-empty value turns colored output off, same as `--no-color`
 - `FORCE_COLOR` — keeps colored output on, even when output is piped or `NO_COLOR` is set; `--no-color` still turns it off

@@ -32,8 +32,8 @@ Yes. inup resolves registries and credentials with npm's own model, reading your
 
 That's the headless fallback, and it's intentional. inup runs headless — never opening the interactive UI — when **any** of these is true:
 
-- stdout isn't a TTY (e.g. piped: `inup | cat`),
-- the `CI` environment variable is set,
+- stdin or stdout isn't a TTY (e.g. piped: `inup | cat`, or redirected: `inup < /dev/null`),
+- the `CI` environment variable is set to anything other than `false`, `0` or an empty value,
 - you passed `--json`, `--check`, or `--apply`.
 
 This keeps it from hanging a pipeline. To force the interactive picker, run it in a real terminal without those flags.

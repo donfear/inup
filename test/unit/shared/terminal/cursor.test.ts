@@ -48,6 +48,16 @@ describe('ConsoleUtils progress output hygiene', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
+  it('shows progress when CI is set to false, which opts out of CI', () => {
+    vi.stubEnv('CI', 'false')
+    setStderrTTY(true)
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    ConsoleUtils.showProgress('scanning')
+
+    expect(write).toHaveBeenCalled()
+  })
+
   it('suppresses progress entirely when stderr is not a TTY', () => {
     setStderrTTY(false)
     const errSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
