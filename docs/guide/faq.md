@@ -26,7 +26,7 @@ It auto-detects from your lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock
 
 ## Do private registries and `.npmrc` work?
 
-Yes. inup resolves registries and credentials with npm's own model, reading your project, user, and global `.npmrc`: scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, legacy `_auth`), with `${ENV_VAR}` values expanded. A token is only ever sent to the registry its config binds it to. Security advisories are checked on the registry that serves each package too, so a private package's name never goes to the public registry. No extra setup — if npm can install it, inup can read it.
+Yes. inup resolves registries and credentials with npm's own model, reading the `.npmrc` of the project it scans (the `--dir` one when given) plus your user and global `.npmrc`: scoped registries (`@scope:registry=…`) and credentials (`_authToken`, `username`/`_password`, legacy `_auth`), with `${ENV_VAR}` values expanded. A token is only ever sent to the registry its config binds it to. Security advisories are checked on the registry that serves each package too, so a private package's name never goes to the public registry. No extra setup — if npm can install it, inup can read it.
 
 ## It printed JSON / a plain list instead of opening the UI
 

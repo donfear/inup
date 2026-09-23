@@ -41,6 +41,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - You can type `/` in the search, so scoped names like `@types/node` can be found. `/` used to end the search, and the letters after it were taken as shortcuts, so typing `types/node` could switch off devDependencies (`d`) and optionalDependencies (`o`) and keep them off on the next run. Press `Enter` to apply a search and `Esc` to clear it.
 - Pressing `i` when the list is empty no longer opens an invisible info panel that ate the next key, so `q` quits on the first press.
 - `--apply` and the GitHub Action no longer rewrite `peerDependencies`. A peer range says which versions of the host your package supports, so bumping it (for example `^4.0.0` to `^4.18.1`) quietly dropped support for every older version. Outdated peer ranges still show up in `--json` and the plain report, and the Action's PR body no longer lists them as applied.
+- `--dir` reads registries and credentials from that project's `.npmrc`. It used the `.npmrc` of the directory you ran inup from, so private packages could be looked up and audited on the wrong registry, or with the wrong token.
 
 ### Security
 

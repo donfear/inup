@@ -1,4 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   findPackageJson: vi.fn(),
@@ -85,8 +88,13 @@ vi.mock('../../../../src/shared/config/user-config', () => ({
   },
 }))
 
+import { fetchVulnerabilities } from '../../../../src/features/audit/vulnerability-checker'
 import { PackageDetector } from '../../../../src/features/upgrade/package-detector'
 import { debugLog } from '../../../../src/shared/debug-logger'
+import {
+  clearRegistryTargetCache,
+  registryTargetFor,
+} from '../../../../src/shared/registry/registry-config'
 import { ConsoleUtils } from '../../../../src/shared/terminal'
 import type { StreamOutdatedPackagesCallback } from '../../../../src/shared/types'
 
@@ -2048,5 +2056,57 @@ describe('PackageDetector release-age cooldown', () => {
       .then((packages) => {
         expect(packages[0].heldByCooldown).toMatchObject({ version: '1.1.0-rc.1', count: 2 })
       })
+  })
+})
+
+describe('PackageDetector npm config', () => {
+  // inup is started in `caller` and scans `target` (`--dir`); each has its own .npmrc.
+  let root: string
+  let target: string
+  let cwd: MockInstance<() => string>
+
+  const project = (name: string, host: string) => {
+    const dir = join(root, name)
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'package.json'), '{}')
+    writeFileSync(
+      join(dir, '.npmrc'),
+      `@myco:registry=https://${host}/\n//${host}/:_authToken=${name}-token\n`
+    )
+    return dir
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'inup-detector-npmrc-'))
+    cwd = vi.spyOn(process, 'cwd').mockReturnValue(project('caller', 'cwd.example.com'))
+    target = project('target', 'target.example.com')
+  })
+
+  afterEach(() => {
+    cwd.mockRestore()
+    clearRegistryTargetCache()
+    vi.unstubAllGlobals()
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it("resolves registries from the scanned project's .npmrc, not the working directory's", () => {
+    new PackageDetector({ cwd: target })
+
+    expect(registryTargetFor('@myco/pkg').origin).toBe('https://target.example.com')
+  })
+
+  it("sends the audit to the scanned project's registry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+    new PackageDetector({ cwd: target })
+
+    await fetchVulnerabilities(new Map([['@myco/pkg', '^1.0.0']]))
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://target.example.com/-/npm/v1/security/advisories/bulk',
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer target-token' }),
+      })
+    )
   })
 })
