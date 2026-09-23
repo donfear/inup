@@ -187,10 +187,14 @@ describe('InputHandler filter mode entry', () => {
     expect(existing.actions).toEqual([{ type: 'enter_filter_mode', preserveQuery: true }])
   })
 
-  it('/ applies the filter when already filtering', () => {
+  it('/ is typed into the query while filtering, so scoped names can be searched', () => {
     const { handler, actions } = makeHandler({ filterMode: true })
     press(handler, '/', {})
-    expect(actions).toEqual([{ type: 'exit_filter_mode' }])
+    press(handler, '/', undefined)
+    expect(actions).toEqual([
+      { type: 'filter_input', char: '/' },
+      { type: 'filter_input', char: '/' },
+    ])
   })
 })
 

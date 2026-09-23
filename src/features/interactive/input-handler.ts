@@ -208,15 +208,11 @@ export class InputHandler {
       return
     }
 
-    // Check for '/' character to handle filter mode (only when not in modal)
-    if (str === '/') {
-      if (uiState.filterMode) {
-        // Apply search (exit filter mode but keep the filter)
-        this.onAction({ type: 'exit_filter_mode' })
-      } else {
-        // Enter filter mode - preserve query if one exists (to edit it)
-        this.onAction({ type: 'enter_filter_mode', preserveQuery: !!uiState.filterQuery })
-      }
+    // '/' enters filter mode, preserving an existing query so it can be edited.
+    // While searching it is plain text (scoped names like @types/node); Enter
+    // applies the search and Esc clears it.
+    if (str === '/' && !uiState.filterMode) {
+      this.onAction({ type: 'enter_filter_mode', preserveQuery: !!uiState.filterQuery })
       return
     }
 

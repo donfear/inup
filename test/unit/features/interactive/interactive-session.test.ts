@@ -97,7 +97,14 @@ function startSession(
 /** The last package-list frame the renderer was asked for, by name instead of position. */
 function lastFrame(render: ReturnType<typeof vi.spyOn<UIRenderer, 'renderInterface'>>) {
   const call = render.mock.lastCall!
-  return { states: call[0], row: call[1], scroll: call[2], options: call[12] }
+  return {
+    states: call[0],
+    row: call[1],
+    scroll: call[2],
+    searching: call[6],
+    query: call[7],
+    options: call[12],
+  }
 }
 
 let fake: FakeStdin
@@ -403,6 +410,55 @@ describe('runInteractiveSession modals', () => {
 
     await fake.sendKeys('\r')
     await promise
+  })
+
+  it('ignores i when the search leaves no package under the cursor', async () => {
+    const states = [makeSelectionState({ name: 'pkg-a' })]
+    const { promise, packageInfoModalController } = startSession(states)
+    let settled = false
+    void promise.then(() => {
+      settled = true
+    })
+
+    await fake.sendKeys('/zzz\r') // search, apply, no matches
+    await fake.sendKeys('i')
+    expect(packageInfoModalController.hydrate).not.toHaveBeenCalled()
+
+    // No hidden modal is swallowing keys: the first q quits.
+    await fake.sendKeys('q')
+    expect(settled).toBe(true)
+    expect(await promise).toEqual([expect.objectContaining({ selectedOption: 'none' })])
+  })
+})
+
+describe('runInteractiveSession search', () => {
+  it('types a scoped name, slash included, without toggling any filter', async () => {
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const states = [
+      makeSelectionState({ name: '@types/node', type: 'devDependencies' }),
+      makeSelectionState({ name: 'node-fetch' }),
+    ]
+    const { promise } = startSession(states, { renderer })
+
+    await fake.sendKeys('/@types/node')
+    expect(lastFrame(render)).toMatchObject({ searching: true, query: '@types/node' })
+    expect(lastFrame(render).states.map((s) => s.name)).toEqual(['@types/node'])
+
+    await fake.sendKeys('\r') // apply keeps the query
+    expect(lastFrame(render)).toMatchObject({ searching: false, query: '@types/node' })
+
+    await fake.sendKeys('q')
+    await promise
+    // Letters of the query never reached the d/p/o toggles, so nothing odd persists.
+    expect(configManager.setFilters).toHaveBeenCalledWith({
+      showDependencies: true,
+      showDevDependencies: true,
+      showPeerDependencies: true,
+      showOptionalDependencies: true,
+      showOnlyVulnerable: false,
+      showCooldownHeld: false,
+    })
   })
 })
 
@@ -941,8 +997,12 @@ describe('closing once the scan finds nothing to upgrade', () => {
     })
 
   // Keys are emitted directly: sendKeys waits on setTimeout, which these tests fake.
+  const namedKeys: Record<string, string> = { '\r': 'return', '\x1b': 'escape' }
   const press = (str: string) =>
-    fake.stdin.emit('keypress', str, { name: /^[a-z]$/.test(str) ? str : undefined, sequence: str })
+    fake.stdin.emit('keypress', str, {
+      name: namedKeys[str] ?? (/^[a-z]$/.test(str) ? str : undefined),
+      sequence: str,
+    })
 
   /** A session still loading over `states`, driven the way the runner drives it. */
   function startLoading(states: PackageSelectionState[]) {
@@ -1026,7 +1086,7 @@ describe('closing once the scan finds nothing to upgrade', () => {
     press('d') // hide devDependencies: the list is empty, but not for lack of upgrades
     press('/')
     press('z')
-    press('/') // apply a search that matches nothing
+    press('\r') // apply a search that matches nothing
     await finishLoading()
     expect(isSettled()).toBe(false)
 
@@ -1035,17 +1095,19 @@ describe('closing once the scan finds nothing to upgrade', () => {
   })
 
   it.each([
-    ['help overlay', '?'],
-    ['performance panel', '!'],
-    ['theme picker', 't'],
-    ['search box', '/'],
-  ])('leaves an open %s to the user, then closes once it is dismissed', async (_, key) => {
+    ['help overlay', '?', '?'],
+    ['performance panel', '!', '!'],
+    ['theme picker', 't', 't'],
+    // `/` is text while searching; Enter applies and Esc clears.
+    ['search box (Enter)', '/', '\r'],
+    ['search box (Esc)', '/', '\x1b'],
+  ])('leaves an open %s to the user, then closes once it is dismissed', async (_, open, close) => {
     const { promise, finishLoading, isSettled } = startLoading([])
-    press(key)
+    press(open)
     await finishLoading()
     expect(isSettled()).toBe(false)
 
-    press(key)
+    press(close)
     expect(await promise).toEqual([])
     expect(fake.stdin.listenerCount('keypress')).toBe(0)
   })

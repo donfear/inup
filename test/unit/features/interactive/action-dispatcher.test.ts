@@ -353,13 +353,26 @@ describe('dispatchAction info modal', () => {
     expect(render).toHaveBeenCalledTimes(1)
   })
 
-  it('skips hydration when no row is under the cursor', () => {
+  it('stays closed when no row is under the cursor', () => {
     const { dispatch, stateManager, packageInfoModalController } = makeHarness([])
 
     dispatch({ type: 'toggle_info_modal' })
 
-    expect(stateManager.getUIState().showInfoModal).toBe(true)
+    // An open modal with nothing to show would be invisible yet swallow keys.
+    expect(stateManager.getUIState().showInfoModal).toBe(false)
     expect(stateManager.getUIState().isLoadingModalInfo).toBe(false)
+    expect(packageInfoModalController.hydrate).not.toHaveBeenCalled()
+  })
+
+  it('stays closed when a search filters every row out', () => {
+    const { dispatch, stateManager, packageInfoModalController } = makeHarness()
+    dispatch({ type: 'enter_filter_mode' })
+    dispatch({ type: 'filter_input', char: 'z' })
+    dispatch({ type: 'exit_filter_mode' })
+
+    dispatch({ type: 'toggle_info_modal' })
+
+    expect(stateManager.getUIState().showInfoModal).toBe(false)
     expect(packageInfoModalController.hydrate).not.toHaveBeenCalled()
   })
 
