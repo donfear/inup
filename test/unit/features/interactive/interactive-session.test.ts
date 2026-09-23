@@ -201,12 +201,33 @@ describe('runInteractiveSession lifecycle', () => {
     const { promise } = startSession(states)
 
     await fake.sendKeys('\x1b[B') // down to pkg-b
-    await fake.sendKeys(' ') // toggle selection (best available: latest)
+    await fake.sendKeys(' ') // toggle selection (the in-range update)
     await fake.sendKeys('\r') // confirm
 
     const result = await promise
     expect(result[0].selectedOption).toBe('none')
-    expect(result[1].selectedOption).toBe('latest')
+    expect(result[1].selectedOption).toBe('range')
+  })
+
+  it('counts selections the current filter hides in the status line', async () => {
+    const renderer = new UIRenderer()
+    const render = vi.spyOn(renderer, 'renderInterface')
+    const states = [
+      makeSelectionState({ name: 'pkg-a' }),
+      makeSelectionState({ name: 'pkg-b', type: 'devDependencies' }),
+    ]
+    const { promise } = startSession(states, { renderer })
+
+    await fake.sendKeys('\x1b[B') // down to pkg-b
+    await fake.sendKeys(' ')
+    await fake.sendKeys('d') // hide devDependencies
+
+    expect(lastFrame(render).states).toEqual([states[0]])
+    expect(lastFrame(render).options?.selectedCount).toBe(1)
+    expect(stripAnsi(stdout.output())).toContain('1 selected (1 hidden)')
+
+    await fake.sendKeys('\r')
+    expect((await promise)[1].selectedOption).toBe('range')
   })
 
   it('clears every selection when cancelled with Ctrl+C', async () => {
@@ -565,7 +586,7 @@ describe('progressive rendering', () => {
     fake.stdin.emit('keypress', ' ', { name: 'space' })
     refresh()
     fake.stdin.emit('keypress', '', { name: 'return' })
-    expect((await promise)[1].selectedOption).toBe('latest')
+    expect((await promise)[1].selectedOption).toBe('range')
     expect(vi.getTimerCount()).toBe(0)
     const frames = render.mock.calls.length
     refresh()
@@ -602,7 +623,7 @@ describe('progressive rendering', () => {
     expect(lastFrame(render).row).toBe(row)
     expect(lastFrame(render).scroll).toBe(scroll)
     for (const [index, state] of originals.entries()) expect(states[index]).toBe(state)
-    expect(states[row].selectedOption).toBe('latest')
+    expect(states[row].selectedOption).toBe('range')
 
     stdout.clear()
     progress.resolved = 40
@@ -697,7 +718,7 @@ describe('progressive rendering', () => {
     fake.stdin.emit('keypress', ' ', { name: 'space' })
     expect(focused.selectedOption).toBe('none')
     fake.stdin.emit('keypress', ' ', { name: 'space' })
-    expect(focused.selectedOption).toBe('latest')
+    expect(focused.selectedOption).toBe('range')
     fake.stdin.emit('keypress', '', { name: 'return' })
     expect((await promise)[newRow]).toBe(focused)
   })
@@ -734,7 +755,7 @@ describe('progressive rendering', () => {
     expect(scroll).toBe(0)
     fake.stdin.emit('keypress', ' ', { name: 'space' })
     fake.stdin.emit('keypress', '', { name: 'return' })
-    expect(focused.selectedOption).toBe('latest')
+    expect(focused.selectedOption).toBe('range')
     await promise
   })
 
@@ -759,7 +780,7 @@ describe('progressive rendering', () => {
     expect(visible[0].name).toBe('a')
     fake.stdin.emit('keypress', ' ', { name: 'space' })
     fake.stdin.emit('keypress', '', { name: 'return' })
-    expect(visible[0].selectedOption).toBe('latest')
+    expect(visible[0].selectedOption).toBe('range')
     await promise
   })
 

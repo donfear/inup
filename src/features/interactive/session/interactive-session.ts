@@ -384,6 +384,7 @@ export async function runInteractiveSession(
             ...packageListRenderOptions,
             cooldownHeldShown: stateManager.isCooldownHeldFilterActive(),
             columnWidths: columnLayout.get(selection.arrivals, terminalWidth),
+            selectedCount: states.filter((state) => state.selectedOption !== 'none').length,
           },
           uiState.notice
         )

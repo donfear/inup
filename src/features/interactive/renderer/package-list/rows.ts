@@ -24,6 +24,8 @@ export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
   cooldown?: CooldownRenderStatus
   /** The held rows are currently revealed (`c`), so the header must stop saying "not listed". */
   cooldownHeldShown?: boolean
+  /** Selected rows across the whole list, including rows the current filter hides. */
+  selectedCount?: number
 }
 
 export interface VersionColumnWidths {

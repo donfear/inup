@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { KEY_BINDINGS } from '../../../../src/features/interactive/keymap'
 import { StateManager } from '../../../../src/features/interactive/state'
 import type { PackageSelectionState } from '../../../../src/shared/types'
 
@@ -29,9 +30,16 @@ const ready = (over: Partial<PackageSelectionState> = {}): PackageSelectionState
 })
 
 describe('StateManager.toggleSelection', () => {
-  it('selects the best available update when none is selected', () => {
+  it('selects the in-range update, not the breaking one, when none is selected', () => {
     const sm = new StateManager(0, 24)
     const states = [ready()]
+    sm.toggleSelection(states)
+    expect(states[0].selectedOption).toBe('range')
+  })
+
+  it('selects latest when the only update is outside the range', () => {
+    const sm = new StateManager(0, 24)
+    const states = [ready({ hasRangeUpdate: false })]
     sm.toggleSelection(states)
     expect(states[0].selectedOption).toBe('latest')
   })
@@ -53,16 +61,11 @@ describe('StateManager.toggleSelection', () => {
 
   it('clears the selection when one is already set', () => {
     const sm = new StateManager(0, 24)
-    const states = [ready({ selectedOption: 'latest' })]
+    const states = [ready({ selectedOption: 'latest' }), ready({ selectedOption: 'range' })]
     sm.toggleSelection(states)
-    expect(states[0].selectedOption).toBe('none')
-  })
-
-  it('falls back to range when no major update exists', () => {
-    const sm = new StateManager(0, 24)
-    const states = [ready({ hasMajorUpdate: false })]
+    sm.navigateDown(states.length)
     sm.toggleSelection(states)
-    expect(states[0].selectedOption).toBe('range')
+    expect(states.map((s) => s.selectedOption)).toEqual(['none', 'none'])
   })
 
   it('ignores a cursor that points past the list', () => {
@@ -177,6 +180,26 @@ describe('StateManager.updateSelection', () => {
     sm.updateSelection(states, 'right')
 
     expect(states[0].selectedOption).toBe('none')
+  })
+
+  // The help overlay and README describe each arrow's cycle as "(a → b → c)".
+  it.each([
+    ['left', 'select_left'],
+    ['right', 'select_right'],
+  ] as const)('%s walks the cycle its help text describes', (direction, actionType) => {
+    const help = KEY_BINDINGS.find((binding) => binding.action?.type === actionType)?.help ?? ''
+    const described = (help.match(/\((.+)\)/)?.[1] ?? '').split(' → ') as Array<
+      PackageSelectionState['selectedOption']
+    >
+    expect(described).toHaveLength(3)
+    const sm = new StateManager(0, 24)
+    const states = [ready({ selectedOption: described[0] })]
+    const walked = [states[0].selectedOption]
+    for (let step = 1; step < described.length; step++) {
+      sm.updateSelection(states, direction)
+      walked.push(states[0].selectedOption)
+    }
+    expect(walked).toEqual(described)
   })
 })
 

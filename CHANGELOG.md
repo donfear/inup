@@ -7,9 +7,19 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The status line counts the packages you have selected, and says how many of them the current filter hides, since `Enter` upgrades those too.
+
 ### Changed
 
 - The native core is on by default. The first interactive run downloads it for your platform and later runs use it; scripted runs (`--json`, `--check`, `--apply`, CI) use it once cached but never download it themselves. Turn it off with `--no-native` for one run or `"native": false` in `.inuprc`.
+- `Space` selects the in-range update instead of the latest one, so it no longer picks a breaking major version by default. `→` still takes you to latest, and a package whose only update is a major one still gets latest.
+
+### Fixed
+
+- `u` unselects every package, not only the ones the current filter shows. Selections hidden by a filter used to survive it and get upgraded on `Enter`.
+- The help for `←` lists the order it actually moves in (latest → range → none).
 
 ### Fixed
 

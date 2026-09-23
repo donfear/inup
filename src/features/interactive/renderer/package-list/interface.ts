@@ -176,6 +176,15 @@ export function renderInterface(
 
   if (totalPackages === 0 && scanStatus) statusLine = getThemeColor('textSecondary')(scanStatus)
 
+  // Enter applies every selected row, including ones the filter hides, so the
+  // count covers them all and says how many are out of view.
+  const selectedCount = options.selectedCount ?? 0
+  if (selectedCount > 0) {
+    const hiddenCount = selectedCount - states.filter((s) => s.selectedOption !== 'none').length
+    const hidden = hiddenCount > 0 ? getThemeColor('warning')(` (${hiddenCount} hidden)`) : ''
+    statusLine += `  ${getThemeColor('textSecondary')(`${selectedCount} selected`)}${hidden}`
+  }
+
   if (auditProgress && auditProgress.total > 0) {
     const auditLabel = auditProgress.isRunning
       ? `Audit ${auditProgress.completed}/${auditProgress.total}`

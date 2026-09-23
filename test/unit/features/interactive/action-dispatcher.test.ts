@@ -144,7 +144,7 @@ describe('dispatchAction navigation and selection', () => {
 
     dispatch({ type: 'toggle_selection' })
 
-    expect(states[0].selectedOption).toBe('latest')
+    expect(states[0].selectedOption).toBe('range')
   })
 
   it('applies bulk selections to all ready rows', () => {
@@ -158,6 +158,20 @@ describe('dispatchAction navigation and selection', () => {
 
     dispatch({ type: 'bulk_unselect_all' })
     expect(states.every((s) => s.selectedOption === 'none')).toBe(true)
+  })
+
+  // Enter applies every selected row, filtered out or not, so `u` must not
+  // leave a hidden selection behind to be applied unseen.
+  it('unselects rows the current filter hides too', () => {
+    const { dispatch, states } = makeHarness([
+      makeSelectionState({ name: 'pkg-a', selectedOption: 'range' }),
+      makeSelectionState({ name: 'pkg-b', type: 'devDependencies', selectedOption: 'latest' }),
+    ])
+    dispatch({ type: 'toggle_dep_type_filter', depType: 'devDependencies' })
+
+    dispatch({ type: 'bulk_unselect_all' })
+
+    expect(states.map((s) => s.selectedOption)).toEqual(['none', 'none'])
   })
 })
 

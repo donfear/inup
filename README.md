@@ -48,7 +48,7 @@ Review the diff and run your tests after upgrading.
 | `G / End` | Jump to the last package |
 | `PgUp` | Move up one page |
 | `PgDn` | Move down one page |
-| `←` | Cycle selection left (none → range → latest) |
+| `←` | Cycle selection left (latest → range → none) |
 | `→` | Cycle selection right (none → range → latest) |
 | `Space` | Toggle the current package on/off |
 | `m` | Select all minor/patch updates |
@@ -164,7 +164,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1720_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1727_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 
