@@ -42,6 +42,8 @@ export class HeadlessRunner {
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
         if (event.type === 'warning') {
+          // Off the progress line first, or the warning starts mid-line after it.
+          ConsoleUtils.clearProgress()
           console.warn(chalk.yellow(event.payload.message))
         } else if (event.type === 'status') {
           const { phase, packageJsonFiles, scanningDir } = event.payload.progress

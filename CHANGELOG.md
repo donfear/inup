@@ -42,6 +42,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Pressing `i` when the list is empty no longer opens an invisible info panel that ate the next key, so `q` quits on the first press.
 - `--apply` and the GitHub Action no longer rewrite `peerDependencies`. A peer range says which versions of the host your package supports, so bumping it (for example `^4.0.0` to `^4.18.1`) quietly dropped support for every older version. Outdated peer ranges still show up in `--json` and the plain report, and the Action's PR body no longer lists them as applied.
 - `--dir` reads registries and credentials from that project's `.npmrc`. It used the `.npmrc` of the directory you ran inup from, so private packages could be looked up and audited on the wrong registry, or with the wrong token.
+- A private registry that refuses access (401 or 403) no longer looks like a package that doesn't exist. inup prints one warning per registry, naming it and how many packages it refused, so you know to check the token in your `.npmrc`. The warning goes to stderr, so `--json` output stays clean, and the token is never printed.
 
 ### Security
 

@@ -11,7 +11,11 @@ import {
 } from '../../shared/fs'
 import type { ControlTick } from '../../shared/http/hill-climb-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
-import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
+import {
+  fetchPackageVersions,
+  type PackageVersionData,
+  type RegistryAccessDenial,
+} from '../../shared/registry/npm-registry'
 import { useNpmConfigFrom } from '../../shared/registry/registry-config'
 import type {
   CooldownHold,
@@ -134,6 +138,7 @@ export class PackageDetector {
 
     const tFetch = Date.now()
     debugLog.info('PackageDetector', 'fetching version data via npm registry')
+    const denials: RegistryAccessDenial[] = []
 
     await fetchPackageVersions(prepared.uniquePackages, {
       signal,
@@ -150,6 +155,7 @@ export class PackageDetector {
       },
       onPackageTiming: (name, latencyMs) =>
         performanceTracker.recordPackageTiming({ name, latencyMs }),
+      onAccessDenied: (denial) => denials.push(denial),
       onPackageReady: ({ packageName, data }) => {
         // First-wins in the tracker; headless runs get the phase from here,
         // the interactive runner's own mark becomes a no-op duplicate.
@@ -189,6 +195,7 @@ export class PackageDetector {
       tFetch
     )
     performanceTracker.recordPhaseDuration('registryFetch', Date.now() - tFetch)
+    this.warnRefusedRegistries(denials, onEvent)
 
     const finalPackages = prepared.uniquePackages.flatMap(
       (packageName) => packageLookup.get(packageName) ?? []
@@ -710,6 +717,34 @@ export class PackageDetector {
           `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
       },
     })
+  }
+
+  /**
+   * One warning per registry that refused access (401/403). Those packages read as unavailable
+   * just like a 404, so without it an expired or missing token looks exactly like packages that
+   * do not exist. Names the origin only — never the token or the auth header.
+   */
+  private warnRefusedRegistries(
+    denials: RegistryAccessDenial[],
+    onEvent: StreamOutdatedPackagesCallback
+  ): void {
+    const byOrigin = new Map<string, { statuses: Set<number>; packages: number }>()
+    for (const { origin, status } of denials) {
+      const entry = byOrigin.get(origin) ?? { statuses: new Set<number>(), packages: 0 }
+      entry.statuses.add(status)
+      entry.packages++
+      byOrigin.set(origin, entry)
+    }
+    const sorted = [...byOrigin].sort(([a], [b]) => a.localeCompare(b))
+    for (const [origin, { statuses, packages }] of sorted) {
+      const codes = [...statuses].sort((a, b) => a - b).join('/')
+      onEvent({
+        type: 'warning',
+        payload: {
+          message: `Warning: ${origin} refused access (${codes}) for ${packages} package(s) — check the auth token for this registry in your .npmrc`,
+        },
+      })
+    }
   }
 
   public getOutdatedPackagesOnly(packages: PackageInfo[]): PackageInfo[] {

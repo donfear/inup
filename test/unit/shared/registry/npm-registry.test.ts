@@ -344,6 +344,48 @@ describe('npm-registry', () => {
     })
   })
 
+  it.each([401, 403])('reports a %i refusal once per package, without retrying', async (status) => {
+    registryTargetMock.mockReturnValue({
+      origin: 'https://npm.example.com',
+      pathPrefix: '/api/npm',
+      authHeader: 'Bearer expired',
+    })
+    requestMock.mockImplementation(async ({ path }) =>
+      path.includes('missing') ? makeErrBody(404) : makeErrBody(status)
+    )
+    const denied = vi.fn()
+
+    try {
+      const result = await fetchPackageVersions(['@myco/a', '@myco/b', '@myco/missing'], {
+        onAccessDenied: denied,
+      })
+
+      expect(requestMock).toHaveBeenCalledTimes(3)
+      expect(result.get('@myco/a')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      expect(
+        denied.mock.calls
+          .map(([denial]) => denial)
+          .sort((x, y) => x.packageName.localeCompare(y.packageName))
+      ).toEqual([
+        { packageName: '@myco/a', origin: 'https://npm.example.com', status },
+        { packageName: '@myco/b', origin: 'https://npm.example.com', status },
+      ])
+    } finally {
+      registryTargetMock.mockReset()
+      registryTargetMock.mockReturnValue({ origin: 'https://registry.npmjs.org', pathPrefix: '' })
+    }
+  })
+
+  it('never retries refusals under the adaptive controller, even with nobody listening', async () => {
+    requestMock.mockResolvedValue(makeErrBody(401))
+    const names = Array.from({ length: 60 }, (_, i) => `pkg-${i}`)
+
+    const result = await fetchPackageVersions(names)
+
+    expect(requestMock).toHaveBeenCalledTimes(60)
+    expect([...result.values()].every((data) => data.latestVersion === 'unknown')).toBe(true)
+  })
+
   it('returns unknown after exhausting retries on a persistently retryable status', async () => {
     requestMock.mockResolvedValue(makeErrBody(429))
 
@@ -1231,6 +1273,33 @@ describe('npm-registry', () => {
 
         expect(missing.get('missing-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
         expect(down.get('down-pkg')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+      })
+
+      it.each([401, 403])('tells a native %i refusal apart from not-found', async (status) => {
+        registryTargetMock.mockReturnValueOnce({
+          origin: 'https://npm.example.com',
+          pathPrefix: '',
+          authHeader: 'Bearer expired',
+        })
+        const { fetch } = useTransport(outcome({ kind: 'not-found', status }))
+        const denied = vi.fn()
+
+        const result = await fetchPackageVersions(['@myco/private'], { onAccessDenied: denied })
+
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect(result.get('@myco/private')).toEqual({ latestVersion: 'unknown', allVersions: [] })
+        expect(denied).toHaveBeenCalledExactlyOnceWith({
+          packageName: '@myco/private',
+          origin: 'https://npm.example.com',
+          status,
+        })
+      })
+
+      it('reports nothing for a native 404', async () => {
+        useTransport(outcome({ kind: 'not-found', status: 404 }))
+        const denied = vi.fn()
+        await fetchPackageVersions(['missing-pkg'], { onAccessDenied: denied })
+        expect(denied).not.toHaveBeenCalled()
       })
 
       it('reports native success latency, rounded', async () => {

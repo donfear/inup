@@ -143,6 +143,9 @@ describe.skipIf(!built && !required)('native transport parity', () => {
   it.each([
     [304, 'not-found'],
     [400, 'not-found'],
+    // The status is what tells a refusal apart; the JS side reads it.
+    [401, 'not-found'],
+    [403, 'not-found'],
     [404, 'not-found'],
     [408, 'retryable'],
     [500, 'retryable'],
