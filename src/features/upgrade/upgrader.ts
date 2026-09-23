@@ -1,10 +1,15 @@
 import { type StdioOptions, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { executeCommand } from '../../shared/exec'
-import { detectJsonFormat, findWorkspaceRoot, stringifyWithFormat } from '../../shared/fs'
+import {
+  detectJsonFormat,
+  findWorkspaceRoot,
+  stringifyWithFormat,
+  writeFileAtomic,
+} from '../../shared/fs'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
 import type {
   DependencyType,
@@ -246,11 +251,11 @@ export class PackageUpgrader {
 
       // Write back the modified package.json, preserving the original indentation,
       // line-ending, and trailing-newline style. Skip the write entirely when nothing
-      // actually changed.
+      // actually changed. Atomic, so a failed write can't leave a truncated package.json.
       const format = detectJsonFormat(rawContent)
       const nextContent = stringifyWithFormat(packageJson, format)
       if (nextContent !== rawContent) {
-        writeFileSync(packageJsonPath, nextContent)
+        writeFileAtomic(packageJsonPath, nextContent)
       }
 
       if (spinner) spinner.success({ text: `Upgraded ${choices.length} ${type} in ${packageDir}` })

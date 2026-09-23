@@ -47,6 +47,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - A private registry that refuses access (401 or 403) no longer looks like a package that doesn't exist. inup prints one warning per registry, naming it and how many packages it refused, so you know to check the token in your `.npmrc`. The warning goes to stderr, so `--json` output stays clean, and the token is never printed.
 - The in-range update (the range column, `--apply` with the default `--target minor`, and the GitHub Action's default) follows each range's operator instead of taking the newest version of the same major. `^0.2.3` stays on `0.2.x`, because a new `0.y` is breaking; `^0.0.3` gets no in-range update; `~1.2.3` stays on `1.2.x`. Exact pins and `>=` still move to the newest version of their major. Newer versions outside the range still show as the latest update, and `--target latest` still applies them.
 - `--target patch` no longer bumps a `^0.0.z` range, which allows no newer version.
+- A full disk, a crash or a kill while inup saves your upgrades can no longer leave a cut-off `package.json` or `pnpm-workspace.yaml`. The file keeps its old contents until the new version is completely written.
 
 ### Security
 

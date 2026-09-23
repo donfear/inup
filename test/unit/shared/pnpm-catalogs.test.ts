@@ -1,12 +1,27 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   isCatalogReference,
   PnpmCatalogs,
   writeCatalogUpdates,
 } from '../../../src/shared/pnpm-catalogs'
+import { diskFull } from '../../helpers/disk-full'
+
+// Real fs, except a test can arm the next writeFileSync to fail halfway like a full disk.
+vi.mock('node:fs', async (importOriginal) => {
+  const { withDiskFull } = await import('../../helpers/disk-full')
+  return withDiskFull(await importOriginal())
+})
 
 const FIXTURE = `# workspace layout
 packages:
@@ -198,6 +213,23 @@ describe('pnpm-catalogs', () => {
       const raw = readFileSync(path, 'utf8')
       expect(raw).not.toContain('ghost')
       expect(raw).toContain('react: ^18.3.1')
+    })
+
+    it('leaves pnpm-workspace.yaml intact when the disk fills up mid-write', () => {
+      const path = writeWorkspaceFile(FIXTURE)
+
+      diskFull.armed = true
+      try {
+        expect(() =>
+          writeCatalogUpdates(path, [{ catalog: 'default', name: 'react', range: '^18.3.1' }])
+        ).toThrow('ENOSPC')
+      } finally {
+        diskFull.armed = false
+      }
+
+      // The failed write never touched the real file, and left no temp file behind.
+      expect(readFileSync(path, 'utf8')).toBe(FIXTURE)
+      expect(readdirSync(testDir)).toEqual(['pnpm-workspace.yaml'])
     })
   })
 

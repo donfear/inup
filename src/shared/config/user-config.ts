@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import envPaths from 'env-paths'
+import { writeFileAtomic } from '../fs/write-atomic'
 import type { NetworkProfile, PersistedFilters } from '../types'
 import { POOL_CONNECTIONS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
@@ -52,13 +53,11 @@ class ConfigManager {
   private writeConfig(config: ConfigFile): void {
     try {
       this.ensureConfigDir()
-      // Write-then-rename: the learned network profile is now written
-      // automatically at the end of a run, so this file is written far more
-      // often than before — a crash mid-write must never leave truncated JSON
-      // that would silently erase the user's theme and filters on next write.
-      const tmpPath = `${this.configPath}.${process.pid}.tmp`
-      writeFileSync(tmpPath, JSON.stringify(config, null, 2), 'utf-8')
-      renameSync(tmpPath, this.configPath)
+      // Atomic: the learned network profile is now written automatically at
+      // the end of a run, so this file is written far more often than before —
+      // a crash mid-write must never leave truncated JSON that would silently
+      // erase the user's theme and filters on next write.
+      writeFileAtomic(this.configPath, JSON.stringify(config, null, 2))
     } catch (error) {
       console.error('Error writing config:', error)
     }
