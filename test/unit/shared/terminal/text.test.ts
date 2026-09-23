@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getVisualLength,
   stripAnsi,
+  stripControlCharacters,
   truncatePlainText,
   wrapPlainText,
 } from '../../../../src/shared/terminal/text'
@@ -17,6 +18,25 @@ describe('stripAnsi', () => {
 
   it('leaves plain text untouched', () => {
     expect(stripAnsi('plain')).toBe('plain')
+  })
+})
+
+describe('stripControlCharacters', () => {
+  it('removes whole escape sequences: OSC 52, OSC 0, OSC 8, CSI', () => {
+    expect(stripControlCharacters('a\u001b]52;c;ZXZpbA==\u0007b')).toBe('ab')
+    expect(stripControlCharacters('a\u001b]0;title\u001b\\b')).toBe('ab')
+    expect(stripControlCharacters('\u001b]8;;https://evil.test\u0007docs\u001b]8;;\u0007')).toBe(
+      'docs'
+    )
+    expect(stripControlCharacters('a\u001b[2Jb\u001b[1;1Hc\u009b2Jd')).toBe('abcd')
+  })
+
+  it('drops stray C0 and C1 control characters, including a bare 8-bit CSI', () => {
+    expect(stripControlCharacters('a\u0007b\rc\u001bd\u007fe\u0085f\u009b')).toBe('abcdef')
+  })
+
+  it('keeps line breaks, tabs, and printable Unicode', () => {
+    expect(stripControlCharacters('line one\n\tcafé — 你好 🚀')).toBe('line one\n\tcafé — 你好 🚀')
   })
 })
 

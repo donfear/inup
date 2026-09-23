@@ -105,6 +105,19 @@ describe('ReleaseNotesService source fallback chain', () => {
     expect(notes).toBe('- first line\n- second line')
   })
 
+  it('strips terminal escape sequences and control characters, keeping line breaks', async () => {
+    // A release body is author-written: OSC 52 would write the user's clipboard, CSI 2J
+    // clears the screen, and \x9b is the 8-bit form of CSI.
+    const { service, githubClient } = makeHarness()
+    githubClient.fetchReleaseByTag.mockResolvedValueOnce(
+      '## Fixes\r\n\r\n- one\x1b]52;c;ZXZpbA==\x07\r\n- two\x1b[2J\x9b\r\n\tindented'
+    )
+
+    const notes = await service.fetchReleaseNotesForVersion('demo', '1.0.0')
+
+    expect(notes).toBe('## Fixes\n\n- one\n- two\n\tindented')
+  })
+
   it('skips page HTML that yields no extractable notes', async () => {
     const { service, githubClient } = makeHarness()
     githubClient.fetchReleasePageHtml.mockResolvedValue('<html><body>no markers</body></html>')
