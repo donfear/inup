@@ -32,7 +32,7 @@ That's it. Also enable Settings → Actions → General → **Workflow permissio
 
 ## What the action creates
 
-When inup finds applicable upgrades, the workflow commits the changed manifest/lockfile and opens or updates one pull request. The PR body contains a summary line, the list of upgrades applied in the PR, and a full table of available updates — including whether a major is available and whether an upgrade fixes a known vulnerability.
+When inup finds applicable upgrades, the workflow commits the changed manifest/lockfile and opens or updates one pull request. The lockfile is updated by your package manager, so it must be on the runner: npm, yarn and pnpm are (yarn and pnpm through Corepack); for bun, add `oven-sh/setup-bun` before the inup step. If the install can't run, the job fails instead of opening a PR with an out-of-date lockfile. The PR body contains a summary line, the list of upgrades applied in the PR, and a full table of available updates — including whether a major is available and whether an upgrade fixes a known vulnerability.
 
 Peer ranges (`peerDependencies`) are never rewritten, so publishing from the upgraded branch can't quietly narrow the host versions your package supports. Outdated peer ranges still appear in the table, never marked as applied.
 

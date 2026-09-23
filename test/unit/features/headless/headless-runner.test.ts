@@ -478,6 +478,22 @@ describe('HeadlessRunner.run', () => {
       logSpy.mockRestore()
     })
 
+    it('exits 2 when the install fails, so CI never goes green on a stale lockfile', async () => {
+      mocks.upgradePackages.mockRejectedValueOnce(new Error('Run `npm install` in:\n  /repo'))
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, json: true })
+
+      expect(exitSpy).toHaveBeenCalledWith(2)
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Run `npm install` in'))
+      expect(logSpy).not.toHaveBeenCalled()
+      exitSpy.mockRestore()
+      logSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+
     it('target=patch skips packages without version-list data', async () => {
       const { allVersions: _omitted, ...withoutVersions } = OUTDATED
       mocks.scanResult.mockResolvedValue([withoutVersions])

@@ -9,16 +9,19 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// spawnSync runs the real package-manager install; individual tests override it
-// to simulate spawn errors, signals, and exit codes without shelling out.
-const { spawnSyncMock } = vi.hoisted(() => ({ spawnSyncMock: vi.fn() }))
+// No test spawns a real package manager: execSync backs the `<pm> --version` probe and spawnSync
+// the install. Both succeed by default; tests override them to simulate a missing binary, spawn
+// errors, signals, and exit codes.
+const { execSyncMock, spawnSyncMock } = vi.hoisted(() => ({
+  execSyncMock: vi.fn(),
+  spawnSyncMock: vi.fn(),
+}))
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>()
-  spawnSyncMock.mockImplementation(actual.spawnSync)
-  return { ...actual, spawnSync: spawnSyncMock }
+  return { ...actual, execSync: execSyncMock, spawnSync: spawnSyncMock }
 })
 
 // Real fs, except a test can arm the next writeFileSync to fail halfway like a full disk.
@@ -46,6 +49,8 @@ describe('PackageUpgrader', () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'inup-upgrader-test-'))
+    execSyncMock.mockReset().mockReturnValue('10.0.0\n')
+    spawnSyncMock.mockReset().mockReturnValue({ status: 0, signal: null })
   })
 
   afterEach(() => {
@@ -80,6 +85,9 @@ describe('PackageUpgrader', () => {
     ])
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('file not found'))
+    // Nothing was written, so there is nothing to install (and no directory to install in).
+    expect(execSyncMock).not.toHaveBeenCalled()
+    expect(spawnSyncMock).not.toHaveBeenCalled()
     warnSpy.mockRestore()
     logSpy.mockRestore()
   })
@@ -602,6 +610,7 @@ catalogs:
 
   describe('install failure handling', () => {
     const writeFixture = (dir: string) => {
+      mkdirSync(dir, { recursive: true })
       const pkgPath = join(dir, 'package.json')
       writeFileSync(
         pkgPath,
@@ -675,6 +684,141 @@ catalogs:
         expect(installCall?.[1]).toMatchObject({ stdio: ['inherit', 2, 'inherit'] })
       } finally {
         errorSpy.mockRestore()
+      }
+    })
+
+    it('reports success only once the install has finished', async () => {
+      const pkgPath = writeFixture(testDir)
+      const messages: string[] = []
+      const logSpy = vi.spyOn(console, 'log').mockImplementation((m) => messages.push(String(m)))
+      let loggedBeforeInstall: string[] = []
+      spawnSyncMock.mockImplementationOnce(() => {
+        loggedBeforeInstall = [...messages]
+        return { status: 0, signal: null }
+      })
+
+      try {
+        await new PackageUpgrader(makePackageManager()).upgradePackages([makeChoice(pkgPath)])
+        expect(loggedBeforeInstall.join('\n')).not.toContain('Successfully upgraded')
+        expect(messages.at(-1)).toContain('Successfully upgraded 1 package(s)')
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('never reports success when the install fails', async () => {
+      const pkgPath = writeFixture(testDir)
+      const messages: string[] = []
+      const logSpy = vi.spyOn(console, 'log').mockImplementation((m) => messages.push(String(m)))
+      spawnSyncMock.mockReturnValueOnce({ status: 1, signal: null })
+
+      try {
+        await expect(
+          new PackageUpgrader(makePackageManager()).upgradePackages([makeChoice(pkgPath)])
+        ).rejects.toThrow()
+        expect(messages.join('\n')).not.toContain('Successfully upgraded')
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('fails, naming the directory and command, when the package manager is not installed', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(
+        makePackageManager({ name: 'bun', displayName: 'bun', installCommand: 'bun install' })
+      )
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      execSyncMock.mockImplementationOnce(() => {
+        throw new Error('bun: command not found')
+      })
+
+      try {
+        const error = await upgrader.upgradePackages([makeChoice(pkgPath)]).catch((e) => e)
+        expect(error).toBeInstanceOf(Error)
+        expect(error.message).toContain('bun is not installed')
+        expect(error.message).toContain(testDir)
+        expect(error.message).toContain('bun install')
+        expect(spawnSyncMock).not.toHaveBeenCalled()
+        // The manifest stays written — only the lockfile is behind.
+        expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).dependencies.lodash).toBe('^4.17.21')
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('names the directory and the command to rerun when the install exits non-zero', async () => {
+      const pkgPath = writeFixture(testDir)
+      const upgrader = new PackageUpgrader(
+        makePackageManager({ installCommand: 'npm install', writeInstallCommand: 'npm install' })
+      )
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 1, signal: null })
+
+      try {
+        const error = await upgrader.upgradePackages([makeChoice(pkgPath)]).catch((e) => e)
+        expect(error.message).toContain(testDir)
+        expect(error.message).toContain('Run `npm install`')
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('installs once in each independent project root, in a stable order', async () => {
+      const second = writeFixture(join(testDir, 'examples', 'b'))
+      const first = writeFixture(join(testDir, 'examples', 'a'))
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      try {
+        await new PackageUpgrader(makePackageManager()).upgradePackages([
+          makeChoice(second),
+          makeChoice(first),
+          { ...makeChoice(first), dependencyType: 'devDependencies' },
+        ])
+        expect(spawnSyncMock.mock.calls.map((call) => call[1].cwd)).toEqual([
+          dirname(first),
+          dirname(second),
+        ])
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('installs once at the workspace root for workspace members', async () => {
+      writeFileSync(
+        join(testDir, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['packages/*'] })
+      )
+      const x = writeFixture(join(testDir, 'packages', 'x'))
+      const y = writeFixture(join(testDir, 'packages', 'y'))
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      try {
+        await new PackageUpgrader(makePackageManager()).upgradePackages([
+          makeChoice(x),
+          makeChoice(y),
+        ])
+        expect(spawnSyncMock).toHaveBeenCalledTimes(1)
+        expect(spawnSyncMock.mock.calls[0][1].cwd).toBe(testDir)
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('still installs the other roots when one fails, then reports each failed one', async () => {
+      const failing = writeFixture(join(testDir, 'a'))
+      const passing = writeFixture(join(testDir, 'b'))
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 1, signal: null })
+
+      try {
+        const error = await new PackageUpgrader(makePackageManager())
+          .upgradePackages([makeChoice(failing), makeChoice(passing)])
+          .catch((e) => e)
+        expect(spawnSyncMock).toHaveBeenCalledTimes(2)
+        expect(error.message).toContain(dirname(failing))
+        expect(error.message).not.toContain(dirname(passing))
+      } finally {
+        logSpy.mockRestore()
       }
     })
   })

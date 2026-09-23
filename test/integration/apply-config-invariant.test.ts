@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   fetchVulnerabilities: vi.fn(),
   executeCommand: vi.fn(),
+  spawnSync: vi.fn(),
 }))
 
 // Registry: every package resolves to 2.0.0 latest with a 1.x line available in-range.
@@ -37,14 +38,19 @@ vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal)
   }
 })
 
-// Make the package manager appear "not installed" so the upgrader writes package.json but skips
-// the real install (graceful path in PackageUpgrader.runInstall). Keeps the test hermetic.
+// Stub the package manager: the `--version` probe (executeCommand) and the install (spawnSync)
+// both succeed without running anything real. Keeps the test hermetic.
 vi.mock('../../src/shared/exec', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/shared/exec')>()
   return {
     ...actual,
     executeCommand: mocks.executeCommand,
   }
+})
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>()
+  return { ...actual, spawnSync: mocks.spawnSync }
 })
 
 import { runCli } from '../../src/cli'
@@ -70,10 +76,8 @@ describe('--apply respects .inuprc (config-filtered == reported == written)', ()
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    // PM "not installed" → skip install, still write package.json.
-    mocks.executeCommand.mockImplementation(() => {
-      throw new Error('not installed')
-    })
+    mocks.executeCommand.mockReturnValue('10.0.0\n')
+    mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     mocks.fetchPackageVersions.mockImplementation(
       async (names: string[], opts: { onPackageReady?: (result: unknown) => void }) => {
         for (const name of names) {
@@ -142,6 +146,9 @@ describe('--apply respects .inuprc (config-filtered == reported == written)', ()
     )
     expect(excludedPkg.dependencies['excluded-pkg']).toBe('^1.0.0') // never written
 
+    // ---- Install: once, in the project that was written — never the excluded one ----
+    expect(mocks.spawnSync.mock.calls.map((call) => call[1].cwd)).toEqual([projectDir])
+
     logSpy.mockRestore()
   })
 })
@@ -161,9 +168,8 @@ describe('--apply never rewrites a specifier it cannot re-prefix safely', () => 
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    mocks.executeCommand.mockImplementation(() => {
-      throw new Error('not installed')
-    })
+    mocks.executeCommand.mockReturnValue('10.0.0\n')
+    mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     const registry: Record<string, { latestVersion: string; allVersions: string[] }> = {
       react: { latestVersion: '18.3.1', allVersions: ['18.3.1', '18.0.0', '17.0.2', '17.0.0'] },
       lodash: { latestVersion: '4.17.21', allVersions: ['4.17.21', '3.10.1', '3.0.0'] },
