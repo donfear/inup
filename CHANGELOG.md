@@ -23,6 +23,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Errors exit with code 2, as documented, instead of 1: an unknown flag, an invalid flag value, or a run that fails. Under `--check`, exit code 1 now only ever means updates exist, so a typo in a CI command no longer looks like outdated dependencies.
 - Cancelling with Ctrl+C exits with code 130 (143 when stopped with `SIGTERM`) instead of 0, so `inup && git commit …` no longer carries on after a cancelled run. Quitting the picker with `q` still exits 0, and the "Operation cancelled" notice goes to stderr so it never lands in `--json` output.
 - The package list no longer breaks on terminals narrower than 84 columns, including the standard 80. Rows wrapped there and scrambled the screen as the list updated; they now tighten their spacing to fit down to 60 columns, and anything still too wide is cut off at the edge instead of wrapping.
+- The info modal (`i`) no longer shows the wrong release notes when they come from a package's `CHANGELOG.md`. Looking up 1.2.3 could land on the 1.2.30 or 1.2.3-beta.1 section, and a patch release could run on into the notes of the release below it.
+- Release notes are found in changelogs that put versions under `#` or `###` headings, as conventional-changelog and standard-version write them, not only `##`.
 
 ### Security
 
