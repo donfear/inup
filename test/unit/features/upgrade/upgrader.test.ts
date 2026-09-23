@@ -372,6 +372,36 @@ describe('PackageUpgrader', () => {
       expect(readFileSync(pkgPath, 'utf-8')).toBe(raw)
       logSpy.mockRestore()
     })
+
+    it('upgrades a manifest saved with a byte order mark and keeps the mark', async () => {
+      const pkgPath = join(testDir, 'package.json')
+      const raw =
+        '\uFEFF{\r\n' +
+        '    "name": "fixture",\r\n' +
+        '    "dependencies": {\r\n' +
+        '        "lodash": "^4.0.0",\r\n' +
+        '        "legacy": null\r\n' +
+        '    }\r\n' +
+        '}'
+      writeFileSync(pkgPath, raw)
+
+      const upgrader = new PackageUpgrader(makePackageManager())
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await upgrader.upgradePackages([
+        {
+          name: 'lodash',
+          packageJsonPath: pkgPath,
+          dependencyType: 'dependencies',
+          upgradeType: 'range',
+          targetVersion: '^4.17.21',
+          currentVersionSpecifier: '^4.0.0',
+        },
+      ])
+
+      expect(readFileSync(pkgPath, 'utf-8')).toBe(raw.replace('^4.0.0', '^4.17.21'))
+      logSpy.mockRestore()
+    })
   })
 
   it('logs the package directory, not the package.json file path (Windows-safe dirname)', async () => {

@@ -1,10 +1,21 @@
 import { promises as fsPromises, readFileSync } from 'node:fs'
+import { debugLog } from '../debug-logger'
 import type { PackageJson } from '../types'
+
+const BOM = '\uFEFF'
+
+/**
+ * Drop a leading UTF-8 byte order mark. Some Windows editors save package.json with one; npm
+ * and Node's own loader accept it, but JSON.parse rejects it as an unexpected token.
+ */
+export function stripBom(text: string): string {
+  return text.startsWith(BOM) ? text.slice(1) : text
+}
 
 export function readPackageJson(path: string): PackageJson {
   try {
     const content = readFileSync(path, 'utf-8')
-    return JSON.parse(content)
+    return JSON.parse(stripBom(content))
   } catch (error) {
     throw new Error(`Failed to read package.json: ${error}`)
   }
@@ -17,6 +28,8 @@ export interface JsonFormat {
   trailingNewline: boolean
   /** Line-ending style of the original file. CRLF files (common on Windows) must round-trip. */
   newline: '\n' | '\r\n'
+  /** Whether the original file started with a UTF-8 byte order mark, which must round-trip too. */
+  bom: boolean
 }
 
 /**
@@ -33,6 +46,7 @@ export function detectJsonFormat(raw: string): JsonFormat {
     indent: match ? match[1] : 2,
     trailingNewline: /\n$/.test(raw),
     newline: raw.includes('\r\n') ? '\r\n' : '\n',
+    bom: raw.startsWith(BOM),
   }
 }
 
@@ -46,13 +60,13 @@ export function stringifyWithFormat(value: unknown, format: JsonFormat): string 
   if (format.newline === '\r\n') {
     content = content.replace(/\n/g, '\r\n')
   }
-  return content + (format.trailingNewline ? format.newline : '')
+  return (format.bom ? BOM : '') + content + (format.trailingNewline ? format.newline : '')
 }
 
 export async function readPackageJsonAsync(path: string): Promise<PackageJson> {
   try {
     const content = await fsPromises.readFile(path, 'utf-8')
-    return JSON.parse(content)
+    return JSON.parse(stripBom(content))
   } catch (error) {
     throw new Error(`Failed to read package.json: ${error}`)
   }
@@ -88,12 +102,16 @@ export async function collectAllDependenciesAsync(
       const deps = packageJson[depType]
       if (deps && typeof deps === 'object') {
         for (const [name, version] of Object.entries(deps)) {
-          allDeps.push({
-            name,
-            version: version as string,
-            type: depType,
-            packageJsonPath,
-          })
+          // `"foo": null` (or a number/object) is not a version range; one bad entry must not
+          // take the whole scan down with it.
+          if (typeof version !== 'string') {
+            debugLog.warn(
+              'DependencyCollector',
+              `skipping ${depType}.${name} in ${packageJsonPath}: expected a version string, got ${JSON.stringify(version)}`
+            )
+            continue
+          }
+          allDeps.push({ name, version, type: depType, packageJsonPath })
         }
       }
     }

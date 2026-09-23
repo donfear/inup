@@ -50,6 +50,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - A full disk, a crash or a kill while inup saves your upgrades can no longer leave a cut-off `package.json` or `pnpm-workspace.yaml`. The file keeps its old contents until the new version is completely written.
 - After writing upgrades, inup runs the install in every project it changed — each workspace root and each standalone project with its own lockfile — instead of only the first one, which left the other lockfiles out of date.
 - inup no longer says an upgrade succeeded before the install has run. If the install fails, or the package manager isn't installed, it exits with an error naming each directory that still needs an install and the command to run there. A missing package manager used to print a warning and exit 0, so `--apply` in CI passed with an out-of-date lockfile.
+- A dependency whose value isn't a version string, such as `"foo": null`, no longer stops the whole run with "Cannot read properties of null". inup skips that entry and checks the rest.
+- A package.json saved with a UTF-8 byte order mark (some Windows editors add one) is read like any other. Before, a nested one was quietly left out of the scan and one at the root stopped the run with "Unexpected token". Upgrading such a file keeps the mark.
 
 ### Security
 
