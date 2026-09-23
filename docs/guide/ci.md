@@ -17,8 +17,20 @@ inup --apply --target latest # include major bumps; --json to also emit the repo
 Unlike `--json` and `--check`, **`--apply` writes**: it bumps `package.json` and runs your package manager's install to update the lockfile.
 
 - `--target minor` (default) applies only **in-range** updates and leaves majors for you to review
-- `--target patch` stays within the current `major.minor` line
+- `--target patch` stays within the current `major.minor` line, and within the declared range
 - `--target latest` includes majors
+
+The in-range target (the `range` field of the JSON report, the TUI's range column) follows each specifier's operator:
+
+| Declared | In-range target |
+| --- | --- |
+| `^1.2.3` | newest `1.x.x` |
+| `^0.2.3` | newest `0.2.x` — under `0.x` a new minor is breaking |
+| `^0.0.3` | none — nothing newer is in range |
+| `~1.2.3` | newest `1.2.x` |
+| `1.2.3`, `=1.2.3`, `>=1.2.3` | newest `1.x.x` |
+
+Anything newer than that target is still reported as the latest update (`hasMajorUpdate` in the JSON report) and left for you to review — or applied with `--target latest`.
 
 `--apply` never rewrites `peerDependencies`, at any target. A peer range says which versions of the host your package supports, and raising its floor would quietly drop support for everything below it. Outdated peer ranges still show up in the report so you can widen them yourself.
 

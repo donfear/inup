@@ -162,7 +162,7 @@ export function render(report) {
 
   // Packages with a major beyond the applied in-range bump. Under the default minor policy the
   // major jump is listed but not applied; a package may appear here even though its in-range part
-  // was applied (e.g. axios ^0.27 → 0.33 applied, but 1.x major still available).
+  // was applied (e.g. axios ^0.27.0 → 0.27.2 applied, but 0.28+ and 1.x still available).
   const majorOnly = outdated.filter((e) => e.hasMajorUpdate)
 
   lines.push('## 📦 Dependency upgrades')

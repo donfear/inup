@@ -16,6 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - The native core is on by default. The first interactive run downloads it for your platform and later runs use it; scripted runs (`--json`, `--check`, `--apply`, CI) use it once cached but never download it themselves. Turn it off with `--no-native` for one run or `"native": false` in `.inuprc`.
 - `Space` selects the in-range update instead of the latest one, so it no longer picks a breaking major version by default. `→` still takes you to latest, and a package whose only update is a major one still gets latest.
 - In the picker, `m` and `l` no longer select `peerDependencies` rows. You can still pick a peer range by hand.
+- `ignoreMajor` in `.inuprc` also holds back a new `0.y` minor (or `0.0.z` patch) of a package below `1.0.0`, which npm's `^` treats as breaking.
+- In `--json`, `hasMajorUpdate` and `summary.major` now cover any `latest` beyond the in-range target, including a new `0.y` under `^0.y.z` and a new minor under `~x.y.z`.
 
 ### Fixed
 
@@ -43,6 +45,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - `--apply` and the GitHub Action no longer rewrite `peerDependencies`. A peer range says which versions of the host your package supports, so bumping it (for example `^4.0.0` to `^4.18.1`) quietly dropped support for every older version. Outdated peer ranges still show up in `--json` and the plain report, and the Action's PR body no longer lists them as applied.
 - `--dir` reads registries and credentials from that project's `.npmrc`. It used the `.npmrc` of the directory you ran inup from, so private packages could be looked up and audited on the wrong registry, or with the wrong token.
 - A private registry that refuses access (401 or 403) no longer looks like a package that doesn't exist. inup prints one warning per registry, naming it and how many packages it refused, so you know to check the token in your `.npmrc`. The warning goes to stderr, so `--json` output stays clean, and the token is never printed.
+- The in-range update (the range column, `--apply` with the default `--target minor`, and the GitHub Action's default) follows each range's operator instead of taking the newest version of the same major. `^0.2.3` stays on `0.2.x`, because a new `0.y` is breaking; `^0.0.3` gets no in-range update; `~1.2.3` stays on `1.2.x`. Exact pins and `>=` still move to the newest version of their major. Newer versions outside the range still show as the latest update, and `--target latest` still applies them.
+- `--target patch` no longer bumps a `^0.0.z` range, which allows no newer version.
 
 ### Security
 

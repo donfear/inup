@@ -43,7 +43,7 @@ The same syntax works ad hoc via `--ignore` on the command line.
 
 ### `ignoreMajor`
 
-Packages whose **major** updates are suppressed — minor and patch updates still show. Same pattern syntax as `ignore`. Use it for dependencies you deliberately keep on their current major (a UI kit mid-migration, a framework pinned by a peer range) without losing sight of safe in-range bumps.
+Packages whose **major** updates are suppressed — minor and patch updates still show. Below `1.0.0` the breaking slot moves right, as in npm's `^`: a new `0.y` minor (or a new `0.0.z` patch) counts as a major here too. Same pattern syntax as `ignore`. Use it for dependencies you deliberately keep on their current major (a UI kit mid-migration, a framework pinned by a peer range) without losing sight of safe in-range bumps.
 
 - A package whose only available update is a new major is treated as up to date.
 - When an in-range update exists, the package shows with the in-range target; the major is never offered — the interactive picker won't select it, and `--apply --target latest` holds the package to its in-range bump.

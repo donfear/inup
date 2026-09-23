@@ -12,7 +12,7 @@ The payload carries a `schemaVersion` so scripts and agents can pin to a known s
   summary: {
     total: number         // packages scanned
     outdated: number      // packages with an available update
-    major: number         // of the outdated, how many offer a major bump
+    major: number         // of the outdated, how many have a `latest` beyond the in-range target
     vulnerable: number    // of the outdated, how many have ≥1 known advisory on the installed version
     heldByCooldown: number // UNIQUE packages with a withheld version (0 when the cooldown is off)
   }
@@ -51,12 +51,12 @@ One entry per outdated package.
 | --- | --- | --- |
 | `name` | `string` | Package name. |
 | `current` | `string` | Raw specifier from `package.json`, including the `^`/`~` prefix. |
-| `range` | `string` | Newest version that still satisfies `current`'s range (the in-range target). |
+| `range` | `string` | The in-range target: the newest version `current`'s operator allows (`^0.2.3` → newest `0.2.x`, `~1.2.3` → newest `1.2.x`; [full rule](ci.md#--apply)). Equal to `current` when nothing newer is in range. |
 | `latest` | `string` | Absolute latest published version. |
 | `type` | `string` | One of `dependencies`, `devDependencies`, `optionalDependencies`, `peerDependencies`. `--apply` never writes `peerDependencies` entries; they are reported only. |
 | `packageJsonPath` | `string` | File the range is declared in — `pnpm-workspace.yaml` for catalog entries. |
 | `catalog` | `string?` | Present only for pnpm catalog entries: the catalog name (`default` or a named catalog). |
-| `hasMajorUpdate` | `boolean` | `true` when `latest` is a major bump beyond `range`. |
+| `hasMajorUpdate` | `boolean` | `true` when `latest` is newer than `range` — an update the declared range doesn't reach: a new major, a new `0.y` under `^0.y.z`, or a new minor under `~x.y.z`. |
 | `deprecated` | `string?` | npm deprecation message for `latest`, if the package is deprecated. |
 | `enginesNode` | `string?` | Declared `engines.node` range for `latest`, if any. |
 | `vulnerability` | `Vulnerability?` | Present only when the installed version has ≥1 known advisory. |

@@ -57,7 +57,7 @@ By default the upgrade commit is authored by `github-actions[bot]`. To attribute
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `target` | `minor` | How far to bump: `minor` (in-range), `patch`, or `latest` (includes majors) |
+| `target` | `minor` | How far to bump: `minor` ([in-range](ci.md#--apply)), `patch`, or `latest` (includes majors) |
 | `minimum-release-age` | _(off)_ | Supply-chain cooldown in minutes: only upgrade to versions published at least this long ago (`10080` = 7 days) |
 | `directory` | `.` | Directory to run in |
 | `package-manager` | _(auto)_ | Force `npm`/`yarn`/`pnpm`/`bun`; empty auto-detects from the lockfile |

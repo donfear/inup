@@ -1,10 +1,12 @@
+import * as semver from 'semver'
 import { describe, expect, it } from 'vitest'
 import {
   applyVersionPrefix,
   buildRangeCandidates,
-  findClosestMinorVersion,
   findHighestPatchVersion,
+  findRangeTargetVersion,
   highestOverallVersion,
+  isBreakingUpdate,
   isSimpleVersionSpecifier,
   parseCurrentVersion,
   parseVersions,
@@ -354,7 +356,7 @@ describe('version utils', () => {
     })
   })
 
-  describe('findClosestMinorVersion()', () => {
+  describe('findRangeTargetVersion()', () => {
     const allVersions = [
       '1.0.0',
       '1.0.1',
@@ -367,102 +369,199 @@ describe('version utils', () => {
       '3.0.0',
     ]
 
-    it('should find highest minor version in same major', () => {
-      const result = findClosestMinorVersion('1.0.0', allVersions)
-      // Returns the first version with highest minor number (1.2.0)
-      expect(result).toBe('1.2.0')
+    it('should find the newest version in the same major', () => {
+      const result = findRangeTargetVersion('1.0.0', allVersions)
+      // The newest patch of the highest minor, even though 1.2.0 comes first in the list
+      expect(result).toBe('1.2.5')
     })
 
-    it('should find highest minor version when multiple exist', () => {
-      const result = findClosestMinorVersion('1.0.5', allVersions)
-      // Returns the first version with highest minor number (1.2.0)
-      expect(result).toBe('1.2.0')
+    it('should find the newest version when multiple minors exist', () => {
+      const result = findRangeTargetVersion('1.0.5', allVersions)
+      expect(result).toBe('1.2.5')
     })
 
     it('should fallback to patch updates when no minor updates available', () => {
-      const result = findClosestMinorVersion('1.2.0', allVersions)
+      const result = findRangeTargetVersion('1.2.0', allVersions)
       expect(result).toBe('1.2.5')
     })
 
     it('should return null when no updates available', () => {
-      const result = findClosestMinorVersion('1.2.5', allVersions)
+      const result = findRangeTargetVersion('1.2.5', allVersions)
       expect(result).toBeNull()
     })
 
     it('should not cross major version boundaries', () => {
-      const result = findClosestMinorVersion('1.5.0', allVersions)
+      const result = findRangeTargetVersion('1.5.0', allVersions)
       expect(result).toBeNull()
     })
 
     it('should handle version prefixes', () => {
-      const result = findClosestMinorVersion('^1.0.0', allVersions)
-      // coerce will convert ^1.0.0 to 1.0.0, then find first version with highest minor
-      expect(result).toBe('1.2.0')
+      const result = findRangeTargetVersion('^1.0.0', allVersions)
+      expect(result).toBe('1.2.5')
     })
 
     it('should handle invalid versions', () => {
-      const result = findClosestMinorVersion('invalid', allVersions)
+      const result = findRangeTargetVersion('invalid', allVersions)
       expect(result).toBeNull()
     })
 
     it('should skip invalid versions in the array', () => {
       const versionsWithInvalid = ['1.0.0', 'invalid', '1.1.0', 'also-invalid', '1.2.0']
-      const result = findClosestMinorVersion('1.0.0', versionsWithInvalid)
+      const result = findRangeTargetVersion('1.0.0', versionsWithInvalid)
       // Returns highest minor version (1.2.0)
       expect(result).toBe('1.2.0')
     })
 
     it('should return null for empty allVersions array', () => {
-      expect(findClosestMinorVersion('1.0.0', [])).toBeNull()
+      expect(findRangeTargetVersion('1.0.0', [])).toBeNull()
     })
 
     it('should pick the highest patch among multiple patch candidates', () => {
       // No minor bump available, 1.0.1, 1.0.2, 1.0.3 all qualify — should return 1.0.3
-      expect(findClosestMinorVersion('1.0.0', ['1.0.1', '1.0.2', '1.0.3', '2.0.0'])).toBe('1.0.3')
+      expect(findRangeTargetVersion('1.0.0', ['1.0.1', '1.0.2', '1.0.3', '2.0.0'])).toBe('1.0.3')
     })
 
     it('should prefer a minor bump over an available patch update', () => {
       // Both 1.0.5 (patch) and 1.1.0 (minor) are available — minor wins
-      expect(findClosestMinorVersion('1.0.0', ['1.0.5', '1.1.0', '2.0.0'])).toBe('1.1.0')
+      expect(findRangeTargetVersion('1.0.0', ['1.0.5', '1.1.0', '2.0.0'])).toBe('1.1.0')
     })
 
     it('should not return a lower version when already on latest within major', () => {
-      expect(findClosestMinorVersion('1.2.5', ['1.0.0', '1.2.3', '2.0.0'])).toBeNull()
+      expect(findRangeTargetVersion('1.2.5', ['1.0.0', '1.2.3', '2.0.0'])).toBeNull()
     })
 
     it('offers a newer same-tuple prerelease to a prerelease install', () => {
+      expect(findRangeTargetVersion('1.0.0-beta.2', ['1.0.0-rc.3', '1.0.0-beta.2', '0.19.5'])).toBe(
+        '1.0.0-rc.3'
+      )
       expect(
-        findClosestMinorVersion('1.0.0-beta.2', ['1.0.0-rc.3', '1.0.0-beta.2', '0.19.5'])
-      ).toBe('1.0.0-rc.3')
-      expect(
-        findClosestMinorVersion('^16.0.0-preview.9', ['16.0.0-preview.10', '16.0.0-preview.9'])
+        findRangeTargetVersion('^16.0.0-preview.9', ['16.0.0-preview.10', '16.0.0-preview.9'])
       ).toBe('16.0.0-preview.10')
     })
 
     it('prefers the stable release over a prerelease of the same tuple', () => {
-      expect(findClosestMinorVersion('1.0.0-beta.2', ['1.0.0', '1.0.0-rc.3', '1.0.0-beta.2'])).toBe(
+      expect(findRangeTargetVersion('1.0.0-beta.2', ['1.0.0', '1.0.0-rc.3', '1.0.0-beta.2'])).toBe(
         '1.0.0'
       )
     })
 
     it('prefers a stable minor bump over a same-tuple prerelease', () => {
-      expect(findClosestMinorVersion('1.0.0-beta.2', ['1.1.0', '1.0.0-rc.3', '1.0.0-beta.2'])).toBe(
+      expect(findRangeTargetVersion('1.0.0-beta.2', ['1.1.0', '1.0.0-rc.3', '1.0.0-beta.2'])).toBe(
         '1.1.0'
       )
     })
 
     it('returns null when the prerelease install is already the newest candidate', () => {
-      expect(findClosestMinorVersion('1.0.0-rc.3', ['1.0.0-rc.3', '1.0.0-beta.2'])).toBeNull()
+      expect(findRangeTargetVersion('1.0.0-rc.3', ['1.0.0-rc.3', '1.0.0-beta.2'])).toBeNull()
     })
 
     it('never offers a prerelease to a stable install, even if one leaks into the list', () => {
-      expect(findClosestMinorVersion('1.0.0', ['1.1.0-beta.1', '1.0.0'])).toBeNull()
-      expect(findClosestMinorVersion('1.0.0', ['1.0.1-rc.1', '1.0.0'])).toBeNull()
-      expect(findClosestMinorVersion('1.0.0', ['1.1.0-beta.1', '1.0.5', '1.0.0'])).toBe('1.0.5')
+      expect(findRangeTargetVersion('1.0.0', ['1.1.0-beta.1', '1.0.0'])).toBeNull()
+      expect(findRangeTargetVersion('1.0.0', ['1.0.1-rc.1', '1.0.0'])).toBeNull()
+      expect(findRangeTargetVersion('1.0.0', ['1.1.0-beta.1', '1.0.5', '1.0.0'])).toBe('1.0.5')
+    })
+  })
+
+  describe('range target follows the specifier operator', () => {
+    // Every case runs against the pool both ascending and descending: the search must
+    // not depend on the order the candidates arrive in.
+    const STABLE = [
+      '0.0.3',
+      '0.0.5',
+      '0.2.3',
+      '0.2.9',
+      '0.3.0',
+      '0.9.1',
+      '1.2.3',
+      '1.2.9',
+      '1.3.0',
+      '1.9.0',
+      '2.0.0',
+    ]
+    const orders = (versions: string[]) => [
+      [...versions].sort(semver.compare),
+      [...versions].sort(semver.rcompare),
+    ]
+
+    it.each([
+      // ^ with major >= 1: newest in the same major
+      ['^1.2.3', '1.9.0'],
+      ['^v1.2.3', '1.9.0'],
+      ['^1.9.0', null],
+      // ^0.y.z: newest in the same 0.y minor — a new 0.y is breaking
+      ['^0.2.3', '0.2.9'],
+      ['^0.2.9', null],
+      // ^0.0.z: nothing is in range beyond itself
+      ['^0.0.3', null],
+      // ~: newest in the same major.minor
+      ['~1.2.3', '1.2.9'],
+      ['~v1.2.3', '1.2.9'],
+      ['~0.2.3', '0.2.9'],
+      ['~0.0.3', '0.0.5'],
+      ['~1.2.9', null],
+      // exact pins and >=: newest in the same major (the "minor" target for pinned projects)
+      ['1.2.3', '1.9.0'],
+      ['=1.2.3', '1.9.0'],
+      ['v1.2.3', '1.9.0'],
+      ['>=1.2.3', '1.9.0'],
+      ['0.2.3', '0.9.1'],
+      ['>=0.2.3', '0.9.1'],
+      ['1.9.0', null],
+    ])('%s → %s', (specifier, expected) => {
+      for (const pool of orders(STABLE)) {
+        expect(findRangeTargetVersion(specifier, pool)).toBe(expected)
+      }
+    })
+
+    it.each([
+      // Candidate pools shaped like buildRangeCandidates output: stable + same-tuple prereleases.
+      ['^1.0.0-beta.2', ['1.0.0-beta.2', '1.0.0-rc.3', '1.0.0', '1.4.0', '2.0.0'], '1.4.0'],
+      ['^1.0.0-beta.2', ['1.0.0-beta.2', '1.0.0-rc.3', '0.19.5'], '1.0.0-rc.3'],
+      ['~1.0.0-beta.2', ['1.0.0-beta.2', '1.0.0-rc.3', '1.0.0', '1.4.0', '2.0.0'], '1.0.0'],
+      ['^0.2.0-beta.1', ['0.2.0-beta.1', '0.2.0-rc.1', '0.2.0', '0.2.5', '0.3.0'], '0.2.5'],
+      ['^0.0.3-beta.1', ['0.0.3-beta.1', '0.0.3-rc.1', '0.0.3', '0.0.4'], '0.0.3'],
+      ['1.0.0-beta.2', ['1.0.0-beta.2', '1.0.0-rc.3', '1.4.0', '2.0.0'], '1.4.0'],
+      ['>=1.0.0-beta.2', ['1.0.0-beta.2', '1.0.0-rc.3', '1.4.0', '2.0.0'], '1.4.0'],
+    ])('%s over %j → %s (prerelease install)', (specifier, candidates, expected) => {
+      for (const pool of orders(candidates)) {
+        expect(findRangeTargetVersion(specifier, pool)).toBe(expected)
+      }
+    })
+
+    it('returns the newest candidate regardless of input order', () => {
+      const ascending = ['1.1.0', '1.2.0', '1.2.1', '1.2.9']
+      expect(findRangeTargetVersion('^1.1.0', ascending)).toBe('1.2.9')
+      expect(findRangeTargetVersion('^1.1.0', [...ascending].reverse())).toBe('1.2.9')
+    })
+  })
+
+  describe('isBreakingUpdate()', () => {
+    it.each([
+      ['1.2.3', '2.0.0', true],
+      ['1.2.3', '2.0.0-alpha.1', true],
+      ['1.2.3', '1.9.0', false],
+      ['0.2.3', '1.0.0', true],
+      ['0.2.3', '0.3.0', true],
+      ['0.2.3', '0.2.9', false],
+      ['0.0.3', '0.0.4', true],
+      ['0.0.3', '0.0.3', false],
+      ['1.0.0-beta.2', '1.1.0-alpha.1', false],
+      ['0.2.0-beta.1', '0.3.0-alpha.1', true],
+    ] as const)('%s → %s: %s', (installed, version, expected) => {
+      expect(isBreakingUpdate(semver.parse(installed) as semver.SemVer, version)).toBe(expected)
     })
   })
 
   describe('findHighestPatchVersion()', () => {
+    it('stays inside a ^0.0.z range, which allows no newer patch', () => {
+      expect(findHighestPatchVersion('^0.0.3', ['0.0.5', '0.0.4', '0.0.3'])).toBeNull()
+      expect(findHighestPatchVersion('~0.0.3', ['0.0.5', '0.0.4', '0.0.3'])).toBe('0.0.5')
+      expect(findHighestPatchVersion('0.0.3', ['0.0.5', '0.0.4', '0.0.3'])).toBe('0.0.5')
+      expect(findHighestPatchVersion('^0.0.3-beta.1', ['0.0.4', '0.0.3', '0.0.3-rc.1'])).toBe(
+        '0.0.3'
+      )
+    })
+
     it('returns the highest patch in the same major.minor line', () => {
       expect(findHighestPatchVersion('1.0.0', ['1.0.1', '1.0.2', '1.0.3', '2.0.0'])).toBe('1.0.3')
     })
@@ -526,8 +625,8 @@ describe('version identity helpers', () => {
 })
 
 describe('invalid version tolerance', () => {
-  it('findClosestMinorVersion skips invalid versions in the patch fallback pass', () => {
-    expect(findClosestMinorVersion('1.0.0', ['garbage', '1.0.5'])).toBe('1.0.5')
+  it('findRangeTargetVersion skips invalid versions in the patch fallback pass', () => {
+    expect(findRangeTargetVersion('1.0.0', ['garbage', '1.0.5'])).toBe('1.0.5')
   })
 
   it('parseVersions handles a packument without a versions field', () => {
@@ -536,12 +635,8 @@ describe('invalid version tolerance', () => {
     expect(result.allVersions).toEqual([])
   })
 
-  it('findClosestMinorVersion keeps the highest patch when candidates arrive out of order', () => {
-    expect(findClosestMinorVersion('1.0.0', ['1.0.5', '1.0.3'])).toBe('1.0.5')
-  })
-
-  it('findClosestMinorVersion returns null when the version list is broken', () => {
-    expect(findClosestMinorVersion('1.0.0', null as unknown as string[])).toBeNull()
+  it('findRangeTargetVersion keeps the highest patch when candidates arrive out of order', () => {
+    expect(findRangeTargetVersion('1.0.0', ['1.0.5', '1.0.3'])).toBe('1.0.5')
   })
 
   it('applyVersionPrefix leaves an unprefixed specifier bare', () => {
