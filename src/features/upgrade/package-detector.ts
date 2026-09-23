@@ -26,6 +26,7 @@ import {
   buildRangeCandidates,
   findClosestMinorVersion,
   highestOverallVersion,
+  isSimpleVersionSpecifier,
   parseCurrentVersion,
   toComparableVersion,
 } from '../../shared/versions'
@@ -310,11 +311,15 @@ export class PackageDetector {
         dep = catalogEntry
       }
 
-      if (this.isNonRegistrySpecifier(dep.version)) {
+      // Allow-list, not block-list: anything but one plain version (workspace/git/npm:/patch:
+      // refs, paths, compound or partial ranges, tags) is left as written and never looked
+      // up. An `npm:` alias in particular must never be fetched under its alias name — that
+      // packument is a different (or nonexistent) package.
+      if (!isSimpleVersionSpecifier(dep.version)) {
         const key = `${dep.name}@${dep.version}`
         if (!seenWorkspaceRefs.has(key)) {
           seenWorkspaceRefs.add(key)
-          debugLog.info('PackageDetector', `skipping non-registry specifier: ${key}`)
+          debugLog.info('PackageDetector', `skipping unsupported specifier: ${key}`)
         }
         continue
       }
@@ -388,14 +393,16 @@ export class PackageDetector {
         return { ...cached, ...declarationFields(dep) }
       }
       try {
+        // Only simple specifiers reach this point and every one of them parses, so the null
+        // check below is for the type checker, not a path a real scan takes.
         const installed = parseCurrentVersion(dep.version)
-        const currentIsPrerelease = (installed?.prerelease.length ?? 0) > 0
+        const currentIsPrerelease = installed !== null && installed.prerelease.length > 0
 
         // A stable install never upgrades onto the prerelease channel.
         // latestVersion is a prerelease only for prerelease-only packages
         // (zero stable publishes) — report those unavailable, exactly as
         // before prerelease support existed.
-        if (!currentIsPrerelease && semver.prerelease(latestVersion) !== null) {
+        if (!installed || (!currentIsPrerelease && semver.prerelease(latestVersion) !== null)) {
           return this.createFailedPackageInfo(dep)
         }
 
@@ -416,7 +423,7 @@ export class PackageDetector {
           ? (highestOverallVersion(gatedStable, gatedPrereleases) ?? gated.latestVersion)
           : gated.latestVersion
 
-        const installedClean = installed?.version || dep.version
+        const installedClean = installed.version
         const minorClean = closestMinorVersion
           ? toComparableVersion(closestMinorVersion) || closestMinorVersion
           : null
@@ -699,29 +706,6 @@ export class PackageDetector {
           `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
       },
     })
-  }
-
-  /**
-   * Specifiers that don't point at a plain registry range, so there is nothing to resolve or
-   * upgrade: workspace/file/link refs, git hosts and URLs, tarball URLs, and `npm:` aliases.
-   * An `npm:` alias in particular must never be looked up under its alias name — the packument
-   * for that name is a different (or nonexistent) package.
-   */
-  private isNonRegistrySpecifier(version: string): boolean {
-    return (
-      version.includes('workspace:') ||
-      version === '*' ||
-      version.startsWith('file:') ||
-      version.startsWith('link:') ||
-      version.startsWith('github:') ||
-      version.startsWith('gitlab:') ||
-      version.startsWith('bitbucket:') ||
-      version.startsWith('npm:') ||
-      version.startsWith('git:') ||
-      version.startsWith('git+') ||
-      version.startsWith('http:') ||
-      version.startsWith('https:')
-    )
   }
 
   public getOutdatedPackagesOnly(packages: PackageInfo[]): PackageInfo[] {

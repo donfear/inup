@@ -5,6 +5,7 @@ import {
   findClosestMinorVersion,
   findHighestPatchVersion,
   highestOverallVersion,
+  isSimpleVersionSpecifier,
   parseCurrentVersion,
   parseVersions,
   partitionVersionsByReleaseAge,
@@ -223,6 +224,81 @@ describe('version utils', () => {
       expect(parseCurrentVersion('  ')).toBeNull()
       // Partial wildcards still resolve like before
       expect(parseCurrentVersion('1.x')?.version).toBe('1.0.0')
+    })
+  })
+
+  describe('isSimpleVersionSpecifier()', () => {
+    it('accepts one full version behind ^, ~, >=, = or nothing', () => {
+      for (const spec of [
+        '1.2.3',
+        '^1.2.3',
+        '~1.2.3',
+        '>=1.2.3',
+        '=1.2.3',
+        'v1.2.3',
+        '^v1.2.3',
+        '^1.0.0-beta.2',
+        '~16.0.0-preview.9',
+        '1.2.3+build.5',
+      ]) {
+        expect(isSimpleVersionSpecifier(spec), spec).toBe(true)
+      }
+    })
+
+    it('rejects compound, hyphen, partial and x-ranges', () => {
+      for (const spec of [
+        '^17.0.0 || ^18.0.0',
+        '^1.0.0||^2.0.0',
+        '>=1.2.0 <2.0.0',
+        '1.2.0 - 1.4.0',
+        '1.x',
+        '1.2',
+        '^1',
+        '~1.2',
+        '*',
+        'x',
+        '',
+      ]) {
+        expect(isSimpleVersionSpecifier(spec), spec).toBe(false)
+      }
+    })
+
+    it('rejects operators whose meaning a new version would change', () => {
+      // '>2.0.0' excludes 2.0.0 itself; '<' and '<=' are ceilings, not floors.
+      for (const spec of ['>1.2.3', '<2.0.0', '<=1.2.3', '~>1.2.3']) {
+        expect(isSimpleVersionSpecifier(spec), spec).toBe(false)
+      }
+    })
+
+    it('rejects tags, protocols, git refs and paths', () => {
+      for (const spec of [
+        'latest',
+        'workspace:^1.2.3',
+        'catalog:',
+        'npm:real-pkg@^1.0.0',
+        'patch:lodash@npm%3A4.17.21#./p.patch',
+        'jsr:@std/fs@1.0.0',
+        'portal:../x',
+        'exec:./gen.js',
+        'link:../x',
+        'file:../x',
+        'user/repo#v1.2.3',
+        'github:user/repo#v1.2.3',
+        'git+https://github.com/user/repo.git#v1.2.3',
+        'ssh://git@github.com/user/repo.git#v1.2.3',
+        'git@github.com:user/repo.git#v1.2.3',
+        'https://example.com/pkg-1.2.3.tgz',
+        '../pkg',
+        './pkg',
+      ]) {
+        expect(isSimpleVersionSpecifier(spec), spec).toBe(false)
+      }
+    })
+
+    it('rejects stray whitespace and invalid versions', () => {
+      for (const spec of [' ^1.2.3', '^ 1.2.3', '1.2.3 ', '01.2.3', '1.2.3-']) {
+        expect(isSimpleVersionSpecifier(spec), spec).toBe(false)
+      }
     })
   })
 
