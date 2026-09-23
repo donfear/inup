@@ -4,6 +4,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PackageManagerDetector } from '../../../src/shared/package-manager'
 
+// os.homedir() reads the real process env, which vi.stubEnv can't reach from a worker thread.
+const home = vi.hoisted(() => ({ dir: undefined as string | undefined }))
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>()
+  return { ...os, homedir: () => home.dir ?? os.homedir() }
+})
+
 describe('PackageManagerDetector', () => {
   let testDir: string
 
@@ -180,6 +187,71 @@ describe('PackageManagerDetector', () => {
       writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
 
       expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+    })
+
+    describe('from a subdirectory', () => {
+      /** A workspace member under `root` with its own package.json and no lockfile. */
+      function makeMember(root: string): string {
+        const member = join(root, 'packages', 'a')
+        mkdirSync(member, { recursive: true })
+        writeFileSync(join(member, 'package.json'), JSON.stringify({ name: 'a' }))
+        return member
+      }
+
+      it('finds the lockfile at the workspace root', () => {
+        writeFileSync(join(testDir, 'package.json'), JSON.stringify({}))
+        writeFileSync(join(testDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*')
+        writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+
+        expect(PackageManagerDetector.detect(makeMember(testDir)).name).toBe('pnpm')
+      })
+
+      it('finds the packageManager field at the workspace root', () => {
+        writeFileSync(
+          join(testDir, 'package.json'),
+          JSON.stringify({ packageManager: 'yarn@4.0.0', workspaces: ['packages/*'] })
+        )
+
+        expect(PackageManagerDetector.detect(makeMember(testDir)).name).toBe('yarn')
+      })
+
+      it('prefers the nearest directory that names a package manager', () => {
+        writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+        const member = makeMember(testDir)
+        writeFileSync(join(member, 'bun.lock'), '')
+
+        expect(PackageManagerDetector.detect(member).name).toBe('bun')
+      })
+
+      it('reads the git root itself', () => {
+        mkdirSync(join(testDir, '.git'))
+        writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+
+        expect(PackageManagerDetector.detect(makeMember(testDir)).name).toBe('pnpm')
+      })
+
+      it('never looks above the git root', () => {
+        writeFileSync(join(testDir, 'yarn.lock'), '')
+        const repo = join(testDir, 'repo')
+        mkdirSync(join(repo, '.git'), { recursive: true })
+
+        expect(PackageManagerDetector.detect(makeMember(repo)).name).toBe('npm')
+      })
+
+      it('ignores a stray lockfile in the home directory', () => {
+        home.dir = testDir
+        try {
+          writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
+          const project = join(testDir, 'code', 'app')
+          mkdirSync(project, { recursive: true })
+
+          expect(PackageManagerDetector.detect(project).name).toBe('npm')
+          // Run from the home directory itself, its lockfile still counts.
+          expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+        } finally {
+          home.dir = undefined
+        }
+      })
     })
   })
 

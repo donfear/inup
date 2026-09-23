@@ -1,5 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import chalk from 'chalk'
 import { findUp } from './fs/find-up'
 import { readPackageJson } from './fs/io'
@@ -68,19 +69,27 @@ export const PACKAGE_MANAGER_NAMES = Object.keys(PACKAGE_MANAGERS) as PackageMan
 // biome-ignore lint/complexity/noStaticOnlyClass: intentional namespace-style API used throughout the codebase
 export class PackageManagerDetector {
   /**
-   * Detect package manager from packageManager field or lock files
+   * Detect package manager from packageManager field or lock files, in `cwd` or the
+   * nearest parent that has either — a workspace member has no lockfile of its own.
    */
   static detect(cwd: string = process.cwd()): PackageManagerInfo {
-    // 1. Check packageManager field in package.json
-    const fromPackageJson = PackageManagerDetector.detectFromPackageJson(cwd)
-    if (fromPackageJson) {
-      return fromPackageJson
-    }
+    const start = resolve(cwd)
+    const home = homedir()
+    const detected = findUp<PackageManagerInfo | null>(start, (dir) => {
+      // A lockfile in the home directory is a stray from an install run there, not this project's.
+      if (dir === home && dir !== start) return null
 
-    // 2. Check for lock files
-    const fromLockFile = PackageManagerDetector.detectFromLockFiles(cwd)
-    if (fromLockFile) {
-      return fromLockFile
+      // 1. packageManager field in package.json, 2. lock files
+      const found =
+        PackageManagerDetector.detectFromPackageJson(dir) ??
+        PackageManagerDetector.detectFromLockFiles(dir)
+      if (found) return found
+
+      // Never look above the repository root (`.git` is a file in worktrees and submodules).
+      return existsSync(join(dir, '.git')) ? null : undefined
+    })
+    if (detected) {
+      return detected
     }
 
     // 3. Fallback to npm. Warn on stderr so it never corrupts --json output on stdout.
