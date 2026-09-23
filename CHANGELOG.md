@@ -15,6 +15,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Pressing Esc or an arrow key at a `[y/N]` prompt (the dirty working tree warning, or `--init` asking to overwrite a config) no longer crashes inup. Esc answers no, and arrow keys are ignored.
 - Running inup inside one package of a pnpm, Yarn or Bun monorepo now uses the monorepo's package manager. Before, it fell back to npm with a warning and ran `npm install` in that package, which failed on `workspace:` versions or left a stray `package-lock.json`. inup looks in parent folders up to the repository root for the lockfile or `packageManager` field, and never uses a lockfile left in your home folder.
+- The vulnerability audit now finds advisories for dependencies declared with a combined range such as `^1.2.0 || ^2.0.0` or `>=1.2.0 <2`. It checks the lowest version the range allows; before, the range was sent as it was and matched nothing, so known vulnerabilities went unreported.
+
+### Security
+
+- The vulnerability audit now asks the registry your `.npmrc` sets for each package, with the same credentials. Before, every dependency name, private ones included, was sent to the public npm registry.
 
 ## [1.8.2] - 2026-09-22
 
