@@ -113,7 +113,8 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
       stateManager.bulkSelectLatest(filteredStates)
       break
     case 'bulk_unselect_all':
-      stateManager.bulkUnselectAll(filteredStates)
+      // Every row, not just the visible ones: Enter applies hidden selections too.
+      stateManager.bulkUnselectAll(states)
       break
     case 'toggle_dep_type_filter':
       stateManager.toggleDependencyTypeFilter(action.depType)

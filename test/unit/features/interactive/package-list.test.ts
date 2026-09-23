@@ -33,6 +33,7 @@ interface RenderOptions {
   auditProgress?: Parameters<typeof renderInterface>[11]
   notice?: string | null
   terminalWidth?: number
+  selectedCount?: number
 }
 
 function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
@@ -49,7 +50,7 @@ function renderPlain(states = [baseState], opts: RenderOptions = {}): string {
     opts.terminalWidth ?? 120,
     opts.loadingProgress,
     opts.auditProgress,
-    undefined,
+    { selectedCount: opts.selectedCount },
     opts.notice
   )
     .map(stripAnsi)
@@ -415,6 +416,29 @@ describe('renderInterface status line', () => {
     })
 
     expect(text).not.toMatch(/Audit \d+\/\d+/)
+  })
+
+  it('counts the selected packages', () => {
+    const states = [
+      makeSelectionState({ name: 'a', selectedOption: 'range' }),
+      makeSelectionState({ name: 'b', selectedOption: 'latest' }),
+      makeSelectionState({ name: 'c' }),
+    ]
+    const text = renderPlain(states, { selectedCount: 2 })
+
+    expect(text).toContain('2 selected')
+    expect(text).not.toContain('hidden')
+  })
+
+  it('says how many selected packages the current filter hides', () => {
+    const visible = [makeSelectionState({ name: 'a', selectedOption: 'range' })]
+    const text = renderPlain(visible, { totalPackagesBeforeFilter: 8, selectedCount: 3 })
+
+    expect(text).toContain('3 selected (2 hidden)')
+  })
+
+  it('shows no count while nothing is selected', () => {
+    expect(renderPlain(many, { selectedCount: 0 })).not.toContain('selected')
   })
 
   it('replaces the status line with a one-shot notice', () => {

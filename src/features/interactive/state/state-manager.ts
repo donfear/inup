@@ -236,8 +236,9 @@ export class StateManager {
     })
   }
 
-  // Toggle the current row: clear it if selected, otherwise pick the best
-  // available update (latest preferred, then range).
+  // Toggle the current row: clear it if selected, otherwise pick the in-range
+  // update, the same safe default as everywhere else. Latest is only picked
+  // when nothing in range exists; → reaches it deliberately.
   toggleSelection(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     const currentState = states[this.navigationManager.getCurrentRow()]
@@ -245,10 +246,10 @@ export class StateManager {
 
     if (currentState.selectedOption !== 'none') {
       currentState.selectedOption = 'none'
-    } else if (currentState.hasMajorUpdate) {
-      currentState.selectedOption = 'latest'
     } else if (currentState.hasRangeUpdate) {
       currentState.selectedOption = 'range'
+    } else if (currentState.hasMajorUpdate) {
+      currentState.selectedOption = 'latest'
     }
   }
 

@@ -88,7 +88,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     tokens: ['left'],
     action: { type: 'select_left' },
     displayKeys: '←',
-    help: 'Cycle selection left (none → range → latest)',
+    help: 'Cycle selection left (latest → range → none)',
     group: 'Selection',
     footer: { keyLabel: '←/→', label: 'Select' },
     footerOrder: 2,
