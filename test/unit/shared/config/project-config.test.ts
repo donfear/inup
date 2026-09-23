@@ -6,6 +6,7 @@ import {
   isPackageIgnored,
   loadProjectConfig,
   stripJsonComments,
+  stripTrailingCommas,
 } from '../../../../src/shared/config/project-config'
 
 describe('project-config', () => {
@@ -107,11 +108,49 @@ describe('project-config', () => {
       expect(config.concurrency).toBeUndefined()
     })
 
-    it('should handle invalid JSON gracefully', () => {
-      writeFileSync(join(testDir, '.inuprc'), 'not valid json {')
+    it('accepts trailing commas', () => {
+      writeFileSync(
+        join(testDir, '.inuprc'),
+        '{\n  "ignore": ["a", "b",],\n  "concurrency": 4, // pinned\n}'
+      )
 
-      const config = loadProjectConfig(testDir)
-      expect(config).toEqual({})
+      expect(loadProjectConfig(testDir)).toEqual({ ignore: ['a', 'b'], concurrency: 4 })
+    })
+
+    it('refuses invalid JSON, naming the file and the position', () => {
+      const configPath = join(testDir, '.inuprc')
+      const content =
+        '// header\n{\n  "ignore": [], /* note */\n  "exclude": []\n  "scanDirs": []\n}'
+      writeFileSync(configPath, content)
+
+      expect(() => loadProjectConfig(testDir)).toThrow(`Invalid config file ${configPath}: `)
+      // Stripping blanks rather than deletes, so the position points into the file as written.
+      const position = content.indexOf('"scanDirs"')
+      expect(() => loadProjectConfig(testDir)).toThrow(new RegExp(`at position ${position}\\b`))
+    })
+
+    it('never falls back to a parent config when the nearest one is broken', () => {
+      // The broken file may be the one turning the cooldown on; quietly running
+      // with the parent's settings instead would leave the user unprotected.
+      const child = join(testDir, 'child')
+      mkdirSync(child)
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: ['from-parent'] }))
+      writeFileSync(join(child, '.inuprc'), '{ "minimumReleaseAge": 10080 "ignore": [] }')
+
+      expect(() => loadProjectConfig(child)).toThrow(join(child, '.inuprc'))
+    })
+
+    it('never falls back to a lower-precedence file in the same directory', () => {
+      writeFileSync(join(testDir, '.inuprc'), 'not valid json {')
+      writeFileSync(join(testDir, '.inuprc.json'), JSON.stringify({ ignore: ['from-json'] }))
+
+      expect(() => loadProjectConfig(testDir)).toThrow(join(testDir, '.inuprc'))
+    })
+
+    it.each(['null', '[]', '42'])('refuses a top-level %s instead of an object', (raw) => {
+      writeFileSync(join(testDir, '.inuprc'), raw)
+
+      expect(() => loadProjectConfig(testDir)).toThrow('expected a JSON object')
     })
 
     it('should filter out non-string values in ignore array', () => {
@@ -248,6 +287,44 @@ describe('project-config', () => {
     })
   })
 
+  describe('unknown keys', () => {
+    let warn: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+      warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      warn.mockRestore()
+    })
+
+    it.each([
+      ['minimumReleaseAg', 'minimumReleaseAge'],
+      ['minimum-release-age', 'minimumReleaseAge'],
+      ['concurency', 'concurrency'],
+      ['Native', 'native'],
+    ])('warns about "%s", naming the file and suggesting "%s"', (key, suggestion) => {
+      // A typo'd key must not read as "setting not configured" without a word.
+      const configPath = join(testDir, '.inuprc')
+      writeFileSync(configPath, JSON.stringify({ [key]: 1, ignore: ['kept'] }))
+
+      expect(loadProjectConfig(testDir)).toEqual({ ignore: ['kept'] })
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `Warning: ignoring unknown key "${key}" in ${configPath} (did you mean "${suggestion}"?)`
+      )
+    })
+
+    it('warns without a suggestion when no known key is close', () => {
+      const configPath = join(testDir, '.inuprc')
+      writeFileSync(configPath, JSON.stringify({ theme: 'dark' }))
+
+      loadProjectConfig(testDir)
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `Warning: ignoring unknown key "theme" in ${configPath}`
+      )
+    })
+  })
+
   describe('isPackageIgnored()', () => {
     it('should match exact package names', () => {
       expect(isPackageIgnored('lodash', ['lodash'])).toBe(true)
@@ -338,6 +415,21 @@ describe('stripJsonComments()', () => {
     const stripped = stripJsonComments('// one\n// two\n{}')
     expect(stripped.split('\n')).toHaveLength(3)
     expect(JSON.parse(stripped)).toEqual({})
+  })
+})
+
+describe('stripTrailingCommas()', () => {
+  it('blanks commas that close an object or array, across whitespace and newlines', () => {
+    expect(stripTrailingCommas('{"a": [1, 2,\n],\n}')).toBe('{"a": [1, 2 \n] \n}')
+  })
+
+  it('leaves commas inside strings untouched, including after escaped quotes', () => {
+    const input = '{"a": ", }", "b": "\\", ]"}'
+    expect(stripTrailingCommas(input)).toBe(input)
+  })
+
+  it('does not crash on a truncated file ending in a string escape', () => {
+    expect(stripTrailingCommas('{"a": "b\\')).toBe('{"a": "b\\')
   })
 })
 

@@ -425,6 +425,56 @@ describe('CLI release-age cooldown flag', () => {
   )
 })
 
+describe('CLI invalid project config', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    delete process.env.CI
+
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    // A dirty repo, to prove the interactive path fails before asking anything.
+    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
+    mocks.promptForImmediateConfirmation.mockResolvedValue(true)
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  it.each([
+    ['interactive', true],
+    ['headless', false],
+  ])('exits 2 with the loader error instead of running (%s)', async (_label, interactive) => {
+    // Running without the file's settings would silently drop e.g. a cooldown.
+    setInteractive(interactive)
+    mocks.loadProjectConfig.mockImplementationOnce(() => {
+      throw new Error('Invalid config file /repo/.inuprc: Unexpected end of JSON input')
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })).rejects.toThrow(
+      'process.exit'
+    )
+
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(stripAnsi(String(errorSpy.mock.calls[0][0]))).toBe(
+      'Invalid config file /repo/.inuprc: Unexpected end of JSON input'
+    )
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
+    expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+    expect(mocks.headlessRun).not.toHaveBeenCalled()
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+})
+
 describe('CLI --init', () => {
   let testDir: string
 
