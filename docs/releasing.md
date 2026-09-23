@@ -202,6 +202,5 @@ give it the contract. A prompt that works:
 > Output only the markdown section. No preamble.
 
 Then **check every line against the diff before committing it.** A model
-will happily invent a flag name that reads plausibly. The rule from the
-[roadmap](roadmap/README.md) applies here too: every claim is verifiable, or
-it doesn't ship.
+will happily invent a flag name that reads plausibly. The rule: every claim
+is verifiable, or it doesn't ship.

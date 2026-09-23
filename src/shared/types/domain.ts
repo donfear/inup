@@ -126,7 +126,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
   ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
-  debug?: boolean // Write verbose debug log to /tmp/inup-debug-YYYY-MM-DD.log
+  debug?: boolean // Write verbose debug log to <os tmpdir>/inup/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
   /** @deprecated No-op: registry concurrency always adapts unless `concurrency` pins it. */
   adaptive?: boolean
