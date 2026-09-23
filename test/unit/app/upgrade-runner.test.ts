@@ -519,6 +519,29 @@ describe('UpgradeRunner terminal handoff', () => {
     logSpy.mockRestore()
   })
 
+  it('says how many packages could not be checked instead of "up to date"', async () => {
+    // A failed registry lookup is not an up-to-date package: nothing is known about it.
+    mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      onEvent({
+        type: 'complete',
+        payload: {
+          packages: [],
+          progress: { resolved: 3, total: 3, failed: 2, isLoading: false },
+        },
+      })
+    })
+    mocks.getOutdatedPackagesOnly.mockReturnValue([])
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    await new UpgradeRunner({ cwd: '/repo' }).run()
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('up to date'))
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.stringContaining('2 package(s) could not be checked')
+    )
+    logSpy.mockRestore()
+  })
+
   it('exits with "No packages selected" when selection returns empty', async () => {
     mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([])
 

@@ -52,6 +52,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - inup no longer says an upgrade succeeded before the install has run. If the install fails, or the package manager isn't installed, it exits with an error naming each directory that still needs an install and the command to run there. A missing package manager used to print a warning and exit 0, so `--apply` in CI passed with an out-of-date lockfile.
 - A dependency whose value isn't a version string, such as `"foo": null`, no longer stops the whole run with "Cannot read properties of null". inup skips that entry and checks the rest.
 - A package.json saved with a UTF-8 byte order mark (some Windows editors add one) is read like any other. Before, a nested one was quietly left out of the scan and one at the root stopped the run with "Unexpected token". Upgrading such a file keeps the mark.
+- A package inup could not look up on the registry (outage, expired token, not published) no longer counts as up to date. `--check` exits 2 instead of passing, headless runs print a warning naming the packages, `--json` lists them in a new `failed` array with a `summary.failed` count, and the interactive picker keeps the "unavailable" count on screen and no longer ends with "Everything is up to date". Your own workspace packages that were never published don't count as failed.
 
 ### Security
 

@@ -6,11 +6,17 @@ import {
   HEADLESS_SCHEMA_VERSION,
   type HeadlessCooldownHold,
   type HeadlessCooldownStatus,
+  type HeadlessFailedLookup,
   type HeadlessReport,
   type HeadlessReportEntry,
 } from './types'
 
 type VulnerabilityMap = Map<PackageInfo, HeadlessVulnerability>
+
+/** Unique names of the packages whose registry lookup failed, in scan order. */
+export function failedLookupNames(all: PackageInfo[]): string[] {
+  return [...new Set(all.filter((pkg) => pkg.lookupFailed).map((pkg) => pkg.name))]
+}
 
 /** Build the machine-readable `--json` payload from the scanned + outdated package sets. */
 export function buildHeadlessReport(
@@ -29,6 +35,16 @@ export function buildHeadlessReport(
     packageJsonPath: pkg.packageJsonPath,
     ...pkg.heldByCooldown,
   }))
+  // Also from `all`: a failed lookup is not outdated either, and must not pass for up to date.
+  const failed: HeadlessFailedLookup[] = all
+    .filter((pkg) => pkg.lookupFailed)
+    .map((pkg) => ({
+      name: pkg.name,
+      current: pkg.currentVersion,
+      type: pkg.type,
+      packageJsonPath: pkg.packageJsonPath,
+      ...(pkg.catalog ? { catalog: pkg.catalog } : {}),
+    }))
 
   return {
     schemaVersion: HEADLESS_SCHEMA_VERSION,
@@ -40,6 +56,9 @@ export function buildHeadlessReport(
       // Unique packages, NOT array length: this is a risk count, and one package
       // held across five workspaces is one thing to think about, not five.
       heldByCooldown: countHeldPackages(all),
+      // Unique names too: the lookup is per package, so one failure is one, however many
+      // workspaces declare it.
+      failed: failedLookupNames(all).length,
     },
     outdated: outdated.map((pkg) => {
       const entry: HeadlessReportEntry = {
@@ -61,6 +80,7 @@ export function buildHeadlessReport(
       return entry
     }),
     heldByCooldown: held,
+    failed,
     ...(cooldown ? { cooldown } : {}),
   }
 }
@@ -72,12 +92,16 @@ export function renderPlainReport(
   all: PackageInfo[] = outdated
 ): string {
   const held = packagesWithHolds(all).map((pkg) => ({ name: pkg.name, hold: pkg.heldByCooldown }))
+  const failed = failedLookupNames(all).length
 
   if (outdated.length === 0) {
-    // "Up to date" would be a lie while the cooldown is holding something back.
-    return held.length === 0
-      ? 'All dependencies are up to date — no upgrades needed.'
-      : ['All dependencies are up to date — no upgrades needed.', '', ...heldLines(held)].join('\n')
+    // "Up to date" would be a lie while the cooldown is holding something back, and cannot be
+    // known at all for a package whose registry lookup failed.
+    const headline =
+      failed === 0
+        ? 'All dependencies are up to date — no upgrades needed.'
+        : `No updates found, but ${failed} package(s) could not be checked.`
+    return held.length === 0 ? headline : [headline, '', ...heldLines(held)].join('\n')
   }
 
   const lines = outdated.map((pkg) => {

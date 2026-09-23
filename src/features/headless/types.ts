@@ -28,6 +28,19 @@ export interface HeadlessCooldownHold extends CooldownHold {
   packageJsonPath: string
 }
 
+/**
+ * A dependency whose registry lookup failed (network, auth, or not found), so nothing is known
+ * about its updates. Listed so a failure is never read as "up to date" — both are absent from
+ * `outdated`.
+ */
+export interface HeadlessFailedLookup {
+  name: string
+  current: string // Raw specifier from package.json (with ^/~ prefix)
+  type: DependencyType
+  packageJsonPath: string // pnpm-workspace.yaml for catalog entries
+  catalog?: string // pnpm catalog the range is defined in ('default' or a named catalog)
+}
+
 export interface HeadlessReportEntry {
   name: string
   current: string // Raw specifier from package.json (with ^/~ prefix)
@@ -52,9 +65,11 @@ export interface HeadlessReport {
     major: number // Of the outdated, how many have a latest beyond the in-range target
     vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
     heldByCooldown: number // Packages with ≥1 version withheld by minimumReleaseAge (0 when disabled)
+    failed: number // Packages whose registry lookup failed (unique names)
   }
   outdated: HeadlessReportEntry[]
   heldByCooldown: HeadlessCooldownHold[] // Every withheld package, outdated or not
+  failed: HeadlessFailedLookup[] // One entry per location, like `outdated`
   cooldown?: HeadlessCooldownStatus // Present only when a release-age cooldown was configured
 }
 

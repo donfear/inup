@@ -48,6 +48,8 @@ interface PreparedDependencies {
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
+  /** `name` of every scanned package.json: the repo's own packages. */
+  localPackageNames: Set<string>
 }
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
@@ -161,15 +163,20 @@ export class PackageDetector {
         // First-wins in the tracker; headless runs get the phase from here,
         // the interactive runner's own mark becomes a no-op duplicate.
         performanceTracker.mark('firstResult')
+        // A workspace package referenced by range is often private and never published, so
+        // the registry having nothing for it is expected, not a failed lookup.
+        const lookupFailed =
+          data.latestVersion === 'unknown' && !prepared.localPackageNames.has(packageName)
         const packageInfo = this.resolvePackageGroup(
           packageName,
           prepared.dependenciesByName.get(packageName) ?? [],
-          data
+          data,
+          lookupFailed
         )
         packageLookup.set(packageName, packageInfo)
         resolved++
 
-        if (data.latestVersion === 'unknown') {
+        if (lookupFailed) {
           failed++
           performanceTracker.recordFailedPackage(packageName)
         }
@@ -249,7 +256,8 @@ export class PackageDetector {
       },
     })
     const tDeps = Date.now()
-    const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles)
+    const localPackageNames = new Set<string>()
+    const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, localPackageNames)
     debugLog.perf('PackageDetector', `dependency collection (${allDepsRaw.length} raw deps)`, tDeps)
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
     performanceTracker.recordCounts({ rawDependencies: allDepsRaw.length })
@@ -379,18 +387,26 @@ export class PackageDetector {
       dependenciesByName,
       uniquePackages,
       currentVersions,
+      localPackageNames,
     }
   }
 
   private resolvePackageGroup(
     packageName: string,
     dependencies: DependencyEntry[],
-    packageData: PackageVersionData | undefined
+    packageData: PackageVersionData | undefined,
+    lookupFailed: boolean
   ): PackageInfo[] {
     this.recordCooldownSupport(packageData)
     if (!packageData || packageData.latestVersion === 'unknown') {
       debugLog.warn('PackageDetector', `no data returned for ${packageName} — marking unavailable`)
-      return dependencies.map((dep) => this.createFailedPackageInfo(dep))
+      // A failed lookup is flagged so reports can tell "could not check" apart from "up to
+      // date": both carry isOutdated false, and only this one means nothing is known.
+      return dependencies.map((dep) =>
+        lookupFailed
+          ? { ...this.createFailedPackageInfo(dep), lookupFailed: true }
+          : this.createFailedPackageInfo(dep)
+      )
     }
     const { latestVersion } = packageData
 

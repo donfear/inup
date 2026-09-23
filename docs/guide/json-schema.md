@@ -15,9 +15,11 @@ The payload carries a `schemaVersion` so scripts and agents can pin to a known s
     major: number         // of the outdated, how many have a `latest` beyond the in-range target
     vulnerable: number    // of the outdated, how many have ≥1 known advisory on the installed version
     heldByCooldown: number // UNIQUE packages with a withheld version (0 when the cooldown is off)
+    failed: number        // UNIQUE packages whose registry lookup failed
   }
   outdated: PackageEntry[]
   heldByCooldown: CooldownHold[]  // every withheld package, outdated or not
+  failed: FailedLookup[]          // every dependency inup could not look up
   cooldown?: {                    // present only when a cooldown was configured
     minimumReleaseAge: number     // the window in effect, in minutes
     publishTimesAvailable: boolean // false = the registry exposed no `time`; the cooldown did nothing
@@ -42,6 +44,9 @@ inup --json --minimum-release-age 10080 \
 **Changed in schemaVersion 2.** `summary.heldByCooldown`, the top-level `heldByCooldown` array
 and the optional `cooldown` block were added, along with the optional `heldByCooldown` field on
 `PackageEntry`. Nothing was removed or renamed, so a `schemaVersion: 1` consumer keeps working.
+
+`summary.failed` and the top-level `failed` array were added later without a bump, because they
+are additions only.
 
 ## `PackageEntry`
 
@@ -81,6 +86,22 @@ Note the deliberate asymmetry with `summary.heldByCooldown`: the **array** carri
 | `eligibleInMinutes` | `number` | Minutes until it clears the window, as of the scan. `0` means the next run will offer it. |
 | `count` | `number` | How many versions in total were withheld for this package. |
 
+## `FailedLookup`
+
+A dependency inup could not look up: the registry request failed after its retries (network outage, expired or missing token, or a package the registry does not have). Nothing is known about its updates, so it is absent from `outdated` just like an up-to-date package — this array is what tells the two apart. inup also writes a warning to stderr, and `--check` exits `2`.
+
+Like `heldByCooldown`, the array carries one entry per location and `summary.failed` counts unique package names.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `name` | `string` | Package name. |
+| `current` | `string` | Raw specifier from `package.json`, including the `^`/`~` prefix. |
+| `type` | `string` | Dependency type. |
+| `packageJsonPath` | `string` | File the range is declared in — `pnpm-workspace.yaml` for catalog entries. |
+| `catalog` | `string?` | Present only for pnpm catalog entries: the catalog name. |
+
+A failed lookup for one of the repo's own packages — a name matching the `name` of any `package.json` inup scanned — is not listed: a workspace package referenced by a version range rather than `workspace:` is often private and never published, so the registry not having it is expected. Local packages the registry does have are checked like any other.
+
 ## `Vulnerability`
 
 Advisories affecting the **currently-installed** version, each cross-referenced against the upgrade targets so you know whether the bump actually clears it.
@@ -110,7 +131,7 @@ Advisories affecting the **currently-installed** version, each cross-referenced 
 ```json
 {
   "schemaVersion": 2,
-  "summary": { "total": 42, "outdated": 3, "major": 1, "vulnerable": 1, "heldByCooldown": 1 },
+  "summary": { "total": 42, "outdated": 3, "major": 1, "vulnerable": 1, "heldByCooldown": 1, "failed": 0 },
   "outdated": [
     {
       "name": "undici",
@@ -160,5 +181,5 @@ With `--json`, stdout carries **only** the JSON document — all progress, warni
 | --- | --- |
 | `0` | Up to date |
 | `1` | Updates exist (with `--check`) |
-| `2` | Error, including an unknown flag or an invalid flag value |
+| `2` | Error, including an unknown flag or an invalid flag value, or (with `--check`) a registry lookup failed — even when updates also exist |
 | `130` / `143` | Cancelled (Ctrl+C / `SIGTERM`) |
