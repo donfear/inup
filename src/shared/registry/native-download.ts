@@ -11,10 +11,12 @@ import { registryTargetFor } from './registry-config'
  * it and has none cached. Nothing native is part of inup's own npm install.
  *
  * The addon comes from this platform's package (see nativePackageName) at
- * inup's own version. It is fetched from the configured npm registry, verified
- * against the registry's published sha512 integrity (the same check npm
- * install performs), and extracted into the user cache so later runs load it
- * directly.
+ * inup's own version. It is fetched from the configured npm registry and
+ * verified twice: the tarball against the registry's published sha512 (the
+ * check npm install performs), then the addon against the hash pinned in this
+ * inup release (native-integrity.ts). The registry can only vouch for itself,
+ * and a project's .npmrc can point it anywhere. The addon is then extracted
+ * into the user cache so later runs load it directly.
  */
 
 const gunzipAsync = promisify(gunzip)
@@ -109,6 +111,11 @@ async function resolveTarball(name: string, version: string) {
   }
 }
 
+/** SRI sha512 of `data`, the form of inup's pinned native core hashes. */
+export function sha512Integrity(data: Buffer): string {
+  return `sha512-${createHash('sha512').update(data).digest('base64')}`
+}
+
 /** Throws unless `data` matches a sha512 entry of the SRI string. */
 export function verifyIntegrity(data: Buffer, integrity: string): void {
   const expected = integrity
@@ -153,6 +160,8 @@ export async function downloadNativeCore(options: {
   cacheRoot: string
   version: string
   abi: string
+  /** The addon's pinned sha512 (SRI) from native-integrity.ts. */
+  integrity: string
 }): Promise<string> {
   const name = nativePackageName(options.abi)
   const { tarball, integrity, headers } = await resolveTarball(name, options.version)
@@ -161,6 +170,11 @@ export async function downloadNativeCore(options: {
   const addon = extractTarEntry(await gunzipAsync(archive), `package/inup.${options.abi}.node`)
   if (!addon) {
     throw new NativeDownloadError(`${name}@${options.version} has no inup.${options.abi}.node`)
+  }
+  if (sha512Integrity(addon) !== options.integrity) {
+    throw new NativeDownloadError(
+      `${name}@${options.version} does not match the native core released with this inup`
+    )
   }
 
   const file = nativeCoreFile(options.cacheRoot, options.version, options.abi)

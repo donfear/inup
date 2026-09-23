@@ -158,7 +158,8 @@ Every release also publishes inup's native core for 8 platforms. `publish.yml` d
    - The packages are `inup-darwin-arm64`, `inup-darwin-x64`, `inup-linux-{x64,arm64}-{gnu,musl}`, `inup-windows-x64` and `inup-windows-arm64`. npm's spam detection rejects `inup-win32-*` names.
    - It refuses to publish anything if any platform's addon is missing.
    - It skips versions already on npm, so a failed publish job can be **re-run** safely.
-3. **inup.** Published only after the platform packages. `inup` does not depend on them: `inup --native` downloads the one it needs.
+   - It pins the sha512 of every platform's `.node` file into `src/shared/registry/native-integrity.ts`. For a version already on npm it pins the published file, since that is what users will download.
+3. **inup.** Rebuilt with those pins, then published after the platform packages. `publish-native.mjs --check-pins` stops the release if the build lacks a pin for any platform. `inup` does not depend on the platform packages: it downloads the one it needs on first use and accepts it only if it matches the pinned hash, whichever registry served it.
 4. **Verify.** `verify-published.yml` installs the published version with npm, pnpm and bun on Linux, macOS, Windows and Alpine (x64 and arm64). On each it requires the first `--native` run to download the core and the next to use it. You can also run it by hand from the Actions tab for any version.
 
 **Release candidates.** Anything that changes `native/` ships as an RC first:
@@ -172,7 +173,7 @@ git push origin HEAD v1.8.0-rc.0
 
 A version with a `-` publishes under the `next` dist-tag, so users on `latest` are unaffected. RC tags don't move the floating `v1` tag and are ignored as changelog baselines. Try it with `npx inup@next --native` (twice). When it's good, run the Release workflow as usual: `minor` or `patch` from `1.8.0-rc.N` both give `1.8.0`.
 
-**If a stable release is broken,** point `latest` back while you fix it: `npm dist-tag add inup@<previous> latest`. The native core is opt-in and falls back to TypeScript whenever it can't be used, so native problems cost speed, not correctness.
+**If a stable release is broken,** point `latest` back while you fix it: `npm dist-tag add inup@<previous> latest`. The native core falls back to TypeScript whenever it can't be used, so native problems cost speed, not correctness.
 
 **Trusted publishing** is configured on npmjs.com for `inup` and all 8 platform packages: repository `donfear/inup`, workflow `publish.yml`, no environment, "Allow npm publish" ticked. A new platform package needs a one-time `0.0.0` placeholder publish before that setting exists.
 

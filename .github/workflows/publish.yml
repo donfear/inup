@@ -67,9 +67,18 @@ jobs:
           path: native/artifacts
 
       # Platform packages first, so inup is never live without its native cores. Already
-      # published versions are skipped, so a failed run can simply be re-run.
+      # published versions are skipped, so a failed run can simply be re-run. Also pins each
+      # platform's addon (sha512) into src/shared/registry/native-integrity.ts.
       - name: Publish native platform packages
         run: node scripts/publish-native.mjs --artifacts native/artifacts
+
+      # inup downloads and loads only the addons pinned in its own build: rebuild with the
+      # pins, and stop here if any platform lacks one. `pnpm publish` rebuilds dist/ through
+      # `prepare`, from the same pinned source.
+      - name: Build with pinned native cores
+        run: |
+          pnpm build
+          node scripts/publish-native.mjs --check-pins
 
       - name: Publish inup
         run: pnpm publish --provenance --no-git-checks --tag ${{ steps.version.outputs.tag }}

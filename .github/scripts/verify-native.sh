@@ -6,7 +6,8 @@
 set -euo pipefail
 version="$1"
 pm="${2:-npm}"
-# What to install; a local tarball can stand in for the registry version when testing this script.
+# What to install; a local tarball can stand in for the registry version when testing this script
+# (pack it after scripts/publish-native.mjs has pinned the hashes, or no download happens).
 spec="${INUP_INSTALL_SPEC:-inup@$version}"
 
 work="$(mktemp -d)"

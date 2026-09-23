@@ -1,12 +1,21 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   distTagFor,
   findAddons,
+  integrityOf,
+  PIN_FILE,
+  pinSource,
   platformManifest,
   platformOf,
   TARGET_ABIS,
+  unpinned,
 } from '../../../scripts/publish-native.mjs'
-import { nativePackageName } from '../../../src/shared/registry/native-download'
+import { nativePackageName, sha512Integrity } from '../../../src/shared/registry/native-download'
+import { NATIVE_INTEGRITY } from '../../../src/shared/registry/native-integrity'
 import { detectHost, nativeAbi } from '../../../src/shared/registry/rust-core'
 
 describe('TARGET_ABIS', () => {
@@ -86,5 +95,44 @@ describe('findAddons', () => {
   it('reports missing targets', () => {
     const { missing } = findAddons(['a/inup.darwin-arm64.node'])
     expect(missing).toEqual(TARGET_ABIS.filter((abi) => abi !== 'darwin-arm64'))
+  })
+})
+
+describe('pinned native core hashes', () => {
+  const addons = Object.fromEntries(TARGET_ABIS.map((abi) => [abi, Buffer.from(`addon ${abi}`)]))
+  const pins = Object.fromEntries(TARGET_ABIS.map((abi) => [abi, integrityOf(addons[abi])]))
+
+  it('hashes addons the way inup checks them', () => {
+    for (const abi of TARGET_ABIS) {
+      expect(integrityOf(addons[abi])).toBe(sha512Integrity(addons[abi]))
+    }
+  })
+
+  it('generates a native-integrity module inup can read', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'inup-pins-'))
+    try {
+      const file = join(dir, 'native-integrity.ts')
+      writeFileSync(file, pinSource(pins))
+      // A file:// URL, as Vite's module runner resolves it the same way on Windows.
+      const generated = await import(pathToFileURL(file).href)
+      expect(generated.NATIVE_INTEGRITY).toEqual(pins)
+      expect(unpinned(generated.NATIVE_INTEGRITY)).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reports every target without a well-formed pin', () => {
+    const { 'linux-x64-musl': _, ...partial } = pins
+    expect(unpinned({ ...partial, 'darwin-x64': 'sha512-short' })).toEqual([
+      'darwin-x64',
+      'linux-x64-musl',
+    ])
+    expect(unpinned(undefined)).toEqual(TARGET_ABIS)
+  })
+
+  it('pins nothing in the repository: only a release fills it in', () => {
+    expect(PIN_FILE).toBe('src/shared/registry/native-integrity.ts')
+    expect(NATIVE_INTEGRITY).toEqual({})
   })
 })

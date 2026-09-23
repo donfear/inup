@@ -28,6 +28,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - The vulnerability audit now asks the registry your `.npmrc` sets for each package, with the same credentials. Before, every dependency name, private ones included, was sent to the public npm registry.
 - Text that comes from the npm registry or GitHub (package descriptions, deprecation messages, release notes) is shown with terminal control codes removed. A package could otherwise use them to change your terminal title, write to your clipboard, or redraw what is on screen.
+- The native core download trusted whichever registry served it. A project's `.npmrc` could point inup at another registry, and inup would cache the native code that registry sent and load it on every later run, in every project. inup now downloads and loads only the native core released with it, and checks the cached copy again on every run.
 
 ## [1.8.2] - 2026-09-22
 

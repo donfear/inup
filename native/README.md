@@ -1,6 +1,6 @@
 # native/: Rust registry core
 
-A Node-API addon (napi-rs) that takes over the registry client's work off the JS thread. It is **opt-in** (`--native`, or `"native": true` in `.inuprc`) and not part of inup's npm install.
+A Node-API addon (napi-rs) that takes over the registry client's work off the JS thread. It is on by default (`--no-native`, or `"native": false` in `.inuprc`, turns it off) but not part of inup's npm install: inup downloads it on first use.
 
 It has two capabilities, and inup uses whichever the loaded addon provides:
 
@@ -14,15 +14,20 @@ Output is byte-identical to the TypeScript path in both cases. Scheduling, retri
 
 ## How inup gets and uses it
 
-Default runs never load or download anything native. With native enabled, `src/shared/registry/rust-core.ts` resolves the addon once per process:
+With native on, `src/shared/registry/rust-core.ts` resolves the addon once per process:
 
-1. **Local build:** `native/out/inup.<abi>.node` from `pnpm native:build` (source checkouts).
-2. **Cached download:** `<user cache>/native/<inup version>/inup.<abi>.node` from an earlier run.
+1. **Local build:** `native/out/inup.<abi>.node` from `pnpm native:build` (source checkouts). Trusted as it is.
+2. **Cached download:** `<user cache>/native/<inup version>/inup.<abi>.node` from an earlier run, only if it matches the pinned hash (below). It is re-hashed before every load, which takes a few milliseconds; a file that doesn't match is deleted and downloaded again.
 3. **Neither:** this run uses TypeScript. `src/shared/registry/native-download.ts` fetches the platform package at inup's own version from the configured npm registry, in the background:
    - Registry auth is sent only to the registry origin, including across redirects.
    - The tarball is checked against the registry's sha512 `dist.integrity`.
+   - The addon inside must match the pinned hash, or nothing is cached.
    - The addon is extracted, written to the cache atomically, and older cached versions are removed.
    - The next run loads it.
+
+**Pinned hashes.** The registry's integrity only proves the tarball is what that registry serves, and a project's `.npmrc` can point inup at any registry. So every release pins the sha512 of each platform's `.node` file in `src/shared/registry/native-integrity.ts`. `scripts/publish-native.mjs` writes it from the exact addons it publishes, before inup is built, so the pins ship inside the inup tarball that your lockfile already verifies. The pin covers the `.node` file rather than the tarball: that file is what gets cached and loaded, and its hash doesn't depend on how npm packs a tarball.
+
+The file in the repository pins nothing. Builds from source therefore never download a native core: they use `native/out` if you have built it, and TypeScript otherwise.
 
 Each registry attempt then takes the first path that works:
 
@@ -59,8 +64,9 @@ Windows packages don't follow the napi-rs `win32-<arch>-msvc` suffix: npm's spam
 | `core/` | Pure Rust: decompression, packument parse (skips everything but `versions`), node-semver strict parse/compare, cache-entry JSON |
 | `napi/src/lib.rs` | Node-API surface: `abiVersion()`, `decodePackument()` |
 | `napi/src/http.rs` | Native transport: `fetchPackument()`, `cancelFetch()`, `takeReceivedBytes()` |
-| `../src/shared/registry/rust-core.ts` | Opt-in switch, host detection, addon resolution with TypeScript fallback |
+| `../src/shared/registry/rust-core.ts` | On/off switch, host detection, addon resolution with TypeScript fallback, pinned-hash check of the cached addon |
 | `../src/shared/registry/native-download.ts` | Download, verification and caching of the platform addon |
+| `../src/shared/registry/native-integrity.ts` | Pinned hash of each platform's addon; empty in the repository, generated at release |
 
 ## Develop
 
@@ -73,14 +79,14 @@ pnpm build:all       # native addon + CLI (dist/) in one go
 pnpm test            # includes the parity suite once the addon is built
 ```
 
-To test the opt-in flow from a source checkout, run `pnpm build:all`, then `node dist/cli.js --native`.
+To try it from a source checkout, run `pnpm build:all`, then `node dist/cli.js`: it loads the addon from `native/out`. Without that build a source checkout stays on TypeScript, because it pins no addon to download.
 
 To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src/lib.rs` and `CORE_ABI_VERSION` in `rust-core.ts` together.
 
 ## Tests
 
 - `cargo test` covers encodings, semver precedence and grammar, JSON edge cases, cache-entry escaping, and the ABI constant.
-- `test/unit/shared/registry/rust-core.test.ts` covers host detection, resolution order and every fallback, using stub modules. It runs everywhere.
+- `test/unit/shared/registry/rust-core.test.ts` covers host detection, resolution order, the pinned-hash check of the cached addon and every fallback, using stub modules. It runs everywhere.
 - `test/unit/shared/registry/rust-core.parity.test.ts` loads the real addon through the loader and checks it against `parseVersions` / `writeEtag` in every encoding.
 - `test/unit/shared/registry/rust-transport.parity.test.ts` runs the real transport against a local HTTP server. It covers every encoding, ETag + 304, all status classes and Retry-After, header timeouts, refused connections, undecodable bodies, TLS failure (which must return `fallback`), and cancellation.
   - It is skipped when the addon isn't built.
@@ -88,8 +94,8 @@ To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src
 
 ## CI and release
 
-- **Pull requests** (`ci.yml`) run the Rust checks and build the addon for all 8 platforms via `native-build.yml`. Each build is smoke-tested on its own platform by `native/scripts/smoke.cjs`, which covers decoding, the cache write, a real request through the Rust HTTP stack, and TLS-failure classification. Linux builds are checked to need at most glibc 2.28. The parity suites then run against the real addons on Linux, macOS and Windows, and all 8 platform packages are assembled in a publish dry run.
-- **Releases** (`publish.yml`) repeat the build, publish the platform packages, then `inup`, then run `verify-published.yml`, which installs the release on every platform and requires `--native` to download and then use the core.
+- **Pull requests** (`ci.yml`) run the Rust checks and build the addon for all 8 platforms via `native-build.yml`. Each build is smoke-tested on its own platform by `native/scripts/smoke.cjs`, which covers decoding, the cache write, a real request through the Rust HTTP stack, and TLS-failure classification. Linux builds are checked to need at most glibc 2.28. The parity suites then run against the real addons on Linux, macOS and Windows. All 8 platform packages are assembled in a publish dry run, which also pins their hashes and checks that the rebuilt inup carries a pin for every platform.
+- **Releases** (`publish.yml`) repeat the build and publish the platform packages. They then rebuild `inup` with the pinned hashes, publish it, and run `verify-published.yml`, which installs the release on every platform and requires `--native` to download and then use the core.
 - **Procedure:** release candidates, retries and rollback are in [docs/releasing.md](../docs/releasing.md#native-core-packages).
 
 ## Measured impact

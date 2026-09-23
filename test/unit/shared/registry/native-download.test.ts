@@ -31,6 +31,7 @@ import {
   NativeDownloadError,
   nativeCoreFile,
   nativePackageName,
+  sha512Integrity,
   verifyIntegrity,
 } from '../../../../src/shared/registry/native-download'
 
@@ -58,6 +59,8 @@ const sri = (data: Buffer) => `sha512-${createHash('sha512').update(data).digest
 const ADDON = Buffer.from('\x7fELF pretend addon bytes')
 const ABI = 'darwin-arm64'
 const VERSION = '1.8.0'
+/** The addon hash this pretend inup release pinned. */
+const PINNED = sri(ADDON)
 
 describe('extractTarEntry', () => {
   it('finds a file by path, honoring the ustar prefix and skipping other entries', () => {
@@ -106,6 +109,10 @@ describe('nativePackageName', () => {
 })
 
 describe('verifyIntegrity', () => {
+  it('uses the SRI form inup pins addons in', () => {
+    expect(sha512Integrity(ADDON)).toBe(sri(ADDON))
+  })
+
   it('accepts a matching sha512 among several SRI entries', () => {
     expect(() => verifyIntegrity(ADDON, `sha1-abc ${sri(ADDON)}?opt`)).not.toThrow()
   })
@@ -163,7 +170,12 @@ describe('downloadNativeCore', () => {
     publish({ tarball: `${origin}/tarballs/addon.tgz`, integrity: sri(tarball) })
     mkdirSync(join(cacheRoot, 'native', '1.7.0'), { recursive: true })
 
-    const file = await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })
+    const file = await downloadNativeCore({
+      cacheRoot,
+      version: VERSION,
+      abi: ABI,
+      integrity: PINNED,
+    })
 
     expect(file).toBe(nativeCoreFile(cacheRoot, VERSION, ABI))
     expect(readFileSync(file)).toEqual(ADDON)
@@ -186,7 +198,7 @@ describe('downloadNativeCore', () => {
         res.writeHead(302, { location: `${otherOrigin}/cdn/addon.tgz` }).end()
       )
 
-      await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })
+      await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI, integrity: PINNED })
 
       expect(seen.at(-1)).toEqual({ url: 'other', authorization: undefined })
       expect(existsSync(nativeCoreFile(cacheRoot, VERSION, ABI))).toBe(true)
@@ -203,7 +215,7 @@ describe('downloadNativeCore', () => {
       authHeader: 'Bearer secret',
     })
     publish({ tarball: `${origin}/tarballs/addon.tgz`, integrity: sri(tarball) })
-    await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })
+    await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI, integrity: PINNED })
     expect(seen.map((r) => r.authorization)).toEqual(['Bearer secret', undefined])
   })
 
@@ -223,7 +235,12 @@ describe('downloadNativeCore', () => {
       )
     )
 
-    const file = await downloadNativeCore({ cacheRoot, version: VERSION, abi: winAbi })
+    const file = await downloadNativeCore({
+      cacheRoot,
+      version: VERSION,
+      abi: winAbi,
+      integrity: PINNED,
+    })
 
     expect(file).toBe(nativeCoreFile(cacheRoot, VERSION, winAbi))
     expect(readFileSync(file)).toEqual(ADDON)
@@ -233,9 +250,9 @@ describe('downloadNativeCore', () => {
   it('gives up after too many redirects', async () => {
     publish({ tarball: `${origin}/loop`, integrity: sri(tarball) })
     routes.set('/loop', (_req, res) => res.writeHead(301, { location: '/loop' }).end())
-    await expect(downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })).rejects.toThrow(
-      'too many redirects'
-    )
+    await expect(
+      downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI, integrity: PINNED })
+    ).rejects.toThrow('too many redirects')
   })
 
   it.each([
@@ -248,6 +265,19 @@ describe('downloadNativeCore', () => {
       'integrity check failed',
     ],
     [
+      // What a project .npmrc pointing at another registry can serve: the
+      // reported integrity is right for the tarball, the addon is not inup's.
+      'the registry vouches for an addon this release did not pin',
+      (base: string) => {
+        const evil = gzipSync(
+          tar([{ name: `package/inup.${ABI}.node`, content: Buffer.from('x') }])
+        )
+        routes.set('/tarballs/evil.tgz', (_req, res) => res.writeHead(200).end(evil))
+        publish({ tarball: `${base}/tarballs/evil.tgz`, integrity: sri(evil) })
+      },
+      `inup-${ABI}@${VERSION} does not match the native core released with this inup`,
+    ],
+    [
       'the tarball lacks the addon',
       (base: string) => {
         const empty = gzipSync(tar([{ name: 'package/package.json', content: Buffer.from('{}') }]))
@@ -258,9 +288,12 @@ describe('downloadNativeCore', () => {
     ],
   ])('fails without caching anything when %s', async (_label, setup, message) => {
     setup(origin)
-    const error = await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI }).catch(
-      (e: unknown) => e
-    )
+    const error = await downloadNativeCore({
+      cacheRoot,
+      version: VERSION,
+      abi: ABI,
+      integrity: PINNED,
+    }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(NativeDownloadError)
     expect((error as Error).message).toContain(message)
     expect(existsSync(join(cacheRoot, 'native'))).toBe(false)
@@ -274,16 +307,16 @@ describe('downloadNativeCore', () => {
       for (let i = 0; i < 9; i++) res.write(chunk)
       res.end()
     })
-    await expect(downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })).rejects.toThrow(
-      'size limit'
-    )
+    await expect(
+      downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI, integrity: PINNED })
+    ).rejects.toThrow('size limit')
   })
 
   it('sends no authorization header when the registry has no credentials', async () => {
     registryTargetMock.mockReturnValue({ origin, pathPrefix: '' })
     publish({ tarball: `${origin}/tarballs/addon.tgz`, integrity: sri(tarball) })
     writeFileSync(join(cacheRoot, 'unrelated'), '')
-    await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI })
+    await downloadNativeCore({ cacheRoot, version: VERSION, abi: ABI, integrity: PINNED })
     expect(seen.map((r) => r.authorization)).toEqual([undefined, undefined])
   })
 })
