@@ -287,7 +287,30 @@ export function findHighestPatchVersion(
   return bestPatchVersion
 }
 
-/** Re-apply the original specifier's range prefix (^, ~, >=, …) to a new version. */
+/**
+ * One full version, bare or behind `^`, `~`, `>=` or `=` (a leading `v` is tolerated, as npm
+ * does). The capture is checked with semver.valid, which rejects partials, x-ranges and tags.
+ */
+const SIMPLE_SPECIFIER = /^(?:\^|~|>=|=)?(v?\d\S*)$/
+
+/**
+ * Whether inup can upgrade this specifier by swapping in a new version and keeping the prefix.
+ * Only a single simple comparator keeps its meaning that way. `||` unions, hyphen and x-ranges,
+ * partials and tags would lose a bound or turn into an exact pin; `>` would exclude the new
+ * version itself and `<`/`<=` are ceilings, not floors; protocols, git refs and paths
+ * (`workspace:`, `npm:`, `patch:`, `jsr:`, `user/repo#v1.2.3`, `../pkg`, …) are not registry
+ * versions at all. All of those are left exactly as written.
+ */
+export function isSimpleVersionSpecifier(specifier: string): boolean {
+  const match = SIMPLE_SPECIFIER.exec(specifier)
+  return match !== null && semver.valid(match[1]) !== null
+}
+
+/**
+ * Re-apply the original specifier's prefix (^, ~, >=, =, v) to a new version. Only correct for
+ * specifiers that pass isSimpleVersionSpecifier: the detector skips every other shape, so none
+ * of them can be selected for an upgrade.
+ */
 export function applyVersionPrefix(originalSpecifier: string, targetVersion: string): string {
   const prefixMatch = originalSpecifier.match(/^([^\d]+)/)
   const prefix = prefixMatch ? prefixMatch[1] : ''

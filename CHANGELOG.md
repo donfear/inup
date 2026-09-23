@@ -19,6 +19,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Uncommenting a field in the `.inuprc` that `inup --init` writes no longer breaks the file. Config files now accept trailing commas, so you can switch on any commented-out field, or several, by deleting the `//`.
 - A config file inup can't parse now stops the run with an error naming the file and where parsing failed (exit code 2). Before, inup printed a warning and carried on with a config from a parent directory, or with none, so a setting such as `minimumReleaseAge` could be off without you noticing.
 - An unknown field in the config file, such as a misspelled `minimumReleaseAge`, now prints a warning naming the field and the file, with a suggestion when it looks like a typo. It used to be ignored silently.
+- Upgrades no longer damage specifiers that aren't a single version. `^17.0.0 || ^18.0.0` lost its second range, `>=1.2.0 <2.0.0` lost its upper bound, `1.x` became an exact version, and `patch:`, `jsr:`, `user/repo#v1.2.3` and git URL specs got a new version spliced into the middle. inup now only upgrades a plain version (`1.2.3`, `^1.2.3`, `~1.2.3`, `>=1.2.3`, `=1.2.3`), in `package.json` and in pnpm catalogs. Anything else is left exactly as written and not listed, the way `workspace:` and `npm:` specs already were.
 
 ### Security
 

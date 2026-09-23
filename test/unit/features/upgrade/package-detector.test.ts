@@ -669,7 +669,7 @@ describe('PackageDetector edge paths', () => {
       expect(packages[0].catalogReferencedBy).toEqual(['/repo/packages/a/package.json'])
       const wsLogs = vi
         .mocked(debugLog.info)
-        .mock.calls.filter((call) => String(call[1]).includes('skipping non-registry specifier'))
+        .mock.calls.filter((call) => String(call[1]).includes('skipping unsupported specifier'))
       expect(wsLogs).toHaveLength(1)
       const ignoreLogs = vi
         .mocked(debugLog.info)
@@ -706,6 +706,61 @@ describe('PackageDetector edge paths', () => {
     const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
+  })
+
+  it('skips specifiers that are not one simple version, so they are never rewritten', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      // Re-prefixing these drops half a range or corrupts the protocol: '^17.0.0 || ^18.0.0'
+      // was written as '^17.0.2', and the patch: spec as 'patch:lodash@npm%2.0.0'.
+      dep('react', '^17.0.0 || ^18.0.0'),
+      dep('bounded', '>=1.2.0 <2.0.0'),
+      dep('hyphen', '1.2.0 - 1.4.0'),
+      dep('partial', '1.x'),
+      dep('tagged', 'latest'),
+      dep('lodash', 'patch:lodash@npm%3A4.17.21#./p.patch'),
+      dep('from-github', 'user/repo#v1.2.3'),
+      dep('from-ssh', 'git@github.com:user/repo.git#v1.2.3'),
+      dep('std-fs', 'jsr:@std/fs@1.0.0'),
+      dep('portal-dep', 'portal:../x'),
+      dep('local-path', '../pkg'),
+      dep('zod', '^3.0.0'),
+    ])
+    const requested: string[][] = []
+    mocks.fetchPackageVersions.mockImplementation(
+      async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
+        requested.push(packageNames)
+        const data = { latestVersion: '3.1.0', allVersions: ['3.1.0', '3.0.0'] }
+        for (const packageName of packageNames) options.onPackageReady({ packageName, data })
+        return new Map(packageNames.map((name) => [name, data]))
+      }
+    )
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.streamOutdatedPackages(logWarnings)
+
+    expect(requested).toEqual([['zod']])
+    expect(packages.map((pkg) => pkg.name)).toEqual(['zod'])
+  })
+
+  it('skips a catalog entry whose resolved range is compound', async () => {
+    mocks.loadPnpmCatalogs.mockReturnValue({
+      path: '/repo/pnpm-workspace.yaml',
+      resolve: () => ({ catalog: 'default', range: '^17.0.0 || ^18.0.0' }),
+      entriesOf: () => [{ name: 'react', range: '^17.0.0 || ^18.0.0' }],
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('react', 'catalog:', '/repo/packages/a/package.json'),
+    ])
+    const requested: string[][] = []
+    mocks.fetchPackageVersions.mockImplementation(async (packageNames: string[]) => {
+      requested.push(packageNames)
+      return new Map()
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+
+    expect(await detector.streamOutdatedPackages(logWarnings)).toEqual([])
+    expect(requested.flat()).toEqual([])
   })
 
   it('treats a package as up to date when ignoreMajor suppresses its only update', async () => {
@@ -868,7 +923,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('falls back to raw version strings when semver cannot coerce them', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', 'latest')])
+    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
     mocks.findClosestMinorVersion.mockReturnValue('weird-version')
     mocks.fetchPackageVersions.mockImplementation(
       async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
@@ -882,7 +937,7 @@ describe('PackageDetector edge paths', () => {
     const packages = await detector.streamOutdatedPackages(logWarnings)
 
     expect(packages[0]).toMatchObject({
-      currentVersion: 'latest',
+      currentVersion: '^1.0.0',
       rangeVersion: 'weird-version',
       latestVersion: 'next',
       hasMajorUpdate: false,
@@ -1264,20 +1319,19 @@ describe('PackageDetector prerelease handling', () => {
     })
   })
 
-  it('treats wildcard specifiers as up to date instead of resolving them to 0.0.0', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('anything-goes', 'x')])
+  it('skips wildcard specifiers instead of resolving them to 0.0.0', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('anything-goes', 'x'),
+      dep('star', '*'),
+    ])
     mockRegistry({
       'anything-goes': { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
+      star: { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
     })
 
     const detector = new PackageDetector({ cwd: '/repo' })
-    const packages = await detector.streamOutdatedPackages(logWarnings)
 
-    expect(packages[0]).toMatchObject({
-      isOutdated: false,
-      hasRangeUpdate: false,
-      hasMajorUpdate: false,
-    })
+    expect(await detector.streamOutdatedPackages(logWarnings)).toEqual([])
   })
 
   it('surfaces a same-major cross-tuple prerelease as the latest update', async () => {
@@ -1909,26 +1963,6 @@ describe('PackageDetector release-age cooldown', () => {
           version: '1.0.0-alpha.2',
           count: 1,
         })
-      })
-  })
-
-  it('falls back to the raw specifier when the installed version is unparsable', () => {
-    // A wildcard pins nothing, so parseCurrentVersion returns null and there is no
-    // clean installed version to fall back to.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('anything-goes', 'x')])
-    mockRegistry({
-      'anything-goes': {
-        latestVersion: '2.5.1',
-        allVersions: ['2.5.1'],
-        publishTimes: { '2.5.1': minutesAgo(5) },
-      },
-    })
-
-    return new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
-      .streamOutdatedPackages(logWarnings)
-      .then((packages) => {
-        expect(packages[0]).toMatchObject({ latestVersion: 'x', isOutdated: false })
-        expect(packages[0].heldByCooldown).toMatchObject({ version: '2.5.1' })
       })
   })
 

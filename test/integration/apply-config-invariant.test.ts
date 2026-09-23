@@ -145,3 +145,71 @@ describe('--apply respects .inuprc (config-filtered == reported == written)', ()
     logSpy.mockRestore()
   })
 })
+
+describe('--apply never rewrites a specifier it cannot re-prefix safely', () => {
+  // Real detector + upgrader over a temp project. Each fixture here used to come out of --apply
+  // corrupted: a range lost half its bounds, or a protocol spec had its digits replaced.
+  const unsafe = {
+    react: '^17.0.0 || ^18.0.0',
+    bounded: '>=1.2.0 <2.0.0',
+    partial: '1.x',
+    lodash: 'patch:lodash@npm%3A4.17.21#./p.patch',
+    'from-github': 'user/repo#v1.2.3',
+  }
+  const workspaceYaml = 'catalog:\n  shared: ^1.0.0 || ^2.0.0\n'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.fetchVulnerabilities.mockResolvedValue(new Map())
+    mocks.executeCommand.mockImplementation(() => {
+      throw new Error('not installed')
+    })
+    const registry: Record<string, { latestVersion: string; allVersions: string[] }> = {
+      react: { latestVersion: '18.3.1', allVersions: ['18.3.1', '18.0.0', '17.0.2', '17.0.0'] },
+      lodash: { latestVersion: '4.17.21', allVersions: ['4.17.21', '3.10.1', '3.0.0'] },
+    }
+    mocks.fetchPackageVersions.mockImplementation(
+      async (names: string[], opts: { onPackageReady?: (result: unknown) => void }) => {
+        for (const name of names) {
+          opts.onPackageReady?.({
+            packageName: name,
+            data: registry[name] ?? {
+              latestVersion: '2.0.0',
+              allVersions: ['2.0.0', '1.9.0', '1.5.0', '1.2.3', '1.0.0'],
+            },
+          })
+        }
+      }
+    )
+
+    projectDir = mkdtempSync(join(tmpdir(), 'inup-apply-'))
+    writeFileSync(join(projectDir, 'package-lock.json'), '{}\n')
+    writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceYaml)
+    writeJson(join(projectDir, 'package.json'), {
+      name: 'fixture-root',
+      dependencies: { keep: '^1.0.0', shared: 'catalog:', ...unsafe },
+    })
+  })
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true })
+  })
+
+  it('leaves compound ranges, partials and protocol specs untouched on disk and out of the report', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runCli(cliOptions({ apply: true, target: 'latest', json: true }))
+
+    const jsonCall = logSpy.mock.calls
+      .map((c) => String(c[0]))
+      .find((s) => s.trim().startsWith('{'))
+    const report = JSON.parse(jsonCall as string)
+    expect(report.outdated.map((e: { name: string }) => e.name)).toEqual(['keep'])
+
+    const rootPkg = JSON.parse(readFileSync(join(projectDir, 'package.json'), 'utf-8'))
+    expect(rootPkg.dependencies).toEqual({ keep: '^2.0.0', shared: 'catalog:', ...unsafe })
+    expect(readFileSync(join(projectDir, 'pnpm-workspace.yaml'), 'utf-8')).toBe(workspaceYaml)
+
+    logSpy.mockRestore()
+  })
+})
