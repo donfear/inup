@@ -104,4 +104,27 @@ describe('PackageMetadataService', () => {
 
     expect(metadata?.author).toBeUndefined()
   })
+
+  it('strips terminal escape sequences and control characters from registry text', async () => {
+    // Every field here is author-controlled and printed in the info modal: OSC 52 writes the
+    // clipboard, OSC 0 retitles the terminal, CSI 2J clears the screen, \x9b is an 8-bit CSI.
+    const { service } = makeService({
+      description: 'Totally\x1b]52;c;ZXZpbA==\x07 legit\x1b[2J package\x9b',
+      homepage: 'https://demo.dev\x1b]0;pwned\x07',
+      author: { name: 'Mallory\x1b[1A\x9b' },
+      license: 'MIT\x1b[2J',
+      repository: { url: 'git+https://github.com/octo/demo\x07\x1b]52;c;ZXZpbA==\x07.git' },
+    })
+
+    const metadata = await service.fetchPackageMetadata('demo', '1.0.0')
+
+    expect(metadata).toMatchObject({
+      description: 'Totally legit package',
+      homepage: 'https://demo.dev',
+      author: 'Mallory',
+      license: 'MIT',
+      repositoryUrl: 'https://github.com/octo/demo',
+      releaseNotes: 'https://github.com/octo/demo/releases',
+    })
+  })
 })

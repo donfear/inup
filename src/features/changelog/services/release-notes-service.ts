@@ -1,4 +1,5 @@
 import * as semver from 'semver'
+import { stripControlCharacters } from '../../../shared/terminal'
 import { GitHubClient } from '../clients/github-client'
 import { extractVersionSection, normalizeReleaseTag } from '../parsers/changelog-parser'
 import { extractReleaseNotesFromHtml } from '../parsers/github-release-html-parser'
@@ -63,9 +64,10 @@ export class ReleaseNotesService {
     if (repoUrl.includes('github.com')) {
       for (const loadSource of this.getGitHubSources(repoUrl, version, signal)) {
         const notes = await loadSource()
-        // GitHub API release bodies use CRLF line endings; a stray `\r` written to the
-        // terminal jumps the cursor to column 0 and corrupts the modal layout.
-        if (notes) return notes.replace(/\r\n/g, '\n')
+        // Release text is author-written and printed to the terminal, so escape sequences
+        // and control characters go. That includes the `\r` of GitHub's CRLF line endings,
+        // which jumps the cursor to column 0 and corrupts the modal layout.
+        if (notes) return stripControlCharacters(notes)
       }
     }
 

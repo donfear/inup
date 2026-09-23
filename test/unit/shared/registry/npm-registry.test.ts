@@ -145,6 +145,28 @@ describe('npm-registry', () => {
     })
   })
 
+  it('strips terminal escape sequences from the deprecation message and engines range', async () => {
+    // Both are free text from the package author and reach the terminal (the info modal's
+    // warning rows): OSC 52 writes the clipboard, OSC 0 retitles the window, CSI 2J clears it.
+    requestMock.mockResolvedValue(
+      makeOkBody({
+        versions: {
+          '1.0.0': {
+            deprecated: 'use\x1b]52;c;ZXZpbA==\x07 other-pkg\x1b[2J\x9b',
+            engines: { node: '>=99\x1b]0;pwned\x07' },
+          },
+        },
+      })
+    )
+
+    const result = await fetchPackageVersions(['demo-pkg'])
+
+    expect(result.get('demo-pkg')).toMatchObject({
+      deprecated: 'use other-pkg',
+      enginesNode: '>=99',
+    })
+  })
+
   it('cancels active requests and skips queued packages without retrying', async () => {
     const controller = new AbortController()
     poolRequestSpy.mockImplementationOnce(
@@ -1148,6 +1170,22 @@ describe('npm-registry', () => {
         expect(request.authorization).toBe('Bearer secret')
         expect(request.cacheFile.startsWith(etagTestRoot)).toBe(true)
         expect(requestMock).not.toHaveBeenCalled()
+      })
+
+      it('strips terminal escape sequences from text the Rust core decoded', async () => {
+        useTransport(
+          outcome({
+            dataJson: JSON.stringify({
+              ...data,
+              deprecated: 'gone\x1b]52;c;ZXZpbA==\x07\x9b',
+              enginesNode: '>=99\x1b[2J',
+            }),
+          })
+        )
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(result.get('demo-pkg')).toMatchObject({ deprecated: 'gone', enginesNode: '>=99' })
       })
 
       it('skips the cache file when the ETag store is disabled', async () => {

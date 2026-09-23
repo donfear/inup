@@ -15,6 +15,7 @@ import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
 import { isCongestionStatus, isRetryableStatus, parseRetryAfterMs, sleep } from '../http/retry'
 import { clamp } from '../math'
+import { stripControlCharacters } from '../terminal/text'
 import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
 import { type RegistryTarget, registryTargetFor } from './registry-config'
@@ -372,12 +373,24 @@ async function fetchPackageFromRegistry(
   )
 
   if (outcome.kind === 'success') {
-    return outcome.data
+    return withoutControlCharacters(outcome.data)
   }
 
   // Not found, or exhausted retries against real errors: report unavailable.
   // The registry is the single source of truth — there is no secondary fetch.
   return { latestVersion: 'unknown', allVersions: [] }
+}
+
+/**
+ * The deprecation message and engines range are free text from the package
+ * author, and both reach the terminal. Cleaned here because every source meets
+ * here: either decoder, and a 304 served from an ETag entry written by either
+ * (or by an older release).
+ */
+function withoutControlCharacters(data: PackageVersionData): PackageVersionData {
+  if (data.deprecated) data.deprecated = stripControlCharacters(data.deprecated)
+  if (data.enginesNode) data.enginesNode = stripControlCharacters(data.enginesNode)
+  return data
 }
 
 /**

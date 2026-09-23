@@ -13,6 +13,21 @@ export function stripAnsi(text: string): string {
   return stripVTControlCharacters(text)
 }
 
+// C0 controls except \t and \n, DEL, and the C1 range (\x9b is an 8-bit CSI).
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+const CONTROL_CHARACTERS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g
+
+/**
+ * Make untrusted text (registry fields, release notes) safe to print: a package
+ * author could otherwise embed escape sequences that write the clipboard (OSC 52),
+ * retitle the terminal or move the cursor. Whole sequences go first so their
+ * parameters don't linger as junk; any stray control character left over is
+ * dropped. Line breaks and tabs are kept.
+ */
+export function stripControlCharacters(text: string): string {
+  return stripVTControlCharacters(text).replace(CONTROL_CHARACTERS, '')
+}
+
 /** Terminal columns `text` occupies: ANSI-aware, emoji- and CJK-correct. */
 export function getVisualLength(text: string): number {
   return stringWidth(text)

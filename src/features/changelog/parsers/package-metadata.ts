@@ -1,5 +1,10 @@
+import { stripControlCharacters } from '../../../shared/terminal'
 import type { PackageManifestInput, PackageMetadata } from '../types'
 import { extractRepositoryUrl } from './repository-ref'
+
+// Registry fields are free text from the package author, printed to the terminal.
+const text = (value: unknown): string | undefined =>
+  typeof value === 'string' ? stripControlCharacters(value) : undefined
 
 export function mapPackageManifestToMetadata(
   packageName: string,
@@ -12,21 +17,18 @@ export function mapPackageManifestToMetadata(
     typeof rawData.author === 'object' && rawData.author !== null
       ? ((rawData.author as { name?: string }).name ?? rawData.author)
       : rawData.author
-  const repositoryUrl = extractRepositoryUrl(repository?.url || '')
+  const repositoryUrl = extractRepositoryUrl(text(repository?.url) ?? '')
   const npmUrl = `https://www.npmjs.com/package/${encodeURIComponent(packageName)}`
   const issuesUrl = repositoryUrl ? `${repositoryUrl}/issues` : undefined
 
   const metadata: PackageMetadata = {
-    description:
-      typeof rawData.description === 'string' && rawData.description
-        ? rawData.description
-        : 'No description available',
-    homepage: typeof rawData.homepage === 'string' ? rawData.homepage : undefined,
+    description: text(rawData.description) || 'No description available',
+    homepage: text(rawData.homepage),
     repository,
     bugs,
     keywords,
-    author: typeof author === 'string' ? author : undefined,
-    license: typeof rawData.license === 'string' ? rawData.license : undefined,
+    author: text(author),
+    license: text(rawData.license),
     repositoryUrl,
     npmUrl,
     issuesUrl,
