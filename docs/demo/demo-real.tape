@@ -50,7 +50,9 @@ Show
 # runner or the registry is. If this times out the recording fails loudly
 # instead of publishing a half-scanned demo.
 # ('.' stands in for the slash: the tape lexer ends the pattern at a literal /.)
-Wait+Screen@60s /Audit 35.35/
+# 36 = every distinct name + range the demo project declares: react is declared at
+# two ranges, and each declared version is audited on its own.
+Wait+Screen@60s /Audit 36.36/
 Sleep 700ms
 
 # Use 'M' to select all minor updates
