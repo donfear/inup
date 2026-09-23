@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { detectJsonFormat, stringifyWithFormat } from '../../../../src/shared/fs/io'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { debugLog } from '../../../../src/shared/debug-logger'
+import {
+  collectAllDependenciesAsync,
+  detectJsonFormat,
+  readPackageJson,
+  readPackageJsonAsync,
+  stringifyWithFormat,
+  stripBom,
+} from '../../../../src/shared/fs/io'
 
 describe('detectJsonFormat', () => {
   it('detects 2-space indentation', () => {
@@ -57,6 +68,11 @@ describe('detectJsonFormat', () => {
     expect(result.newline).toBe('\r\n')
     expect(result.trailingNewline).toBe(false)
   })
+
+  it('detects a leading UTF-8 byte order mark (Windows editors add one)', () => {
+    expect(detectJsonFormat('\uFEFF{\n  "a": 1\n}\n').bom).toBe(true)
+    expect(detectJsonFormat('{\n  "a": 1\n}\n').bom).toBe(false)
+  })
 })
 
 describe('stringifyWithFormat', () => {
@@ -85,15 +101,52 @@ describe('stringifyWithFormat', () => {
     const out = stringifyWithFormat({ a: 1 }, detectJsonFormat('{\n  "x": 0\n}\n'))
     expect(out.includes('\r')).toBe(false)
   })
+
+  it('round-trips an unchanged BOM + CRLF document byte-for-byte', () => {
+    const raw = '\uFEFF{\r\n  "a": 1\r\n}\r\n'
+    expect(stringifyWithFormat(JSON.parse(stripBom(raw)), detectJsonFormat(raw))).toBe(raw)
+  })
+
+  it('never introduces a byte order mark into a document that had none', () => {
+    const out = stringifyWithFormat({ a: 1 }, detectJsonFormat('{\n  "x": 0\n}\n'))
+    expect(out.startsWith('{')).toBe(true)
+  })
+})
+
+describe('reading a package.json with a UTF-8 byte order mark', () => {
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'inup-io-bom-test-'))
+  })
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const writeBomManifest = () => {
+    const path = join(tempDir, 'package.json')
+    writeFileSync(path, `\uFEFF${JSON.stringify({ name: 'bom', packageManager: 'pnpm@10.0.0' })}`)
+    return path
+  }
+
+  it('parses it synchronously', () => {
+    expect(readPackageJson(writeBomManifest())).toMatchObject({ name: 'bom' })
+  })
+
+  it('parses it asynchronously', async () => {
+    await expect(readPackageJsonAsync(writeBomManifest())).resolves.toMatchObject({ name: 'bom' })
+  })
+
+  it('still rejects a manifest that is malformed after the mark', () => {
+    const path = join(tempDir, 'package.json')
+    writeFileSync(path, '\uFEFF{malformed')
+    expect(() => readPackageJson(path)).toThrow('Failed to read package.json')
+  })
 })
 
 describe('collectAllDependenciesAsync', () => {
   it('collects dependencies from every type and skips malformed files', async () => {
-    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs')
-    const { tmpdir } = await import('node:os')
-    const { join } = await import('node:path')
-    const { collectAllDependenciesAsync } = await import('../../../../src/shared/fs/io')
-
     const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
     try {
       const good = join(tempDir, 'good')
@@ -118,6 +171,49 @@ describe('collectAllDependenciesAsync', () => {
 
       expect(deps.map((d) => d.name).sort()).toEqual(['alpha', 'beta', 'delta', 'gamma'])
       expect(deps.find((d) => d.name === 'gamma')?.type).toBe('peerDependencies')
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('skips dependency values that are not strings instead of crashing the scan', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
+    const warnSpy = vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+    try {
+      const path = join(tempDir, 'package.json')
+      writeFileSync(
+        path,
+        JSON.stringify({
+          dependencies: { foo: null, alpha: '^1.0.0' },
+          devDependencies: { bar: 1, baz: { version: '1.0.0' } },
+        })
+      )
+
+      const deps = await collectAllDependenciesAsync([path])
+
+      expect(deps.map((d) => d.name)).toEqual(['alpha'])
+      expect(warnSpy).toHaveBeenCalledTimes(3)
+      expect(warnSpy).toHaveBeenCalledWith(
+        'DependencyCollector',
+        expect.stringContaining(`skipping dependencies.foo in ${path}`)
+      )
+    } finally {
+      warnSpy.mockRestore()
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('collects dependencies from a manifest saved with a byte order mark', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
+    try {
+      const path = join(tempDir, 'package.json')
+      writeFileSync(path, `\uFEFF${JSON.stringify({ dependencies: { alpha: '^1.0.0' } })}`)
+
+      const deps = await collectAllDependenciesAsync([path])
+
+      expect(deps).toEqual([
+        { name: 'alpha', version: '^1.0.0', type: 'dependencies', packageJsonPath: path },
+      ])
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }

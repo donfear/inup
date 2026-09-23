@@ -8,6 +8,7 @@ import {
   detectJsonFormat,
   findWorkspaceRoot,
   stringifyWithFormat,
+  stripBom,
   writeFileAtomic,
 } from '../../shared/fs'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
@@ -247,7 +248,7 @@ export class PackageUpgrader {
     try {
       // Read the current package.json — keep the raw text so we can round-trip its formatting
       const rawContent = readFileSync(packageJsonPath, 'utf-8')
-      const packageJson = JSON.parse(rawContent) as PackageJson
+      const packageJson = JSON.parse(stripBom(rawContent)) as PackageJson
 
       // Range and latest upgrades write the same way; 'none' choices leave the entry alone.
       const upgrades = choices.filter((c) => c.upgradeType !== 'none')

@@ -177,16 +177,16 @@ describe('PackageManagerDetector', () => {
       expect(PackageManagerDetector.detect(testDir).name).toBe('yarn')
     })
 
-    it('falls back to the lockfile when package.json starts with a UTF-8 BOM', () => {
-      // Windows editors love BOMs; JSON.parse rejects them, so detection must degrade
-      // to the lockfile instead of crashing or mis-detecting.
+    it('reads the packageManager field when package.json starts with a UTF-8 BOM', () => {
+      // Windows editors love BOMs; the mark is stripped before parsing, so the field
+      // still wins over the lockfile exactly as it does for a BOM-less manifest.
       writeFileSync(
         join(testDir, 'package.json'),
         `\uFEFF${JSON.stringify({ packageManager: 'yarn@4.0.0' })}`
       )
       writeFileSync(join(testDir, 'pnpm-lock.yaml'), '')
 
-      expect(PackageManagerDetector.detect(testDir).name).toBe('pnpm')
+      expect(PackageManagerDetector.detect(testDir).name).toBe('yarn')
     })
 
     describe('from a subdirectory', () => {
