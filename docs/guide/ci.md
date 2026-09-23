@@ -36,6 +36,8 @@ Anything newer than that target is still reported as the latest update (`hasMajo
 
 It honors [`.inuprc`](configuration.md) exactly as the report does — a package the config excludes is never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 
+The install runs once in each project that changed: in its workspace root, or in the project's own directory when it isn't part of a workspace. If an install fails or the package manager isn't installed, `--apply` exits `2` and names each directory with the command to run there. The version bumps stay written.
+
 ## pnpm catalogs work in every mode
 
 Dependencies declared as `catalog:` / `catalog:<name>` are resolved from `pnpm-workspace.yaml`; `--apply` writes the new range back into that file (comments and formatting preserved), and in `--json` output such entries carry a `"catalog"` field with their `packageJsonPath` pointing at `pnpm-workspace.yaml`.

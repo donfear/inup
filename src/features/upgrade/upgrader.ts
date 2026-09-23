@@ -71,46 +71,62 @@ export class PackageUpgrader {
       await this.upgradeCatalogChoices(catalogChoices)
     }
 
+    // Install before claiming success: if it fails, the lockfile no longer matches the manifests.
+    await this.runInstall(choices)
+
     // Count unique packages upgraded
     const uniquePackages = new Set(choices.map((c) => c.name))
     this.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
-
-    // Execute package manager install after all upgrades are complete
-    await this.runInstall(choices)
   }
 
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
-    // The sole caller (upgradePackages) returns early on an empty selection,
-    // so choices is always non-empty here.
-
-    // Determine the directory to run install in
-    // Use workspace root if it exists, otherwise use the directory of the first package.json
-    const firstPackageJsonPath = choices[0].packageJsonPath
-    const firstPackageDir = dirname(firstPackageJsonPath)
-    const workspaceRoot = findWorkspaceRoot(firstPackageDir, this.packageManager.name)
-    const installDir = workspaceRoot || firstPackageDir
-
-    // Check if package manager is installed
-    try {
-      executeCommand(`${this.packageManager.name} --version`, installDir)
-    } catch {
-      this.log(
-        chalk.yellow(
-          `\n⚠️  ${this.packageManager.displayName} is detected but not installed on your system.\n` +
-            `Please run the install command manually:\n` +
-            `  cd ${installDir}\n` +
-            `  ${this.packageManager.installCommand}\n`
-        )
-      )
-      return // Skip install, let user do it manually
-    }
-
     // We just rewrote package.json, so the install must be allowed to regenerate the lockfile.
     // pnpm/yarn default to frozen/immutable installs under CI; writeInstallCommand opts out.
     const installCommand =
       this.packageManager.writeInstallCommand ?? this.packageManager.installCommand
 
-    this.log(chalk.cyan(`\n📦 Running ${installCommand}...\n`))
+    // Keep going after a failure so every other project still gets its lockfile updated, then
+    // fail once, naming each directory that still needs an install.
+    const failures: string[] = []
+    for (const installDir of this.findInstallDirs(choices)) {
+      const failure = this.installIn(installDir, installCommand)
+      if (failure) failures.push(`  ${installDir} (${failure})`)
+    }
+
+    if (failures.length > 0) {
+      throw new Error(
+        `Upgrades were written, but the install did not finish, so the lockfile is out of date. Run \`${installCommand}\` in:\n${failures.join('\n')}`
+      )
+    }
+  }
+
+  /**
+   * One install per project the selection touched: the workspace root for workspace members,
+   * else the manifest's own directory. A selection can span independent projects (separate
+   * lockfiles, e.g. examples/ scanned from the repo root), and each needs its own install.
+   * Manifests skipped as missing are left out — nothing was written there. Sorted so the order
+   * doesn't depend on selection order.
+   */
+  private findInstallDirs(choices: PackageUpgradeChoice[]): string[] {
+    const installDirs = new Set<string>()
+    for (const manifestPath of new Set(choices.map((c) => c.packageJsonPath))) {
+      if (!existsSync(manifestPath)) continue
+      const manifestDir = dirname(manifestPath)
+      installDirs.add(findWorkspaceRoot(manifestDir, this.packageManager.name) ?? manifestDir)
+    }
+    return [...installDirs].sort()
+  }
+
+  /** Run the install in one directory. Returns why it failed, or null when it succeeded. */
+  private installIn(installDir: string, installCommand: string): string | null {
+    // Check if package manager is installed
+    try {
+      executeCommand(`${this.packageManager.name} --version`, installDir)
+    } catch {
+      return `${this.packageManager.displayName} is not installed`
+    }
+
+    this.log(chalk.cyan(`\n📦 Running ${installCommand} in ${installDir}...\n`))
 
     // In quiet mode, send the install child's stdout to *our* stderr (fd 2). The child uses
     // inherited fds, so its progress output bypasses any JS shim — redirecting at spawn time is
@@ -123,16 +139,10 @@ export class PackageUpgrader {
       shell: true,
     })
 
-    if (result.error) {
-      throw result.error
-    }
-
-    if (result.status !== 0) {
-      if (result.signal) {
-        throw new Error(`${installCommand} terminated by signal ${result.signal}`)
-      }
-      throw new Error(`${installCommand} exited with code ${result.status}`)
-    }
+    if (result.error) return `${installCommand} could not start: ${result.error.message}`
+    if (result.signal) return `${installCommand} terminated by signal ${result.signal}`
+    if (result.status !== 0) return `${installCommand} exited with code ${result.status}`
+    return null
   }
 
   /**

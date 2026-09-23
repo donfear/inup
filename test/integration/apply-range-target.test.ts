@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   fetchVulnerabilities: vi.fn(),
   executeCommand: vi.fn(),
+  spawnSync: vi.fn(),
 }))
 
 vi.mock('../../src/shared/registry/npm-registry', async (importOriginal) => {
@@ -29,10 +30,16 @@ vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal)
   return { ...actual, fetchVulnerabilities: mocks.fetchVulnerabilities }
 })
 
-// Package manager "not installed": the upgrader writes package.json and skips the install.
+// Stub the package manager: the `--version` probe (executeCommand) and the install (spawnSync)
+// both succeed without running anything real.
 vi.mock('../../src/shared/exec', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/shared/exec')>()
   return { ...actual, executeCommand: mocks.executeCommand }
+})
+
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>()
+  return { ...actual, spawnSync: mocks.spawnSync }
 })
 
 import { runCli } from '../../src/cli'
@@ -55,9 +62,7 @@ describe('--apply --target minor follows the specifier operator', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    mocks.executeCommand.mockImplementation(() => {
-      throw new Error('not installed')
-    })
+    mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     mocks.fetchPackageVersions.mockImplementation(
       async (names: string[], opts: { onPackageReady?: (result: unknown) => void }) => {
         for (const name of names) {

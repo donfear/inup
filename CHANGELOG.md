@@ -48,6 +48,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - The in-range update (the range column, `--apply` with the default `--target minor`, and the GitHub Action's default) follows each range's operator instead of taking the newest version of the same major. `^0.2.3` stays on `0.2.x`, because a new `0.y` is breaking; `^0.0.3` gets no in-range update; `~1.2.3` stays on `1.2.x`. Exact pins and `>=` still move to the newest version of their major. Newer versions outside the range still show as the latest update, and `--target latest` still applies them.
 - `--target patch` no longer bumps a `^0.0.z` range, which allows no newer version.
 - A full disk, a crash or a kill while inup saves your upgrades can no longer leave a cut-off `package.json` or `pnpm-workspace.yaml`. The file keeps its old contents until the new version is completely written.
+- After writing upgrades, inup runs the install in every project it changed — each workspace root and each standalone project with its own lockfile — instead of only the first one, which left the other lockfiles out of date.
+- inup no longer says an upgrade succeeded before the install has run. If the install fails, or the package manager isn't installed, it exits with an error naming each directory that still needs an install and the command to run there. A missing package manager used to print a warning and exit 0, so `--apply` in CI passed with an out-of-date lockfile.
 
 ### Security
 
