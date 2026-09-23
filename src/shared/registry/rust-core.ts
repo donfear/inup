@@ -11,13 +11,14 @@ import { downloadNativeCore, nativeCoreFile } from './native-download'
  * as per-platform npm packages (`inup-darwin-arm64`, `inup-windows-x64`, …).
  * See native/README.md.
  *
- * Off unless the user opts in (`--native` or `"native": true` in .inuprc), and
- * nothing native is downloaded until then. When on, resolution happens once
- * per process:
+ * The CLI turns it on unless the user opts out (`--no-native` or
+ * `"native": false` in .inuprc); nothing native loads until then. When on,
+ * resolution happens once per process:
  * 1. a local `pnpm native:build` output (source checkouts)
- * 2. the addon cached by an earlier opt-in run
+ * 2. the addon cached by an earlier run
  * 3. neither: this run uses TypeScript while the addon for this platform is
- *    downloaded (verified against the registry's sha512) for the next run
+ *    downloaded (verified against the registry's sha512) for the next run,
+ *    unless the caller disallowed downloads for this process
  *
  * Two capabilities, each optional in an addon:
  * - transport: a whole registry attempt off the JS thread — `nativeTransport()`
@@ -181,12 +182,17 @@ const JS_ONLY: Resolved = { core: 'js', decoder: null, transport: null }
 
 let environment = defaultEnvironment()
 let enabled = false
+let downloadAllowed = true
 let resolved: Resolved | null = null
 let download: Promise<void> | null = null
 
-/** Opt in to (or out of) the native core for this process. */
-export function configureNativeCore(options: { enabled: boolean }): void {
+/**
+ * Turn the native core on (or off) for this process. `download: false` keeps a
+ * run on TypeScript instead of fetching an addon that is not cached yet.
+ */
+export function configureNativeCore(options: { enabled: boolean; download?: boolean }): void {
   enabled = options.enabled
+  downloadAllowed = options.download ?? true
   resolved = null
 }
 
@@ -274,7 +280,8 @@ function loadNative(): Resolved {
     }
   }
   debugLog.info('rust-core', `native core not available yet for ${abi}`, failures)
-  startDownload(abi)
+  if (downloadAllowed) startDownload(abi)
+  else debugLog.info('rust-core', 'native core download skipped for this run')
   return JS_ONLY
 }
 

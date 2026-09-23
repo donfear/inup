@@ -196,11 +196,13 @@ export async function runCli(options: CliOptions): Promise<void> {
     ? checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
     : undefined
 
-  // Experimental native core: flag (--native / --no-native) > .inuprc > off.
-  // Loaded only when on, so default runs never touch it.
-  if (options.native ?? projectConfig.native ?? false) {
+  // Native core: flag (--native / --no-native) > .inuprc > on. Headless runs left on the default
+  // only use a core an earlier run cached: a download would hold CI and --json runs open until it
+  // lands. Loaded only when on, so --no-native runs never touch it.
+  const nativeChoice = options.native ?? projectConfig.native
+  if (nativeChoice ?? true) {
     const { configureNativeCore } = await import('./shared/registry/rust-core')
-    configureNativeCore({ enabled: true })
+    configureNativeCore({ enabled: true, download: interactive || nativeChoice === true })
   }
 
   const runnerOptions: UpgradeOptions = {
@@ -300,9 +302,9 @@ program
   )
   .option(
     '--native',
-    'experimental: use the native (Rust) registry core; downloads it for this platform on first use'
+    'use the native (Rust) registry core, on by default; downloads it on first use, even in headless runs'
   )
-  .option('--no-native', 'use the TypeScript registry core even if .inuprc enables native')
+  .option('--no-native', 'use the TypeScript registry core for this run')
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .option(

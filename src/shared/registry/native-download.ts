@@ -7,9 +7,8 @@ import { type HttpResponse, httpRequest } from '../http/http-request'
 import { registryTargetFor } from './registry-config'
 
 /**
- * On-demand install of the prebuilt native core, used only after the user
- * opts in (`--native` or `"native": true` in .inuprc). Nothing native is part
- * of inup's own npm install.
+ * On-demand install of the prebuilt native core, on the first run that wants
+ * it and has none cached. Nothing native is part of inup's own npm install.
  *
  * The addon comes from this platform's package (see nativePackageName) at
  * inup's own version. It is fetched from the configured npm registry, verified

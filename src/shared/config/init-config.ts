@@ -71,10 +71,11 @@ export function buildConfigTemplate(): string {
   // ramping — an escape hatch for slow or metered connections.
   // "concurrency": 4
 
-  // Experimental: fetch and parse registry data with inup's native (Rust)
-  // core. The first run downloads the prebuilt core for this platform once
-  // (about 1.5 MB, verified against the registry's checksum).
-  // "native": true
+  // inup fetches and parses registry data with its native (Rust) core. The
+  // first run downloads the prebuilt core for this platform once (about
+  // 1.5 MB, verified against the registry's checksum). Set false to keep
+  // native code off this project.
+  // "native": false
 }
 `
 }

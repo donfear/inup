@@ -162,6 +162,23 @@ describe('core selection', () => {
     )
   })
 
+  it('stays on TypeScript without downloading when downloads are disallowed', () => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    const download = useAddon(() => null)
+    configureNativeCore({ enabled: true, download: false })
+    expect(activeCore()).toBe('js')
+    expect(download).not.toHaveBeenCalled()
+    expect(nativeCoreDownload()).toBeNull()
+    expect(info).toHaveBeenCalledWith('rust-core', 'native core download skipped for this run')
+  })
+
+  it('still loads a cached addon when downloads are disallowed', () => {
+    const download = useAddon(() => fakeAddon())
+    configureNativeCore({ enabled: true, download: false })
+    expect(activeCore()).toBe('native')
+    expect(download).not.toHaveBeenCalled()
+  })
+
   it('downloads at most once per process', () => {
     const download = useAddon(() => null)
     activeCore()
