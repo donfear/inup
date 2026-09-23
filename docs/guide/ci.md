@@ -49,6 +49,7 @@ With `--json`, stdout carries **only** the JSON document; all progress and warni
 | --- | --- |
 | `0` | Up to date |
 | `1` | Updates exist (`--check`) |
-| `2` | Error |
+| `2` | Error, including an unknown flag or an invalid flag value |
+| `130` / `143` | Cancelled (Ctrl+C / `SIGTERM`) |
 
 For scheduled upgrades with a rolling pull request, use the [GitHub Action](github-action.md).

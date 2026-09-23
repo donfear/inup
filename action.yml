@@ -82,7 +82,7 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    # target and package-manager need no check here: the CLI rejects an invalid value with exit 1.
+    # target and package-manager need no check here: the CLI rejects an invalid value with exit 2.
     # minimum-release-age does: the CLI parses with Number(), so it would accept forms like '1e5'
     # or '0x10' that are not the whole number of minutes this input documents. Read from env
     # (never interpolated into the script body) to avoid shell injection.

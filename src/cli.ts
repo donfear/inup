@@ -34,7 +34,7 @@ if (typeof enableCompileCache === 'function') {
   }
 }
 
-const program = new Command()
+export const program = new Command()
 
 export interface CliOptions {
   dir: string
@@ -79,7 +79,7 @@ async function runInit(cwd: string): Promise<void> {
       console.error(chalk.red(`Config already exists: ${existing}`))
       console.error(chalk.yellow('Refusing to overwrite without confirmation. Delete it first,'))
       console.error(chalk.yellow('or run `inup --init` in an interactive terminal to confirm.'))
-      process.exit(1)
+      process.exit(2)
     }
     const shouldOverwrite = await TerminalInput.promptForImmediateConfirmation(
       `${chalk.yellow('Config already exists:')} ${existing}. Overwrite with a fresh template? ${chalk.dim('[y/N]')} `,
@@ -152,7 +152,7 @@ export async function runCli(options: CliOptions): Promise<void> {
       console.error(
         chalk.yellow('Expected a non-negative number of minutes, e.g. --minimum-release-age 10080')
       )
-      process.exit(1)
+      process.exit(2)
     }
   }
 
@@ -187,7 +187,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   if (!Number.isInteger(maxDepth) || maxDepth < 0) {
     console.error(chalk.red(`Invalid max depth: ${options.maxDepth}`))
     console.error(chalk.yellow('Expected a non-negative integer, for example: --max-depth 10'))
-    process.exit(1)
+    process.exit(2)
   }
 
   let concurrency: number | undefined
@@ -200,7 +200,7 @@ export async function runCli(options: CliOptions): Promise<void> {
           `Expected an integer between 1 and ${POOL_CONNECTIONS}, for example: --concurrency 4`
         )
       )
-      process.exit(1)
+      process.exit(2)
     }
     concurrency = parsed
   }
@@ -337,29 +337,32 @@ program
       'with --apply: how far to bump — minor (in-range) | patch (same major.minor only) | latest (default: minor)'
     ).choices(['minor', 'patch', 'latest'] satisfies ApplyTarget[])
   )
+  // Exit codes: 0 ok, 1 updates exist (--check), 2 error. Commander exits 1 on a usage error,
+  // which --check would read as "updates exist"; --help and --version keep their 0.
+  .exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : 2))
   .action(runCli)
 
 // Handle uncaught errors gracefully
 process.on('uncaughtException', (error) => {
   console.error(chalk.red('Uncaught Exception:'), error.message)
-  process.exit(1)
+  process.exit(2)
 })
 
 process.on('unhandledRejection', (reason) => {
   console.error(chalk.red('Unhandled Rejection:'), reason)
-  process.exit(1)
+  process.exit(2)
 })
 
-// Handle Ctrl+C gracefully
+// Cancelled runs exit 128 + signal number, as a shell reports them, so `inup && git commit …`
+// stops. The notice goes to stderr to keep `--json` stdout a pure document.
 process.on('SIGINT', () => {
-  console.log(chalk.yellow('\n\nOperation cancelled by user.'))
-  process.exit(0)
+  console.error(chalk.yellow('\n\nOperation cancelled by user.'))
+  process.exit(130)
 })
 
-// Also handle SIGTERM
 process.on('SIGTERM', () => {
-  console.log(chalk.yellow('\n\nOperation cancelled.'))
-  process.exit(0)
+  console.error(chalk.yellow('\n\nOperation cancelled.'))
+  process.exit(143)
 })
 
 if (require.main === module) {

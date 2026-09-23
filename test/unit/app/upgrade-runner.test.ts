@@ -417,7 +417,7 @@ describe('UpgradeRunner terminal handoff', () => {
       await new UpgradeRunner({ cwd: '/repo' }).run()
       expect(abort).toHaveBeenCalledWith(error)
       expect(order).toEqual(['released', 'error'])
-      expect(exit).toHaveBeenCalledWith(1)
+      expect(exit).toHaveBeenCalledWith(2)
     } finally {
       log.mockRestore()
       exit.mockRestore()
@@ -568,14 +568,14 @@ describe('UpgradeRunner terminal handoff', () => {
     logSpy.mockRestore()
   })
 
-  it('calls process.exit(1) when no package.json is found', async () => {
+  it('exits 2 (error) when no package.json is found', async () => {
     mocks.hasPackageJson.mockReturnValue(false)
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any)
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await new UpgradeRunner({ cwd: '/no-pkg' }).run()
 
-    expect(exitSpy).toHaveBeenCalledWith(1)
+    expect(exitSpy).toHaveBeenCalledWith(2)
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No package.json'))
     exitSpy.mockRestore()
     errorSpy.mockRestore()
@@ -739,7 +739,7 @@ describe('UpgradeRunner terminal handoff', () => {
       await new UpgradeRunner({ cwd: '/repo' }).run()
 
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid selections detected'))
-      expect(exitSpy).toHaveBeenCalledWith(1)
+      expect(exitSpy).toHaveBeenCalledWith(2)
     } finally {
       exitSpy.mockRestore()
       errorSpy.mockRestore()

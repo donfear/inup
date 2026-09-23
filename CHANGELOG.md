@@ -20,6 +20,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 - A config file inup can't parse now stops the run with an error naming the file and where parsing failed (exit code 2). Before, inup printed a warning and carried on with a config from a parent directory, or with none, so a setting such as `minimumReleaseAge` could be off without you noticing.
 - An unknown field in the config file, such as a misspelled `minimumReleaseAge`, now prints a warning naming the field and the file, with a suggestion when it looks like a typo. It used to be ignored silently.
 - Upgrades no longer damage specifiers that aren't a single version. `^17.0.0 || ^18.0.0` lost its second range, `>=1.2.0 <2.0.0` lost its upper bound, `1.x` became an exact version, and `patch:`, `jsr:`, `user/repo#v1.2.3` and git URL specs got a new version spliced into the middle. inup now only upgrades a plain version (`1.2.3`, `^1.2.3`, `~1.2.3`, `>=1.2.3`, `=1.2.3`), in `package.json` and in pnpm catalogs. Anything else is left exactly as written and not listed, the way `workspace:` and `npm:` specs already were.
+- Errors exit with code 2, as documented, instead of 1: an unknown flag, an invalid flag value, or a run that fails. Under `--check`, exit code 1 now only ever means updates exist, so a typo in a CI command no longer looks like outdated dependencies.
+- Cancelling with Ctrl+C exits with code 130 (143 when stopped with `SIGTERM`) instead of 0, so `inup && git commit …` no longer carries on after a cancelled run. Quitting the picker with `q` still exits 0, and the "Operation cancelled" notice goes to stderr so it never lands in `--json` output.
 
 ### Security
 

@@ -332,11 +332,43 @@ describe('CLI concurrency flag', () => {
     }) as never)
 
     await expect(runCli({ ...baseOptions, concurrency: raw })).rejects.toThrow('process.exit')
-    expect(exitSpy).toHaveBeenCalledWith(1)
+    expect(exitSpy).toHaveBeenCalledWith(2)
 
     errorSpy.mockRestore()
     exitSpy.mockRestore()
   })
+})
+
+describe('CLI max-depth flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setInteractive(false)
+    mocks.loadProjectConfig.mockReturnValue({})
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+  })
+
+  it.each(['abc', '-1'])(
+    'rejects invalid --max-depth %s as an error, not as "updates exist"',
+    async (raw) => {
+      // Exit 1 means "updates exist" under --check, so a typo must not look like drift.
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit')
+      }) as never)
+
+      await expect(
+        runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: raw, check: true })
+      ).rejects.toThrow('process.exit')
+      expect(exitSpy).toHaveBeenCalledWith(2)
+      expect(mocks.headlessRun).not.toHaveBeenCalled()
+
+      errorSpy.mockRestore()
+      exitSpy.mockRestore()
+    }
+  )
 })
 
 describe('CLI release-age cooldown flag', () => {
@@ -417,7 +449,7 @@ describe('CLI release-age cooldown flag', () => {
       await expect(runCli({ ...baseOptions, minimumReleaseAge: raw })).rejects.toThrow(
         'process.exit'
       )
-      expect(exitSpy).toHaveBeenCalledWith(1)
+      expect(exitSpy).toHaveBeenCalledWith(2)
 
       errorSpy.mockRestore()
       exitSpy.mockRestore()
@@ -551,7 +583,7 @@ describe('CLI --init', () => {
 
     await expect(runCli(initOptions())).rejects.toThrow('process.exit')
 
-    expect(exitSpy).toHaveBeenCalledWith(1)
+    expect(exitSpy).toHaveBeenCalledWith(2)
     expect(readFileSync(join(testDir, '.inuprc'), 'utf-8')).toBe('{"ignore": ["mine"]}')
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
     errorSpy.mockRestore()

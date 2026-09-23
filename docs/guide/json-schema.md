@@ -160,4 +160,5 @@ With `--json`, stdout carries **only** the JSON document — all progress, warni
 | --- | --- |
 | `0` | Up to date |
 | `1` | Updates exist (with `--check`) |
-| `2` | Error |
+| `2` | Error, including an unknown flag or an invalid flag value |
+| `130` / `143` | Cancelled (Ctrl+C / `SIGTERM`) |
