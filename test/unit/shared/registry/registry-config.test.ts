@@ -1,9 +1,13 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal ${...} strings exercise npm's env-var expansion in .npmrc auth tokens
-import { beforeEach, describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from 'vitest'
 import {
   clearRegistryTargetCache,
   registryTargetFor,
   scopeOfPackage,
+  useNpmConfigFrom,
 } from '../../../../src/shared/registry/registry-config'
 
 describe('registry-config', () => {
@@ -166,6 +170,69 @@ describe('registry-config', () => {
       // from one injected config into the next.
       expect(withOverride.origin).toBe('https://registry.example.com')
       expect(withDifferentOverride.origin).toBe('https://other.example.com')
+    })
+  })
+
+  describe('project .npmrc', () => {
+    // Two projects with their own .npmrc: inup is started in `caller` and scans `target`.
+    let root: string
+    let caller: string
+    let target: string
+    let cwd: MockInstance<() => string>
+
+    const project = (name: string, host: string) => {
+      const dir = join(root, name)
+      mkdirSync(dir)
+      writeFileSync(join(dir, 'package.json'), '{}')
+      writeFileSync(
+        join(dir, '.npmrc'),
+        [
+          `registry=https://${host}/`,
+          `@myco:registry=https://${host}/scoped/`,
+          `//${host}/scoped/:_authToken=${name}-token`,
+          '',
+        ].join('\n')
+      )
+      return dir
+    }
+
+    beforeEach(() => {
+      root = mkdtempSync(join(tmpdir(), 'inup-npmrc-test-'))
+      caller = project('caller', 'cwd-registry.example.com')
+      target = project('target', 'target-registry.example.com')
+      cwd = vi.spyOn(process, 'cwd').mockReturnValue(caller)
+    })
+
+    afterEach(() => {
+      cwd.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    })
+
+    it('reads the working directory project when no project is set', () => {
+      expect(registryTargetFor('lodash').origin).toBe('https://cwd-registry.example.com')
+    })
+
+    it("reads the scanned project's .npmrc, not the working directory's", () => {
+      useNpmConfigFrom(target)
+
+      expect(registryTargetFor('lodash').origin).toBe('https://target-registry.example.com')
+      expect(registryTargetFor('@myco/pkg')).toEqual({
+        origin: 'https://target-registry.example.com',
+        pathPrefix: '/scoped',
+        authHeader: 'Bearer target-token',
+      })
+      // The working directory is only borrowed for the config load.
+      expect(process.cwd()).toBe(caller)
+    })
+
+    it('forgets memoized resolutions when the project changes', () => {
+      useNpmConfigFrom(caller)
+      const before = registryTargetFor('lodash')
+      useNpmConfigFrom(caller)
+      expect(registryTargetFor('lodash')).toBe(before)
+
+      useNpmConfigFrom(target)
+      expect(registryTargetFor('lodash').origin).toBe('https://target-registry.example.com')
     })
   })
 })

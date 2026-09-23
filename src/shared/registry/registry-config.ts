@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import getAuthToken from 'registry-auth-token'
 import getRegistryUrlUntyped from 'registry-auth-token/registry-url'
 import { NPM_REGISTRY_URL } from '../config'
@@ -41,8 +42,19 @@ export function scopeOfPackage(packageName: string): string | undefined {
 }
 
 // Config files are re-read on every resolution inside registry-auth-token, so
-// memoize per scope: one resolution per distinct scope per process.
+// memoize per scope: one resolution per distinct scope per project.
 const targetByScope = new Map<string, RegistryTarget>()
+
+// The scanned project (`--dir`) whose `.npmrc` applies; unset means the working directory.
+let projectDir: string | undefined
+
+/** Resolve npm config for the project at `dir` from now on, not the working directory's. */
+export function useNpmConfigFrom(dir: string): void {
+  const resolved = resolve(dir)
+  if (resolved === projectDir) return
+  projectDir = resolved
+  targetByScope.clear()
+}
 
 export function registryTargetFor(packageName: string, npmrc?: NpmrcOverride): RegistryTarget {
   const scope = scopeOfPackage(packageName) ?? ''
@@ -50,11 +62,35 @@ export function registryTargetFor(packageName: string, npmrc?: NpmrcOverride): R
     const cached = targetByScope.get(scope)
     if (cached) return cached
   }
-  const target = resolveTarget(scope || undefined, npmrc)
+  const target = inProjectDir(() => resolveTarget(scope || undefined, npmrc))
   if (!npmrc) {
     targetByScope.set(scope, target)
   }
   return target
+}
+
+/**
+ * Runs a config load with `process.cwd()` reporting the scanned project.
+ *
+ * registry-auth-token loads npm config through @pnpm/npm-conf, which finds the
+ * project `.npmrc` by walking up from `process.cwd()` and takes no directory to
+ * start from (its `prefix` option would also move the global config to
+ * `<prefix>/etc/npmrc`). inup does not chdir for `--dir`, so without this a scan
+ * of another project would use the calling directory's registries and tokens.
+ * The load is synchronous, so no other JavaScript sees the swap; a real
+ * `process.chdir` would also move the directory under I/O running on other
+ * threads, and throws in worker threads.
+ */
+function inProjectDir<T>(load: () => T): T {
+  const dir = projectDir
+  if (dir === undefined) return load()
+  const cwd = process.cwd
+  process.cwd = () => dir
+  try {
+    return load()
+  } finally {
+    process.cwd = cwd
+  }
 }
 
 function resolveTarget(scope: string | undefined, npmrc?: NpmrcOverride): RegistryTarget {
@@ -92,7 +128,8 @@ function resolveTarget(scope: string | undefined, npmrc?: NpmrcOverride): Regist
   }
 }
 
-/** Test helper: forget memoized resolutions so npmrc overrides take effect. */
+/** Test helper: forget the project directory and memoized resolutions. */
 export function clearRegistryTargetCache(): void {
+  projectDir = undefined
   targetByScope.clear()
 }

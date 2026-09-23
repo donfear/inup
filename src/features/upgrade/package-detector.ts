@@ -12,6 +12,7 @@ import {
 import type { ControlTick } from '../../shared/http/hill-climb-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { fetchPackageVersions, type PackageVersionData } from '../../shared/registry/npm-registry'
+import { useNpmConfigFrom } from '../../shared/registry/registry-config'
 import type {
   CooldownHold,
   DependencyEntry,
@@ -80,6 +81,9 @@ export class PackageDetector {
 
   constructor(options?: UpgradeOptions) {
     this.cwd = options?.cwd || process.cwd()
+    // Registry lookups for this run (fetches, the audit, changelogs, the native core download)
+    // read the scanned project's .npmrc, as npm would when run from there.
+    useNpmConfigFrom(this.cwd)
     this.excludePatterns = options?.excludePatterns || []
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
