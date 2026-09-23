@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeVersionColumnWidths,
+  padLineToWidth,
   renderInterface,
   renderPackageLine,
 } from '../../../../src/features/interactive/renderer/package-list'
@@ -705,5 +706,104 @@ describe('package-list render fallbacks', () => {
     const rendered = renderPlain([baseState], { filterMode: true, filterQuery: '' })
 
     expect(rendered).toContain('Search:')
+  })
+})
+
+describe('narrow terminals', () => {
+  // The session diff-writes rows by absolute screen position, so a single
+  // line wider than the terminal wraps, scrolls the frame and every later
+  // update lands on the wrong row. Nothing rendered may exceed the width.
+  const states = [
+    baseState,
+    makeSelectionState({
+      name: '@a-very-long-scope/an-extremely-long-package-name-for-testing',
+      type: 'devDependencies',
+      catalog: 'default',
+      deprecated: 'use something else instead',
+      vulnerability: {
+        count: 1,
+        highestSeverity: 'high',
+        detailsUrl: 'https://github.com/advisories/GHSA-x',
+        advisories: [],
+      },
+    }),
+    makeSelectionState({
+      name: 'next',
+      currentVersionSpecifier: '^16.0.0-preview.9',
+      rangeVersion: '16.0.0-preview.10',
+      latestVersion: '16.0.0-preview.10',
+      selectedOption: 'latest',
+    }),
+    makeSelectionState({ name: 'up-to-date', hasRangeUpdate: false, hasMajorUpdate: false }),
+  ]
+
+  it.each([80, 70, 60])('keeps every frame line within %s columns', (terminalWidth) => {
+    const lines = renderInterface(
+      states,
+      1,
+      0,
+      10,
+      'Dev only',
+      npmInfo,
+      true,
+      'a-search-query-long-enough-to-crowd-the-narrowest-terminal-we-render',
+      8,
+      terminalWidth,
+      { discovered: 8, resolved: 4, total: 8, failed: 1, isLoading: true, slowNetwork: true },
+      { completed: 1, total: 8, isRunning: true, hasData: false },
+      { cooldown: { heldCount: 3, unsupported: false } }
+    )
+
+    const widest = Math.max(...lines.map((line) => VersionUtils.getVisualLength(line)))
+    expect(widest).toBeLessThanOrEqual(terminalWidth)
+  })
+
+  it.each([83, 80, 78, 70, 60])(
+    'squeezes rows to fit %s columns without cutting any column off',
+    (terminalWidth) => {
+      const widths = computeVersionColumnWidths(states, terminalWidth)
+      const rows = states.flatMap((state) => [
+        renderPackageLine(state, false, terminalWidth, {}, widths),
+        renderPackageLine(state, true, terminalWidth, {}, widths),
+      ])
+
+      // Same width as a wide row (one short of the edge), so columns align.
+      expect(new Set(rows.map((row) => VersionUtils.getVisualLength(row)))).toEqual(
+        new Set([terminalWidth - 1])
+      )
+      const plain = stripAnsi(rows[0])
+      expect(plain).toContain('demo-pkg')
+      expect(plain).toMatch(/● \^1\.0\.0.*○ \^1\.1\.0.*○ \^2\.0\.0/)
+      expect(rows.map(stripAnsi).join('\n')).not.toContain('...')
+    }
+  )
+
+  it('closes the gaps before shrinking the version columns', () => {
+    expect(computeVersionColumnWidths(states, 78)).toEqual({ current: 16, range: 16, latest: 16 })
+    // 70 columns: 6 from the gaps, the other 8 round-robin from the columns.
+    expect(computeVersionColumnWidths(states, 70)).toEqual({ current: 13, range: 13, latest: 14 })
+    expect(computeVersionColumnWidths(states, 60)).toEqual({ current: 10, range: 10, latest: 10 })
+    // The columns stop at their floor; anything narrower is cut at the edge.
+    expect(computeVersionColumnWidths(states, 40)).toEqual({ current: 10, range: 10, latest: 10 })
+  })
+
+  it('sizes a row without precomputed columns for the terminal it renders into', () => {
+    const row = renderPackageLine(baseState, false, 70)
+
+    expect(VersionUtils.getVisualLength(row)).toBe(69)
+  })
+
+  it('cuts a line that still overflows at the edge, keeping its colors closed', () => {
+    const line = padLineToWidth(`\x1b[31m${'x'.repeat(70)}\x1b[39m`, 50)
+
+    expect(VersionUtils.getVisualLength(line)).toBe(50)
+    expect(stripAnsi(line)).toBe(`${'x'.repeat(47)}...`)
+    expect(line.endsWith('\x1b[39m')).toBe(true)
+  })
+
+  it('cuts rows at the edge once the squeeze runs out', () => {
+    const text = renderPlain(states, { terminalWidth: 50 })
+
+    expect(text.split('\n').every((line) => VersionUtils.getVisualLength(line) === 50)).toBe(true)
   })
 })

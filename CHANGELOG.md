@@ -22,6 +22,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Upgrades no longer damage specifiers that aren't a single version. `^17.0.0 || ^18.0.0` lost its second range, `>=1.2.0 <2.0.0` lost its upper bound, `1.x` became an exact version, and `patch:`, `jsr:`, `user/repo#v1.2.3` and git URL specs got a new version spliced into the middle. inup now only upgrades a plain version (`1.2.3`, `^1.2.3`, `~1.2.3`, `>=1.2.3`, `=1.2.3`), in `package.json` and in pnpm catalogs. Anything else is left exactly as written and not listed, the way `workspace:` and `npm:` specs already were.
 - Errors exit with code 2, as documented, instead of 1: an unknown flag, an invalid flag value, or a run that fails. Under `--check`, exit code 1 now only ever means updates exist, so a typo in a CI command no longer looks like outdated dependencies.
 - Cancelling with Ctrl+C exits with code 130 (143 when stopped with `SIGTERM`) instead of 0, so `inup && git commit …` no longer carries on after a cancelled run. Quitting the picker with `q` still exits 0, and the "Operation cancelled" notice goes to stderr so it never lands in `--json` output.
+- The package list no longer breaks on terminals narrower than 84 columns, including the standard 80. Rows wrapped there and scrambled the screen as the list updated; they now tighten their spacing to fit down to 60 columns, and anything still too wide is cut off at the edge instead of wrapping.
 
 ### Security
 

@@ -1,4 +1,5 @@
 import chalk from 'chalk'
+import { truncatePlainText } from '../../../../shared/terminal'
 import type {
   CooldownRenderStatus,
   PackageInfo,
@@ -74,14 +75,39 @@ const PREFIX_WIDTH = 2
 const SPACING_WIDTH = 3
 const MIN_PACKAGE_NAME_WIDTH = 24
 const MAX_PACKAGE_NAME_WIDTH = 50
+const VERSION_COLUMNS = ['current', 'range', 'latest'] as const
+
+// The narrowest terminal the classic row fits: name at its minimum, the three
+// version columns at 16 and three-space gaps, ending one column short of the
+// edge. Narrower terminals squeeze the row rather than let it wrap: first the
+// gaps close to a single space, then the version columns give up their dash
+// padding down to MIN_SQUEEZED_VERSION_COLUMN_WIDTH (still room for ^1.10.0).
+// That reaches 60 columns with every section intact; past it, padLineToWidth
+// cuts the row off at the edge.
+const CLASSIC_ROW_WIDTH =
+  PREFIX_WIDTH + MIN_PACKAGE_NAME_WIDTH + (MIN_VERSION_COLUMN_WIDTH + SPACING_WIDTH) * 3 + 1
+const MIN_SPACING_WIDTH = 1
+const MIN_SQUEEZED_VERSION_COLUMN_WIDTH = 10
+const MAX_GAP_SQUEEZE = (SPACING_WIDTH - MIN_SPACING_WIDTH) * 3
+const MAX_COLUMN_SQUEEZE = (MIN_VERSION_COLUMN_WIDTH - MIN_SQUEEZED_VERSION_COLUMN_WIDTH) * 3
+
+/** Gaps after the name, current and range sections, closing one space at a time from the right. */
+function sectionGaps(terminalWidth: number): string[] {
+  const gaps = [SPACING_WIDTH, SPACING_WIDTH, SPACING_WIDTH]
+  const squeeze = Math.min(CLASSIC_ROW_WIDTH - terminalWidth, MAX_GAP_SQUEEZE)
+  for (let i = 0; i < squeeze; i++) gaps[2 - (i % 3)]--
+  return gaps.map((gap) => ' '.repeat(gap))
+}
 
 /**
  * Size the three version columns for a render pass. Columns start at the
  * classic 16 and grow — only as far as the terminal allows after the package
  * name keeps its minimum — to fit the longest version on screen (prerelease
- * specs like ^16.0.0-preview.10 overflow 16). Computed over ALL states, not
- * just the visible window, so columns never shift while scrolling. Versions
- * that still do not fit are middle-truncated by renderPackageLine.
+ * specs like ^16.0.0-preview.10 overflow 16); a terminal too narrow for the
+ * classic row shrinks them instead (see CLASSIC_ROW_WIDTH). Computed over ALL
+ * states, not just the visible window, so columns never shift while
+ * scrolling. Versions that still do not fit are middle-truncated by
+ * renderPackageLine.
  */
 export function computeVersionColumnWidths(
   states: PackageSelectionState[],
@@ -126,29 +152,28 @@ function measureVersionColumns(state: PackageSelectionState, need: VersionColumn
   }
 }
 
-/** Fits the needed widths into the terminal, growing columns round-robin from the classic size. */
+/**
+ * Fits the needed widths into the terminal, growing columns round-robin from
+ * the classic size — or, below the classic row width, shrinking them
+ * round-robin once the gaps have closed (see CLASSIC_ROW_WIDTH).
+ */
 function fitVersionColumns(need: VersionColumnWidths, terminalWidth: number): VersionColumnWidths {
-  // Growth budget: whatever remains once the package name keeps its minimum
-  // width at the classic column sizes. The name column absorbs the squeeze —
-  // it already middle-truncates long names gracefully.
-  let pool = Math.max(
-    0,
-    terminalWidth -
-      PREFIX_WIDTH -
-      1 -
-      MIN_PACKAGE_NAME_WIDTH -
-      (MIN_VERSION_COLUMN_WIDTH * 3 + SPACING_WIDTH * 3)
-  )
   const widths: VersionColumnWidths = {
     current: MIN_VERSION_COLUMN_WIDTH,
     range: MIN_VERSION_COLUMN_WIDTH,
     latest: MIN_VERSION_COLUMN_WIDTH,
   }
+  const squeeze = Math.min(CLASSIC_ROW_WIDTH - terminalWidth - MAX_GAP_SQUEEZE, MAX_COLUMN_SQUEEZE)
+  for (let i = 0; i < squeeze; i++) widths[VERSION_COLUMNS[i % 3]]--
+  // Growth budget: whatever the terminal has beyond the classic row. Wider
+  // columns come out of the name's share — it already middle-truncates long
+  // names gracefully.
+  let pool = Math.max(0, terminalWidth - CLASSIC_ROW_WIDTH)
   // Round-robin growth keeps the distribution fair when the pool runs short.
   let grew = true
   while (pool > 0 && grew) {
     grew = false
-    for (const key of ['current', 'range', 'latest'] as const) {
+    for (const key of VERSION_COLUMNS) {
       if (pool > 0 && widths[key] < need[key]) {
         widths[key]++
         pool--
@@ -160,8 +185,13 @@ function fitVersionColumns(need: VersionColumnWidths, terminalWidth: number): Ve
 }
 
 export function padLineToWidth(line: string, terminalWidth: number): string {
-  const padding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(line))
-  return line + ' '.repeat(padding)
+  const width = VersionUtils.getVisualLength(line)
+  if (width <= terminalWidth) return line + ' '.repeat(terminalWidth - width)
+  // Last resort: a line wider than the terminal wraps, and the session writes
+  // changed rows by absolute position, so every later update would land one
+  // row off. Cut it at the edge instead.
+  const cut = truncatePlainText(line, terminalWidth)
+  return cut + ' '.repeat(Math.max(0, terminalWidth - VersionUtils.getVisualLength(cut)))
 }
 
 function getTypeBadge(type: PackageInfo['type']): string {
@@ -224,9 +254,11 @@ export function renderPackageLine(
   const isRangeSelected = state.selectedOption === 'range'
   const isLatestSelected = state.selectedOption === 'latest'
 
-  const currentColumnWidth = columnWidths?.current ?? MIN_VERSION_COLUMN_WIDTH
-  const rangeColumnWidth = columnWidths?.range ?? MIN_VERSION_COLUMN_WIDTH
-  const latestColumnWidth = columnWidths?.latest ?? MIN_VERSION_COLUMN_WIDTH
+  const widths = columnWidths ?? fitVersionColumns(initialColumnNeed(), terminalWidth)
+  const currentColumnWidth = widths.current
+  const rangeColumnWidth = widths.range
+  const latestColumnWidth = widths.latest
+  const [nameGap, currentGap, rangeGap] = sectionGaps(terminalWidth)
 
   // A version that outgrows its column is middle-truncated: both ends carry
   // the signal (^16.0.0-preview.10 → ^16.0.…eview.10), and a fixed row width
@@ -271,7 +303,12 @@ export function renderPackageLine(
   }
 
   const otherColumnsWidth =
-    currentColumnWidth + rangeColumnWidth + latestColumnWidth + SPACING_WIDTH * 3
+    currentColumnWidth +
+    rangeColumnWidth +
+    latestColumnWidth +
+    nameGap.length +
+    currentGap.length +
+    rangeGap.length
   const availableForPackageName = terminalWidth - PREFIX_WIDTH - otherColumnsWidth - 1
   const packageNameWidth = Math.min(
     MAX_PACKAGE_NAME_WIDTH,
@@ -353,5 +390,5 @@ export function renderPackageLine(
     latestSection = ' '.repeat(latestColumnWidth)
   }
 
-  return `${prefix}${packageNameSection}   ${currentWithPadding}   ${rangeSection}   ${latestSection}`
+  return `${prefix}${packageNameSection}${nameGap}${currentWithPadding}${currentGap}${rangeSection}${rangeGap}${latestSection}`
 }

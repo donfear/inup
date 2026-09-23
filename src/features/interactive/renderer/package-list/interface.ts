@@ -211,8 +211,8 @@ export function renderInterface(
       '  ' +
       getThemeColor('textSecondary')(loadingLabel) +
       (failedLabel ? chalk.yellow(failedLabel) : '')
-    // The hint is informational only: drop it rather than overflow the row —
-    // padLineToWidth pads but never truncates, so an overflow wraps the frame.
+    // The hint is informational only: drop it rather than overflow the row and
+    // have the line cut off at the terminal edge.
     if (
       slowLabel &&
       VersionUtils.getVisualLength(loadingLine) + slowLabel.length <= terminalWidth
