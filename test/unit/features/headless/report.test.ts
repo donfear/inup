@@ -29,6 +29,7 @@ describe('buildHeadlessReport', () => {
       major: 1,
       vulnerable: 1,
       heldByCooldown: 0,
+      failed: 0,
     })
     expect(report.outdated[0]).toMatchObject({
       name: 'test-pkg',
@@ -285,5 +286,79 @@ describe('release-age cooldown reporting', () => {
     expect(renderPlainReport([], new Map(), [makePackageInfo({ isOutdated: false })])).toBe(
       'All dependencies are up to date — no upgrades needed.'
     )
+  })
+})
+
+describe('failed lookup reporting', () => {
+  const failedAt = (name: string, path: string, overrides?: Partial<PackageInfo>) =>
+    makePackageInfo({
+      name,
+      packageJsonPath: path,
+      rangeVersion: 'unknown',
+      latestVersion: 'unknown',
+      isOutdated: false,
+      hasRangeUpdate: false,
+      hasMajorUpdate: false,
+      lookupFailed: true,
+      ...overrides,
+    })
+
+  it('lists every failed location and counts unique packages', () => {
+    const all = [
+      failedAt('@private/sdk', '/repo/package.json'),
+      failedAt('@private/sdk', '/repo/apps/web/package.json'),
+      failedAt('react', '/repo/pnpm-workspace.yaml', { catalog: 'default' }),
+      makePackageInfo({ name: 'fresh', isOutdated: false }),
+    ]
+
+    const report = buildHeadlessReport(all, [], new Map())
+
+    expect(report.summary.failed).toBe(2)
+    expect(report.failed).toEqual([
+      {
+        name: '@private/sdk',
+        current: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/package.json',
+      },
+      {
+        name: '@private/sdk',
+        current: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/apps/web/package.json',
+      },
+      {
+        name: 'react',
+        current: '^1.0.0',
+        type: 'dependencies',
+        packageJsonPath: '/repo/pnpm-workspace.yaml',
+        catalog: 'default',
+      },
+    ])
+  })
+
+  it('does not call a project up to date when lookups failed', () => {
+    const output = renderPlainReport([], new Map(), [failedAt('a', '/repo/package.json')])
+
+    expect(output).toBe('No updates found, but 1 package(s) could not be checked.')
+  })
+
+  it('keeps the cooldown recap under the failed-lookup headline', () => {
+    const heldPkg = makePackageInfo({
+      name: 'held-only',
+      isOutdated: false,
+      heldByCooldown: {
+        version: '2.1.0',
+        publishedAt: '2024-06-01T00:00:00.000Z',
+        ageMinutes: 30,
+        eligibleInMinutes: 60,
+        count: 1,
+      },
+    })
+
+    const output = renderPlainReport([], new Map(), [failedAt('a', '/repo/package.json'), heldPkg])
+
+    expect(output.split('\n')[0]).toBe('No updates found, but 1 package(s) could not be checked.')
+    expect(output).toContain('Held by release-age cooldown (1):')
   })
 })

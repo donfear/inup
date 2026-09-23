@@ -501,6 +501,15 @@ describe('renderInterface body', () => {
     expect(text).not.toContain('Loading packages')
   })
 
+  it('keeps the failure count on the status line once loading is done', () => {
+    const text = renderPlain([baseState], {
+      loadingProgress: { discovered: 5, resolved: 5, total: 5, failed: 2, isLoading: false },
+    })
+
+    expect(text).not.toContain('Loading packages')
+    expect(text).toContain('Showing all 1 packages  Enter Confirm  2 unavailable')
+  })
+
   it('flags a slow connection on the loading line', () => {
     const text = renderPlain([baseState], {
       loadingProgress: {

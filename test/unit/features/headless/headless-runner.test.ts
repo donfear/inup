@@ -181,6 +181,7 @@ describe('HeadlessRunner.run', () => {
       major: 1,
       vulnerable: 0,
       heldByCooldown: 0,
+      failed: 0,
     })
     expect(report.outdated).toHaveLength(1)
     expect(report.outdated[0].name).toBe('axios')
@@ -411,6 +412,34 @@ describe('HeadlessRunner.run', () => {
     expect(process.exitCode).toBe(0)
 
     logSpy.mockRestore()
+  })
+
+  it('warns about failed lookups on stderr, naming the first five, without --check', async () => {
+    const failedLookup = (name: string) => ({
+      ...UP_TO_DATE,
+      name,
+      rangeVersion: 'unknown',
+      latestVersion: 'unknown',
+      lookupFailed: true,
+    })
+    mocks.scanResult.mockResolvedValue([
+      OUTDATED,
+      ...['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(failedLookup),
+      // A second location of the same package is still one failed lookup.
+      { ...failedLookup('a'), packageJsonPath: '/repo/apps/web/package.json' },
+    ])
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    process.exitCode = 0
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({})
+
+    expect(errSpy).toHaveBeenCalledWith(
+      'Warning: 7 package(s) could not be checked — the registry lookup failed: a, b, c, d, e (+2 more)'
+    )
+    expect(process.exitCode).toBe(0)
+    logSpy.mockRestore()
+    errSpy.mockRestore()
   })
 
   it('with no flags prints a plain report and leaves the exit code untouched', async () => {

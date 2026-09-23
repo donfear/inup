@@ -65,7 +65,9 @@ With `--json`, stdout carries **only** the JSON document; all progress and warni
 | --- | --- |
 | `0` | Up to date |
 | `1` | Updates exist (`--check`) |
-| `2` | Error, including an unknown flag or an invalid flag value |
+| `2` | Error, including an unknown flag or an invalid flag value, or a registry lookup failed (`--check`) |
 | `130` / `143` | Cancelled (Ctrl+C / `SIGTERM`) |
+
+A package inup could not look up — registry down, token expired, or not published — is never counted as up to date. It is listed in the report's [`failed`](json-schema.md#failedlookup) array, named in a warning on stderr, and makes `--check` exit `2` even when updates also exist, since the check could not be completed.
 
 For scheduled upgrades with a rolling pull request, use the [GitHub Action](github-action.md).

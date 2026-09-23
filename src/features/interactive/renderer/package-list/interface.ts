@@ -185,6 +185,12 @@ export function renderInterface(
     statusLine += `  ${getThemeColor('textSecondary')(`${selectedCount} selected`)}${hidden}`
   }
 
+  // The loading line carries this count while packages resolve; once it is gone the count
+  // stays here, so a failed lookup never passes for a package with nothing to upgrade.
+  if (loadingProgress && !loadingProgress.isLoading && loadingProgress.failed > 0) {
+    statusLine += `  ${getThemeColor('warning')(`${loadingProgress.failed} unavailable`)}`
+  }
+
   if (auditProgress && auditProgress.total > 0) {
     const auditLabel = auditProgress.isRunning
       ? `Audit ${auditProgress.completed}/${auditProgress.total}`

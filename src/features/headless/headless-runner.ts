@@ -5,7 +5,7 @@ import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../sh
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import { auditVulnerabilities, fetchVulnerabilities, type PackageVulnerabilities } from '../audit'
 import { PackageDetector, PackageUpgrader } from '../upgrade'
-import { buildHeadlessReport, renderPlainReport } from './report'
+import { buildHeadlessReport, failedLookupNames, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
 
 /**
@@ -96,6 +96,18 @@ export class HeadlessRunner {
         )
       }
 
+      // A failed lookup is left out of `outdated` just like an up-to-date package, so without
+      // this an expired registry token or an outage would read as a clean run.
+      const failed = failedLookupNames(packages)
+      if (failed.length > 0) {
+        const more = failed.length > 5 ? ` (+${failed.length - 5} more)` : ''
+        console.error(
+          chalk.yellow(
+            `Warning: ${failed.length} package(s) could not be checked — the registry lookup failed: ${failed.slice(0, 5).join(', ')}${more}`
+          )
+        )
+      }
+
       // --apply writes the bumps + lockfile. The scan above already honored .inuprc
       // (ignore/exclude/scanDirs), so the set we write is exactly the set we report — never more.
       if (options.apply) {
@@ -110,7 +122,10 @@ export class HeadlessRunner {
       }
 
       // Exit 1 only means "updates exist" (like `prettier --check`); 2 is reserved for errors.
-      if (options.check && outdated.length > 0) {
+      // A failed lookup is one — the check could not be completed — so it wins over 1.
+      if (options.check && failed.length > 0) {
+        process.exitCode = 2
+      } else if (options.check && outdated.length > 0) {
         process.exitCode = 1
       }
     } catch (error) {

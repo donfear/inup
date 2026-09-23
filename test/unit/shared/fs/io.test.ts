@@ -218,4 +218,31 @@ describe('collectAllDependenciesAsync', () => {
       rmSync(tempDir, { recursive: true, force: true })
     }
   })
+
+  it('collects the name of every manifest that has one into localNames', async () => {
+    const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { collectAllDependenciesAsync } = await import('../../../../src/shared/fs/io')
+
+    const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
+    try {
+      const manifest = (dir: string, value: unknown) => {
+        mkdirSync(join(tempDir, dir))
+        writeFileSync(join(tempDir, dir, 'package.json'), JSON.stringify(value))
+        return join(tempDir, dir, 'package.json')
+      }
+      const files = [
+        manifest('utils', { name: '@org/utils', version: '1.0.0' }),
+        manifest('unnamed', { dependencies: { alpha: '^1.0.0' } }),
+      ]
+      const localNames = new Set<string>()
+
+      await collectAllDependenciesAsync(files, localNames)
+
+      expect([...localNames]).toEqual(['@org/utils'])
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
 })

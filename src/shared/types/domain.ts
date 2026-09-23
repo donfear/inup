@@ -61,6 +61,7 @@ export interface PackageInfo {
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions from registry
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
+  lookupFailed?: boolean // The registry returned nothing (network, auth, not found): updates unknown
 }
 
 export type DependencyType =

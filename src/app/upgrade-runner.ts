@@ -129,7 +129,14 @@ export class UpgradeRunner {
       printWarnings()
       const outdatedPackages = this.detector.getOutdatedPackagesOnly(latestPackages)
       if (!progress.isLoading && outdatedPackages.length === 0 && selectedChoices.length === 0) {
-        console.log(chalk.green('✅ Everything is up to date — no upgrades needed.'))
+        // A failed registry lookup says nothing about whether the package is current.
+        console.log(
+          progress.failed > 0
+            ? chalk.yellow(
+                `⚠️  No updates found, but ${progress.failed} package(s) could not be checked — the registry lookup failed.`
+              )
+            : chalk.green('✅ Everything is up to date — no upgrades needed.')
+        )
         // Saying "up to date" and stopping there would hide the fact that newer
         // versions exist and were deliberately withheld.
         const held = countHeldPackages(latestPackages, { hiddenOnly: true })

@@ -212,7 +212,9 @@ describe('PackageDetector streaming', () => {
       name: 'zod',
       latestVersion: 'unknown',
       isOutdated: false,
+      lookupFailed: true,
     })
+    expect(packages[0].lookupFailed).toBeUndefined()
   })
 
   it('advances progress by one per package and flags failures without breaking order', async () => {
@@ -1379,6 +1381,8 @@ describe('PackageDetector prerelease handling', () => {
       latestVersion: 'unknown',
       rangeVersion: 'unknown',
     })
+    // The registry answered; there is just nothing stable to offer. Not a failed lookup.
+    expect(packages[0].lookupFailed).toBeUndefined()
   })
 
   it('skips wildcard specifiers instead of resolving them to 0.0.0', async () => {

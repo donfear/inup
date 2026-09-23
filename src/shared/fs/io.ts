@@ -72,8 +72,13 @@ export async function readPackageJsonAsync(path: string): Promise<PackageJson> {
   }
 }
 
+/**
+ * Every dependency declared across `packageJsonFiles`. When given, `localNames` also collects
+ * each manifest's own `name` — the repo's local packages, which may never have been published.
+ */
 export async function collectAllDependenciesAsync(
-  packageJsonFiles: string[]
+  packageJsonFiles: string[],
+  localNames?: Set<string>
 ): Promise<Array<{ name: string; version: string; type: string; packageJsonPath: string }>> {
   const packageJsonPromises = packageJsonFiles.map(async (packageJsonPath) => {
     try {
@@ -94,6 +99,7 @@ export async function collectAllDependenciesAsync(
     if (!result) continue
 
     const { packageJson, packageJsonPath } = result
+    if (typeof packageJson.name === 'string') localNames?.add(packageJson.name)
     const depTypes: Array<
       'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
     > = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']

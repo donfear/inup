@@ -34,7 +34,7 @@ inup [options]
 | --- | --- |
 | `0` | Success (with `--check`: everything up to date). Quitting the picker with `q` exits 0 too |
 | `1` | Updates exist (with `--check`) |
-| `2` | Error, including an unknown flag or an invalid flag value |
+| `2` | Error, including an unknown flag or an invalid flag value, or (with `--check`) a package could not be looked up on the registry — this wins over `1` |
 | `130` | Cancelled with Ctrl+C |
 | `143` | Stopped with `SIGTERM` |
 
