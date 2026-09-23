@@ -150,7 +150,8 @@ jobs:
           INUP_PARITY_REQUIRED: '1'
         run: pnpm vitest run test/unit/shared/registry/rust-core.parity.test.ts test/unit/shared/registry/rust-transport.parity.test.ts
 
-  # Assemble all 8 platform packages exactly as publish.yml would, without publishing.
+  # Assemble all 8 platform packages and pin their hashes into inup exactly as publish.yml
+  # would, without publishing.
   native-packages:
     name: Native packages (dry run)
     needs: native
@@ -170,3 +171,7 @@ jobs:
           path: native/artifacts
       - name: Assemble and dry-run publish
         run: node scripts/publish-native.mjs --artifacts native/artifacts --dry-run
+      - name: Build with pinned native cores
+        run: |
+          pnpm build
+          node scripts/publish-native.mjs --check-pins

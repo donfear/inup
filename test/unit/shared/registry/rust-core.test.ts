@@ -1,5 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { debugLog } from '../../../../src/shared/debug-logger'
+import { nativeCoreFile, sha512Integrity } from '../../../../src/shared/registry/native-download'
 import {
   activeCore,
   CORE_ABI_VERSION,
@@ -36,23 +40,48 @@ const fakeAddon = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-const CACHED = /cache[/\\]native[/\\]9\.9\.9[/\\]inup\.darwin-arm64\.node$/
 const DEV_BUILD = /native[/\\]out[/\\]inup\.darwin-arm64\.node$/
+
+/** The addon released with this (pretend) inup, and its pinned hash. */
+const RELEASED = Buffer.from('released addon bytes')
+const PINS = { 'darwin-arm64': sha512Integrity(RELEASED) }
+
+let cacheRoot = ''
+const cachedFile = () => nativeCoreFile(cacheRoot, '9.9.9', 'darwin-arm64')
+
+/** Put `content` where an earlier run's download would have cached the addon. */
+const cacheAddon = (content: Buffer | string = RELEASED) => {
+  mkdirSync(dirname(cachedFile()), { recursive: true })
+  writeFileSync(cachedFile(), content)
+}
 
 /** Opt in and load addons through `load`, with a stubbed download. */
 const useAddon = (
   load: (id: string) => unknown,
-  download = vi.fn(async (_options: unknown) => '/cache/native/9.9.9/inup.darwin-arm64.node')
+  download = vi.fn(async (_options: unknown) => cachedFile()),
+  pins: Record<string, string> = PINS
 ) => {
   configureNativeCore({ enabled: true })
-  setRustCoreEnvironment({ host: MAC, load, cacheRoot: '/cache', version: '9.9.9', download })
+  setRustCoreEnvironment({ host: MAC, load, cacheRoot, version: '9.9.9', download, pins })
   return download
 }
+
+/** Loads fail for the dev build and succeed for anything else. */
+const cachedOnly = () =>
+  vi.fn((id: string) => {
+    if (DEV_BUILD.test(id)) throw new Error('Cannot find module')
+    return fakeAddon()
+  })
+
+beforeEach(() => {
+  cacheRoot = mkdtempSync(join(tmpdir(), 'inup-rust-core-'))
+})
 
 afterEach(() => {
   configureNativeCore({ enabled: false })
   setRustCoreEnvironment(null)
   vi.restoreAllMocks()
+  rmSync(cacheRoot, { recursive: true, force: true })
 })
 
 describe('nativeAbi', () => {
@@ -129,15 +158,53 @@ describe('core selection', () => {
     expect(download).not.toHaveBeenCalled()
   })
 
-  it('uses the addon cached by an earlier run', () => {
-    const load = vi.fn((id: string) => {
-      if (DEV_BUILD.test(id)) throw new Error('Cannot find module')
-      return fakeAddon()
-    })
+  it('uses the addon cached by an earlier run once it matches the pinned hash', () => {
+    cacheAddon()
+    const load = cachedOnly()
     const download = useAddon(load)
     expect(activeCore()).toBe('native')
-    expect(load.mock.calls[1][0]).toMatch(CACHED)
+    expect(load.mock.calls[1][0]).toBe(cachedFile())
     expect(download).not.toHaveBeenCalled()
+  })
+
+  it('deletes and never loads a cached addon that does not match the pinned hash', async () => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    cacheAddon('swapped by another process')
+    const load = cachedOnly()
+    const download = useAddon(load)
+
+    expect(activeCore()).toBe('js')
+    expect(load.mock.calls.map(([id]) => id)).toEqual([expect.stringMatching(DEV_BUILD)])
+    expect(existsSync(cachedFile())).toBe(false)
+    const skipped = info.mock.calls.find(([, message]) =>
+      String(message).startsWith('native core not available')
+    )
+    expect(skipped?.[2]).toContainEqual(
+      `${cachedFile()}: does not match the native core released with this inup; deleted`
+    )
+    // A fresh, verified copy replaces it for the next run.
+    await nativeCoreDownload()
+    expect(download).toHaveBeenCalledWith(
+      expect.objectContaining({ integrity: PINS['darwin-arm64'] })
+    )
+  })
+
+  it('neither loads a cached addon nor downloads one when this build pins none', () => {
+    const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    cacheAddon()
+    const load = cachedOnly()
+    const download = useAddon(load, undefined, {})
+
+    expect(activeCore()).toBe('js')
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(download).not.toHaveBeenCalled()
+    expect(nativeCoreDownload()).toBeNull()
+    // Not ours to judge: another inup of the same version may have pinned it.
+    expect(readFileSync(cachedFile())).toEqual(RELEASED)
+    expect(info).toHaveBeenCalledWith(
+      'rust-core',
+      'this inup build pins no native core for darwin-arm64'
+    )
   })
 
   it('downloads in the background when nothing is available, staying on TypeScript this run', async () => {
@@ -152,13 +219,14 @@ describe('core selection', () => {
 
     expect(download).toHaveBeenCalledTimes(1)
     expect(download).toHaveBeenCalledWith({
-      cacheRoot: '/cache',
+      cacheRoot,
       version: '9.9.9',
       abi: 'darwin-arm64',
+      integrity: PINS['darwin-arm64'],
     })
     expect(info).toHaveBeenCalledWith(
       'rust-core',
-      'native core downloaded to /cache/native/9.9.9/inup.darwin-arm64.node; used from the next run'
+      `native core downloaded to ${cachedFile()}; used from the next run`
     )
   })
 
@@ -218,6 +286,7 @@ describe('core selection', () => {
     ['the module is empty', () => null],
   ])('skips an addon when %s', (_label, load) => {
     const info = vi.spyOn(debugLog, 'info').mockImplementation(() => {})
+    cacheAddon()
     useAddon(load)
     expect(activeCore()).toBe('js')
     const skipped = info.mock.calls.find(([, message]) =>
@@ -251,14 +320,16 @@ describe('core selection', () => {
     )
   })
 
-  it('uses real host detection, require and cache paths by default', async () => {
+  it('uses real host detection, require, cache paths and pins by default', () => {
     vi.spyOn(debugLog, 'info').mockImplementation(() => {})
     vi.spyOn(debugLog, 'warn').mockImplementation(() => {})
+    const download = vi.fn(async () => '/unused')
     configureNativeCore({ enabled: true })
-    setRustCoreEnvironment({ download: vi.fn(async () => '/unused') })
+    setRustCoreEnvironment({ download })
     // A dev checkout may have native/out built, CI does not: both must resolve cleanly.
     expect(['native', 'js']).toContain(activeCore())
-    await nativeCoreDownload()
+    // Source builds pin no native core, so they never download one.
+    expect(download).not.toHaveBeenCalled()
   })
 })
 

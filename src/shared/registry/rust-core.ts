@@ -1,10 +1,12 @@
+import { readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../config'
 import { debugLog } from '../debug-logger'
 import type { ParsedVersions } from '../versions'
-import { downloadNativeCore, nativeCoreFile } from './native-download'
+import { downloadNativeCore, nativeCoreFile, sha512Integrity } from './native-download'
+import { NATIVE_INTEGRITY } from './native-integrity'
 
 /**
  * Optional Rust implementation of the registry hot path, prebuilt per platform
@@ -15,10 +17,12 @@ import { downloadNativeCore, nativeCoreFile } from './native-download'
  * `"native": false` in .inuprc); nothing native loads until then. When on,
  * resolution happens once per process:
  * 1. a local `pnpm native:build` output (source checkouts)
- * 2. the addon cached by an earlier run
+ * 2. the addon cached by an earlier run, if it still matches the hash pinned
+ *    in this release (native-integrity.ts); a mismatching file is deleted
  * 3. neither: this run uses TypeScript while the addon for this platform is
- *    downloaded (verified against the registry's sha512) for the next run,
- *    unless the caller disallowed downloads for this process
+ *    downloaded (verified against the registry's sha512 and the pinned hash)
+ *    for the next run, unless the caller disallowed downloads for this
+ *    process. Builds that pin no addon for the platform never download.
  *
  * Two capabilities, each optional in an addon:
  * - transport: a whole registry attempt off the JS thread — `nativeTransport()`
@@ -162,6 +166,8 @@ interface Environment {
   cacheRoot: () => string
   version: string
   download: typeof downloadNativeCore
+  /** sha512 of each platform's released addon, by ABI suffix. */
+  pins: Readonly<Partial<Record<string, string>>>
 }
 
 const defaultEnvironment = (): Environment => ({
@@ -170,6 +176,7 @@ const defaultEnvironment = (): Environment => ({
   cacheRoot: () => envPaths(PACKAGE_NAME).cache,
   version: PACKAGE_VERSION,
   download: downloadNativeCore,
+  pins: NATIVE_INTEGRITY,
 })
 
 interface Resolved {
@@ -196,7 +203,7 @@ export function configureNativeCore(options: { enabled: boolean; download?: bool
   resolved = null
 }
 
-/** Test hook: override host, loading, cache location, version and download. */
+/** Test hook: override host, loading, cache location, version, download and pins. */
 export function setRustCoreEnvironment(
   env:
     | (Partial<Omit<Environment, 'host' | 'cacheRoot'>> & {
@@ -214,6 +221,7 @@ export function setRustCoreEnvironment(
     cacheRoot: cacheRoot ? () => cacheRoot : defaults.cacheRoot,
     version: env?.version ?? defaults.version,
     download: env?.download ?? defaults.download,
+    pins: env?.pins ?? defaults.pins,
   }
   resolved = null
   download = null
@@ -258,10 +266,14 @@ function loadNative(): Resolved {
     return JS_ONLY
   }
 
+  const pinned = environment.pins[abi]
   const cached = nativeCoreFile(environment.cacheRoot(), environment.version, abi)
   const failures: string[] = []
   for (const id of [join(DEV_BUILD_DIR, `inup.${abi}.node`), cached]) {
     try {
+      // A local build is trusted as it is; a downloaded addon only while it is
+      // byte for byte the one released with this inup, checked on every load.
+      if (id === cached) verifyCached(cached, pinned)
       const mod = environment.load(id) as Partial<NativeModule> | null
       if (typeof mod?.abiVersion !== 'function' || mod.abiVersion() !== CORE_ABI_VERSION) {
         failures.push(`${id}: incompatible addon (expected ABI ${CORE_ABI_VERSION})`)
@@ -280,17 +292,30 @@ function loadNative(): Resolved {
     }
   }
   debugLog.info('rust-core', `native core not available yet for ${abi}`, failures)
-  if (downloadAllowed) startDownload(abi)
+  if (!pinned) debugLog.info('rust-core', `this inup build pins no native core for ${abi}`)
+  else if (downloadAllowed) startDownload(abi, pinned)
   else debugLog.info('rust-core', 'native core download skipped for this run')
   return JS_ONLY
 }
 
+/**
+ * Throws unless the cached addon is the one pinned for this release. A file
+ * that does not match is deleted, so the next download replaces it.
+ */
+function verifyCached(file: string, pinned: string | undefined): void {
+  if (!pinned) throw new Error('not loaded: this inup build pins no native core for it')
+  if (sha512Integrity(readFileSync(file)) !== pinned) {
+    rmSync(file, { force: true })
+    throw new Error('does not match the native core released with this inup; deleted')
+  }
+}
+
 /** Fetch the addon in the background; this run stays on TypeScript. */
-function startDownload(abi: string): void {
+function startDownload(abi: string, integrity: string): void {
   if (download) return
   const { cacheRoot, version } = environment
   download = environment
-    .download({ cacheRoot: cacheRoot(), version, abi })
+    .download({ cacheRoot: cacheRoot(), version, abi, integrity })
     .then((file) => {
       debugLog.info('rust-core', `native core downloaded to ${file}; used from the next run`)
     })
