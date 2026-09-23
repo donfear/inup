@@ -147,6 +147,36 @@ describe('render-pr-body action helper', () => {
     expect(body).toContain('- `major-only` (current `^4.0.0`) → **5.0.0** (dependencies)')
   })
 
+  it('never lists a peer range as applied, and keeps it apart from the same dependency', async () => {
+    // --apply does not rewrite peerDependencies. Listed first on purpose: deduplication must not
+    // let the peer entry stand in for the dependency bump the PR really contains.
+    const shared = {
+      name: 'lodash',
+      current: '^4.0.0',
+      range: '4.18.1',
+      latest: '5.0.0',
+      packageJsonPath: '/repo/package.json',
+      hasMajorUpdate: true,
+    }
+    const body = await renderPrBody({
+      schemaVersion: 2,
+      summary: { ...baseSummary, total: 2, outdated: 2, major: 2 },
+      outdated: [
+        { ...shared, type: 'peerDependencies' },
+        { ...shared, type: 'dependencies' },
+      ],
+    })
+
+    expect(body).toContain('- `lodash` `^4.0.0` → `^4.18.1` (dependencies)')
+    expect(body).not.toContain('→ `^4.18.1` (peerDependencies)')
+    expect(body).toContain(
+      '| `lodash` | ^4.0.0 | ^4.18.1 | 5.0.0 | peerDependencies | — | ⚠️ yes | — |'
+    )
+    expect(body).toContain(
+      '| `lodash` | ^4.0.0 | ^4.18.1 | 5.0.0 | dependencies | ✅ | ⚠️ yes | — |'
+    )
+  })
+
   it('renders security verdicts and advisory fix status for each branch', async () => {
     const body = await renderPrBody({
       schemaVersion: 1,

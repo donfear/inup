@@ -21,7 +21,7 @@ inup [options]
 | `--no-native` | Use the standard core for this run, even if `.inuprc` enables native |
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
-| `--apply` | Non-interactively write upgrades and install (for CI/automation) |
+| `--apply` | Non-interactively write upgrades and install (for CI/automation). Never rewrites `peerDependencies` |
 | `--target <level>` | With `--apply`: `minor` (default, in-range), `patch`, or `latest` |
 | `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via `.inuprc`) |
 | `--save-exact` | Write exact versions instead of preserving the range prefix (`^`/`~`) |

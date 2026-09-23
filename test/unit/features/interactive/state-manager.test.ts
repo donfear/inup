@@ -226,6 +226,21 @@ describe('StateManager bulk selection edge cases', () => {
     expect(states.map((s) => s.selectedOption)).toEqual(['latest', 'range', 'none'])
   })
 
+  it('bulk minor and latest leave peer rows alone, manual choices included', () => {
+    const sm = new StateManager(0, 24)
+    const states = [
+      ready(),
+      ready({ type: 'peerDependencies' }),
+      ready({ type: 'peerDependencies', selectedOption: 'range' }),
+    ]
+
+    sm.bulkSelectMinor(states)
+    expect(states.map((s) => s.selectedOption)).toEqual(['range', 'none', 'range'])
+
+    sm.bulkSelectLatest(states)
+    expect(states.map((s) => s.selectedOption)).toEqual(['latest', 'none', 'range'])
+  })
+
   it('bulk unselect clears every row', () => {
     const sm = new StateManager(0, 24)
     const states = [ready({ selectedOption: 'latest' }), ready({ selectedOption: 'range' })]

@@ -20,6 +20,8 @@ Unlike `--json` and `--check`, **`--apply` writes**: it bumps `package.json` and
 - `--target patch` stays within the current `major.minor` line
 - `--target latest` includes majors
 
+`--apply` never rewrites `peerDependencies`, at any target. A peer range says which versions of the host your package supports, and raising its floor would quietly drop support for everything below it. Outdated peer ranges still show up in the report so you can widen them yourself.
+
 It honors [`.inuprc`](configuration.md) exactly as the report does — a package the config excludes is never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 
 ## pnpm catalogs work in every mode
