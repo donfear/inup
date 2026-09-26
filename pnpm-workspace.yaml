@@ -20,3 +20,4 @@ minimumReleaseAgeExclude:
   - '@vitest/utils@5.0.0'
   - vitest@5.0.0
   - wrap-ansi@10.0.1 || 10.0.2
+  - '@types/node@26.6.3'
