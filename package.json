@@ -76,9 +76,9 @@
     "@napi-rs/cli": "^3.10.5",
     "@types/node": "^26.6.3",
     "@types/semver": "^7.8.0",
-    "@vitest/coverage-v8": "^5.0.2",
+    "@vitest/coverage-v8": "^5.0.3",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "chalk": "^6.0.1",

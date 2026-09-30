@@ -10,13 +10,13 @@ minimumReleaseAgeExclude:
   - '@biomejs/cli-linux-x64@2.5.9 || 2.5.13'
   - '@biomejs/cli-win32-arm64@2.5.9 || 2.5.13'
   - '@biomejs/cli-win32-x64@2.5.9 || 2.5.13'
-  - '@vitest/coverage-v8@5.0.0'
+  - '@vitest/coverage-v8@5.0.0 || 5.0.3'
   - '@vitest/expect@5.0.0'
-  - '@vitest/mocker@5.0.0'
+  - '@vitest/mocker@5.0.0 || 5.0.3'
   - '@vitest/pretty-format@5.0.0'
   - '@vitest/runner@5.0.0'
   - '@vitest/snapshot@5.0.0'
-  - '@vitest/spy@5.0.0'
+  - '@vitest/spy@5.0.0 || 5.0.3'
   - '@vitest/utils@5.0.0'
-  - vitest@5.0.0
+  - vitest@5.0.0 || 5.0.3
   - wrap-ansi@10.0.1 || 10.0.2
