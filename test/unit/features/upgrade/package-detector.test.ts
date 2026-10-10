@@ -583,6 +583,31 @@ describe('PackageDetector edge paths', () => {
     )
   })
 
+  it('stamps the pnpm patches pinned to a package on each declaration', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'inup-detector-patches-'))
+    try {
+      writeFileSync(
+        join(repo, 'pnpm-workspace.yaml'),
+        'patchedDependencies:\n  zod@1.0.0: patches/zod@1.0.0.patch\n'
+      )
+      mocks.collectAllDependenciesAsync.mockResolvedValue([
+        dep('zod', '^1.0.0', join(repo, 'package.json')),
+        dep('zod', '^1.0.0', join(repo, 'apps', 'web', 'package.json')),
+        dep('yup', '^1.0.0', join(repo, 'package.json')),
+      ])
+
+      const packages = await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(() => {})
+
+      expect(packages.map((pkg) => [pkg.name, pkg.patchPins])).toEqual([
+        ['yup', undefined],
+        ['zod', ['1.0.0']],
+        ['zod', ['1.0.0']],
+      ])
+    } finally {
+      rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
   it('defaults cwd to process.cwd()', () => {
     const detector = new PackageDetector()
 

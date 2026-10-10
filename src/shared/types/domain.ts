@@ -61,6 +61,8 @@ export interface PackageInfo {
   vulnerability?: VulnerabilitySummary // Security vulnerability info (loaded on demand)
   allVersions?: string[] // All available versions from registry
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
+  patchPins?: string[] // Version selectors of the pnpm patches pinned to this package (`16.3.5`, `^2.0.0`)
+  heldByPatch?: string // pnpm patch key (`next@16.3.5`) the --apply bump would orphan, so it is skipped
   lookupFailed?: boolean // The registry returned nothing (network, auth, not found): updates unknown
 }
 

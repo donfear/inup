@@ -75,6 +75,7 @@ export function buildHeadlessReport(
       if (pkg.deprecated) entry.deprecated = pkg.deprecated
       if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
       if (pkg.heldByCooldown) entry.heldByCooldown = pkg.heldByCooldown
+      if (pkg.heldByPatch) entry.heldByPatch = pkg.heldByPatch
       const vulnerability = vulnerabilities.get(pkg)
       if (vulnerability) entry.vulnerability = vulnerability
       return entry

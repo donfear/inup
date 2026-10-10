@@ -56,10 +56,12 @@ export function applyVersionPrefix(current, target) {
  * no explicit "applied" flag, so we derive it: under minor/patch, `range` is the version satisfying
  * the current spec, and it's only a real change when it differs from the current spec's version
  * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
- * Peer ranges never are: `--apply` does not rewrite peerDependencies.
+ * Peer ranges never are: `--apply` does not rewrite peerDependencies. Neither is a package held by
+ * a pinned pnpm patch.
  */
 export function wasApplied(e) {
   if (e.type === 'peerDependencies') return false
+  if (e.heldByPatch) return false
   const cleanCurrent = stripVersionPrefix(e.current)
   return e.range !== cleanCurrent && e.range !== e.current
 }
@@ -152,6 +154,33 @@ export function heldSection(report) {
   return lines
 }
 
+/**
+ * Packages `--apply` left alone because a pnpm patch is pinned to the installed version.
+ *
+ * pnpm refuses to install when a patch matches no package, so these are never part of the PR.
+ * Listed so the reviewer knows the update exists and is theirs to do by hand.
+ */
+export function patchedSection(entries) {
+  const held = entries.filter((e) => e.heldByPatch)
+  if (held.length === 0) return []
+
+  const lines = ['### 🩹 Held by pnpm patch (not applied)', '']
+  lines.push(
+    'These packages have a pnpm patch pinned to the installed version. Upgrading would leave the patch unused, ' +
+      'which pnpm refuses to install, so they are **never upgraded automatically**. Upgrade them by hand and re-create the patch with `pnpm patch`.'
+  )
+  lines.push('')
+  lines.push('| Package | Current | Available | Patch |')
+  lines.push('|---|---|---|---|')
+  for (const e of held) {
+    lines.push(
+      `| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(e.latest)} | \`${escapeCell(e.heldByPatch)}\` |`
+    )
+  }
+  lines.push('')
+  return lines
+}
+
 export function render(report) {
   const { summary } = report
   // Collapse monorepo duplicates up front so every section below counts and lists unique upgrades.
@@ -203,7 +232,7 @@ export function render(report) {
     }
     lines.push('')
   } else {
-    lines.push('_No in-range upgrades were applied — see skipped majors below._')
+    lines.push('_No upgrades were applied — see the sections below._')
     lines.push('')
   }
 
@@ -261,6 +290,7 @@ export function render(report) {
     lines.push('')
   }
 
+  lines.push(...patchedSection(outdated))
   lines.push(...heldSection(report))
 
   lines.push('---')

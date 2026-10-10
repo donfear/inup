@@ -66,6 +66,7 @@ One entry per outdated package.
 | `enginesNode` | `string?` | Declared `engines.node` range for `latest`, if any. |
 | `vulnerability` | `Vulnerability?` | Present only when the installed version has ≥1 known advisory. |
 | `heldByCooldown` | `CooldownHold?` | Present when `minimumReleaseAge` withheld a newer version of this package. |
+| `heldByPatch` | `string?` | Present only with `--apply`: the pnpm `patchedDependencies` key (e.g. `next@16.3.5`) pinned to the installed version. The package was **not** upgraded. |
 
 ## `CooldownHold`
 

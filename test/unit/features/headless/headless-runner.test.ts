@@ -623,6 +623,67 @@ describe('HeadlessRunner.run', () => {
       logSpy.mockRestore()
     })
 
+    describe('with a pnpm patch pinned to the installed version', () => {
+      // The detector stamps the pins; axios is patched at exactly the version it is on.
+      // A fresh object per test: the runner marks the hold on the package itself.
+      let patched: typeof OUTDATED & { patchPins: string[] }
+      let errorSpy: ReturnType<typeof vi.spyOn>
+      let logSpy: ReturnType<typeof vi.spyOn>
+
+      beforeEach(() => {
+        patched = { ...OUTDATED, patchPins: ['0.27.0'] }
+        errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      })
+
+      afterEach(() => {
+        errorSpy.mockRestore()
+        logSpy.mockRestore()
+      })
+
+      it('skips the patched package, upgrades the rest, and reports the hold', async () => {
+        // pnpm fails the install on an unused patch, which would take every other bump with it.
+        const peer = { ...patched, type: 'peerDependencies' }
+        const majorOnly = { ...MAJOR_ONLY, patchPins: ['4.1.2'] }
+        mocks.scanResult.mockResolvedValue([patched, peer, MINOR_ONLY, majorOnly])
+
+        await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true, json: true })
+
+        const choices = mocks.upgradePackages.mock.calls[0][0]
+        expect(choices.map((c: { name: string }) => c.name)).toEqual(['lodash-ish'])
+        expect(errorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('1 package(s) were not upgraded')
+        )
+        expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('axios (patch axios@0.27.0)'))
+        const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+        expect(report.outdated.map((e: { heldByPatch?: string }) => e.heldByPatch)).toEqual([
+          'axios@0.27.0',
+          undefined,
+          undefined,
+          undefined,
+        ])
+      })
+
+      it('upgrades a package whose patch still covers the target', async () => {
+        mocks.scanResult.mockResolvedValue([{ ...OUTDATED, patchPins: ['^0.27.0'] }])
+
+        await new HeadlessRunner({ cwd: '/repo' }).run({ apply: true })
+
+        expect(mocks.upgradePackages.mock.calls[0][0]).toHaveLength(1)
+        expect(errorSpy).not.toHaveBeenCalled()
+      })
+
+      it('leaves a report-only run untouched', async () => {
+        mocks.scanResult.mockResolvedValue([patched])
+
+        await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+
+        const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+        expect(report.outdated[0]).not.toHaveProperty('heldByPatch')
+        expect(errorSpy).not.toHaveBeenCalled()
+      })
+    })
+
     it('target=latest holds ignoreMajor packages to their in-range bump', async () => {
       // Detector-level suppression already cleared hasMajorUpdate and set
       // majorIgnored; latest must not resurrect the major via latestVersion.

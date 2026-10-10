@@ -55,6 +55,7 @@ export interface HeadlessReportEntry {
   enginesNode?: string // declared engines.node range for the latest version, if any
   vulnerability?: HeadlessVulnerability // Advisories on the current version + whether upgrading clears them
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
+  heldByPatch?: string // --apply skipped it: this pnpm patch key is pinned to a version the bump would leave
 }
 
 export interface HeadlessReport {
