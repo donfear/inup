@@ -139,7 +139,7 @@ describe('render-pr-body action helper', () => {
       ],
     })
 
-    expect(body).toContain('_No in-range upgrades were applied — see skipped majors below._')
+    expect(body).toContain('_No upgrades were applied — see the sections below._')
     expect(body).toContain(
       '| `major-only` | ^4.0.0 | ^4.0.0 | 5.0.0 | dependencies | — | ⚠️ yes | — |'
     )
@@ -593,5 +593,31 @@ describe('render-pr-body release-age cooldown section', () => {
 
     expect(body).toContain('Everything is up to date. 🎉')
     expect(body).not.toContain('Held by release-age cooldown')
+  })
+
+  it('lists packages held by a pinned pnpm patch and never marks them applied', async () => {
+    const body = await renderPrBody({
+      schemaVersion: 2,
+      summary: { ...baseSummary, total: 2, outdated: 1 },
+      outdated: [
+        {
+          name: 'next',
+          current: '^16.3.5',
+          range: '16.4.0',
+          latest: '16.4.0',
+          type: 'dependencies',
+          packageJsonPath: '/repo/package.json',
+          hasMajorUpdate: false,
+          heldByPatch: 'next@16.3.5',
+        },
+      ],
+    })
+
+    expect(body).not.toContain('### ✅ Applied in this PR')
+    expect(body).toContain('_No upgrades were applied — see the sections below._')
+    expect(body).toContain('| `next` | ^16.3.5 | ^16.4.0 | 16.4.0 | dependencies | — | — | — |')
+    expect(body).toContain('### 🩹 Held by pnpm patch (not applied)')
+    expect(body).toContain('**never upgraded automatically**')
+    expect(body).toContain('| `next` | ^16.3.5 | 16.4.0 | `next@16.3.5` |')
   })
 })

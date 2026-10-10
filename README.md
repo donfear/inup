@@ -51,8 +51,8 @@ Review the diff and run your tests after upgrading.
 | `←` | Cycle selection left (latest → range → none) |
 | `→` | Cycle selection right (none → range → latest) |
 | `Space` | Toggle the current package on/off |
-| `m` | Select all minor/patch updates, except peers |
-| `l` | Select all latest updates (including major), except peers |
+| `m` | Select all minor/patch updates, except peers and patched packages |
+| `l` | Select all latest updates (including major), except peers and patched packages |
 | `u` | Unselect all packages |
 | `Enter` | Confirm selection and upgrade |
 | `/` | Search packages by name |

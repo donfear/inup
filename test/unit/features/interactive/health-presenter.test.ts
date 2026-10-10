@@ -30,6 +30,17 @@ describe('getHealthBadge', () => {
     expect(getHealthBadge({ heldByCooldown: hold })).toContain('[HELD]')
   })
 
+  it('flags an upgrade that would leave a pinned pnpm patch unused with [PATCH]', () => {
+    expect(getHealthBadge({ patchHold: { range: 'next@16.3.5' } })).toContain('[PATCH]')
+    // Taking it fails the install, so it outranks the benign cooldown hold.
+    expect(
+      getHealthBadge({ patchHold: { latest: 'next@16.3.5' }, heldByCooldown: hold })
+    ).toContain('[PATCH]')
+    expect(getHealthBadge({ deprecated: 'gone', patchHold: { latest: 'a@1.0.0' } })).toContain(
+      '[DEPR]'
+    )
+  })
+
   it('ranks [HELD] below the problem signals', () => {
     // A deliberate, benign hold must not mask a deprecation or engines mismatch.
     expect(getHealthBadge({ deprecated: 'gone', heldByCooldown: hold })).toContain('[DEPR]')

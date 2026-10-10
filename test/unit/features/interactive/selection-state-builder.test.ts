@@ -235,6 +235,47 @@ describe('createSelectionStates', () => {
     expect(states.map((s) => s.name)).toEqual(['stale'])
   })
 
+  it('marks each offered upgrade that would leave a pinned pnpm patch unused', () => {
+    const base = {
+      currentVersion: '^1.2.3',
+      rangeVersion: '1.4.0',
+      latestVersion: '2.0.0',
+      isOutdated: true,
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+    }
+    const states = createSelectionStates(
+      [
+        makePackageInfo({ ...base, name: 'a-exact', patchPins: ['1.2.3'] }),
+        makePackageInfo({ ...base, name: 'b-range', patchPins: ['^1.0.0'] }),
+        makePackageInfo({
+          ...base,
+          name: 'c-minor-only',
+          hasMajorUpdate: false,
+          patchPins: ['1.2.3'],
+        }),
+        makePackageInfo({
+          ...base,
+          name: 'd-major-only',
+          hasRangeUpdate: false,
+          patchPins: ['1.2.3'],
+        }),
+        makePackageInfo({ ...base, name: 'e-covered', patchPins: ['*'] }),
+        makePackageInfo({ ...base, name: 'f-unpatched' }),
+      ],
+      noSummary
+    )
+
+    expect(states.map((s) => s.patchHold)).toEqual([
+      { range: 'a-exact@1.2.3', latest: 'a-exact@1.2.3' },
+      { latest: 'b-range@^1.0.0' },
+      { range: 'c-minor-only@1.2.3' },
+      { latest: 'd-major-only@1.2.3' },
+      undefined,
+      undefined,
+    ])
+  })
+
   it('attaches cached vulnerability summaries', () => {
     const summary = { count: 1, highestSeverity: 'high' as const, detailsUrl: 'x', advisories: [] }
     const getCachedSummary = vi.fn().mockReturnValue(summary)

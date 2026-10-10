@@ -50,6 +50,12 @@ export interface PackageSelectionState {
   enginesNode?: string // declared engines.node range for the latest version (loaded on demand)
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
   /**
+   * The pnpm patch key (`next@16.3.5`) each offered upgrade would leave unused, per option.
+   * pnpm refuses to install with an unused patch, so taking that option means re-creating the
+   * patch by hand. Absent when no offered upgrade is affected.
+   */
+  patchHold?: { range?: string; latest?: string }
+  /**
    * The row exists only to surface a cooldown hold: every version newer than the installed
    * one is inside the window, so there is nothing to select. Hidden until `c` reveals them,
    * because the list otherwise means "things you can upgrade".

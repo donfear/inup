@@ -1,3 +1,4 @@
+import { dirname } from 'node:path'
 import * as semver from 'semver'
 import { isPackageIgnored } from '../../shared/config'
 import { configManager } from '../../shared/config/user-config'
@@ -11,6 +12,7 @@ import {
 } from '../../shared/fs'
 import type { ControlTick } from '../../shared/http/hill-climb-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
+import { PnpmPatches } from '../../shared/pnpm-patches'
 import {
   fetchPackageVersions,
   type PackageVersionData,
@@ -55,14 +57,16 @@ interface PreparedDependencies {
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
 function declarationFields(
-  dep: DependencyEntry
+  dep: DependencyEntry,
+  patches: PnpmPatches
 ): Pick<
   PackageInfo,
-  'type' | 'packageJsonPath' | 'catalog' | 'catalogEntries' | 'catalogReferencedBy'
+  'type' | 'packageJsonPath' | 'patchPins' | 'catalog' | 'catalogEntries' | 'catalogReferencedBy'
 > {
   return {
     type: dep.type,
     packageJsonPath: dep.packageJsonPath,
+    patchPins: patches.pinsFor(dirname(dep.packageJsonPath), dep.name),
     catalog: dep.catalog,
     catalogEntries: dep.catalogEntries,
     catalogReferencedBy: dep.catalogReferencedBy,
@@ -84,6 +88,8 @@ export class PackageDetector {
   /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
   private readonly concurrency?: number
   private readonly networkProfile: NetworkProfile | null
+  /** pnpm patches pinned to a version: read once per project, stamped on every declaration. */
+  private readonly patches = new PnpmPatches()
   /** Latest control decision of the current run, for the slow-network hint. */
   private lastControlTick: ControlTick | null = null
 
@@ -425,7 +431,7 @@ export class PackageDetector {
     return dependencies.map((dep) => {
       const cached = resolvedBySpecifier.get(dep.version)
       if (cached) {
-        return { ...cached, ...declarationFields(dep) }
+        return { ...cached, ...declarationFields(dep, this.patches) }
       }
       try {
         // Only simple specifiers reach this point and every one of them parses, so the null
@@ -506,7 +512,7 @@ export class PackageDetector {
           currentVersion: dep.version,
           rangeVersion: rangeTargetVersion || dep.version,
           latestVersion: effectiveLatest,
-          ...declarationFields(dep),
+          ...declarationFields(dep, this.patches),
           isOutdated,
           hasRangeUpdate,
           hasMajorUpdate,
@@ -614,7 +620,7 @@ export class PackageDetector {
       currentVersion: dep.version,
       rangeVersion: 'unknown',
       latestVersion: 'unknown',
-      ...declarationFields(dep),
+      ...declarationFields(dep, this.patches),
       isOutdated: false,
       hasRangeUpdate: false,
       hasMajorUpdate: false,

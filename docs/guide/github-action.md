@@ -36,6 +36,8 @@ When inup finds applicable upgrades, the workflow commits the changed manifest/l
 
 Peer ranges (`peerDependencies`) are never rewritten, so publishing from the upgraded branch can't quietly narrow the host versions your package supports. Outdated peer ranges still appear in the table, never marked as applied.
 
+Packages with a pnpm patch pinned to a version (`patchedDependencies: { next@16.3.5: … }`) are never upgraded automatically. pnpm refuses to install when a patch no longer matches any package, so the bump would fail the whole run. They are listed in a **Held by pnpm patch** table in the PR body; upgrade them by hand and re-create the patch with `pnpm patch`. Patches keyed by name only (`next`), or by a range that still covers the new version, don't hold anything back.
+
 Catalog-sourced upgrades (pnpm `catalog:` deps) are applied to `pnpm-workspace.yaml` and marked `catalog:<name>` in the PR body so reviewers know which file the diff touches.
 
 With `minimum-release-age` set, the PR body also gets a **Held by release-age cooldown** table listing versions that exist but were deliberately not applied, and how old each one is. A cooldown that skipped silently would read to a reviewer as "nothing newer available" — the opposite of what the control means.

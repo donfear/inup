@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import { PackageManagerDetector } from '../../shared/package-manager'
+import { findBlockingPatch } from '../../shared/pnpm-patches'
 import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
@@ -86,6 +87,11 @@ export class HeadlessRunner {
       // advisory against the upgrade targets, so the report says whether upgrading *fixes* it.
       const vulnerabilities = await auditVulnerabilities(outdated, advisories)
 
+      // Before the report is built, so it can say which packages --apply left alone and why.
+      if (options.apply) {
+        this.holdPatchedPackages(outdated, options.target ?? 'minor')
+      }
+
       // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
       const cooldown = this.detector.getCooldownDiagnostics()
       const report = buildHeadlessReport(packages, outdated, vulnerabilities, cooldown)
@@ -160,6 +166,33 @@ export class HeadlessRunner {
   }
 
   /**
+   * Mark the packages --apply must not bump because a pnpm patch is pinned to the version they
+   * would leave. pnpm refuses to install with a patch that matches nothing, so writing the bump
+   * would fail the whole run — every other upgrade with it. Said out loud on stderr: a package
+   * skipped in silence looks exactly like one that is up to date.
+   */
+  private holdPatchedPackages(outdated: PackageInfo[], target: ApplyTarget): void {
+    const held = new Set<string>()
+    for (const pkg of outdated) {
+      if (pkg.type === 'peerDependencies') continue
+      const targetVersion = this.resolveTargetVersion(pkg, target)
+      if (!targetVersion) continue
+      const patch = findBlockingPatch(pkg.name, pkg.patchPins, targetVersion)
+      if (!patch) continue
+      pkg.heldByPatch = patch
+      held.add(`${pkg.name} (patch ${patch})`)
+    }
+
+    if (held.size > 0) {
+      console.error(
+        chalk.yellow(
+          `Warning: ${held.size} package(s) were not upgraded — a pnpm patch is pinned to the installed version, and upgrading would leave it unused: ${[...held].join(', ')}. Upgrade these by hand and re-create the patch.`
+        )
+      )
+    }
+  }
+
+  /**
    * Build `PackageUpgradeChoice[]` from the outdated set per the version policy. Mirrors
    * `createUpgradeChoices` in the TUI: preserves the original range prefix (^/~) unless --save-exact.
    *
@@ -169,7 +202,8 @@ export class HeadlessRunner {
    *   update crosses a minor (or major) boundary. Uses upgradeType 'range'.
    * - latest: take `latestVersion`; uses upgradeType 'latest' (majors included).
    *
-   * peerDependencies are never written, at any target: they stay in the report only.
+   * peerDependencies are never written, at any target: they stay in the report only. Neither are
+   * packages held by a pinned pnpm patch.
    */
   private buildChoices(outdated: PackageInfo[], target: ApplyTarget): PackageUpgradeChoice[] {
     const saveExact = this.options?.saveExact ?? false
@@ -179,6 +213,7 @@ export class HeadlessRunner {
       // A peer range says which host versions a library supports; it is not a version to install.
       // Raising its floor silently drops support for every older host, so that stays a person's call.
       if (pkg.type === 'peerDependencies') continue
+      if (pkg.heldByPatch) continue
 
       const targetVersion = this.resolveTargetVersion(pkg, target)
       if (!targetVersion) continue

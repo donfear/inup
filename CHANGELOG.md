@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The picker marks a package with `[PATCH]` when upgrading it would leave a pinned pnpm patch unused, and `i` shows which patch. `m` and `l` skip these packages; you can still select one by hand.
+
+### Fixed
+
+- `--apply` and the GitHub Action no longer fail with `ERR_PNPM_UNUSED_PATCH` when a package has a pnpm patch pinned to its installed version (`patchedDependencies: { next@16.3.5: … }`). Such a package is now left alone and the rest of the upgrades go through. It is named in a warning, gets `heldByPatch` in the `--json` report and its own table in the Action's PR body, so you know to upgrade it by hand and re-create the patch.
+
 ## [1.8.4] - 2026-09-23
 
 ### Added
