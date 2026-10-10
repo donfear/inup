@@ -4,17 +4,19 @@ import { getThemeColor } from '../themes-colors'
 
 export type HealthState = Pick<
   PackageSelectionState,
-  'deprecated' | 'enginesNode' | 'heldByCooldown'
+  'deprecated' | 'enginesNode' | 'heldByCooldown' | 'patchHold'
 >
 
 /**
  * A compact badge flagging a package's health in the list:
  *   - `[DEPR]` when the latest version is deprecated (highest priority),
- *   - `[ENG]`  when its `engines.node` is incompatible with the running Node, or
+ *   - `[ENG]`  when its `engines.node` is incompatible with the running Node,
+ *   - `[PATCH]` when an offered upgrade would leave a pinned pnpm patch unused, or
  *   - `[HELD]` when the release-age cooldown withheld a newer version.
  *
  * Returns an empty string when none applies. Deprecation wins because an
- * engines mismatch on an abandoned package is moot; the cooldown ranks last
+ * engines mismatch on an abandoned package is moot; the patch outranks the
+ * cooldown because taking the upgrade fails the install; the cooldown ranks last
  * because it reports a deliberate, benign choice rather than a problem.
  * All render in the theme's (amber) warning color — caution, not alarm.
  */
@@ -24,6 +26,9 @@ export function getHealthBadge(state: HealthState): string {
   }
   if (checkNodeEngineCompatibility(state.enginesNode)) {
     return getThemeColor('warning')('[ENG]')
+  }
+  if (state.patchHold) {
+    return getThemeColor('warning')('[PATCH]')
   }
   if (state.heldByCooldown) {
     return getThemeColor('warning')('[HELD]')

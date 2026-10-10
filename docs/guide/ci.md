@@ -34,7 +34,7 @@ Anything newer than that target is still reported as the latest update (`hasMajo
 
 `--apply` never rewrites `peerDependencies`, at any target. A peer range says which versions of the host your package supports, and raising its floor would quietly drop support for everything below it. Outdated peer ranges still show up in the report so you can widen them yourself.
 
-With pnpm, `--apply` also skips a package whose patch in `patchedDependencies` is pinned to a version the upgrade would leave (`next@16.3.5`). pnpm refuses to install with an unused patch, so the upgrade is left to you: bump the package and re-create the patch with `pnpm patch`. The skipped packages are named in a warning on stderr and carry `heldByPatch` in the `--json` report.
+With pnpm, `--apply` also skips a package whose patch in `patchedDependencies` is pinned to a version the upgrade would leave (`next@16.3.5`). pnpm refuses to install with an unused patch, so the upgrade is left to you: bump the package and re-create the patch with `pnpm patch`. The skipped packages are named in a warning on stderr and carry `heldByPatch` in the `--json` report. In the picker such a package has a `[PATCH]` badge (press `i` for the patch it is tied to), and `m` and `l` skip it; you can still select it by hand.
 
 It honors [`.inuprc`](configuration.md) exactly as the report does — a package the config excludes is never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 

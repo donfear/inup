@@ -1,3 +1,4 @@
+import { findBlockingPatch } from '../../../shared/pnpm-patches'
 import type {
   PackageInfo,
   PackageSelectionState,
@@ -87,6 +88,12 @@ export function createSelectionStates(
     const latestClean = toComparableVersion(pkg.latestVersion) || pkg.latestVersion
     const key = selectionKey(pkg.name, pkg.currentVersion, pkg.type, pkg.catalog)
     const previousSelection = previousSelections?.get(key) || 'none'
+    const rangePatch = pkg.hasRangeUpdate
+      ? findBlockingPatch(pkg.name, pkg.patchPins, rangeClean)
+      : null
+    const latestPatch = pkg.hasMajorUpdate
+      ? findBlockingPatch(pkg.name, pkg.patchPins, latestClean)
+      : null
 
     return {
       name: pkg.name,
@@ -106,6 +113,13 @@ export function createSelectionStates(
       deprecated: pkg.deprecated,
       enginesNode: pkg.enginesNode,
       heldByCooldown: pkg.heldByCooldown,
+      patchHold:
+        rangePatch || latestPatch
+          ? {
+              ...(rangePatch && { range: rangePatch }),
+              ...(latestPatch && { latest: latestPatch }),
+            }
+          : undefined,
       heldOnly: !pkg.isOutdated && pkg.heldByCooldown !== undefined,
       vulnerability: getCachedSummary(pkg.name, pkg.currentVersion, pkg.type),
       allVersions: pkg.allVersions,

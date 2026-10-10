@@ -163,6 +163,15 @@ export function buildPackageInfoSections(
   if (engineWarning) {
     warningRows.push(getThemeColor('warning')(`Hold: ${engineWarning}`))
   }
+  if (state.patchHold) {
+    const patch = state.patchHold.latest ?? state.patchHold.range
+    for (const line of wrapPlainText(
+      `Patched: pnpm patch ${patch} is pinned to the installed version. Upgrading leaves it unused and pnpm refuses to install — upgrade this package on its own, then re-create the patch with pnpm patch.`,
+      warningContentWidth
+    )) {
+      warningRows.push(getThemeColor('warning')(line))
+    }
+  }
   if (state.heldByCooldown) {
     // The row badge can only say [HELD]; this is where a user goes to find out
     // WHICH version is being withheld and how close it is to becoming eligible.

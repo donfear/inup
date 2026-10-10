@@ -241,6 +241,25 @@ describe('StateManager bulk selection edge cases', () => {
     expect(states.map((s) => s.selectedOption)).toEqual(['latest', 'none', 'range'])
   })
 
+  it('bulk minor and latest skip an option that would leave a pnpm patch unused', () => {
+    const sm = new StateManager(0, 24)
+    const make = () => [
+      ready({ selectedOption: 'none', patchHold: { range: 'a@1.0.0', latest: 'a@1.0.0' } }),
+      // A range patch that still covers the in-range bump, but not the next major.
+      ready({ selectedOption: 'none', patchHold: { latest: 'b@^1.0.0' } }),
+      ready({ selectedOption: 'none', hasMajorUpdate: false, patchHold: { range: 'c@1.0.0' } }),
+      ready({ selectedOption: 'none' }),
+    ]
+
+    const minor = make()
+    sm.bulkSelectMinor(minor)
+    expect(minor.map((s) => s.selectedOption)).toEqual(['none', 'range', 'none', 'range'])
+
+    const latest = make()
+    sm.bulkSelectLatest(latest)
+    expect(latest.map((s) => s.selectedOption)).toEqual(['none', 'none', 'none', 'latest'])
+  })
+
   it('bulk unselect clears every row', () => {
     const sm = new StateManager(0, 24)
     const states = [ready({ selectedOption: 'latest' }), ready({ selectedOption: 'range' })]

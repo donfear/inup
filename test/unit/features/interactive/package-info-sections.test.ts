@@ -195,6 +195,26 @@ describe('buildPackageInfoSections (info tab)', () => {
     expect(text).toContain('Hold: requires Node >=99')
   })
 
+  it('names the pnpm patch an upgrade would leave unused', () => {
+    const latest = plain(
+      buildPackageInfoSections(
+        makeSelectionState({ patchHold: { range: 'next@16.3.5', latest: 'next@16.3.5' } }),
+        MODAL_WIDTH,
+        'info'
+      )
+    )
+    expect(latest).toContain('Patched: pnpm patch next@16.3.5 is pinned')
+
+    const rangeOnly = plain(
+      buildPackageInfoSections(
+        makeSelectionState({ patchHold: { range: 'foo@1.0.0' } }),
+        MODAL_WIDTH,
+        'info'
+      )
+    )
+    expect(rangeOnly).toContain('pnpm patch foo@1.0.0')
+  })
+
   it('names the version the cooldown withheld', () => {
     // The row badge can only say [HELD]; the modal is where a user goes to find
     // out which version is being held and how close it is to becoming eligible.
