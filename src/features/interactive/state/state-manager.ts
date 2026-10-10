@@ -211,11 +211,13 @@ export class StateManager {
 
   // Bulk selection skips peer rows (and leaves a manual peer choice as it is). Raising a peer
   // range's floor drops support for older hosts, so it should only happen when picked by hand.
+  // The same goes for an upgrade that would leave a pinned pnpm patch unused: the install fails
+  // until someone re-creates the patch, so that is a choice to make one package at a time.
   bulkSelectMinor(states: PackageSelectionState[]): void {
     if (states.length === 0) return
     states.forEach((state) => {
       if (state.type === 'peerDependencies') return
-      if (state.hasRangeUpdate) {
+      if (state.hasRangeUpdate && !state.patchHold?.range) {
         state.selectedOption = 'range'
       }
     })
@@ -225,10 +227,9 @@ export class StateManager {
     if (states.length === 0) return
     states.forEach((state) => {
       if (state.type === 'peerDependencies') return
-      if (state.hasMajorUpdate) {
-        state.selectedOption = 'latest'
-      } else if (state.hasRangeUpdate) {
-        state.selectedOption = 'range'
+      const option = state.hasMajorUpdate ? 'latest' : state.hasRangeUpdate ? 'range' : null
+      if (option && !state.patchHold?.[option]) {
+        state.selectedOption = option
       }
     })
   }
