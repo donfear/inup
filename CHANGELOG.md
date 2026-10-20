@@ -10,6 +10,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Faster startup: the `inup` command now ships as one bundled file instead of a few hundred small ones that Node had to find and read one by one, so every run starts sooner, `inup --version` and `--json` included. Using inup as a library is unchanged.
+- inup now talks to the registry over HTTP/2 when the registry supports it, as the public npm registry does. All lookups share one connection instead of opening up to 24, and more of them can be in flight at once, so checking a project takes less time. Registries that only speak HTTP/1.1, which includes many private ones, work as before.
 
 ## [1.8.6] - 2026-10-21
 
