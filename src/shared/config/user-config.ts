@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import envPaths from 'env-paths'
 import { writeFileAtomic } from '../fs/write-atomic'
 import type { NetworkProfile, PersistedFilters } from '../types'
-import { POOL_CONNECTIONS } from './constants'
+import { MULTIPLEXED_STREAMS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
 
 interface ConfigFile {
@@ -95,7 +95,7 @@ class ConfigManager {
     if (
       !Number.isInteger(profile.learnedLimit) ||
       profile.learnedLimit < 1 ||
-      profile.learnedLimit > POOL_CONNECTIONS
+      profile.learnedLimit > MULTIPLEXED_STREAMS
     ) {
       return null
     }
