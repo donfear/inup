@@ -62,6 +62,29 @@ describe('httpRequest', () => {
     expect(seen).toEqual([{ url: '/@scope%2Fpkg', accept: 'application/json', encoding: 'br' }])
   })
 
+  it('sends a HEAD, whose body is empty', async () => {
+    const methods: Array<string | undefined> = []
+    const { port } = await serve((req, res) => {
+      methods.push(req.method)
+      res.writeHead(200, { etag: 'W/"2"', 'content-length': '7' }).end()
+    })
+
+    const response = await get(`http://127.0.0.1:${port}`, '/pkg', { method: 'HEAD' })
+
+    expect(response.headers.etag).toBe('W/"2"')
+    expect(await readAll(response.body)).toBe('')
+    expect(methods).toEqual(['HEAD'])
+  })
+
+  it('keeps the probe pool apart from the download pool', async () => {
+    const server = await serve((_req, res) => res.end('ok'))
+    const origin = `http://127.0.0.1:${server.port}`
+    await readAll((await get(origin)).body)
+    await readAll((await get(origin, '/', { pool: 'probe' })).body)
+    await readAll((await get(origin, '/', { pool: 'probe' })).body)
+    expect(server.connections()).toBe(2)
+  })
+
   it('reuses one keep-alive connection for sequential requests', async () => {
     const server = await serve((_req, res) => res.end('ok'))
     const origin = `http://127.0.0.1:${server.port}`

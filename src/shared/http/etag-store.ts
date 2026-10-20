@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -151,6 +152,19 @@ export function readEtag(key: string): EtagEntry | null {
 }
 
 /**
+ * Whether an entry for `key` is on disk. Only a stat: the entry is not read or
+ * validated, so a corrupt one still counts.
+ */
+export function hasEtag(key: string): boolean {
+  if (!enabled) return false
+  try {
+    return existsSync(fileFor(key))
+  } catch {
+    return false
+  }
+}
+
+/**
  * The file an entry for `key` lives in, or null when the store is disabled or
  * the directory is unusable. Lets the optional Rust core write the entry off
  * the main thread; its content must match writeEtag's JSON.stringify({ etag, data }).
@@ -169,6 +183,26 @@ export function writeEtag(key: string, etag: string, data: PackageVersionData): 
   if (!enabled || !etag) return
   try {
     writeFileSync(fileFor(key), JSON.stringify({ etag, data }))
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Move an entry to another key, replacing any entry there. Best-effort. */
+export function moveEtag(from: string, to: string): void {
+  if (!enabled) return
+  try {
+    renameSync(fileFor(from), fileFor(to))
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Delete an entry. Best-effort. */
+export function removeEtag(key: string): void {
+  if (!enabled) return
+  try {
+    unlinkSync(fileFor(key))
   } catch {
     /* best-effort */
   }

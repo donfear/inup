@@ -141,9 +141,10 @@ describe('registry auth failures (--json)', () => {
       expect(stderr.some((line) => line.includes(gamma))).toBe(false)
       expect(stderr.join('\n')).not.toContain('s3cret')
 
-      // Refusals are final: one request per package, no retries.
-      expect(hits.get('alpha')).toBe(2)
-      expect(hits.get('beta')).toBe(1)
+      // Refusals are final: no retries. Each package costs its `latest` probe and one
+      // version-list request.
+      expect(hits.get('alpha')).toBe(4)
+      expect(hits.get('beta')).toBe(2)
     },
     RUN_TIMEOUT_MS
   )

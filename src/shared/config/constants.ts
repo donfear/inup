@@ -7,3 +7,8 @@ export const REQUEST_TIMEOUT = 60000 // 60 seconds in milliseconds
 // Each request holds one socket, so in-flight requests are capped by the agent's
 // socket count and the controller must never ramp past it.
 export const POOL_CONNECTIONS = 24
+
+// Sockets per registry for `latest` probes, and how many run at once. A probe is
+// a few KB, so its time is the round trip — often a CDN miss of a few hundred
+// ms — and more of them in flight shorten a cold run directly.
+export const PROBE_CONNECTIONS = 2 * POOL_CONNECTIONS
