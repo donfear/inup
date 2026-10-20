@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { debugLog } from '../../../../src/shared/debug-logger'
 import { nativeCoreFile, sha512Integrity } from '../../../../src/shared/registry/native-download'
@@ -15,9 +15,12 @@ import {
   nativeCoreDownload,
   nativeTransport,
   type PackumentDecodeRequest,
+  packageRoot,
   packumentDecoder,
   setRustCoreEnvironment,
 } from '../../../../src/shared/registry/rust-core'
+
+const REPO_ROOT = resolve(__dirname, '..', '..', '..', '..')
 
 const raw = Buffer.from('body')
 const parsed = {
@@ -138,6 +141,33 @@ describe('detectHost', () => {
   })
 })
 
+describe('packageRoot', () => {
+  const root = resolve('/pkg')
+  const only =
+    (...dirs: string[]) =>
+    (path: string) =>
+      dirs.some((dir) => path === join(dir, 'package.json'))
+
+  it('finds the repository root from the module, tsc output and bundle directories', () => {
+    for (const dir of ['src/shared/registry', 'dist/shared/registry', 'dist']) {
+      expect(packageRoot(join(REPO_ROOT, dir))).toBe(REPO_ROOT)
+    }
+  })
+
+  it('stops at the nearest package.json', () => {
+    const exists = only(root, join(root, 'node_modules', 'inup'))
+    expect(packageRoot(join(root, 'node_modules', 'inup', 'dist'), exists)).toBe(
+      join(root, 'node_modules', 'inup')
+    )
+    expect(packageRoot(root, exists)).toBe(root)
+  })
+
+  it('falls back to the directory itself when no package.json is above it', () => {
+    const dir = join(root, 'dist')
+    expect(packageRoot(dir, () => false)).toBe(dir)
+  })
+})
+
 describe('core selection', () => {
   it('is off by default and never loads or downloads anything', () => {
     const load = vi.fn()
@@ -154,7 +184,9 @@ describe('core selection', () => {
     const load = vi.fn((_id: string) => fakeAddon())
     const download = useAddon(load)
     expect(activeCore()).toBe('native')
-    expect(load.mock.calls.map(([id]) => id)).toEqual([expect.stringMatching(DEV_BUILD)])
+    expect(load.mock.calls.map(([id]) => id)).toEqual([
+      join(REPO_ROOT, 'native', 'out', 'inup.darwin-arm64.node'),
+    ])
     expect(download).not.toHaveBeenCalled()
   })
 
