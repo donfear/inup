@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Faster startup: the `inup` command now ships as one bundled file instead of a few hundred small ones that Node had to find and read one by one, so every run starts sooner, `inup --version` and `--json` included. Using inup as a library is unchanged.
+
 ## [1.8.6] - 2026-10-21
 
 ### Changed
