@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { debugLog } from '../../../../src/shared/debug-logger'
 import {
-  collectAllDependenciesAsync,
+  collectDependenciesAsync,
   detectJsonFormat,
   readPackageJson,
   readPackageJsonAsync,
@@ -145,8 +145,8 @@ describe('reading a package.json with a UTF-8 byte order mark', () => {
   })
 })
 
-describe('collectAllDependenciesAsync', () => {
-  it('collects dependencies from every type and skips malformed files', async () => {
+describe('collectDependenciesAsync', () => {
+  it('collects dependencies from every type and declares none for a malformed file', async () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
     try {
       const good = join(tempDir, 'good')
@@ -164,13 +164,11 @@ describe('collectAllDependenciesAsync', () => {
       )
       writeFileSync(join(bad, 'package.json'), '{malformed')
 
-      const deps = await collectAllDependenciesAsync([
-        join(good, 'package.json'),
-        join(bad, 'package.json'),
-      ])
+      const deps = await collectDependenciesAsync(join(good, 'package.json'))
 
       expect(deps.map((d) => d.name).sort()).toEqual(['alpha', 'beta', 'delta', 'gamma'])
       expect(deps.find((d) => d.name === 'gamma')?.type).toBe('peerDependencies')
+      expect(await collectDependenciesAsync(join(bad, 'package.json'))).toEqual([])
     } finally {
       rmSync(tempDir, { recursive: true, force: true })
     }
@@ -189,7 +187,7 @@ describe('collectAllDependenciesAsync', () => {
         })
       )
 
-      const deps = await collectAllDependenciesAsync([path])
+      const deps = await collectDependenciesAsync(path)
 
       expect(deps.map((d) => d.name)).toEqual(['alpha'])
       expect(warnSpy).toHaveBeenCalledTimes(3)
@@ -209,7 +207,7 @@ describe('collectAllDependenciesAsync', () => {
       const path = join(tempDir, 'package.json')
       writeFileSync(path, `\uFEFF${JSON.stringify({ dependencies: { alpha: '^1.0.0' } })}`)
 
-      const deps = await collectAllDependenciesAsync([path])
+      const deps = await collectDependenciesAsync(path)
 
       expect(deps).toEqual([
         { name: 'alpha', version: '^1.0.0', type: 'dependencies', packageJsonPath: path },
@@ -223,7 +221,7 @@ describe('collectAllDependenciesAsync', () => {
     const { mkdtempSync, mkdirSync, rmSync, writeFileSync } = await import('node:fs')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
-    const { collectAllDependenciesAsync } = await import('../../../../src/shared/fs/io')
+    const { collectDependenciesAsync } = await import('../../../../src/shared/fs/io')
 
     const tempDir = mkdtempSync(join(tmpdir(), 'inup-io-test-'))
     try {
@@ -238,7 +236,7 @@ describe('collectAllDependenciesAsync', () => {
       ]
       const localNames = new Set<string>()
 
-      await collectAllDependenciesAsync(files, localNames)
+      for (const file of files) await collectDependenciesAsync(file, localNames)
 
       expect([...localNames]).toEqual(['@org/utils'])
     } finally {

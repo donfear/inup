@@ -40,10 +40,13 @@ require('../../dist/shared/http/http-request.js').httpRequest = async (_origin, 
     },
   }
 }
-require('../../dist/shared/fs/scan.js').findAllPackageJsonFilesAsync = async () => [
-  `${process.cwd()}/package.json`,
-]
-require('../../dist/shared/fs/io.js').collectAllDependenciesAsync = async () => dependencies
+// One manifest, reported to the detector as the scan finds it, declaring the whole fixture.
+require('../../dist/shared/fs/scan.js').findAllPackageJsonFilesAsync = async (...args) => {
+  const manifest = `${process.cwd()}/package.json`
+  args[4]?.onPackageJson?.(manifest)
+  return [manifest]
+}
+require('../../dist/shared/fs/io.js').collectDependenciesAsync = async () => dependencies
 const { PackageDetector } = require('../../dist/features/upgrade/package-detector.js')
 const list = require('../../dist/features/interactive/renderer/package-list/index.js')
 // Mirrors test/fixtures/selection-state-factory.ts (plain JS: dist/ has no test fixtures).

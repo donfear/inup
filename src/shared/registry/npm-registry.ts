@@ -411,6 +411,29 @@ function withoutControlCharacters(data: PackageVersionData): PackageVersionData 
   return data
 }
 
+export type PackageVersionFetchOptions = {
+  onPackageReady?: OnPackageReadyCallback
+  currentVersions?: Map<string, string>
+  onControlTick?: (tick: ControlTick) => void
+  /** Per-package successful round-trip latency, for perf diagnostics. */
+  onPackageTiming?: (name: string, latencyMs: number) => void
+  /** Fires once per package whose registry refused access (401/403). */
+  onAccessDenied?: (denial: RegistryAccessDenial) => void
+  /**
+   * Fetch the FULL packument instead of the abbreviated install-v1 format. Larger payloads,
+   * but includes per-version publish times — required by release-age policies. Default: false.
+   */
+  fullMetadata?: boolean
+} & FetchPackageVersionsOptions
+
+/** A registry fetch whose package list can still grow while it runs. */
+export interface PackageVersionFetch {
+  /** Queue more packages: each name once per run, and never after `finish()`. */
+  add(packageNames: Iterable<string>): void
+  /** The list is complete. Resolves with every package's data once all of them have resolved. */
+  finish(): Promise<Map<string, PackageVersionData>>
+}
+
 /**
  * Fetches version data for a list of packages from the npm registry.
  *
@@ -444,141 +467,175 @@ function withoutControlCharacters(data: PackageVersionData): PackageVersionData 
  */
 export async function fetchPackageVersions(
   packageNames: string[],
-  options: {
-    onPackageReady?: OnPackageReadyCallback
-    currentVersions?: Map<string, string>
-    onControlTick?: (tick: ControlTick) => void
-    /** Per-package successful round-trip latency, for perf diagnostics. */
-    onPackageTiming?: (name: string, latencyMs: number) => void
-    /** Fires once per package whose registry refused access (401/403). */
-    onAccessDenied?: (denial: RegistryAccessDenial) => void
-    /**
-     * Fetch the FULL packument instead of the abbreviated install-v1 format. Larger payloads,
-     * but includes per-version publish times — required by release-age policies. Default: false.
-     */
-    fullMetadata?: boolean
-  } & FetchPackageVersionsOptions = {}
+  options: PackageVersionFetchOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
-  const packageData = new Map<string, PackageVersionData>()
+  const lookups = startPackageVersionFetch(options)
+  lookups.add(packageNames)
+  return lookups.finish()
+}
 
-  const total = packageNames.length
-  if (total === 0) {
-    return packageData
-  }
+/**
+ * `fetchPackageVersions` for a list that is still being discovered: requests go
+ * out while the caller keeps adding packages, so a repository scan and its
+ * registry lookups overlap.
+ *
+ * Sizing a run takes its total: whether the controller runs at all, the fixed
+ * limit of a small run, where the run tail starts. Requests therefore wait
+ * until the list is complete or has reached the size the controller takes over
+ * at — from there on no package added later can change how the run is sized.
+ * Until the list is complete the run tail is never declared, and a window in
+ * which a slot sat idle for lack of work is not judged: it measured the caller,
+ * not the link.
+ */
+export function startPackageVersionFetch(
+  options: PackageVersionFetchOptions = {}
+): PackageVersionFetch {
+  const packageData = new Map<string, PackageVersionData>()
+  // Names added before the requests start.
+  const backlog: string[] = []
+  const workers: Promise<void>[] = []
+  let total = 0
+  let completedCount = 0
+  // Set by finish(): `total` is final from then on.
+  let complete = false
 
   const pinned = options.concurrency
   const networkProfile = options.networkProfile ?? null
 
-  const controller =
-    pinned === undefined && HillClimbController.shouldControl(total)
-      ? new HillClimbController(total, {
-          profile: networkProfile,
-          onTick: options.onControlTick,
-        })
-      : null
-  const initialLimit =
-    pinned !== undefined
-      ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
-        // this is the last stop before the semaphore — never exceed the pool.
-        clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
-      : controller
-        ? controller.getLimit()
-        : // Too small to control: smart fixed start, capped by any learned
-          // slow-link limit so small projects still benefit from the profile.
-          Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
-  const semaphore = new ResizableSemaphore(initialLimit)
+  const start = () => {
+    const controller =
+      pinned === undefined && HillClimbController.shouldControl(total)
+        ? new HillClimbController(total, {
+            profile: networkProfile,
+            onTick: options.onControlTick,
+          })
+        : null
+    const initialLimit =
+      pinned !== undefined
+        ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
+          // this is the last stop before the semaphore — never exceed the pool.
+          clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
+        : controller
+          ? controller.getLimit()
+          : // Too small to control: smart fixed start, capped by any learned
+            // slow-link limit so small projects still benefit from the profile.
+            Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
+    const semaphore = new ResizableSemaphore(initialLimit)
 
-  let completedCount = 0
+    // Streamed body bytes feed the controller's cold-window goodput as they
+    // arrive, not when a response completes — completion order is size-biased.
+    const onChunk: OnChunk | undefined = controller
+      ? (bytes) => controller.recordBytes(bytes)
+      : undefined
 
-  // Streamed body bytes feed the controller's cold-window goodput as they
-  // arrive, not when a response completes — completion order is size-biased.
-  const onChunk: OnChunk | undefined = controller
-    ? (bytes) => controller.recordBytes(bytes)
-    : undefined
-
-  // --- per-attempt observer ---------------------------------------------------
-  // Feeds the adaptive controller AND (optionally) reports per-package latency
-  // and refusals. Built per package so the callbacks know the name.
-  const observerFor = (packageName: string): AttemptObserver | undefined => {
-    if (!controller && !options.onPackageTiming && !options.onAccessDenied) return undefined
-    return (outcome) => {
-      if (outcome.kind === 'success') {
-        // A success can also demand an immediate limit change (the hill-climb
-        // controller's failed profile validation), so apply any returned limit.
-        const next = controller?.record('success', outcome.latencyMs, {
-          revalidated: outcome.revalidated,
-          bytes: outcome.bytes,
-        })
-        if (next != null) semaphore.setLimit(next)
-        options.onPackageTiming?.(packageName, outcome.latencyMs)
-      } else if (outcome.kind === 'congested') {
-        const next = controller?.record('congested')
-        if (next != null) semaphore.setLimit(next)
-      } else if (outcome.kind === 'retryable') {
-        controller?.record('retryable')
-      } else if (outcome.kind === 'transient') {
-        controller?.record('transient')
-      } else if (outcome.kind === 'denied') {
-        options.onAccessDenied?.({ packageName, origin: outcome.origin, status: outcome.status })
-      }
-    }
-  }
-
-  // --- worker: pull from the queue until exhausted ----------------------------
-  let cursor = 0
-  const runOne = async (index: number): Promise<void> => {
-    const packageName = packageNames[index]
-    await semaphore.acquire()
-    try {
-      options.signal?.throwIfAborted()
-      const data = await getFreshPackageData(
-        packageName,
-        options.currentVersions?.get(packageName),
-        options.fullMetadata ?? false,
-        observerFor(packageName),
-        onChunk,
-        options.signal
-      )
-      options.signal?.throwIfAborted()
-      packageData.set(packageName, data)
-      completedCount++
-      options.onPackageReady?.({ packageName, data })
-
-      if (controller) {
-        // Run tail: with fewer pending items than the limit the drain would
-        // read as a goodput collapse — stop deciding (and stop learning).
-        if (total - completedCount < 2 * controller.getLimit()) {
-          controller.freeze()
+    // --- per-attempt observer ---------------------------------------------------
+    // Feeds the adaptive controller AND (optionally) reports per-package latency
+    // and refusals. Built per package so the callbacks know the name.
+    const observerFor = (packageName: string): AttemptObserver | undefined => {
+      if (!controller && !options.onPackageTiming && !options.onAccessDenied) return undefined
+      return (outcome) => {
+        if (outcome.kind === 'success') {
+          // A success can also demand an immediate limit change (the hill-climb
+          // controller's failed profile validation), so apply any returned limit.
+          const next = controller?.record('success', outcome.latencyMs, {
+            revalidated: outcome.revalidated,
+            bytes: outcome.bytes,
+          })
+          if (next != null) semaphore.setLimit(next)
+          options.onPackageTiming?.(packageName, outcome.latencyMs)
+        } else if (outcome.kind === 'congested') {
+          const next = controller?.record('congested')
+          if (next != null) semaphore.setLimit(next)
+        } else if (outcome.kind === 'retryable') {
+          controller?.record('retryable')
+        } else if (outcome.kind === 'transient') {
+          controller?.record('transient')
+        } else if (outcome.kind === 'denied') {
+          options.onAccessDenied?.({ packageName, origin: outcome.origin, status: outcome.status })
         }
-        // Bytes streamed by the native transport since the last completion.
-        const nativeBytes = nativeTransport()?.takeReceivedBytes() ?? 0
-        if (nativeBytes > 0) onChunk?.(nativeBytes)
-        const next = controller.maybeTick()
-        if (next !== null) semaphore.setLimit(next)
       }
-    } finally {
-      semaphore.release()
     }
+
+    // --- worker: one package, once a slot frees up --------------------------------
+    const runOne = async (packageName: string): Promise<void> => {
+      await semaphore.acquire()
+      try {
+        options.signal?.throwIfAborted()
+        const data = await getFreshPackageData(
+          packageName,
+          options.currentVersions?.get(packageName),
+          options.fullMetadata ?? false,
+          observerFor(packageName),
+          onChunk,
+          options.signal
+        )
+        options.signal?.throwIfAborted()
+        packageData.set(packageName, data)
+        completedCount++
+        options.onPackageReady?.({ packageName, data })
+
+        if (controller) {
+          // Run tail: with fewer pending items than the limit the drain would
+          // read as a goodput collapse — stop deciding (and stop learning).
+          if (complete && total - completedCount < 2 * controller.getLimit()) {
+            controller.freeze()
+          }
+          // Bytes streamed by the native transport since the last completion.
+          const nativeBytes = nativeTransport()?.takeReceivedBytes() ?? 0
+          if (nativeBytes > 0) onChunk?.(nativeBytes)
+          const next = controller.maybeTick()
+          if (next !== null) semaphore.setLimit(next)
+          // Nothing queued for the slot this completion frees while the caller
+          // is still adding packages: it idles, and the window must not count.
+          if (!complete && semaphore.getWaiterCount() === 0) controller.noteStarved()
+        }
+      } finally {
+        semaphore.release()
+      }
+    }
+
+    // The pump: every package gets a worker right away, and each one waits on
+    // the semaphore before doing work, so the semaphore — not the dispatch —
+    // enforces the limit. Growing the limit lets queued acquirers through.
+    // A worker can fail (cancellation) before finish() awaits it; it is marked
+    // handled here and still fails the run there.
+    const dispatch = (packageName: string) => {
+      const worker = runOne(packageName)
+      worker.catch(() => undefined)
+      workers.push(worker)
+    }
+    for (const packageName of backlog.splice(0)) dispatch(packageName)
+    return { controller, dispatch }
   }
 
-  // The pump: keep enough workers running to saturate the (possibly growing)
-  // limit. We dispatch all indices as promises but each one waits on the
-  // semaphore before doing work, so the semaphore — not the dispatch loop —
-  // enforces the limit. Growing the limit lets queued acquirers through.
-  const workers: Promise<void>[] = []
-  while (cursor < total) {
-    workers.push(runOne(cursor))
-    cursor++
+  let run: ReturnType<typeof start> | null = null
+
+  return {
+    add(packageNames) {
+      for (const packageName of packageNames) {
+        total++
+        if (run) run.dispatch(packageName)
+        else backlog.push(packageName)
+      }
+      // Big enough that nothing added later changes how the run is sized.
+      if (!run && HillClimbController.shouldControl(total)) run = start()
+    },
+
+    async finish() {
+      complete = true
+      if (total === 0) return packageData
+      // A list that stayed small starts now, sized by its final count.
+      run ??= start()
+      await Promise.all(workers)
+
+      if (run.controller && options.onNetworkProfile) {
+        const settled = run.controller.getSettledProfile()
+        if (settled) options.onNetworkProfile(settled)
+      }
+
+      return packageData
+    },
   }
-
-  await Promise.all(workers)
-
-  if (controller && options.onNetworkProfile) {
-    const settled = controller.getSettledProfile()
-    if (settled) options.onNetworkProfile(settled)
-  }
-
-  return packageData
 }
 
 /**

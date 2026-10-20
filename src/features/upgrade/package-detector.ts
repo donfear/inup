@@ -5,7 +5,8 @@ import { configManager } from '../../shared/config/user-config'
 import { applyReleaseAgeCooldown } from '../../shared/cooldown'
 import { debugLog } from '../../shared/debug-logger'
 import {
-  collectAllDependenciesAsync,
+  collectDependenciesAsync,
+  type DeclaredDependency,
   findAllPackageJsonFilesAsync,
   findPackageJson,
   readPackageJson,
@@ -14,17 +15,19 @@ import type { ControlTick } from '../../shared/http/hill-climb-controller'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { PnpmPatches } from '../../shared/pnpm-patches'
 import {
-  fetchPackageVersions,
   type PackageVersionData,
   type RegistryAccessDenial,
+  startPackageVersionFetch,
 } from '../../shared/registry/npm-registry'
 import { useNpmConfigFrom } from '../../shared/registry/registry-config'
 import type {
   CooldownHold,
   DependencyEntry,
   NetworkProfile,
+  OnPackageReadyCallback,
   PackageInfo,
   PackageLoadProgress,
+  RegistryPackageResult,
   StreamOutdatedPackagesCallback,
   StreamOutdatedPackagesInitialPayload,
   UpgradeOptions,
@@ -49,10 +52,18 @@ const SLOW_NETWORK_EWMA_MS = 1000
 interface PreparedDependencies {
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
-  currentVersions: Map<string, string>
   /** `name` of every scanned package.json: the repo's own packages. */
   localPackageNames: Set<string>
   declaredVersions: Array<{ name: string; version: string }>
+}
+
+/** Scoped packages first, then by name: the order packages are listed and looked up in. */
+function byScopeThenName(a: string, b: string): number {
+  const aIsScoped = a.startsWith('@')
+  const bIsScoped = b.startsWith('@')
+  if (aIsScoped && !bIsScoped) return -1
+  if (!aIsScoped && bIsScoped) return 1
+  return a.localeCompare(b)
 }
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
@@ -133,27 +144,21 @@ export class PackageDetector {
     const t0 = Date.now()
     debugLog.info('PackageDetector', `Starting scan in ${this.cwd}`)
 
-    const prepared = await this.prepareDependencies(onEvent)
-    const initialPayload: StreamOutdatedPackagesInitialPayload = {
-      currentVersions: prepared.currentVersions,
-      declaredVersions: prepared.declaredVersions,
-      progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
-    }
-
-    onEvent({ type: 'initial', payload: initialPayload })
-
-    const packageLookup = new Map<string, PackageInfo[]>()
-    let resolved = 0
-    let failed = 0
     const performanceTracker = getPerformanceTracker()
-
-    const tFetch = Date.now()
-    debugLog.info('PackageDetector', 'fetching version data via npm registry')
     const denials: RegistryAccessDenial[] = []
-
-    await fetchPackageVersions(prepared.uniquePackages, {
+    // First declaration wins, filled in as the scan folds each manifest in.
+    const currentVersions = new Map<string, string>()
+    // Registry lookups start while the scan is still running, but a package is resolved only
+    // once the scan has ended: until then another manifest may still declare it, and a failed
+    // lookup can only be told apart from a private workspace package once every local name is
+    // known. Results that arrive earlier wait here.
+    const resultsDuringScan: RegistryPackageResult[] = []
+    let onPackageReady: OnPackageReadyCallback = (result) => {
+      resultsDuringScan.push(result)
+    }
+    const lookups = startPackageVersionFetch({
       signal,
-      currentVersions: prepared.currentVersions,
+      currentVersions,
       // Publish times live only in the full packument; fetch it only when the
       // release-age policy actually needs them.
       fullMetadata: this.minimumReleaseAge > 0,
@@ -167,43 +172,68 @@ export class PackageDetector {
       onPackageTiming: (name, latencyMs) =>
         performanceTracker.recordPackageTiming({ name, latencyMs }),
       onAccessDenied: (denial) => denials.push(denial),
-      onPackageReady: ({ packageName, data }) => {
-        // First-wins in the tracker; headless runs get the phase from here,
-        // the interactive runner's own mark becomes a no-op duplicate.
-        performanceTracker.mark('firstResult')
-        // A workspace package referenced by range is often private and never published, so
-        // the registry having nothing for it is expected, not a failed lookup.
-        const lookupFailed =
-          data.latestVersion === 'unknown' && !prepared.localPackageNames.has(packageName)
-        const packageInfo = this.resolvePackageGroup(
-          packageName,
-          prepared.dependenciesByName.get(packageName) ?? [],
-          data,
-          lookupFailed
-        )
-        packageLookup.set(packageName, packageInfo)
-        resolved++
-
-        if (lookupFailed) {
-          failed++
-          performanceTracker.recordFailedPackage(packageName)
-        }
-        performanceTracker.recordCounts({ resolved, failed })
-
-        onEvent({
-          type: 'package',
-          payload: {
-            packageName,
-            packageInfo,
-            progress: this.createProgressSnapshot('resolving', {
-              total: prepared.uniquePackages.length,
-              resolved,
-              failed,
-            }),
-          },
-        })
-      },
+      onPackageReady: (result) => onPackageReady(result),
     })
+
+    const prepared = await this.prepareDependencies(onEvent, currentVersions, (packageNames) =>
+      lookups.add(packageNames)
+    )
+    const initialPayload: StreamOutdatedPackagesInitialPayload = {
+      currentVersions,
+      declaredVersions: prepared.declaredVersions,
+      progress: this.createProgressSnapshot('resolving', { total: prepared.uniquePackages.length }),
+    }
+
+    onEvent({ type: 'initial', payload: initialPayload })
+
+    const packageLookup = new Map<string, PackageInfo[]>()
+    let resolved = 0
+    let failed = 0
+
+    const tFetch = Date.now()
+    debugLog.info(
+      'PackageDetector',
+      `fetching version data via npm registry (${resultsDuringScan.length} resolved during the scan)`
+    )
+
+    onPackageReady = ({ packageName, data }) => {
+      // First-wins in the tracker; headless runs get the phase from here,
+      // the interactive runner's own mark becomes a no-op duplicate.
+      performanceTracker.mark('firstResult')
+      // A workspace package referenced by range is often private and never published, so
+      // the registry having nothing for it is expected, not a failed lookup.
+      const lookupFailed =
+        data.latestVersion === 'unknown' && !prepared.localPackageNames.has(packageName)
+      const packageInfo = this.resolvePackageGroup(
+        packageName,
+        prepared.dependenciesByName.get(packageName) ?? [],
+        data,
+        lookupFailed
+      )
+      packageLookup.set(packageName, packageInfo)
+      resolved++
+
+      if (lookupFailed) {
+        failed++
+        performanceTracker.recordFailedPackage(packageName)
+      }
+      performanceTracker.recordCounts({ resolved, failed })
+
+      onEvent({
+        type: 'package',
+        payload: {
+          packageName,
+          packageInfo,
+          progress: this.createProgressSnapshot('resolving', {
+            total: prepared.uniquePackages.length,
+            resolved,
+            failed,
+          }),
+        },
+      })
+    }
+    for (const result of resultsDuringScan.splice(0)) onPackageReady(result)
+    await lookups.finish()
 
     debugLog.perf(
       'PackageDetector',
@@ -240,7 +270,9 @@ export class PackageDetector {
   }
 
   private async prepareDependencies(
-    onEvent: StreamOutdatedPackagesCallback
+    onEvent: StreamOutdatedPackagesCallback,
+    currentVersions: Map<string, string>,
+    onNewPackages: (packageNames: string[]) => void
   ): Promise<PreparedDependencies> {
     const performanceTracker = getPerformanceTracker()
 
@@ -248,41 +280,14 @@ export class PackageDetector {
       type: 'status',
       payload: { progress: this.createProgressSnapshot('discovering') },
     })
-    const tScan = Date.now()
-    const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(30000, onEvent)
-    debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
-      files: allPackageJsonFiles,
-    })
-    performanceTracker.recordPhaseDuration('discovery', Date.now() - tScan)
-    performanceTracker.recordCounts({ packageJsonFiles: allPackageJsonFiles.length })
-    onEvent({
-      type: 'status',
-      payload: {
-        progress: this.createProgressSnapshot('collecting', {
-          packageJsonFiles: allPackageJsonFiles.length,
-        }),
-      },
-    })
-    const tDeps = Date.now()
-    const localPackageNames = new Set<string>()
-    const allDepsRaw = await collectAllDependenciesAsync(allPackageJsonFiles, localPackageNames)
-    debugLog.perf('PackageDetector', `dependency collection (${allDepsRaw.length} raw deps)`, tDeps)
-    performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
-    performanceTracker.recordCounts({ rawDependencies: allDepsRaw.length })
-
-    onEvent({
-      type: 'status',
-      payload: {
-        progress: this.createProgressSnapshot('resolving', {
-          packageJsonFiles: allPackageJsonFiles.length,
-        }),
-      },
-    })
-    const tFilter = Date.now()
     const dependenciesByName = new Map<string, DependencyEntry[]>()
+    const localPackageNames = new Set<string>()
+    let rawDependencyCount = 0
     let ignoredCount = 0
     const seenWorkspaceRefs = new Set<string>()
     const seenIgnored = new Set<string>()
+    // Packages grouped for the first time since the last batch handed to the registry.
+    const newPackages: string[] = []
 
     // pnpm catalogs: `"react": "catalog:"` gets its real range from
     // pnpm-workspace.yaml. Each catalog entry becomes ONE upgradable dependency
@@ -296,7 +301,7 @@ export class PackageDetector {
       DependencyEntry & { catalogReferencedBy: string[] }
     >()
 
-    for (const rawDep of allDepsRaw) {
+    const addDependency = (rawDep: DeclaredDependency): void => {
       let dep: DependencyEntry = {
         name: rawDep.name,
         version: rawDep.version,
@@ -314,7 +319,7 @@ export class PackageDetector {
             'PackageDetector',
             `skipping unresolvable catalog ref: ${rawDep.name}@${rawDep.version}`
           )
-          continue
+          return
         }
         const catalogKey = `${resolution.catalog}:${rawDep.name}`
         const existing = seenCatalogEntries.get(catalogKey)
@@ -324,7 +329,7 @@ export class PackageDetector {
           if (!existing.catalogReferencedBy.includes(rawDep.packageJsonPath)) {
             existing.catalogReferencedBy.push(rawDep.packageJsonPath)
           }
-          continue
+          return
         }
         const catalogEntry: DependencyEntry & { catalogReferencedBy: string[] } = {
           name: rawDep.name,
@@ -349,7 +354,7 @@ export class PackageDetector {
           seenWorkspaceRefs.add(key)
           debugLog.info('PackageDetector', `skipping unsupported specifier: ${key}`)
         }
-        continue
+        return
       }
 
       if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
@@ -358,21 +363,73 @@ export class PackageDetector {
           seenIgnored.add(dep.name)
           debugLog.info('PackageDetector', `ignoring package: ${dep.name}`)
         }
-        continue
+        return
       }
 
       const group = dependenciesByName.get(dep.name)
-      if (group) group.push(dep)
-      else dependenciesByName.set(dep.name, [dep])
+      if (group) {
+        group.push(dep)
+        return
+      }
+      dependenciesByName.set(dep.name, [dep])
+      currentVersions.set(dep.name, dep.version)
+      newPackages.push(dep.name)
     }
 
-    const uniquePackages = Array.from(dependenciesByName.keys()).sort((a, b) => {
-      const aIsScoped = a.startsWith('@')
-      const bIsScoped = b.startsWith('@')
-      if (aIsScoped && !bIsScoped) return -1
-      if (!aIsScoped && bIsScoped) return 1
-      return a.localeCompare(b)
+    // Each manifest is read the moment the scan finds it, and its packages go to the registry
+    // right away. Manifests are folded in the order they were found, as a finished list would
+    // be, so the first declaration still wins whichever read completes first.
+    let folded = Promise.resolve()
+    const onPackageJson = (packageJsonPath: string) => {
+      const read = collectDependenciesAsync(packageJsonPath, localPackageNames)
+      folded = folded.then(async () => {
+        const deps = await read
+        rawDependencyCount += deps.length
+        for (const dep of deps) addDependency(dep)
+        if (newPackages.length > 0) onNewPackages(newPackages.splice(0).sort(byScopeThenName))
+      })
+    }
+
+    const tScan = Date.now()
+    const allPackageJsonFiles = await this.findPackageJsonFilesWithTimeout(
+      30000,
+      onEvent,
+      onPackageJson
+    )
+    debugLog.perf('PackageDetector', `file scan (${allPackageJsonFiles.length} files)`, tScan, {
+      files: allPackageJsonFiles,
     })
+    performanceTracker.recordPhaseDuration('discovery', Date.now() - tScan)
+    performanceTracker.recordCounts({ packageJsonFiles: allPackageJsonFiles.length })
+    onEvent({
+      type: 'status',
+      payload: {
+        progress: this.createProgressSnapshot('collecting', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
+      },
+    })
+    // Most manifests were folded in during the scan; this waits for the last reads.
+    const tDeps = Date.now()
+    await folded
+    debugLog.perf(
+      'PackageDetector',
+      `dependency collection (${rawDependencyCount} raw deps)`,
+      tDeps
+    )
+    performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
+    performanceTracker.recordCounts({ rawDependencies: rawDependencyCount })
+
+    onEvent({
+      type: 'status',
+      payload: {
+        progress: this.createProgressSnapshot('resolving', {
+          packageJsonFiles: allPackageJsonFiles.length,
+        }),
+      },
+    })
+    const tFilter = Date.now()
+    const uniquePackages = Array.from(dependenciesByName.keys()).sort(byScopeThenName)
 
     debugLog.info(
       'PackageDetector',
@@ -385,11 +442,8 @@ export class PackageDetector {
       workspaceRefsSkipped: seenWorkspaceRefs.size,
     })
 
-    // First declaration wins, matching the order dependencies were collected.
-    const currentVersions = new Map<string, string>()
     const declaredVersions: Array<{ name: string; version: string }> = []
     for (const [name, group] of dependenciesByName) {
-      currentVersions.set(name, group[0].version)
       for (const version of new Set(group.map((dep) => dep.version))) {
         declaredVersions.push({ name, version })
       }
@@ -398,7 +452,6 @@ export class PackageDetector {
     return {
       dependenciesByName,
       uniquePackages,
-      currentVersions,
       localPackageNames,
       declaredVersions,
     }
@@ -665,7 +718,8 @@ export class PackageDetector {
 
   private async findPackageJsonFilesWithTimeout(
     timeoutMs: number,
-    onEvent: StreamOutdatedPackagesCallback
+    onEvent: StreamOutdatedPackagesCallback,
+    onPackageJson: (packageJsonPath: string) => void
   ): Promise<string[]> {
     const skippedPackageDirs = new Set<string>()
     try {
@@ -691,6 +745,7 @@ export class PackageDetector {
             {
               scanDirs: this.scanDirs,
               onSkippedPackageDir: (relativePath) => skippedPackageDirs.add(relativePath),
+              onPackageJson,
             }
           ),
           new Promise<string[]>((_, reject) => {

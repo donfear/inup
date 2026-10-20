@@ -219,6 +219,8 @@ export class HillClimbController {
   /** A hard-down reset the counters mid-window but record() has no clock to
    * reset the window start — the next tick must discard that half-timed window. */
   private windowClockDirty = false
+  /** A slot sat idle in this window for lack of work (see noteStarved). */
+  private windowStarved = false
 
   /** Goodput and 304-share of the last closed comparable-or-rolled window. */
   private prevGoodput: number | null = null
@@ -277,6 +279,13 @@ export class HillClimbController {
    * limit would read as a goodput collapse and poison the settled profile. */
   freeze(): void {
     this.frozen = true
+  }
+
+  /** A slot is about to sit idle because the caller is still adding work: the
+   * current window measures how fast work arrives, not the link, so it closes
+   * without a decision. */
+  noteStarved(): void {
+    this.windowStarved = true
   }
 
   /**
@@ -416,7 +425,7 @@ export class HillClimbController {
   private tick(now: number): number | null {
     const t = this.tuning
     const before = this.limit
-    const measurable = now > this.windowStartedAt && !this.windowClockDirty
+    const measurable = now > this.windowStartedAt && !this.windowClockDirty && !this.windowStarved
     this.windowClockDirty = false
 
     // Errors in the window: AIMD soft-decrease, then re-establish a baseline
@@ -449,9 +458,10 @@ export class HillClimbController {
     }
 
     // Unmeasurable clean window: the clock did not move forward (zero or
-    // backward step — Date.now() is not monotonic) or the window straddles a
-    // hard-down whose timer could not be restarted. No goodput can be derived;
-    // decide nothing and let the next full window re-establish the baseline.
+    // backward step — Date.now() is not monotonic), the window straddles a
+    // hard-down whose timer could not be restarted, or it ran short of work.
+    // No goodput can be derived; decide nothing and let the next full window
+    // re-establish the baseline.
     if (!measurable) {
       this.resetWindow(now)
       return null
@@ -710,6 +720,7 @@ export class HillClimbController {
     this.retriesSinceTick = 0
     this.revalidatedSinceTick = 0
     this.bytesSinceWindow = 0
+    this.windowStarved = false
     this.windowStartedAt = now
   }
 }

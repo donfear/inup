@@ -28,6 +28,8 @@ export interface PackageJsonScanOptions {
    * warn that a package was silently skipped and can be re-included via `scanDirs`.
    */
   onSkippedPackageDir?: (relativePath: string) => void
+  /** Called with each package.json path the moment it is found, before the scan has finished. */
+  onPackageJson?: (packageJsonPath: string) => void
 }
 
 const SKIP_DIRS = new Set([
@@ -236,6 +238,7 @@ export async function findAllPackageJsonFilesAsync(
         }
       } else if (file === 'package.json' && target.isFile()) {
         packageJsonFiles.push(fullPath)
+        options.onPackageJson?.(fullPath)
       }
     }
   }

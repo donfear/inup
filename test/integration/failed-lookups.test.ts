@@ -16,9 +16,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../src/shared/registry/npm-registry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/shared/registry/npm-registry')>()
+  const { collectedFetch } = await import('../helpers/registry-fetch')
   return {
     ...actual,
-    fetchPackageVersions: mocks.fetchPackageVersions,
+    startPackageVersionFetch: collectedFetch(mocks.fetchPackageVersions),
   }
 })
 

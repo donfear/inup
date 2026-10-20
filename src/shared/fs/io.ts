@@ -72,56 +72,54 @@ export async function readPackageJsonAsync(path: string): Promise<PackageJson> {
   }
 }
 
+/** One dependency as a package.json declares it. */
+export interface DeclaredDependency {
+  name: string
+  version: string
+  type: string
+  packageJsonPath: string
+}
+
 /**
- * Every dependency declared across `packageJsonFiles`. When given, `localNames` also collects
- * each manifest's own `name` — the repo's local packages, which may never have been published.
+ * Every dependency one package.json declares; a malformed or unreadable file declares none. When
+ * given, `localNames` also collects the manifest's own `name` — one of the repo's local packages,
+ * which may never have been published.
  */
-export async function collectAllDependenciesAsync(
-  packageJsonFiles: string[],
+export async function collectDependenciesAsync(
+  packageJsonPath: string,
   localNames?: Set<string>
-): Promise<Array<{ name: string; version: string; type: string; packageJsonPath: string }>> {
-  const packageJsonPromises = packageJsonFiles.map(async (packageJsonPath) => {
-    try {
-      const packageJson = await readPackageJsonAsync(packageJsonPath)
-      return { packageJson, packageJsonPath }
-    } catch {
-      // Skip malformed package.json files
-      return null
-    }
-  })
+): Promise<DeclaredDependency[]> {
+  let packageJson: PackageJson
+  try {
+    packageJson = await readPackageJsonAsync(packageJsonPath)
+  } catch {
+    // Skip malformed package.json files
+    return []
+  }
 
-  const results = await Promise.all(packageJsonPromises)
+  if (typeof packageJson.name === 'string') localNames?.add(packageJson.name)
+  const deps: DeclaredDependency[] = []
+  const depTypes: Array<
+    'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
+  > = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
 
-  const allDeps: Array<{ name: string; version: string; type: string; packageJsonPath: string }> =
-    []
-
-  for (const result of results) {
-    if (!result) continue
-
-    const { packageJson, packageJsonPath } = result
-    if (typeof packageJson.name === 'string') localNames?.add(packageJson.name)
-    const depTypes: Array<
-      'dependencies' | 'devDependencies' | 'optionalDependencies' | 'peerDependencies'
-    > = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
-
-    for (const depType of depTypes) {
-      const deps = packageJson[depType]
-      if (deps && typeof deps === 'object') {
-        for (const [name, version] of Object.entries(deps)) {
-          // `"foo": null` (or a number/object) is not a version range; one bad entry must not
-          // take the whole scan down with it.
-          if (typeof version !== 'string') {
-            debugLog.warn(
-              'DependencyCollector',
-              `skipping ${depType}.${name} in ${packageJsonPath}: expected a version string, got ${JSON.stringify(version)}`
-            )
-            continue
-          }
-          allDeps.push({ name, version, type: depType, packageJsonPath })
+  for (const depType of depTypes) {
+    const declared = packageJson[depType]
+    if (declared && typeof declared === 'object') {
+      for (const [name, version] of Object.entries(declared)) {
+        // `"foo": null` (or a number/object) is not a version range; one bad entry must not
+        // take the whole scan down with it.
+        if (typeof version !== 'string') {
+          debugLog.warn(
+            'DependencyCollector',
+            `skipping ${depType}.${name} in ${packageJsonPath}: expected a version string, got ${JSON.stringify(version)}`
+          )
+          continue
         }
+        deps.push({ name, version, type: depType, packageJsonPath })
       }
     }
   }
 
-  return allDeps
+  return deps
 }
