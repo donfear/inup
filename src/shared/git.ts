@@ -15,12 +15,17 @@ export interface GitWorkingTreeState {
  */
 export function getGitWorkingTreeState(cwd: string): Promise<GitWorkingTreeState> {
   return new Promise((resolve) => {
-    execFile('git', ['status', '--porcelain'], { cwd, encoding: 'utf-8' }, (error, status) =>
-      resolve(
-        error
-          ? { isRepo: false, isDirty: false }
-          : { isRepo: true, isDirty: status.trim().length > 0 }
+    try {
+      execFile('git', ['status', '--porcelain'], { cwd, encoding: 'utf-8' }, (error, status) =>
+        resolve(
+          error
+            ? { isRepo: false, isDirty: false }
+            : { isRepo: true, isDirty: status.trim().length > 0 }
+        )
       )
-    )
+    } catch {
+      // Some spawn failures throw instead of reaching the callback, such as a cwd that is a file.
+      resolve({ isRepo: false, isDirty: false })
+    }
   })
 }

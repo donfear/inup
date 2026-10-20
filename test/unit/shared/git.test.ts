@@ -100,3 +100,12 @@ it('fails soft when git cannot read the tree it is inside', async () => {
 
   expect(await getGitWorkingTreeState(repoDir)).toEqual({ isRepo: false, isDirty: false })
 })
+
+it('fails soft when git cannot even start in cwd', async () => {
+  // A file as cwd makes spawn throw instead of calling back. The CLI starts this check
+  // well before it awaits it, so a rejection would surface as an unhandled one.
+  const file = path.join(createTempDir(), 'package.json')
+  fs.writeFileSync(file, '{}')
+
+  expect(await getGitWorkingTreeState(file)).toEqual({ isRepo: false, isDirty: false })
+})
