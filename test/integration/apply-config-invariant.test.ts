@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   fetchVulnerabilities: vi.fn(),
-  executeCommand: vi.fn(),
   spawnSync: vi.fn(),
 }))
 
@@ -38,16 +37,8 @@ vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal)
   }
 })
 
-// Stub the package manager: the `--version` probe (executeCommand) and the install (spawnSync)
-// both succeed without running anything real. Keeps the test hermetic.
-vi.mock('../../src/shared/exec', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/shared/exec')>()
-  return {
-    ...actual,
-    executeCommand: mocks.executeCommand,
-  }
-})
-
+// Stub the package-manager install (spawnSync): it succeeds without running anything real.
+// Keeps the test hermetic.
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>()
   return { ...actual, spawnSync: mocks.spawnSync }
@@ -76,7 +67,6 @@ describe('--apply respects .inuprc (config-filtered == reported == written)', ()
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    mocks.executeCommand.mockReturnValue('10.0.0\n')
     mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     mocks.fetchPackageVersions.mockImplementation(
       async (names: string[], opts: { onPackageReady?: (result: unknown) => void }) => {
@@ -168,7 +158,6 @@ describe('--apply never rewrites a specifier it cannot re-prefix safely', () => 
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
-    mocks.executeCommand.mockReturnValue('10.0.0\n')
     mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     const registry: Record<string, { latestVersion: string; allVersions: string[] }> = {
       react: { latestVersion: '18.3.1', allVersions: ['18.3.1', '18.0.0', '17.0.2', '17.0.0'] },
