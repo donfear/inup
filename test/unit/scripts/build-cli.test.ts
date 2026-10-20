@@ -26,8 +26,8 @@ describe('bundled CLI', () => {
   })
 
   // Caches and config go to the temp dir, not the real home folder.
-  const run = (...args: string[]) =>
-    execFileSync(process.execPath, [launcher, ...args], {
+  const node = (script: string, ...args: string[]) =>
+    execFileSync(process.execPath, [script, ...args], {
       cwd: outdir,
       encoding: 'utf8',
       env: {
@@ -40,12 +40,13 @@ describe('bundled CLI', () => {
         NO_COLOR: '1',
       },
     })
+  const run = (...args: string[]) => node(launcher, ...args)
 
   it('writes the launcher as cli.js, starting the bundle next to it', () => {
     expect(launcher).toBe(join(outdir, 'cli.js'))
     expect(readFileSync(launcher, 'utf8')).toBe(LAUNCHER)
     expect(LAUNCHER.startsWith('#!/usr/bin/env node\n')).toBe(true)
-    expect(LAUNCHER).toContain(`require('./${BUNDLE_FILE}').program.parse()`)
+    expect(LAUNCHER).toContain(`require('./${BUNDLE_FILE}')`)
     if (process.platform !== 'win32') {
       expect(statSync(launcher).mode & 0o111).toBe(0o111)
     }
@@ -65,6 +66,14 @@ describe('bundled CLI', () => {
 
   it('runs without the repository node_modules', { timeout: 30_000 }, () => {
     expect(run('--version').trim()).toBe(PACKAGE_VERSION)
+  })
+
+  // As tsc's cli.js: required by another script, it hands back the CLI instead of
+  // running it on that script's arguments (here --version, which would print and exit).
+  it('exports the CLI without running it when required', { timeout: 30_000 }, () => {
+    const probe = join(outdir, 'probe.js')
+    writeFileSync(probe, "console.log(Object.keys(require('./cli.js')).sort().join(','))\n")
+    expect(node(probe, '--version').trim()).toBe('program,runCli')
   })
 
   it('loads the headless runner from the bundle on demand', { timeout: 30_000 }, () => {

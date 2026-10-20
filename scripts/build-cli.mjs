@@ -30,7 +30,10 @@ try {
 } catch {
   /* best-effort */
 }
-require('./${BUNDLE_FILE}').program.parse()
+// Exports what tsc's cli.js did; only a run as the program parses its arguments.
+const cli = require('./${BUNDLE_FILE}')
+module.exports = cli
+if (require.main === module) cli.program.parse()
 `
 
 /** Write the bundle and its launcher into `outdir`; returns the launcher's path. */

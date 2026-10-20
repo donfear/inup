@@ -25,7 +25,9 @@ import { applyColorSetting, isInteractiveTerminal, TerminalInput } from './share
 import type { PackageManager, UpgradeOptions } from './shared/types'
 
 // Reuse V8's compiled bytecode across invocations (Node ≥ 22.1; a no-op where
-// unsupported or disabled). Measured ~25 ms off every start.
+// unsupported or disabled). Measured ~25 ms off every start. The published bin's
+// launcher (scripts/build-cli.mjs) turns it on before the bundle compiles; this
+// call covers tsc's unbundled cli.js.
 if (typeof enableCompileCache === 'function') {
   try {
     enableCompileCache()
