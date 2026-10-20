@@ -105,6 +105,8 @@ describe.skipIf(!built && !required)('native transport parity', () => {
       expect(outcome.kind).toBe('success')
       expect(JSON.parse(outcome.dataJson ?? 'null')).toEqual(JSON.parse(JSON.stringify(expected)))
       expect(outcome.revalidated).toBe(false)
+      // A plain-HTTP origin never negotiates HTTP/2.
+      expect(outcome.multiplexed).toBe(false)
       expect(outcome.bytes).toBe(payload.length)
       expect(transport.takeReceivedBytes()).toBe(payload.length)
       expect(readFileSync(cacheFile, 'utf8')).toBe(
