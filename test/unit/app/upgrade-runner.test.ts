@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
   insertResolvedPackages: vi.fn(),
+  prefetchSecurityAudit: vi.fn(),
   setCooldownHeldCount: vi.fn(),
   setCooldownUnsupported: vi.fn(),
   performanceTracker: {
@@ -41,6 +42,7 @@ vi.mock('../../../src/app/interactive-ui', () => ({
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
     insertResolvedPackages = mocks.insertResolvedPackages
+    prefetchSecurityAudit = mocks.prefetchSecurityAudit
     setCooldownHeldCount = mocks.setCooldownHeldCount
     setCooldownUnsupported = mocks.setCooldownUnsupported
   },
@@ -626,6 +628,10 @@ describe('UpgradeRunner terminal handoff', () => {
     }
     // The detector's final list is authoritative once loading completes.
     const completed = [streamedPackage, { ...streamedPackage, name: 'zod' }]
+    const declaredVersions = [
+      { name: 'next', version: '^1.0.0' },
+      { name: 'zod', version: '^1.0.0' },
+    ]
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
       const progress = { resolved: 0, total: 2, failed: 0, isLoading: true }
       onEvent({
@@ -634,6 +640,7 @@ describe('UpgradeRunner terminal handoff', () => {
           allDependencies: [],
           uniquePackages: ['next', 'zod'],
           currentVersions: new Map([['next', '^1.0.0']]),
+          declaredVersions,
           progress,
         },
       })
@@ -673,6 +680,11 @@ describe('UpgradeRunner terminal handoff', () => {
     await new UpgradeRunner({ cwd: '/repo' }).run()
 
     expect(mocks.insertResolvedPackages).toHaveBeenCalledTimes(2)
+    // The audit of every declared version starts before the first row is inserted.
+    expect(mocks.prefetchSecurityAudit).toHaveBeenCalledExactlyOnceWith(declaredVersions)
+    expect(mocks.prefetchSecurityAudit.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.insertResolvedPackages.mock.invocationCallOrder[0]
+    )
     expect(mocks.insertResolvedPackages.mock.calls[1][1]).toEqual([
       { ...streamedPackage, name: 'zod' },
     ])

@@ -1,5 +1,5 @@
 import type { Key } from 'node:readline'
-import { VulnerabilityAuditController } from '../features/audit'
+import { type AuditPackageInput, VulnerabilityAuditController } from '../features/audit'
 import {
   ConfirmationInputHandler,
   createSelectionStates,
@@ -159,6 +159,14 @@ export class InteractiveUI {
       progress
     )
     return createUpgradeChoices(selectedStates, this.saveExact)
+  }
+
+  /**
+   * Starts the security audit of every declared version in one request, before the first
+   * row resolves. Rows inserted later take their advisories from it as they arrive.
+   */
+  public prefetchSecurityAudit(packages: AuditPackageInput[]): void {
+    this.vulnerabilityAuditController.prefetch(packages)
   }
 
   public enqueueSecurityAudit(

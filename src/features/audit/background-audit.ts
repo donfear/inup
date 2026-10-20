@@ -36,7 +36,8 @@ export class BackgroundAuditTracker {
     return added
   }
 
-  reserveNextBatch(limit: number = 20): AuditBatch {
+  /** Everything pending by default: the bulk endpoint takes any number of packages at once. */
+  reserveNextBatch(limit: number = Number.POSITIVE_INFINITY): AuditBatch {
     const packages: AuditPackageInput[] = []
     const keys: string[] = []
 

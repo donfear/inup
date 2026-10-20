@@ -95,6 +95,12 @@ export class UpgradeRunner {
             session?.refresh()
           }
 
+          // Like the headless report: audit every declared version in one request that
+          // overlaps the registry lookups, instead of batches of rows after they resolve.
+          if (event.type === 'initial') {
+            this.ui.prefetchSecurityAudit(event.payload.declaredVersions)
+          }
+
           if (event.type === 'package') {
             latestPackages.push(...event.payload.packageInfo)
             syncProgress(event.payload.progress)

@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The picker's security audit finishes sooner. It checks every dependency in one request, sent while versions are still loading, instead of one request for every 20 packages after they appear.
+
 ## [1.8.5] - 2026-10-10
 
 ### Added
