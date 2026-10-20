@@ -1,8 +1,17 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { findBlockingPatch, PnpmPatches } from '../../../src/shared/pnpm-patches'
+
+// A top-level import of yaml would run this factory as soon as pnpm-patches loads. The
+// on-demand require() goes around vitest's module graph, so it must never run.
+const yamlImports = vi.hoisted(() => ({ count: 0 }))
+vi.mock('yaml', async (importOriginal) => {
+  yamlImports.count++
+  return importOriginal()
+})
 
 // The two halves as callers combine them: read the pins, then test a target against them.
 class Patches {
@@ -78,6 +87,21 @@ describe('PnpmPatches', () => {
     workspace('packages:\n  - apps/*\n')
     writeFileSync(join(root, 'package.json'), '{ not json')
     expect(new Patches().findBlockingPatch(root, 'next', '16.4.0')).toBeNull()
+  })
+
+  it('requires the yaml library only when there is a pnpm-workspace.yaml to read', () => {
+    const nodeRequire = createRequire(import.meta.url)
+    const yamlPath = nodeRequire.resolve('yaml')
+    delete nodeRequire.cache[yamlPath]
+
+    manifest({ pnpm: { patchedDependencies: { 'next@16.3.5': 'patches/next.patch' } } })
+    expect(new Patches().findBlockingPatch(root, 'next', '16.4.0')).toBe('next@16.3.5')
+    expect(nodeRequire.cache[yamlPath]).toBeUndefined()
+
+    workspace('patchedDependencies:\n  react@19.0.0: patches/react.patch\n')
+    expect(new Patches().findBlockingPatch(root, 'react', '19.1.0')).toBe('react@19.0.0')
+    expect(nodeRequire.cache[yamlPath]).toBeDefined()
+    expect(yamlImports.count).toBe(0)
   })
 
   it('reads each directory once', () => {

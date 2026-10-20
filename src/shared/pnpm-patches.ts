@@ -1,11 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import semver from 'semver'
-import { parse } from 'yaml'
 import { debugLog } from './debug-logger'
 import { findUp } from './fs/find-up'
 import { stripBom } from './fs/io'
-import { PNPM_WORKSPACE_FILE } from './pnpm-catalogs'
+import { loadYaml, PNPM_WORKSPACE_FILE } from './pnpm-catalogs'
 
 /** package name → the version selectors its patches are pinned to (`16.3.5`, `^2.0.0`). */
 type PatchSelectors = Map<string, string[]>
@@ -87,7 +86,8 @@ function loadPatchSelectors(rootDir: string): PatchSelectors {
   if (existsSync(workspaceFile)) {
     collect(
       workspaceFile,
-      (raw) => (parse(raw) as { patchedDependencies?: unknown } | null)?.patchedDependencies
+      (raw) =>
+        (loadYaml().parse(raw) as { patchedDependencies?: unknown } | null)?.patchedDependencies
     )
   }
   const manifestPath = join(rootDir, 'package.json')

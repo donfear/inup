@@ -1,11 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse, parseDocument } from 'yaml'
 import { debugLog } from './debug-logger'
 import { findUp } from './fs/find-up'
 import { writeFileAtomic } from './fs/write-atomic'
 
 export const PNPM_WORKSPACE_FILE = 'pnpm-workspace.yaml'
+
+/**
+ * The yaml library, required when a workspace file is actually read rather than imported at
+ * the top: most projects have no pnpm-workspace.yaml, and loading it costs ~10 ms per run.
+ */
+export function loadYaml(): typeof import('yaml') {
+  return require('yaml')
+}
 
 /** Name pnpm gives the top-level `catalog:` map (also addressable as `catalogs.default`). */
 export const DEFAULT_CATALOG = 'default'
@@ -49,7 +56,7 @@ export class PnpmCatalogs {
     if (!path) return null
 
     try {
-      const raw = parse(readFileSync(path, 'utf8')) as Record<string, unknown> | null
+      const raw = loadYaml().parse(readFileSync(path, 'utf8')) as Record<string, unknown> | null
       if (!raw || typeof raw !== 'object') return null
 
       const catalogs = new Map<string, Map<string, string>>()
@@ -110,7 +117,7 @@ export function writeCatalogUpdates(
   updates: Array<{ catalog: string; name: string; range: string }>
 ): void {
   const raw = readFileSync(workspaceFilePath, 'utf8')
-  const doc = parseDocument(raw)
+  const doc = loadYaml().parseDocument(raw)
 
   for (const update of updates) {
     // The default catalog may live under `catalog:` or `catalogs.default:`.

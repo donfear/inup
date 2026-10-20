@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -16,6 +17,14 @@ import {
   writeCatalogUpdates,
 } from '../../../src/shared/pnpm-catalogs'
 import { diskFull } from '../../helpers/disk-full'
+
+// A top-level import of yaml would run this factory as soon as pnpm-catalogs loads. The
+// on-demand require() goes around vitest's module graph, so it must never run.
+const yamlImports = vi.hoisted(() => ({ count: 0 }))
+vi.mock('yaml', async (importOriginal) => {
+  yamlImports.count++
+  return importOriginal()
+})
 
 // Real fs, except a test can arm the next writeFileSync to fail halfway like a full disk.
 vi.mock('node:fs', async (importOriginal) => {
@@ -106,6 +115,23 @@ describe('pnpm-catalogs', () => {
 
     it('returns null when there is no workspace file', () => {
       expect(PnpmCatalogs.load(testDir)).toBeNull()
+    })
+
+    it('requires the yaml library only once there is a workspace file to read', () => {
+      // Most projects have none, and yaml costs ~10 ms to load.
+      const nodeRequire = createRequire(import.meta.url)
+      const yamlPath = nodeRequire.resolve('yaml')
+      delete nodeRequire.cache[yamlPath]
+
+      expect(PnpmCatalogs.load(testDir)).toBeNull()
+      expect(nodeRequire.cache[yamlPath]).toBeUndefined()
+
+      writeWorkspaceFile(FIXTURE)
+      expect(PnpmCatalogs.load(testDir)?.entriesOf('react19')).toEqual([
+        { name: 'react', range: '^19.0.0' },
+      ])
+      expect(nodeRequire.cache[yamlPath]).toBeDefined()
+      expect(yamlImports.count).toBe(0)
     })
 
     it('returns null when the workspace file defines no catalogs', () => {
