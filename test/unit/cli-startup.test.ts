@@ -43,7 +43,7 @@ vi.mock('../../src/shared/registry/version-checker', () => ({
 }))
 
 vi.mock('../../src/shared/git', () => ({
-  getGitWorkingTreeState: () => ({ isRepo: false, isDirty: false }),
+  getGitWorkingTreeState: async () => ({ isRepo: false, isDirty: false }),
 }))
 
 import { runCli } from '../../src/cli'

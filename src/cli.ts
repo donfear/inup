@@ -18,9 +18,9 @@ import {
   POOL_CONNECTIONS,
 } from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
-import { getGitWorkingTreeState } from './shared/git'
+import { type GitWorkingTreeState, getGitWorkingTreeState } from './shared/git'
 import { PACKAGE_MANAGER_NAMES } from './shared/package-manager'
-import { checkForUpdateAsync } from './shared/registry/version-checker'
+import { checkForUpdateAsync, type VersionCheckResult } from './shared/registry/version-checker'
 import { applyColorSetting, isInteractiveTerminal, TerminalInput } from './shared/terminal'
 import type { PackageManager, UpgradeOptions } from './shared/types'
 
@@ -117,6 +117,21 @@ function loadProjectConfigOrExit(cwd: string) {
   }
 }
 
+/**
+ * Asks before upgrading over local changes: false when the user declines. `gitState` is
+ * already running when this is called.
+ */
+async function confirmDirtyTree(gitState: Promise<GitWorkingTreeState>): Promise<boolean> {
+  const { isRepo, isDirty } = await gitState
+  if (!isRepo || !isDirty) return true
+  const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
+    `${chalk.yellow('Warning:')} dirty working tree. Proceed anyway? ${chalk.dim('[y/N]')} `,
+    false
+  )
+  if (!shouldProceed) console.log(chalk.yellow('Upgrade cancelled.'))
+  return shouldProceed
+}
+
 export async function runCli(options: CliOptions): Promise<void> {
   // Resolve colored-output intent before anything renders.
   applyColorSetting(options.color)
@@ -160,20 +175,10 @@ export async function runCli(options: CliOptions): Promise<void> {
   // the run before it asks anything.
   const projectConfig = loadProjectConfigOrExit(cwd)
 
-  // The dirty-tree prompt would hang without a TTY; headless is read-only anyway, so skip it.
-  if (interactive) {
-    const gitState = getGitWorkingTreeState(cwd)
-    if (gitState.isRepo && gitState.isDirty) {
-      const shouldProceed = await TerminalInput.promptForImmediateConfirmation(
-        `${chalk.yellow('Warning:')} dirty working tree. Proceed anyway? ${chalk.dim('[y/N]')} `,
-        false
-      )
-      if (!shouldProceed) {
-        console.log(chalk.yellow('Upgrade cancelled.'))
-        return
-      }
-    }
-  }
+  // The dirty-tree check starts here, but only the picker waits for it: the runner starts its
+  // scan first, so packages load while git looks at the tree and while the prompt waits for an
+  // answer. Interactive only: the prompt would hang without a TTY, and headless is read-only.
+  const gitState = interactive ? getGitWorkingTreeState(cwd) : undefined
 
   // Merge CLI exclude patterns with config
   const excludePatterns = [...splitList(options.exclude), ...(projectConfig.exclude || [])]
@@ -204,12 +209,6 @@ export async function runCli(options: CliOptions): Promise<void> {
     }
     concurrency = parsed
   }
-
-  // Check for updates in the background (non-blocking). Interactive only — keeps headless stdout
-  // clean and avoids a lingering fetch handle in CI.
-  const updateCheckPromise = interactive
-    ? checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
-    : undefined
 
   // Native core: flag (--native / --no-native) > .inuprc > on. Headless runs left on the default
   // only use a core an earlier run cached: a download would hold CI and --json runs open until it
@@ -255,7 +254,15 @@ export async function runCli(options: CliOptions): Promise<void> {
   }
 
   const { UpgradeRunner } = await import('./index')
-  await new UpgradeRunner(runnerOptions).run()
+  let updateCheckPromise: Promise<VersionCheckResult | null> | undefined
+  await new UpgradeRunner(runnerOptions).run(async () => {
+    if (gitState && !(await confirmDirtyTree(gitState))) return false
+    // Check for updates in the background (non-blocking) once the run goes ahead, so a declined
+    // prompt exits at once instead of waiting on the request. Interactive only — keeps headless
+    // stdout clean and avoids a lingering fetch handle in CI.
+    updateCheckPromise = checkForUpdateAsync(PACKAGE_NAME, PACKAGE_VERSION)
+    return true
+  })
 
   // After the main flow completes, check if there's an update available
   const updateCheck = await updateCheckPromise

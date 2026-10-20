@@ -46,7 +46,12 @@ export class UpgradeRunner {
     return cooldown !== null && !cooldown.publishTimesAvailable
   }
 
-  public async run(): Promise<void> {
+  /**
+   * @param confirmStart Awaited once the scan is running, before the picker opens (the CLI's
+   *   dirty-tree check and prompt), so packages load meanwhile. Resolving false ends the run
+   *   without opening the picker and aborts the scan.
+   */
+  public async run(confirmStart?: () => Promise<boolean>): Promise<void> {
     const scanController = new AbortController()
     let scanError: { error: unknown } | undefined
     const warnings: string[] = []
@@ -74,61 +79,74 @@ export class UpgradeRunner {
       // detector's final list so post-selection steps never see a partial one.
       let latestPackages: PackageInfo[] = []
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
+      let failSelection: ((error: unknown) => void) | undefined
+
+      // The UI holds a reference to `progress`, so updates must mutate it in
+      // place — and copy EVERY field (a field-by-field copy silently dropped
+      // slowNetwork once).
+      const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
+
+      // The scan starts before the picker opens, so packages load while confirmStart waits.
+      // Until the picker attaches its session, events only update the state it will render.
+      const streamPromise = this.detector.streamOutdatedPackages((event) => {
+        if (event.type === 'warning') warnings.push(event.payload.message)
+        if (event.type === 'status' || event.type === 'initial') {
+          syncProgress(event.payload.progress)
+          session?.refresh()
+        }
+
+        // Like the headless report: audit every declared version in one request that
+        // overlaps the registry lookups, instead of batches of rows after they resolve.
+        // The UI holds it until the picker opens, so declining the prompt sends nothing.
+        if (event.type === 'initial') {
+          this.ui.prefetchSecurityAudit(event.payload.declaredVersions)
+        }
+
+        if (event.type === 'package') {
+          latestPackages.push(...event.payload.packageInfo)
+          syncProgress(event.payload.progress)
+          this.ui.insertResolvedPackages(selection, event.payload.packageInfo, previousSelections)
+          this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
+          this.ui.setCooldownUnsupported(this.isCooldownInert())
+          session?.refresh()
+        }
+
+        if (event.type === 'complete') {
+          latestPackages = event.payload.packages
+          syncProgress(event.payload.progress)
+          // The detector marks firstResult as packages resolve; this only lands for a
+          // run that resolved none, so the phase is never missing from the perf log.
+          performanceTracker.mark('firstResult')
+          performanceTracker.mark('allLoaded')
+          this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
+          this.ui.setCooldownUnsupported(this.isCooldownInert())
+          session?.refresh()
+        }
+      }, scanController.signal)
+
+      streamPromise.catch((error) => {
+        if (scanController.signal.aborted) return
+        scanError = { error }
+        session?.abort(error)
+        failSelection?.(error)
+      })
+
+      // Declining returns through `finally`, which aborts the scan.
+      if (confirmStart && !(await confirmStart())) return
 
       const selectionPromise = new Promise<PackageUpgradeChoice[]>((resolve, reject) => {
-        // The UI holds a reference to `progress`, so updates must mutate it in
-        // place — and copy EVERY field (a field-by-field copy silently dropped
-        // slowNetwork once).
-        const syncProgress = (next: PackageLoadProgress) => Object.assign(progress, next)
-
+        // A scan that failed while confirmStart waited is reported without opening the picker.
+        if (scanError) {
+          reject(scanError.error)
+          return
+        }
+        failSelection = reject
         this.ui
           .selectPackagesToUpgradeProgressive(selection, progress, (handle) => {
             session = handle
           })
           .then(resolve)
           .catch(reject)
-
-        const streamPromise = this.detector.streamOutdatedPackages((event) => {
-          if (event.type === 'warning') warnings.push(event.payload.message)
-          if (event.type === 'status' || event.type === 'initial') {
-            syncProgress(event.payload.progress)
-            session?.refresh()
-          }
-
-          // Like the headless report: audit every declared version in one request that
-          // overlaps the registry lookups, instead of batches of rows after they resolve.
-          if (event.type === 'initial') {
-            this.ui.prefetchSecurityAudit(event.payload.declaredVersions)
-          }
-
-          if (event.type === 'package') {
-            latestPackages.push(...event.payload.packageInfo)
-            syncProgress(event.payload.progress)
-            this.ui.insertResolvedPackages(selection, event.payload.packageInfo, previousSelections)
-            this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
-            this.ui.setCooldownUnsupported(this.isCooldownInert())
-            session?.refresh()
-          }
-
-          if (event.type === 'complete') {
-            latestPackages = event.payload.packages
-            syncProgress(event.payload.progress)
-            // The detector marks firstResult as packages resolve; this only lands for a
-            // run that resolved none, so the phase is never missing from the perf log.
-            performanceTracker.mark('firstResult')
-            performanceTracker.mark('allLoaded')
-            this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
-            this.ui.setCooldownUnsupported(this.isCooldownInert())
-            session?.refresh()
-          }
-        }, scanController.signal)
-
-        streamPromise.catch((error) => {
-          if (scanController.signal.aborted) return
-          scanError = { error }
-          session?.abort(error)
-          reject(error)
-        })
       })
 
       let selectedChoices: PackageUpgradeChoice[] = await selectionPromise
