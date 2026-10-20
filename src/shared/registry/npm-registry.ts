@@ -424,8 +424,10 @@ type LatestProbe =
    * without the endpoint): the version list is needed.
    */
   | { kind: 'other' }
-  /** Throttled, a server error or a network error: says nothing about the registry. */
+  /** A server error or a network error: says nothing about the registry. */
   | { kind: 'failed' }
+  /** The registry asked to slow down (429/503): it gets no more probes this run. */
+  | { kind: 'congested' }
 
 /** A probe's cache entry, made for the version a package is declared on. */
 interface ProbedEntry {
@@ -507,6 +509,7 @@ async function probeLatest(
     })
     if (statusCode < 200 || statusCode >= 300) {
       await body.dump().catch(() => undefined)
+      if (isCongestionStatus(statusCode)) return { kind: 'congested' }
       return { kind: isRetryableStatus(statusCode) ? 'failed' : 'other' }
     }
     raw = await readBody(body)
@@ -592,18 +595,25 @@ function lookupStart(
  * the package current only delays its version list by a round trip, so once a
  * sample is in and fewer than a third found it current (a project far behind,
  * or a registry without `latest` documents), the rest of the run goes straight
- * to the version lists.
+ * to the version lists. So does a registry that asked to slow down: probes are
+ * requests on top of the version lists, and they answer to no controller.
  */
 class ProbeYield {
   private answered = 0
   private current = 0
+  private congested = false
 
   record(current: boolean): void {
     this.answered++
     if (current) this.current++
   }
 
+  congest(): void {
+    this.congested = true
+  }
+
   pays(): boolean {
+    if (this.congested) return false
     return (
       this.answered < PROBE_YIELD_SAMPLE || this.current >= this.answered * PROBE_YIELD_MIN_CURRENT
     )
@@ -803,7 +813,8 @@ export async function fetchPackageVersions(
       probeYields.set(origin, probeYield)
       if (!probeYield.pays()) return null
       const probe = await probeLatest(start.target, start.path, start.version, options.signal)
-      if (probe.kind !== 'failed') probeYield.record(probe.kind === 'current')
+      if (probe.kind === 'congested') probeYield.congest()
+      else if (probe.kind !== 'failed') probeYield.record(probe.kind === 'current')
       return probe
     } finally {
       probeLane.release()

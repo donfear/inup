@@ -758,12 +758,22 @@ describe('npm-registry', () => {
       })
 
       it('does not count failures, which say nothing about the registry', async () => {
-        serve(makeErrBody(503))
+        serve(makeErrBody(500))
         const all = names(30)
 
         await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
 
         expect(probesSent()).toBe(30)
+      })
+
+      it.each([429, 503])('stops probing a registry that answers %i', async (status) => {
+        serve(makeErrBody(status))
+        const all = names(30)
+
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(1)
+        expect(paths().filter((path) => !path.endsWith('/latest'))).toHaveLength(30)
       })
 
       it('judges each registry on its own answers', async () => {
