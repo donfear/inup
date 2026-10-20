@@ -8,7 +8,15 @@ const brotliDecompressAsync = promisify(brotliDecompress)
 
 import { POOL_CONNECTIONS } from '../config'
 import { debugLog } from '../debug-logger'
-import { etagFileFor, readEtag, writeEtag } from '../http/etag-store'
+import {
+  etagFileFor,
+  type Freshness,
+  readEtag,
+  readFresh,
+  renewEtag,
+  responseFreshness,
+  writeEtag,
+} from '../http/etag-store'
 import { type ControlTick, HillClimbController } from '../http/hill-climb-controller'
 import { httpRequest } from '../http/http-request'
 import { InflightMap } from '../http/inflight'
@@ -44,6 +52,7 @@ const RETRY_BACKOFF_MS = [500, 1500, 3000]
 
 async function getFreshPackageData(
   packageName: string,
+  location: PackumentLocation,
   currentVersion: string | undefined,
   fullMetadata: boolean,
   onAttempt?: AttemptObserver,
@@ -52,14 +61,38 @@ async function getFreshPackageData(
 ): Promise<PackageVersionData> {
   // A cancellable run owns its request; cancelling it must not abort another
   // caller's deduplicated lookup of the same package.
-  if (signal) return fetchPackageFromRegistry(packageName, fullMetadata, onAttempt, onChunk, signal)
+  if (signal) return fetchPackageFromRegistry(location, fullMetadata, onAttempt, onChunk, signal)
   // Abbreviated and full responses parse to different shapes, so they must never
   // share an in-flight entry.
   const cacheKey = `${packageName}@${currentVersion ?? ''}${fullMetadata ? '#full' : ''}`
   return inFlightLookups.dedupe(cacheKey, () =>
-    fetchPackageFromRegistry(packageName, fullMetadata, onAttempt, onChunk)
+    fetchPackageFromRegistry(location, fullMetadata, onAttempt, onChunk)
   )
 }
+
+/** Where a package's packument lives: its registry, and the request path there. */
+interface PackumentLocation {
+  target: RegistryTarget
+  path: string
+}
+
+/**
+ * Scoped packages may live on a different registry (with credentials) than
+ * unscoped ones — resolved from the npm config chain, memoized per scope.
+ */
+function locatePackument(packageName: string): PackumentLocation {
+  const target = registryTargetFor(packageName)
+  return { target, path: encodeRegistryPath(packageName, target.pathPrefix) }
+}
+
+/**
+ * The ETag store key of a packument. Keys are origin-qualified so two registries
+ * can never collide on a path. Full-packument responses parse to richer data
+ * (publish times), so they get their own entry: a 304 or a fresh hit must never
+ * revive an abbreviated-format body for them.
+ */
+const cacheKeyFor = (target: RegistryTarget, path: string, fullMetadata: boolean): string =>
+  `${target.origin}${path}${fullMetadata ? '#full' : ''}`
 
 const encodeRegistryPath = (packageName: string, pathPrefix: string): string => {
   const encodedName = packageName.startsWith('@')
@@ -136,9 +169,9 @@ async function decompressBody(raw: Buffer, encoding: string | undefined): Promis
 }
 
 /**
- * Turn a 200 body into version data and persist its ETag entry for the next
- * run's conditional request. Uses the Rust core when one is loaded; if it
- * fails, the TypeScript path handles the body.
+ * Turn a 200 body into version data and persist its ETag entry (with the
+ * freshness the response granted, if any) for the next run. Uses the Rust core
+ * when one is loaded; if it fails, the TypeScript path handles the body.
  *
  * The Rust decoder reads only the fields of the abbreviated document and drops
  * `time`, so a full-packument body is always decoded in TypeScript — otherwise
@@ -149,14 +182,15 @@ async function decodePackument(
   encoding: string | undefined,
   cacheKey: string,
   etag: string | undefined,
-  fullMetadata: boolean
+  fullMetadata: boolean,
+  freshness: Freshness | null
 ): Promise<PackageVersionData> {
   const rustDecode = fullMetadata ? null : packumentDecoder()
   if (rustDecode) {
     let cache: PackumentDecodeRequest['cache'] = null
     if (etag) {
       const file = etagFileFor(cacheKey)
-      if (file) cache = { file, etag }
+      if (file) cache = { file, etag, freshness }
     }
     try {
       return await rustDecode({ raw, encoding: encoding ?? '', cache })
@@ -166,7 +200,7 @@ async function decodePackument(
   }
   const data = parseVersions((await decompressBody(raw, encoding)).toString('utf8'))
   if (etag) {
-    writeEtag(cacheKey, etag, data)
+    writeEtag(cacheKey, etag, data, freshness)
   }
   return data
 }
@@ -195,7 +229,7 @@ async function attemptNative(
     {
       url: `${target.origin}${path}`,
       authorization: target.authHeader,
-      cacheFile: etagFileFor(`${target.origin}${path}`),
+      cacheFile: etagFileFor(cacheKeyFor(target, path, false)),
     },
     signal
   )
@@ -262,11 +296,8 @@ async function attemptWithNodeHttp(
   const startedAt = Date.now()
   // Conditional request: if we have a stored ETag for this packument, ask the
   // registry to validate it. Unchanged → 304 (no body) and we reuse stored data.
-  // This still hits the registry every run, so data is never served stale.
-  // Keys are origin-qualified so two registries can never collide on a path.
-  // Full-packument responses parse to richer data (publish times), so they get
-  // their own cache entry — a 304 must never revive an abbreviated-format body.
-  const cacheKey = `${target.origin}${path}${fullMetadata ? '#full' : ''}`
+  // Entries still fresh never get here (fetchPackageVersions answers them).
+  const cacheKey = cacheKeyFor(target, path, fullMetadata)
   const cached = readEtag(cacheKey)
   try {
     const requestHeaders: Record<string, string> = {
@@ -289,9 +320,16 @@ async function attemptWithNodeHttp(
       signal,
     })
 
+    // How long this response may be reused; the request start is the
+    // conservative response time (RFC 9111 corrects Age by the round trip).
+    const freshness = responseFreshness(headers['cache-control'], headers.age, startedAt)
+
     // Registry confirmed our cached copy is current — reuse it, skip the download.
     if (statusCode === 304 && cached) {
       await body.dump().catch(() => undefined)
+      // The confirmation renews the entry's freshness. Not awaited: it only
+      // matters to a later run.
+      if (freshness) void renewEtag(cacheKey, cached, freshness)
       return {
         kind: 'success',
         data: cached.data,
@@ -322,7 +360,7 @@ async function attemptWithNodeHttp(
       .toLowerCase()
     const etagHeader = headers.etag
     const etag = (Array.isArray(etagHeader) ? etagHeader[0] : etagHeader)?.toString()
-    const data = await decodePackument(raw, encoding, cacheKey, etag, fullMetadata)
+    const data = await decodePackument(raw, encoding, cacheKey, etag, fullMetadata, freshness)
 
     return {
       kind: 'success',
@@ -371,16 +409,12 @@ async function fetchFromRegistryWithRetries(
 }
 
 async function fetchPackageFromRegistry(
-  packageName: string,
+  { target, path }: PackumentLocation,
   fullMetadata: boolean,
   onAttempt?: AttemptObserver,
   onChunk?: OnChunk,
   signal?: AbortSignal
 ): Promise<PackageVersionData> {
-  // Scoped packages may live on a different registry (with credentials) than
-  // unscoped ones — resolved from the npm config chain, memoized per scope.
-  const target = registryTargetFor(packageName)
-  const path = encodeRegistryPath(packageName, target.pathPrefix)
   const outcome = await fetchFromRegistryWithRetries(
     target,
     path,
@@ -400,10 +434,22 @@ async function fetchPackageFromRegistry(
 }
 
 /**
+ * Version data for a package whose cached response is still fresh, or null
+ * when it needs a request. See FRESHNESS in etag-store.ts.
+ */
+function freshFromCache(
+  { target, path }: PackumentLocation,
+  fullMetadata: boolean
+): PackageVersionData | null {
+  const data = readFresh(cacheKeyFor(target, path, fullMetadata))
+  return data && withoutControlCharacters(data)
+}
+
+/**
  * The deprecation message and engines range are free text from the package
  * author, and both reach the terminal. Cleaned here because every source meets
- * here: either decoder, and a 304 served from an ETag entry written by either
- * (or by an older release).
+ * here: either decoder, and a 304 or fresh hit served from an ETag entry
+ * written by either (or by an older release).
  */
 function withoutControlCharacters(data: PackageVersionData): PackageVersionData {
   if (data.deprecated) data.deprecated = stripControlCharacters(data.deprecated)
@@ -428,6 +474,9 @@ function withoutControlCharacters(data: PackageVersionData): PackageVersionData 
  * - No body timeout: slow responses finish. Real network errors and header
  *   stalls are retried with backoff; after the retry budget is exhausted the
  *   package is reported unavailable (`latestVersion: 'unknown'`).
+ * - Packuments the registry said are still fresh (Cache-Control max-age, at
+ *   most 5 minutes) are answered from the ETag store with no request. They
+ *   never reach the semaphore or the controller, which only see the rest.
  * - Unchanged packuments are revalidated via ETag (304), skipping re-download.
  *
  * Callbacks:
@@ -460,8 +509,29 @@ export async function fetchPackageVersions(
   } & FetchPackageVersionsOptions = {}
 ): Promise<Map<string, PackageVersionData>> {
   const packageData = new Map<string, PackageVersionData>()
+  const fullMetadata = options.fullMetadata ?? false
 
-  const total = packageNames.length
+  // Fresh hits resolve right here, before any request goes out.
+  const pending: { packageName: string; location: PackumentLocation }[] = []
+  for (const packageName of packageNames) {
+    const location = locatePackument(packageName)
+    const data = freshFromCache(location, fullMetadata)
+    if (!data) {
+      pending.push({ packageName, location })
+      continue
+    }
+    options.signal?.throwIfAborted()
+    packageData.set(packageName, data)
+    options.onPackageReady?.({ packageName, data })
+  }
+  if (pending.length < packageNames.length) {
+    debugLog.info(
+      'npm-registry',
+      `${packageNames.length - pending.length} of ${packageNames.length} packuments still fresh in the cache, not requested`
+    )
+  }
+
+  const total = pending.length
   if (total === 0) {
     return packageData
   }
@@ -527,14 +597,15 @@ export async function fetchPackageVersions(
   // --- worker: pull from the queue until exhausted ----------------------------
   let cursor = 0
   const runOne = async (index: number): Promise<void> => {
-    const packageName = packageNames[index]
+    const { packageName, location } = pending[index]
     await semaphore.acquire()
     try {
       options.signal?.throwIfAborted()
       const data = await getFreshPackageData(
         packageName,
+        location,
         options.currentVersions?.get(packageName),
-        options.fullMetadata ?? false,
+        fullMetadata,
         observerFor(packageName),
         onChunk,
         options.signal

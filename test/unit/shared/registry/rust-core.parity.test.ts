@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { afterAll, describe, expect, it } from 'vitest'
+import { etagFileFor, setEtagCacheRoot, writeEtag } from '../../../../src/shared/http/etag-store'
 import {
   activeCore,
   configureNativeCore,
@@ -99,13 +100,35 @@ describe.skipIf(!built && !required)('native core parity', () => {
         const result = await decoder()({
           raw: compress(body),
           encoding,
-          cache: { file: cacheFile, etag },
+          cache: { file: cacheFile, etag, freshness: null },
         })
         expect(result).toEqual(expected)
         expect(readFileSync(cacheFile, 'utf8')).toBe(JSON.stringify({ etag, data: expected }))
       }
     })
   }
+
+  it('writes the freshness fields byte for byte like writeEtag', async () => {
+    const body = Buffer.from(JSON.stringify(packuments.typical))
+    const expected = parseVersions(body.toString('utf8'))
+    const freshness = { fetchedAt: 1_760_000_000_123, ttl: 169 }
+    const cacheFile = join(tmp, 'fresh.json')
+    await decoder()({
+      raw: gzipSync(body),
+      encoding: 'gzip',
+      cache: { file: cacheFile, etag: 'W/"f"', freshness },
+    })
+
+    setEtagCacheRoot(join(tmp, 'store'))
+    try {
+      writeEtag('fresh', 'W/"f"', expected, freshness)
+      expect(readFileSync(cacheFile, 'utf8')).toBe(
+        readFileSync(etagFileFor('fresh') as string, 'utf8')
+      )
+    } finally {
+      setEtagCacheRoot(null)
+    }
+  })
 
   it('rejects bodies the TypeScript decoder would reject', async () => {
     await expect(

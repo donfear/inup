@@ -345,8 +345,10 @@ describe('native decoder', () => {
     const decode = vi.fn(async () => ({ ...parsed, deprecated: null, enginesNode: '>=20' }))
     const decoder = decoderWith(decode)
 
-    const result = await decoder(request({ file: '/cache/entry.json', etag: 'W/"1"' }))
-    expect(decode).toHaveBeenCalledWith(raw, 'br', '/cache/entry.json', 'W/"1"')
+    const result = await decoder(
+      request({ file: '/cache/entry.json', etag: 'W/"1"', freshness: { fetchedAt: 42, ttl: 169 } })
+    )
+    expect(decode).toHaveBeenCalledWith(raw, 'br', '/cache/entry.json', 'W/"1"', 42, 169)
     expect(result).toEqual({ ...parsed, deprecated: undefined, enginesNode: '>=20' })
     expect(Object.keys(result)).toEqual([
       'latestVersion',
@@ -356,8 +358,10 @@ describe('native decoder', () => {
       'enginesNode',
     ])
 
+    await decoder(request({ file: '/cache/entry.json', etag: 'W/"1"', freshness: null }))
+    expect(decode).toHaveBeenLastCalledWith(raw, 'br', '/cache/entry.json', 'W/"1"', null, null)
     await decoder(request())
-    expect(decode).toHaveBeenLastCalledWith(raw, 'br', null, null)
+    expect(decode).toHaveBeenLastCalledWith(raw, 'br', null, null, null, null)
   })
 
   it('keeps present health signals and drops absent ones', async () => {
