@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME } from '../config'
@@ -281,6 +281,11 @@ export function writeEtag(
  * Renew the freshness of an entry the registry just confirmed with a 304. The
  * data is unchanged, so the write goes off the main thread and nothing waits
  * for it. Best-effort; never rejects.
+ *
+ * The new entry goes to a temp file beside the old one and is renamed over it.
+ * A process that exits mid-write (Ctrl+C while packages load) then leaves the
+ * old entry whole, not a truncated one that would cost a full download next
+ * run. A temp file orphaned by an exit is swept with the other stale files.
  */
 export async function renewEtag(
   key: string,
@@ -289,7 +294,14 @@ export async function renewEtag(
 ): Promise<void> {
   if (!enabled) return
   try {
-    await writeFile(fileFor(key), entryJson(entry.etag, entry.data, freshness))
+    const file = fileFor(key)
+    const temp = `${file}.${process.pid}.tmp`
+    try {
+      await writeFile(temp, entryJson(entry.etag, entry.data, freshness))
+      await rename(temp, file)
+    } catch {
+      await rm(temp, { force: true })
+    }
   } catch {
     /* best-effort */
   }

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
@@ -182,6 +182,8 @@ describe.skipIf(!built && !required)('native transport parity', () => {
     expect(readFileSync(cacheFile, 'utf8')).toBe(
       JSON.stringify({ ...stale, fetchedAt: renewed.fetchedAt, ttl: 255 })
     )
+    // Written through a temp file renamed over the entry, like renewEtag.
+    expect(readdirSync(tmp).filter((name) => name.endsWith('.tmp'))).toEqual([])
 
     // A 304 that grants no freshness leaves the entry as it was.
     routes.set('/renew', (res) => res.writeHead(304).end())

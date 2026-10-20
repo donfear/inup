@@ -2,13 +2,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   etagCacheDir,
@@ -290,6 +291,21 @@ describe('etag-store freshness', () => {
 
     expect(readEtag('/pkg')).toEqual({ etag: 'W/"1"', data, fetchedAt: now, ttl: 250 })
     expect(readFresh('/pkg', now + 1000)).toEqual(data)
+    // Written through a temp file renamed over the entry, which leaves nothing behind.
+    expect(readdirSync(etagCacheDir()).filter((name) => name.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('removes its temp file when the entry cannot be replaced', async () => {
+    const file = etagFileFor('/pkg') as string
+    // rename refuses to put a file over a directory.
+    mkdirSync(file)
+
+    await expect(
+      renewEtag('/pkg', { etag: 'W/"1"', data }, { fetchedAt: now, ttl: 250 })
+    ).resolves.toBeUndefined()
+
+    expect(readdirSync(etagCacheDir()).sort()).toEqual([basename(file)])
+    expect(readFresh('/pkg', now)).toBeNull()
   })
 
   it('renews nothing when disabled and never rejects on an unusable directory', async () => {

@@ -196,6 +196,16 @@ fn freshness_of(response: &reqwest::Response, fetched_at: u64) -> Option<inup_co
   inup_core::response_freshness(Some(&cache_control), age, fetched_at)
 }
 
+/// Replaces a cache entry through a temp file beside it, as renewEtag does: a
+/// process that exits mid-write (Ctrl+C while packages load) leaves the old
+/// entry whole, not a truncated one. Best-effort.
+async fn replace_entry(file: &str, json: String) {
+  let temp = format!("{file}.{}.tmp", std::process::id());
+  if tokio::fs::write(&temp, json).await.is_err() || tokio::fs::rename(&temp, file).await.is_err() {
+    let _ = tokio::fs::remove_file(&temp).await;
+  }
+}
+
 async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
   // The request start is the conservative response time, as in the JS transport.
   let fetched_at = SystemTime::now()
@@ -251,7 +261,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
       // The confirmation renews the entry's freshness. Best-effort, like renewEtag.
       if let (Some(file), Some(fresh)) = (&request.cache_file, freshness_of(&response, fetched_at))
       {
-        let _ = tokio::fs::write(file, inup_core::renewed_cache_entry_json(&entry, fresh)).await;
+        replace_entry(file, inup_core::renewed_cache_entry_json(&entry, fresh)).await;
       }
       return FetchOutcome {
         kind: "success".into(),
