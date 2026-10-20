@@ -388,6 +388,10 @@ export class PackageDetector {
         for (const dep of deps) addDependency(dep)
         if (newPackages.length > 0) onNewPackages(newPackages.splice(0).sort(byScopeThenName))
       })
+      // Both are awaited later, in scan order, or never if the scan fails: a read that fails
+      // before its turn must not surface as an unhandled rejection in the meantime.
+      read.catch(() => undefined)
+      folded.catch(() => undefined)
     }
 
     const tScan = Date.now()
