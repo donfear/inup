@@ -895,3 +895,44 @@ describe('HillClimbController over HTTP/2 (raised ceiling)', () => {
     expect(h.c.getLimit()).toBe(10)
   })
 })
+
+describe('HillClimbController back on HTTP/1.1 (lowered ceiling)', () => {
+  it('never lowers a ceiling that was not raised', () => {
+    const h = makeController({})
+    expect(h.c.lowerCeiling(24)).toBe(null)
+    expect(h.c.lowerCeiling(100)).toBe(null)
+    expect(h.c.getLimit()).toBe(T.coldStart)
+  })
+
+  it('cuts a limit above the socket pool and holds there, never probing past it', () => {
+    const h = makeController({})
+    h.c.raiseCeiling(100)
+    expect(closeWindow(h, 1200)).toBe(8)
+    expect(closeWindow(h, 600)).toBe(16)
+    expect(closeWindow(h, 300)).toBe(32)
+    expect(closeWindow(h, 150)).toBe(64)
+    expect(h.c.lowerCeiling(24)).toBe(24)
+    expect(h.c.getState()).toBe('hold')
+    // Steady windows at the new ceiling: no step down from a goodput measured
+    // above it, and no probe beyond it.
+    for (let i = 0; i < 2 * T.reprobeAfterWindows; i++) closeWindow(h, 150)
+    expect(h.c.getLimit()).toBe(24)
+  })
+
+  it('caps a limit that is still below the socket pool', () => {
+    const h = makeController({})
+    h.c.raiseCeiling(100)
+    expect(closeWindow(h, 1200)).toBe(8)
+    expect(h.c.lowerCeiling(24)).toBe(null)
+    expect(h.c.getState()).toBe('slow-start')
+    expect(closeWindow(h, 600)).toBe(16)
+    expect(closeWindow(h, 300)).toBe(24) // 2×16 clamped to the pool again
+  })
+
+  it('keeps validating a restored profile limit at the socket pool', () => {
+    const h = makeController({ profile: { learnedLimit: 100, baselineLatencyMs: 100 } })
+    expect(h.c.raiseCeiling(100)).toBe(100)
+    expect(h.c.lowerCeiling(24)).toBe(24)
+    expect(h.c.getState()).toBe('validating')
+  })
+})

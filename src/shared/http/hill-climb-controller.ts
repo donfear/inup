@@ -90,7 +90,7 @@ export interface HillClimbTuning {
   /** Lower bound on the limit. */
   floor: number
   /** Upper bound on the limit (kept == the pool's connection count) until the
-   * transport proves it multiplexes — see raiseCeiling(). */
+   * transport proves it multiplexes — see raiseCeiling() and lowerCeiling(). */
   ceil: number
   /** Slow-start seed when there is no (valid) persisted profile. */
   coldStart: number
@@ -302,6 +302,28 @@ export class HillClimbController {
       )
     }
     return this.limit === before ? null : this.limit
+  }
+
+  /**
+   * Put the ceiling back once a registry in the run answers over HTTP/1.1: the
+   * limit is shared by every registry, and there each request holds one of the
+   * pool's sockets. Returns the new limit when it changed; otherwise null.
+   */
+  lowerCeiling(ceil: number): number | null {
+    if (ceil >= this.ceil) return null
+    this.ceil = ceil
+    if (this.limit <= ceil) return null
+    this.limit = ceil
+    // The regime check carries on at the lower limit. Elsewhere, goodput
+    // measured above the new ceiling compares with nothing below it (and a
+    // pending probe would restore a limit above it): hold and re-learn.
+    if (this.phase !== 'validating') {
+      this.enterHold(0)
+      this.prevGoodput = null
+      this.prevRatio = null
+      this.prevMetric = null
+    }
+    return this.limit
   }
 
   /** Stop making decisions for the run tail: fewer in-flight requests than the

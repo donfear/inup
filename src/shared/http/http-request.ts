@@ -18,7 +18,7 @@ import { POOL_CONNECTIONS } from '../config/constants'
  *   HTTP/1.1 (common for private registries) uses the keep-alive agent for
  *   the rest of the process.
  * - One keep-alive agent per protocol, capped at the adaptive controller's
- *   ceiling so it is never silently throttled below its chosen limit.
+ *   HTTP/1.1 ceiling so it is never silently throttled below its chosen limit.
  * - The body is streamed raw: no automatic decompression, so the controller
  *   can account compressed bytes and the decoder gets the original encoding.
  * - A headers timeout catches stalled connections (they would otherwise be

@@ -452,8 +452,9 @@ export interface PackageVersionFetch {
  *   outright and disables the controller.
  * - The ceiling is the HTTP/1.1 socket pool until a response arrives over
  *   HTTP/2; then requests are streams on one connection and it rises to the
- *   registry's stream limit.
- * - Tiny runs skip the controller and run at a fixed `min(learned ?? ceil, count)`
+ *   registry's stream limit. A response over HTTP/1.1 puts it back for the
+ *   rest of the run: the limit is shared by every registry the run uses.
+ * - Tiny runs skip the controller and run at a fixed `min(learned, pool, count)`
  *   so they never crawl up from the floor and lose to fixed — while still
  *   honoring a persisted slow-link profile.
  * - No body timeout: slow responses finish. Real network errors and header
@@ -527,7 +528,9 @@ export function startPackageVersionFetch(
           ? controller.getLimit()
           : // Too small to control: smart fixed start, capped by any learned
             // slow-link limit so small projects still benefit from the profile.
-            Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
+            // A limit learned over HTTP/2 can pass the socket pool, and nothing
+            // here learns whether this run's registries multiplex: keep the pool.
+            Math.max(1, Math.min(networkProfile?.learnedLimit ?? total, POOL_CONNECTIONS, total))
     const semaphore = new ResizableSemaphore(initialLimit)
 
     // Streamed body bytes feed the controller's cold-window goodput as they
@@ -536,6 +539,9 @@ export function startPackageVersionFetch(
       ? (bytes) => controller.recordBytes(bytes)
       : undefined
 
+    /** A registry answered over HTTP/1.1, where each request holds a socket. */
+    let socketBound = false
+
     // --- per-attempt observer ---------------------------------------------------
     // Feeds the adaptive controller AND (optionally) reports per-package latency
     // and refusals. Built per package so the callbacks know the name.
@@ -543,11 +549,14 @@ export function startPackageVersionFetch(
       if (!controller && !options.onPackageTiming && !options.onAccessDenied) return undefined
       return (outcome) => {
         if (outcome.kind === 'success') {
-          // Over HTTP/2 the socket pool no longer caps in-flight requests.
-          if (outcome.multiplexed) {
-            const raised = controller?.raiseCeiling(MULTIPLEXED_STREAMS)
-            if (raised != null) semaphore.setLimit(raised)
-          }
+          // Over HTTP/2 the socket pool no longer caps in-flight requests. The
+          // limit is shared by every registry in the run, though: once one
+          // answers over HTTP/1.1, the pool is the ceiling for the rest of it.
+          if (!outcome.multiplexed) socketBound = true
+          const ceiling = socketBound
+            ? controller?.lowerCeiling(POOL_CONNECTIONS)
+            : controller?.raiseCeiling(MULTIPLEXED_STREAMS)
+          if (ceiling != null) semaphore.setLimit(ceiling)
           // A success can also demand an immediate limit change (the hill-climb
           // controller's failed profile validation), so apply any returned limit.
           const next = controller?.record('success', outcome.latencyMs, {
