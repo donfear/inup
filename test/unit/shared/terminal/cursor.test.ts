@@ -84,6 +84,29 @@ describe('ConsoleUtils progress output hygiene', () => {
     expect(writes[0]).toBe(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\rscanning`)
     expect(writes[1]).toBe(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r`)
   })
+
+  it('cuts the progress line to the terminal width, or to 80 columns without one', () => {
+    // A wrapped line can't be overwritten by the next \r.
+    setStderrTTY(true)
+    const columns = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
+    const writes: string[] = []
+    vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: unknown) => {
+      writes.push(String(chunk).split('\r').at(-1)!)
+      return true
+    }) as typeof process.stderr.write)
+
+    try {
+      Object.defineProperty(process.stderr, 'columns', { value: 12, configurable: true })
+      ConsoleUtils.showProgress('Scanning packages/api (found 2)')
+      Object.defineProperty(process.stderr, 'columns', { value: undefined, configurable: true })
+      ConsoleUtils.showProgress(`Scanning ${'x'.repeat(100)}`)
+    } finally {
+      if (columns) Object.defineProperty(process.stderr, 'columns', columns)
+      else delete process.stderr.columns
+    }
+
+    expect(writes).toEqual(['Scanning ...', `Scanning ${'x'.repeat(68)}...`])
+  })
 })
 
 describe('CursorUtils escape codes', () => {

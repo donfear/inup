@@ -1,13 +1,42 @@
 import { stripVTControlCharacters } from 'node:util'
-import cliTruncate from 'cli-truncate'
-import stringWidth from 'string-width'
-import wrapAnsi from 'wrap-ansi'
+import type cliTruncate from 'cli-truncate'
+import type stringWidth from 'string-width'
+import type wrapAnsi from 'wrap-ansi'
 
 // Thin wrappers over the battle-tested terminal-string stack (string-width,
 // wrap-ansi, cli-truncate). The previous hand-rolled versions handled emoji but
 // had no East Asian Width tables, so CJK text was counted at width 1 and
 // misaligned every column that contained it. Stripping is the one piece Node
 // ships itself, so it needs no dependency.
+//
+// The stack costs ~25 ms to load (string-width builds an Intl.Segmenter and its
+// Unicode tables up front), and --version, --json and the registry path only
+// strip text, never measure it. So each library is required on first use rather
+// than imported at the top: tsc emits CommonJS, and require() of these ESM-only
+// packages returns their namespace.
+
+/** `load()` on the first call, the same value after. */
+function once<T>(load: () => T): () => T {
+  let value: T | undefined
+  return () => {
+    value ??= load()
+    return value
+  }
+}
+
+const loadStringWidth = once(
+  () => (require('string-width') as { default: typeof stringWidth }).default
+)
+const loadCliTruncate = once(
+  () => (require('cli-truncate') as { default: typeof cliTruncate }).default
+)
+const loadWrapAnsi = once(() => (require('wrap-ansi') as { default: typeof wrapAnsi }).default)
+
+// One column per character, so the width is the length: printable ASCII (string-width's
+// own fast path) plus the ellipsis our progress lines end in, which string-width also
+// counts as one (East Asian Ambiguous, narrow). Neither combines with a neighbor into a
+// wider cluster. Taken here so a headless run's progress line never loads the stack.
+const SINGLE_COLUMN_TEXT = /^[ -~…]*$/
 
 export function stripAnsi(text: string): string {
   return stripVTControlCharacters(text)
@@ -30,7 +59,10 @@ export function stripControlCharacters(text: string): string {
 
 /** Terminal columns `text` occupies: ANSI-aware, emoji- and CJK-correct. */
 export function getVisualLength(text: string): number {
-  return stringWidth(text)
+  if (SINGLE_COLUMN_TEXT.test(text)) {
+    return text.length
+  }
+  return loadStringWidth()(text)
 }
 
 export function truncatePlainText(text: string, maxWidth: number): string {
@@ -46,7 +78,7 @@ export function truncatePlainText(text: string, maxWidth: number): string {
     return '.'.repeat(maxWidth)
   }
 
-  return cliTruncate(text, maxWidth, { truncationCharacter: '...' })
+  return loadCliTruncate()(text, maxWidth, { truncationCharacter: '...' })
 }
 
 export function wrapPlainText(text: string, maxWidth: number): string[] {
@@ -60,5 +92,5 @@ export function wrapPlainText(text: string, maxWidth: number): string[] {
 
   // Soft wrap: words longer than maxWidth get their own (overflowing) line,
   // matching the previous behavior. ANSI codes are re-balanced per line.
-  return wrapAnsi(text, maxWidth).split('\n')
+  return loadWrapAnsi()(text, maxWidth).split('\n')
 }

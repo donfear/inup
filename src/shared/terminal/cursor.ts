@@ -1,4 +1,5 @@
 import { isCI } from './interactive'
+import { truncatePlainText } from './text'
 
 export const RAW_EXIT_ALT_SCREEN = '\x1b[?1049l'
 export const RAW_SHOW_CURSOR = '\x1b[?25h'
@@ -65,10 +66,13 @@ export const ConsoleUtils = {
    * Show a progress message on the current line (overwrites previous content).
    * Written to stderr so stdout stays clean for --json / piped output, and only
    * when stderr is a TTY outside CI — the \r animation is just noise in logs.
+   * Cut to the terminal width, since a wrapped line can't be overwritten; only
+   * after the TTY check, so a piped run never loads the width tables to measure it.
    */
   showProgress(message: string): void {
     if (!process.stderr.isTTY || isCI()) return
-    process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${message}`)
+    const line = truncatePlainText(message, process.stderr.columns || ConsoleUtils.LINE_WIDTH)
+    process.stderr.write(`\r${' '.repeat(ConsoleUtils.LINE_WIDTH)}\r${line}`)
   },
 
   /**
