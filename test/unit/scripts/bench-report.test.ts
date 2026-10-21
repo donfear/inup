@@ -4,6 +4,7 @@ import {
   describeChart,
   escapeXml,
   formatSeconds,
+  joinNames,
   renderChart,
   renderDetails,
   renderReadme,
@@ -65,6 +66,15 @@ const express = {
     cold: { inup: timing(0.389), ncu: timing(0.726), 'npm-check': timing(1.2), pm: timing(0.9) },
     warm: { inup: timing(0.38), ncu: timing(0.72), 'npm-check': timing(1.1), pm: timing(0.13) },
   },
+  picker: {
+    tools: [
+      tool('inup', 'inup', 'inup', null),
+      tool('ncu', 'npm-check-updates', 'ncu --interactive', null),
+    ],
+    skipped: [{ id: 'pm', name: 'npm update -i', reason: 'npm has no interactive update' }],
+    cold: { inup: timing(0.95), ncu: timing(0.86) },
+    warm: { inup: timing(0.5), ncu: timing(0.84) },
+  },
 }
 
 const vue = {
@@ -88,9 +98,69 @@ const vue = {
     cold: { inup: timing(1.68), ncu: timing(18.348), pm: timing(2.1) },
     warm: { inup: timing(0.9), ncu: timing(5.6), pm: timing(0.8) },
   },
+  picker: {
+    tools: [
+      tool('inup', 'inup', 'inup', null),
+      tool('pm', 'pnpm update -i', 'pnpm update --interactive --latest --recursive', null),
+    ],
+    skipped: [
+      { id: 'ncu', name: 'npm-check-updates', reason: 'asks about one package.json at a time' },
+    ],
+    cold: { inup: timing(1.81), pm: timing(2.41) },
+    warm: { inup: timing(0.62), pm: timing(0.7) },
+  },
 }
 
 const results = [express, vue]
+
+/** The tables in rendered Markdown, in order. */
+const tablesIn = (text: string) => text.split('\n\n').filter((block) => block.startsWith('| '))
+
+describe('joinNames', () => {
+  it('shares a common last word', () => {
+    expect(joinNames(['npm outdated', 'pnpm outdated', 'bun outdated'])).toBe(
+      'npm / pnpm / bun outdated'
+    )
+    expect(joinNames(['inup'])).toBe('inup')
+    expect(joinNames(['npm outdated', 'yarn upgrade-interactive'])).toBe(
+      'npm outdated / yarn upgrade-interactive'
+    )
+    expect(joinNames(['pnpm update -i', 'bun update -i', 'yarn upgrade-interactive'])).toBe(
+      'pnpm / bun update -i / yarn upgrade-interactive'
+    )
+  })
+})
+
+describe('a repository where a tool did not run', () => {
+  const yarn = {
+    ...vue,
+    fixture: { ...vue.fixture, id: 'backstage', repo: 'backstage/backstage' },
+    tools: vue.tools.filter((t) => t.id !== 'pm'),
+    skipped: [
+      ...vue.skipped,
+      {
+        id: 'pm',
+        name: 'yarn upgrade-interactive',
+        reason: 'Yarn 2+ lists updates only in this interactive picker',
+      },
+    ],
+    results: {
+      cold: { inup: timing(6), ncu: timing(21) },
+      warm: { inup: timing(1), ncu: timing(20) },
+    },
+  }
+
+  it('keeps the row named for where it ran and shows a dash', () => {
+    const [first] = tablesIn(renderTables([express, vue, yarn]))
+    expect(first).toContain('| npm / pnpm outdated | 0.90 s | 2.10 s | — |')
+  })
+
+  it('says why on the details page', () => {
+    expect(renderDetails([yarn])).toContain(
+      '| yarn upgrade-interactive | — | not run: Yarn 2+ lists updates only in this interactive picker |  |  |'
+    )
+  })
+})
 
 describe('formatSeconds', () => {
   it('keeps two decimals under ten seconds and one above', () => {
@@ -113,7 +183,7 @@ describe('sortResults', () => {
 
 describe('renderTables', () => {
   const tables = renderTables(results)
-  const [first, repeat] = tables.split('\n\n')
+  const [first, repeat, pickerFirst, pickerRepeat] = tablesIn(tables)
 
   it('heads each column with the pinned repository and its size', () => {
     expect(first).toContain(
@@ -129,9 +199,29 @@ describe('renderTables', () => {
     expect(first).toContain('| inup | **0.39 s** | **1.68 s** |')
     expect(first).toContain('| npm-check-updates | 0.73 s | 18.3 s |')
     expect(first).toContain('| npm-check | 1.20 s | — |')
-    expect(first).toContain('| npm outdated / pnpm outdated | 0.90 s | 2.10 s |')
+    expect(first).toContain('| npm / pnpm outdated | 0.90 s | 2.10 s |')
     expect(repeat).toContain('| inup | 0.38 s | 0.90 s |')
-    expect(repeat).toContain('| npm outdated / pnpm outdated | **0.13 s** | **0.80 s** |')
+    expect(repeat).toContain('| npm / pnpm outdated | **0.13 s** | **0.80 s** |')
+  })
+
+  it('times the pickers in tables of their own', () => {
+    expect(tables).toContain('### Listing outdated dependencies')
+    expect(tables).toContain('### Opening the picker')
+    expect(pickerFirst.split('\n')[0]).toMatch(/^\| First run \| \[expressjs\/express\]/)
+    expect(pickerFirst).toContain('| inup | 0.95 s | **1.81 s** |')
+    expect(pickerFirst).toContain('| npm-check-updates | **0.86 s** | — |')
+    expect(pickerFirst).toContain('| pnpm update -i | — | 2.41 s |')
+    expect(pickerRepeat).toContain('| inup | **0.50 s** | **0.62 s** |')
+    expect(tables).toContain('Pickers run in a 160×50 terminal')
+    expect(tables).toContain('downloads its native core')
+  })
+
+  it('leaves the pickers out when a result has none', () => {
+    const { picker: _, ...listingOnly } = express
+    const tables = renderTables([listingOnly])
+    expect(tablesIn(tables)).toHaveLength(2)
+    expect(tables).not.toContain('picker')
+    expect(tables).not.toContain('Picker')
   })
 
   it('says how, where and when it was measured', () => {
@@ -189,7 +279,20 @@ describe('renderDetails', () => {
     )
     expect(details).toContain('| npm-check | 1.0.0 | 1.20 s ± 0.01<br><sub>1.18–1.23</sub> |')
     expect(details).toContain('| — |\n')
-    expect(details).toContain('| npm-check | — | not run: no workspace support | | |')
+    expect(details).toContain('| npm-check | — | not run: no workspace support |  |  |')
+  })
+
+  it('lists the pickers with their commands', () => {
+    expect(details).toContain('#### Opening the picker')
+    expect(details).toContain(
+      '| pnpm update -i | 1.0.0 | 2.41 s ± 0.01<br><sub>2.39–2.44</sub> | 0.70 s ± 0.01<br><sub>0.68–0.73</sub> |'
+    )
+    expect(details).toContain(
+      '| npm-check-updates | — | not run: asks about one package.json at a time |  |'
+    )
+    expect(details).toContain(
+      'Commands, run in the repository root in a 160×50 terminal:\n\n```sh\ninup\npnpm update --interactive --latest --recursive\n```'
+    )
   })
 
   it('shows the exact commands and the machine', () => {
