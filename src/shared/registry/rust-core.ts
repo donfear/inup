@@ -1,6 +1,6 @@
-import { readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../config'
 import { debugLog } from '../debug-logger'
@@ -157,7 +157,18 @@ export function detectHost({
   return { platform, arch, isMusl }
 }
 
-const DEV_BUILD_DIR = join(__dirname, '..', '..', '..', 'native', 'out')
+/**
+ * The nearest directory at or above `dir` that holds a package.json: inup's own
+ * root, whether this module runs from src/, from tsc's output in dist/, or
+ * bundled into the CLI (dist/cli.bundle.js). `dir` itself when there is none.
+ */
+export function packageRoot(dir: string, exists: (path: string) => boolean = existsSync): string {
+  for (let current = dir; ; current = dirname(current)) {
+    if (exists(join(current, 'package.json'))) return current
+    if (dirname(current) === current) return dir
+  }
+}
+
 const nodeRequire = createRequire(__filename)
 
 interface Environment {
@@ -269,7 +280,8 @@ function loadNative(): Resolved {
   const pinned = environment.pins[abi]
   const cached = nativeCoreFile(environment.cacheRoot(), environment.version, abi)
   const failures: string[] = []
-  for (const id of [join(DEV_BUILD_DIR, `inup.${abi}.node`), cached]) {
+  const devBuild = join(packageRoot(__dirname), 'native', 'out', `inup.${abi}.node`)
+  for (const id of [devBuild, cached]) {
     try {
       // A local build is trusted as it is; a downloaded addon only while it is
       // byte for byte the one released with this inup, checked on every load.

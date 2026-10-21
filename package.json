@@ -7,7 +7,7 @@
     "inup": "./dist/cli.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && node scripts/build-cli.mjs",
     "build:all": "pnpm native:build && pnpm build",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
@@ -77,6 +77,7 @@
     "@types/node": "^26.6.3",
     "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^5.0.3",
+    "esbuild": "^0.28.1",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   },
