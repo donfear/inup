@@ -25,6 +25,16 @@ describe('BackgroundAuditTracker', () => {
     })
   })
 
+  it('reserves everything pending when no limit is given', () => {
+    const tracker = new BackgroundAuditTracker()
+    tracker.enqueue(
+      Array.from({ length: 45 }, (_, index) => ({ name: `pkg-${index}`, version: '^1.0.0' }))
+    )
+
+    expect(tracker.reserveNextBatch().keys).toHaveLength(45)
+    expect(tracker.reserveNextBatch().keys).toEqual([])
+  })
+
   it('queues each declared version of a package separately', () => {
     const tracker = new BackgroundAuditTracker()
 

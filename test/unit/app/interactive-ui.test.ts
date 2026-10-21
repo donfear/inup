@@ -375,6 +375,22 @@ describe('InteractiveUI refresh plumbing', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
+  it('hands the declared versions to the audit controller as one prefetch', () => {
+    const ui = new InteractiveUI(npmInfo)
+    const prefetchSpy = vi
+      .spyOn(
+        (ui as unknown as { vulnerabilityAuditController: { prefetch: unknown } })
+          .vulnerabilityAuditController,
+        'prefetch' as never
+      )
+      .mockImplementation((() => {}) as never)
+    const declared = [{ name: 'next', version: '^1.0.0' }]
+
+    ui.prefetchSecurityAudit(declared)
+
+    expect(prefetchSpy).toHaveBeenCalledExactlyOnceWith(declared)
+  })
+
   it('stores the refresh hook in the progressive flow too', async () => {
     const ui = new InteractiveUI(npmInfo)
     const refresh = vi.fn()
