@@ -120,13 +120,6 @@ export class PackageUpgrader {
 
   /** Run the install in one directory. Returns why it failed, or null when it succeeded. */
   private installIn(installDir: string, installCommand: string): string | null {
-    // Check if package manager is installed
-    try {
-      executeCommand(`${this.packageManager.name} --version`, installDir)
-    } catch {
-      return `${this.packageManager.displayName} is not installed`
-    }
-
     this.log(chalk.cyan(`\n📦 Running ${installCommand} in ${installDir}...\n`))
 
     // In quiet mode, send the install child's stdout to *our* stderr (fd 2). The child uses
@@ -142,8 +135,24 @@ export class PackageUpgrader {
 
     if (result.error) return `${installCommand} could not start: ${result.error.message}`
     if (result.signal) return `${installCommand} terminated by signal ${result.signal}`
-    if (result.status !== 0) return `${installCommand} exited with code ${result.status}`
-    return null
+    if (result.status === 0) return null
+    // The shell reports a missing package manager as "command not found" (127 from sh, 9009 from
+    // cmd.exe). npm and bun pass a lifecycle script's 127 through too, so only blame the package
+    // manager once it can't print its version. Probing here, not up front, keeps that extra
+    // spawn off every install that works.
+    if ((result.status === 127 || result.status === 9009) && !this.isInstalled(installDir)) {
+      return `${this.packageManager.displayName} is not installed`
+    }
+    return `${installCommand} exited with code ${result.status}`
+  }
+
+  private isInstalled(cwd: string): boolean {
+    try {
+      executeCommand(`${this.packageManager.name} --version`, cwd)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

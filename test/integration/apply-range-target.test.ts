@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   fetchPackageVersions: vi.fn(),
   fetchVulnerabilities: vi.fn(),
-  executeCommand: vi.fn(),
   spawnSync: vi.fn(),
 }))
 
@@ -30,13 +29,7 @@ vi.mock('../../src/features/audit/vulnerability-checker', async (importOriginal)
   return { ...actual, fetchVulnerabilities: mocks.fetchVulnerabilities }
 })
 
-// Stub the package manager: the `--version` probe (executeCommand) and the install (spawnSync)
-// both succeed without running anything real.
-vi.mock('../../src/shared/exec', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/shared/exec')>()
-  return { ...actual, executeCommand: mocks.executeCommand }
-})
-
+// Stub the package-manager install (spawnSync): it succeeds without running anything real.
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>()
   return { ...actual, spawnSync: mocks.spawnSync }

@@ -12,9 +12,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// No test spawns a real package manager: execSync backs the `<pm> --version` probe and spawnSync
-// the install. Both succeed by default; tests override them to simulate a missing binary, spawn
-// errors, signals, and exit codes.
+// No test spawns a real package manager: spawnSync backs the install and execSync the
+// `<pm> --version` probe that runs after a "command not found" exit. Both succeed by default;
+// tests override them to simulate a missing binary, spawn errors, signals, and exit codes.
 const { execSyncMock, spawnSyncMock } = vi.hoisted(() => ({
   execSyncMock: vi.fn(),
   spawnSyncMock: vi.fn(),
@@ -752,25 +752,80 @@ catalogs:
       }
     })
 
-    it('fails, naming the directory and command, when the package manager is not installed', async () => {
+    it('installs without probing the package manager first', async () => {
       const pkgPath = writeFixture(testDir)
-      const upgrader = new PackageUpgrader(
-        makePackageManager({ name: 'bun', displayName: 'bun', installCommand: 'bun install' })
-      )
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
-      execSyncMock.mockImplementationOnce(() => {
-        throw new Error('bun: command not found')
-      })
 
       try {
-        const error = await upgrader.upgradePackages([makeChoice(pkgPath)]).catch((e) => e)
-        expect(error).toBeInstanceOf(Error)
-        expect(error.message).toContain('bun is not installed')
-        expect(error.message).toContain(testDir)
-        expect(error.message).toContain('bun install')
-        expect(spawnSyncMock).not.toHaveBeenCalled()
-        // The manifest stays written — only the lockfile is behind.
-        expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).dependencies.lodash).toBe('^4.17.21')
+        await new PackageUpgrader(makePackageManager()).upgradePackages([makeChoice(pkgPath)])
+        expect(spawnSyncMock).toHaveBeenCalledTimes(1)
+        expect(execSyncMock).not.toHaveBeenCalled()
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    // 127 is what sh exits with for an unknown command, 9009 what cmd.exe does.
+    it.each([127, 9009])(
+      'fails, naming the directory and command, when the package manager is not installed (shell exit %i)',
+      async (status) => {
+        const pkgPath = writeFixture(testDir)
+        const upgrader = new PackageUpgrader(
+          makePackageManager({ name: 'bun', displayName: 'bun', installCommand: 'bun install' })
+        )
+        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+        spawnSyncMock.mockReturnValueOnce({ status, signal: null })
+        execSyncMock.mockImplementationOnce(() => {
+          throw new Error('bun: command not found')
+        })
+
+        try {
+          const error = await upgrader.upgradePackages([makeChoice(pkgPath)]).catch((e) => e)
+          expect(error).toBeInstanceOf(Error)
+          expect(error.message).toContain('bun is not installed')
+          expect(error.message).toContain(testDir)
+          expect(error.message).toContain('bun install')
+          expect(execSyncMock).toHaveBeenCalledWith(
+            'bun --version',
+            expect.objectContaining({ cwd: testDir })
+          )
+          // The manifest stays written — only the lockfile is behind.
+          expect(JSON.parse(readFileSync(pkgPath, 'utf-8')).dependencies.lodash).toBe('^4.17.21')
+        } finally {
+          logSpy.mockRestore()
+        }
+      }
+    )
+
+    it('reports exit code 127 as is when the package manager is installed', async () => {
+      // npm and bun exit 127 when a lifecycle script's own command is missing.
+      const pkgPath = writeFixture(testDir)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 127, signal: null })
+
+      try {
+        const error = await new PackageUpgrader(makePackageManager())
+          .upgradePackages([makeChoice(pkgPath)])
+          .catch((e) => e)
+        expect(execSyncMock).toHaveBeenCalledTimes(1)
+        expect(error.message).toContain('exited with code 127')
+        expect(error.message).not.toContain('is not installed')
+      } finally {
+        logSpy.mockRestore()
+      }
+    })
+
+    it('does not probe the package manager after an ordinary install failure', async () => {
+      const pkgPath = writeFixture(testDir)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 1, signal: null })
+
+      try {
+        const error = await new PackageUpgrader(makePackageManager())
+          .upgradePackages([makeChoice(pkgPath)])
+          .catch((e) => e)
+        expect(error.message).toContain('exited with code 1')
+        expect(execSyncMock).not.toHaveBeenCalled()
       } finally {
         logSpy.mockRestore()
       }
