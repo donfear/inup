@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME, PACKAGE_VERSION } from '../config'
 import { debugLog } from '../debug-logger'
+import type { Freshness } from '../http/etag-store'
 import type { ParsedVersions } from '../versions'
 import { downloadNativeCore, nativeCoreFile, sha512Integrity } from './native-download'
 import { NATIVE_INTEGRITY } from './native-integrity'
@@ -41,8 +42,8 @@ export interface PackumentDecodeRequest {
   raw: Buffer
   /** Lower-cased content-encoding; '' when absent. */
   encoding: string
-  /** Where to persist the ETag cache entry, or null to skip it. */
-  cache: { file: string; etag: string } | null
+  /** Where to persist the ETag cache entry (and the freshness it records), or null to skip it. */
+  cache: { file: string; etag: string; freshness: Freshness | null } | null
 }
 
 export type PackumentDecoder = (request: PackumentDecodeRequest) => Promise<ParsedVersions>
@@ -82,7 +83,10 @@ export interface NativeFetchOutcome {
 export interface NativeFetchRequest {
   url: string
   authorization?: string
-  /** ETag cache entry to revalidate against and write; null skips the cache. */
+  /**
+   * ETag cache entry to revalidate against, write on a 200 and renew on a 304
+   * (with the freshness the response grants); null skips the cache.
+   */
   cacheFile: string | null
   /** Overrides the 30 s headers timeout (tests). */
   headersTimeoutMs?: number
@@ -106,12 +110,18 @@ interface NativeModule {
   }): Promise<NativeFetchOutcome>
   cancelFetch?(requestId: number): void
   takeReceivedBytes?(): number
-  /** Runs on the libuv thread pool; writes the cache entry when given a file. */
+  /**
+   * Runs on the libuv thread pool; writes the cache entry when given a file,
+   * with freshness fields when given both. An addon from before they existed
+   * ignores the extra arguments, and its entries are simply revalidated.
+   */
   decodePackument(
     raw: Buffer,
     encoding: string,
     cacheFile: string | null,
-    etag: string | null
+    etag: string | null,
+    fetchedAt: number | null,
+    ttl: number | null
   ): Promise<RawParsed>
 }
 
@@ -372,7 +382,14 @@ function transportOf(mod: NativeModule): NativeTransport | null {
 function nativeDecoder(mod: NativeModule): PackumentDecoder {
   return async ({ raw, encoding, cache }) =>
     toParsedVersions(
-      await mod.decodePackument(raw, encoding, cache?.file ?? null, cache?.etag ?? null)
+      await mod.decodePackument(
+        raw,
+        encoding,
+        cache?.file ?? null,
+        cache?.etag ?? null,
+        cache?.freshness?.fetchedAt ?? null,
+        cache?.freshness?.ttl ?? null
+      )
     )
 }
 

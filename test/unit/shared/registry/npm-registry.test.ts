@@ -49,8 +49,12 @@ import {
   readEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
+  writeEtag,
 } from '../../../../src/shared/http/etag-store'
-import type { ControlTick } from '../../../../src/shared/http/hill-climb-controller'
+import {
+  type ControlTick,
+  HillClimbController,
+} from '../../../../src/shared/http/hill-climb-controller'
 import { sleep } from '../../../../src/shared/http/retry'
 import {
   clearPackageCache,
@@ -1087,6 +1091,28 @@ describe('npm-registry', () => {
         })
       })
 
+      it('serves a fresh full packument with its publish times, apart from the abbreviated one', async () => {
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify(fullBody),
+          headers: { etag: 'W/"full-1"', 'cache-control': 'public, max-age=300' },
+        }))
+        await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+        clearPackageCache()
+        poolRequestSpy.mockClear()
+
+        const fresh = await fetchPackageVersions(['demo-pkg'], { fullMetadata: true })
+
+        expect(poolRequestSpy).not.toHaveBeenCalled()
+        expect(fresh.get('demo-pkg')?.publishTimes).toEqual({
+          '1.0.0': '2020-01-01T00:00:00.000Z',
+          '1.1.0': '2024-01-02T00:00:00.000Z',
+        })
+        // An abbreviated run has no fresh entry of its own.
+        await fetchPackageVersions(['demo-pkg'])
+        expect(poolRequestSpy).toHaveBeenCalledTimes(1)
+      })
+
       it('never revalidates a full request against an abbreviated cache entry', async () => {
         // The two formats parse to different data. A 304 answered from the wrong entry
         // would hand a cooldown run a body that never had `time` in it.
@@ -1212,6 +1238,19 @@ describe('npm-registry', () => {
         expect(request.authorization).toBe('Bearer secret')
         expect(request.cacheFile.startsWith(etagTestRoot)).toBe(true)
         expect(requestMock).not.toHaveBeenCalled()
+      })
+
+      it('never asks the native transport for a package that is still fresh', async () => {
+        writeEtag('https://registry.npmjs.org/demo-pkg', 'W/"f"', data, {
+          fetchedAt: Date.now(),
+          ttl: 300,
+        })
+        const { fetch } = useTransport(outcome({}))
+
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(fetch).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')).toEqual(data)
       })
 
       it('strips terminal escape sequences from text the Rust core decoded', async () => {
@@ -1405,14 +1444,39 @@ describe('npm-registry', () => {
 
         expect(result.get('demo-pkg')).toEqual(parsed)
         const [request] = decode.mock.calls[0] as [
-          { raw: Buffer; encoding: string; cache: { file: string; etag: string } | null },
+          {
+            raw: Buffer
+            encoding: string
+            cache: { file: string; etag: string; freshness: unknown } | null
+          },
         ]
         expect(request.raw.toString('utf8')).toBe('{"versions":{"1.0.0":{}}}')
         expect(request.encoding).toBe('identity')
         expect(request.cache?.etag).toBe('W/"rust"')
         expect(request.cache?.file.startsWith(etagTestRoot)).toBe(true)
+        expect(request.cache?.freshness).toBeNull()
         // Writing the entry is the decoder's job on this path.
         expect(readEtag('https://registry.npmjs.org/demo-pkg')).toBeNull()
+      })
+
+      it('hands the Rust decoder the freshness the response grants', async () => {
+        const decode = vi.fn(async (_request: unknown) => parsed)
+        packumentDecoderMock.mockReturnValue(decode)
+        requestMock.mockImplementation(async () => ({
+          statusCode: 200,
+          body: JSON.stringify({ versions: { '1.0.0': {} } }),
+          headers: { etag: 'W/"rust"', 'cache-control': 'public, max-age=300', age: '40' },
+        }))
+        const before = Date.now()
+
+        await fetchPackageVersions(['demo-pkg'])
+
+        const [request] = decode.mock.calls[0] as [
+          { cache: { freshness: { fetchedAt: number; ttl: number } } },
+        ]
+        expect(request.cache.freshness.ttl).toBe(260)
+        expect(request.cache.freshness.fetchedAt).toBeGreaterThanOrEqual(before)
+        expect(request.cache.freshness.fetchedAt).toBeLessThanOrEqual(Date.now())
       })
 
       it('asks for no cache write without an ETag or with the store disabled; encoding defaults to empty', async () => {
@@ -1456,7 +1520,7 @@ describe('npm-registry', () => {
       })
     })
 
-    it('still issues a request every run (304 = validated, never stale-without-checking)', async () => {
+    it('still issues a request every run when the response grants no freshness', async () => {
       requestMock.mockImplementation(async () => ({
         statusCode: 200,
         body: JSON.stringify({ versions: { '1.0.0': {} } }),
@@ -1468,6 +1532,137 @@ describe('npm-registry', () => {
       await fetchPackageVersions(['demo-pkg'])
       // A second run hits the network again (freshness), not served purely offline.
       expect(poolRequestSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
+    })
+
+    describe('freshness (Cache-Control max-age)', () => {
+      const key = 'https://registry.npmjs.org/demo-pkg'
+      const cached = {
+        latestVersion: '1.1.0',
+        allVersions: ['1.1.0', '1.0.0'],
+        prereleaseVersions: [],
+      }
+      const sent: Record<string, string>[] = []
+      /** The next JS-transport request gets this response; its headers land in `sent`. */
+      const respondOnce = (statusCode: number, headers: Record<string, string>, body = '') =>
+        poolRequestSpy.mockImplementationOnce(async (opts: unknown) => {
+          sent.push((opts as { headers: Record<string, string> }).headers)
+          return {
+            statusCode,
+            headers,
+            body: { ...streamOf(Buffer.from(body)), dump: async () => {} },
+          }
+        })
+
+      beforeEach(() => {
+        sent.length = 0
+      })
+
+      it('answers a package from the cache with no request while its response is fresh', async () => {
+        const before = Date.now()
+        respondOnce(
+          200,
+          { etag: 'W/"v1"', 'cache-control': 'public, max-age=300', age: '131' },
+          JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } })
+        )
+        await fetchPackageVersions(['demo-pkg'])
+        expect(readEtag(key)?.ttl).toBe(169)
+        expect(readEtag(key)?.fetchedAt).toBeGreaterThanOrEqual(before)
+
+        clearPackageCache()
+        poolRequestSpy.mockClear()
+        const ready = vi.fn()
+        const result = await fetchPackageVersions(['demo-pkg'], { onPackageReady: ready })
+
+        expect(poolRequestSpy).not.toHaveBeenCalled()
+        expect(result.get('demo-pkg')).toEqual(cached)
+        expect(ready).toHaveBeenCalledExactlyOnceWith({ packageName: 'demo-pkg', data: cached })
+      })
+
+      it('keeps revalidating responses that grant no freshness', async () => {
+        respondOnce(
+          200,
+          { etag: 'W/"v1"', 'cache-control': 'private, max-age=300' },
+          JSON.stringify({ versions: { '1.0.0': {} } })
+        )
+        await fetchPackageVersions(['demo-pkg'])
+        expect(readEtag(key)).toEqual({ etag: 'W/"v1"', data: expect.any(Object) })
+
+        clearPackageCache()
+        respondOnce(304, { 'cache-control': 'private, max-age=300' })
+        await fetchPackageVersions(['demo-pkg'])
+
+        expect(sent[1]['if-none-match']).toBe('W/"v1"')
+        expect(readEtag(key)?.ttl).toBeUndefined()
+      })
+
+      it('revalidates once the freshness ran out, and the 304 renews it', async () => {
+        writeEtag(key, 'W/"v1"', cached, { fetchedAt: Date.now() - 400_000, ttl: 300 })
+        const before = Date.now()
+        respondOnce(304, { 'cache-control': 'public, max-age=300', age: '20' })
+
+        const revalidated = await fetchPackageVersions(['demo-pkg'])
+
+        expect(sent[0]['if-none-match']).toBe('W/"v1"')
+        expect(revalidated.get('demo-pkg')).toEqual(cached)
+        await vi.waitFor(() => expect(readEtag(key)?.ttl).toBe(280))
+        expect(readEtag(key)?.fetchedAt).toBeGreaterThanOrEqual(before)
+
+        clearPackageCache()
+        poolRequestSpy.mockClear()
+        expect((await fetchPackageVersions(['demo-pkg'])).get('demo-pkg')).toEqual(cached)
+        expect(poolRequestSpy).not.toHaveBeenCalled()
+      })
+
+      it('keeps fresh hits away from the controller and the timing callbacks', async () => {
+        const fresh = Array.from({ length: 40 }, (_, i) => `fresh-${i}`)
+        for (const name of fresh) {
+          writeEtag(`https://registry.npmjs.org/${name}`, 'W/"f"', cached, {
+            fetchedAt: Date.now(),
+            ttl: 300,
+          })
+        }
+        requestMock.mockImplementation(async () => makeOkBody({ versions: { '2.0.0': {} } }))
+        const shouldControl = vi.spyOn(HillClimbController, 'shouldControl')
+        const timed: string[] = []
+        const ready: string[] = []
+
+        const result = await fetchPackageVersions([...fresh, 'stale-a', 'stale-b'], {
+          onPackageTiming: (name) => timed.push(name),
+          onPackageReady: ({ packageName }) => ready.push(packageName),
+        })
+
+        expect(result.size).toBe(42)
+        expect(requestMock).toHaveBeenCalledTimes(2)
+        // Sized by the two requests left, not by the 42 packages.
+        expect(shouldControl).toHaveBeenCalledExactlyOnceWith(2)
+        expect(timed.sort()).toEqual(['stale-a', 'stale-b'])
+        // Fresh hits resolve first, before any request goes out.
+        expect(ready.slice(0, 40)).toEqual(fresh)
+        shouldControl.mockRestore()
+      })
+
+      it('strips terminal escape sequences from fresh hits too', async () => {
+        writeEtag(
+          key,
+          'W/"f"',
+          { ...cached, deprecated: 'gone\x1b[2J', enginesNode: '>=99\x9b' },
+          { fetchedAt: Date.now(), ttl: 300 }
+        )
+        const result = await fetchPackageVersions(['demo-pkg'])
+        expect(result.get('demo-pkg')).toMatchObject({ deprecated: 'gone', enginesNode: '>=99' })
+      })
+
+      it('never publishes a fresh hit after cancellation', async () => {
+        writeEtag(key, 'W/"f"', cached, { fetchedAt: Date.now(), ttl: 300 })
+        const controller = new AbortController()
+        controller.abort()
+        const ready = vi.fn()
+
+        await expect(
+          fetchPackageVersions(['demo-pkg'], { signal: controller.signal, onPackageReady: ready })
+        ).rejects.toThrow()
+        expect(ready).not.toHaveBeenCalled()
+      })
     })
 
     it('stores an array-valued ETag header and reuses data on 304 despite a failing drain', async () => {

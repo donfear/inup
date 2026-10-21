@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::FutureExt;
 use napi::bindgen_prelude::*;
@@ -45,7 +45,8 @@ pub struct FetchRequest {
   /// Absolute packument URL.
   pub url: String,
   pub authorization: Option<String>,
-  /// ETag cache entry to revalidate against and to write on a 200; null = no cache.
+  /// ETag cache entry to revalidate against, to write on a 200 and to renew on
+  /// a 304 (with the freshness the response grants); null = no cache.
   pub cache_file: Option<String>,
   /// Id for `cancelFetch`.
   pub request_id: Option<u32>,
@@ -180,7 +181,36 @@ fn unregister(id: Option<u32>) {
   }
 }
 
+/// The freshness a response grants (`responseFreshness` in etag-store.ts).
+/// Repeated Cache-Control headers are joined, as Node joins them; an Age that
+/// is not visible ASCII counts as unparseable, like any other invalid Age.
+fn freshness_of(response: &reqwest::Response, fetched_at: u64) -> Option<inup_core::Freshness> {
+  let headers = response.headers();
+  let cache_control = headers
+    .get_all("cache-control")
+    .iter()
+    .filter_map(|v| v.to_str().ok())
+    .collect::<Vec<_>>()
+    .join(",");
+  let age = headers.get("age").map(|v| v.to_str().unwrap_or(""));
+  inup_core::response_freshness(Some(&cache_control), age, fetched_at)
+}
+
+/// Replaces a cache entry through a temp file beside it, as renewEtag does: a
+/// process that exits mid-write (Ctrl+C while packages load) leaves the old
+/// entry whole, not a truncated one. Best-effort.
+async fn replace_entry(file: &str, json: String) {
+  let temp = format!("{file}.{}.tmp", std::process::id());
+  if tokio::fs::write(&temp, json).await.is_err() || tokio::fs::rename(&temp, file).await.is_err() {
+    let _ = tokio::fs::remove_file(&temp).await;
+  }
+}
+
 async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
+  // The request start is the conservative response time, as in the JS transport.
+  let fetched_at = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map_or(0, |d| d.as_millis() as u64);
   let client = match client() {
     Ok(client) => client,
     Err(error) => return FetchOutcome::failed("fallback", "internal", error, started),
@@ -228,6 +258,11 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
   let status = response.status().as_u16();
   if status == 304 {
     if let Some(entry) = cached {
+      // The confirmation renews the entry's freshness. Best-effort, like renewEtag.
+      if let (Some(file), Some(fresh)) = (&request.cache_file, freshness_of(&response, fetched_at))
+      {
+        replace_entry(file, inup_core::renewed_cache_entry_json(&entry, fresh)).await;
+      }
       return FetchOutcome {
         kind: "success".into(),
         data_json: Some(entry.data.get().to_owned()),
@@ -266,6 +301,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
     .unwrap_or_default()
     .to_ascii_lowercase();
   let etag = header("etag").filter(|e| !e.is_empty());
+  let freshness = freshness_of(&response, fetched_at);
 
   let mut body = Vec::with_capacity(response.content_length().unwrap_or(0) as usize);
   loop {
@@ -285,7 +321,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
     let parsed = inup_core::decode_packument(&body, &encoding)?;
     if let (Some(file), Some(etag)) = (cache_file, etag) {
       // Best-effort, like writeEtag.
-      let _ = std::fs::write(file, inup_core::cache_entry_json(&etag, &parsed));
+      let _ = std::fs::write(file, inup_core::cache_entry_json(&etag, &parsed, freshness));
     }
     Ok::<_, inup_core::Error>(inup_core::parsed_json(&parsed))
   })

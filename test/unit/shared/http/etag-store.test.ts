@@ -1,11 +1,23 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   etagCacheDir,
   etagFileFor,
   readEtag,
+  readFresh,
+  renewEtag,
+  responseFreshness,
   setEtagCacheEnabled,
   setEtagCacheRoot,
   writeEtag,
@@ -157,5 +169,157 @@ describe('etag-store corruption handling', () => {
     }
 
     expect(readEtag('/invalid-pkg')).toBeNull()
+  })
+})
+
+describe('etag-store freshness', () => {
+  const now = Date.now()
+
+  it.each([
+    // [cache-control, age, ttl or null] — the same table as response_freshness
+    // in native/core/src/lib.rs, so both transports store the same entries.
+    ['public, max-age=300', '131', 169],
+    ['public, max-age=300', undefined, 300],
+    ['max-age=60', ' 0 ', 60],
+    ['PUBLIC, MAX-AGE = 120', undefined, 120],
+    ['max-age=86400', '100', 200],
+    ['max-age=99999999999999999999999', undefined, 300],
+    ['max-age=300, max-age=30', undefined, 30],
+    ['max-age=300,max-age=30', '10', 20],
+    ['public, max-age=300', '300', null],
+    ['public, max-age=300', '301', null],
+    ['public, max-age=300', '99999999999999999999999', null],
+    ['public, max-age=300', '-1', null],
+    ['public, max-age=300', '', null],
+    ['public, max-age=300', '1.5', null],
+    ['max-age=0', undefined, null],
+    ['max-age="300"', undefined, null],
+    ['max-age=30x', undefined, null],
+    ['max-age', undefined, null],
+    ['max-age=', undefined, null],
+    ['max-age=30=0', undefined, null],
+    ['public', undefined, null],
+    ['', undefined, null],
+    [undefined, undefined, null],
+    ['no-cache, max-age=300', undefined, null],
+    ['max-age=300, no-store', undefined, null],
+    ['private, max-age=300', undefined, null],
+    ['max-age=300, private="set-cookie"', undefined, null],
+    ['max-age=300, No-Cache', undefined, null],
+    ['s-maxage=300', undefined, null],
+    ['public, s-maxage=600, max-age=300, must-revalidate', '5', 295],
+  ])('cache-control %j with age %j grants a ttl of %j', (cacheControl, age, ttl) => {
+    expect(responseFreshness(cacheControl, age, now)).toEqual(
+      ttl === null ? null : { fetchedAt: now, ttl }
+    )
+  })
+
+  it('reads repeated headers the way Node delivers them', () => {
+    expect(responseFreshness(['public', 'max-age=300'], ['20', '99'], now)).toEqual({
+      fetchedAt: now,
+      ttl: 280,
+    })
+  })
+
+  it('stores the freshness fields after the data, and nothing without them', () => {
+    writeEtag('/fresh', 'W/"1"', data, { fetchedAt: 1_760_000_000_123, ttl: 169 })
+    writeEtag('/plain', 'W/"2"', data, null)
+    expect(readFileSync(etagFileFor('/fresh') as string, 'utf8')).toBe(
+      JSON.stringify({ etag: 'W/"1"', data, fetchedAt: 1_760_000_000_123, ttl: 169 })
+    )
+    expect(readFileSync(etagFileFor('/plain') as string, 'utf8')).toBe(
+      JSON.stringify({ etag: 'W/"2"', data })
+    )
+    expect(readEtag('/fresh')).toEqual({
+      etag: 'W/"1"',
+      data,
+      fetchedAt: 1_760_000_000_123,
+      ttl: 169,
+    })
+  })
+
+  it('serves an entry until its ttl runs out', () => {
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now, ttl: 169 })
+    expect(readFresh('/pkg', now)).toEqual(data)
+    expect(readFresh('/pkg', now + 168_999)).toEqual(data)
+    expect(readFresh('/pkg', now + 169_000)).toBeNull()
+  })
+
+  it('treats an entry from the future as stale: the clock went backwards', () => {
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now + 60_000, ttl: 300 })
+    expect(readFresh('/pkg', now)).toBeNull()
+  })
+
+  it('caps a stored ttl at 5 minutes', () => {
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now - 301_000, ttl: 3600 })
+    expect(readFresh('/pkg', now)).toBeNull()
+  })
+
+  it('never serves entries without valid freshness fields', () => {
+    writeEtag('/old-format', 'W/"1"', data)
+    writeFileSync(
+      etagFileFor('/bad-fields') as string,
+      JSON.stringify({ etag: 'W/"1"', data, fetchedAt: String(now), ttl: '300' })
+    )
+    writeFileSync(etagFileFor('/bad-shape') as string, JSON.stringify({ etag: 1, data }))
+    writeFileSync(etagFileFor('/corrupt') as string, '{not json')
+
+    for (const key of ['/old-format', '/bad-fields', '/bad-shape', '/corrupt', '/missing']) {
+      expect(readFresh(key, now)).toBeNull()
+    }
+  })
+
+  it('skips reading a file untouched for longer than the cap', () => {
+    // The JSON claims freshness, but a write would have touched the file.
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now, ttl: 300 })
+    const longAgo = new Date(now - 10 * 60_000)
+    utimesSync(etagFileFor('/pkg') as string, longAgo, longAgo)
+    expect(readFresh('/pkg', now)).toBeNull()
+  })
+
+  it('serves nothing when the store is disabled', () => {
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now, ttl: 300 })
+    setEtagCacheEnabled(false)
+    expect(readFresh('/pkg', now)).toBeNull()
+  })
+
+  it('renews an entry with new freshness, keeping its etag and data', async () => {
+    writeEtag('/pkg', 'W/"1"', data, { fetchedAt: now - 400_000, ttl: 300 })
+    expect(readFresh('/pkg')).toBeNull()
+
+    await renewEtag('/pkg', { etag: 'W/"1"', data }, { fetchedAt: now, ttl: 250 })
+
+    expect(readEtag('/pkg')).toEqual({ etag: 'W/"1"', data, fetchedAt: now, ttl: 250 })
+    expect(readFresh('/pkg', now + 1000)).toEqual(data)
+    // Written through a temp file renamed over the entry, which leaves nothing behind.
+    expect(readdirSync(etagCacheDir()).filter((name) => name.endsWith('.tmp'))).toEqual([])
+  })
+
+  it('removes its temp file when the entry cannot be replaced', async () => {
+    const file = etagFileFor('/pkg') as string
+    // rename refuses to put a file over a directory.
+    mkdirSync(file)
+
+    await expect(
+      renewEtag('/pkg', { etag: 'W/"1"', data }, { fetchedAt: now, ttl: 250 })
+    ).resolves.toBeUndefined()
+
+    expect(readdirSync(etagCacheDir()).sort()).toEqual([basename(file)])
+    expect(readFresh('/pkg', now)).toBeNull()
+  })
+
+  it('renews nothing when disabled and never rejects on an unusable directory', async () => {
+    setEtagCacheEnabled(false)
+    await renewEtag('/pkg', { etag: 'W/"1"', data }, { fetchedAt: now, ttl: 250 })
+    setEtagCacheEnabled(true)
+    expect(readEtag('/pkg')).toBeNull()
+
+    const blocker = join(testRoot, 'not-a-dir')
+    writeFileSync(blocker, '')
+    setEtagCacheRoot(blocker)
+    await expect(
+      renewEtag('/pkg', { etag: 'W/"1"', data }, { fetchedAt: now, ttl: 250 })
+    ).resolves.toBeUndefined()
+    expect(readFresh('/pkg', now)).toBeNull()
   })
 })

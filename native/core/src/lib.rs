@@ -1,6 +1,7 @@
 //! Rust port of inup's registry hot path: decompress a packument response,
 //! reduce it to what `parseVersions` (src/shared/versions.ts) returns, and
-//! serialize the ETag cache entry `writeEtag` would write.
+//! serialize the ETag cache entry `writeEtag` would write, with the freshness
+//! `responseFreshness` (src/shared/http/etag-store.ts) derives from its headers.
 //!
 //! Output must stay identical to the TypeScript implementation; the napi
 //! crate is a thin Node-API wrapper around these functions.
@@ -62,7 +63,8 @@ pub fn decompress<'a>(raw: &'a [u8], encoding: &str) -> Result<Cow<'a, [u8]>, Er
 }
 
 /// A stored ETag cache entry, as writeEtag / cache_entry_json write it. `data`
-/// stays raw JSON: it is handed back to JS as-is on a 304.
+/// stays raw JSON: it is handed back to JS as-is on a 304. Freshness fields are
+/// only read by JS, so they are left out here.
 #[derive(Debug, Deserialize)]
 pub struct CacheEntry {
   pub etag: String,
@@ -87,17 +89,93 @@ pub fn decode_packument(raw: &[u8], encoding: &str) -> Result<Parsed, Error> {
   parse_versions(&decompress(raw, encoding)?)
 }
 
-/// `JSON.stringify({ etag, data })`: the ETag cache entry writeEtag stores.
-/// serde_json escapes exactly the characters JSON.stringify does for valid
-/// Unicode strings, so the bytes match.
-pub fn cache_entry_json(etag: &str, data: &Parsed) -> String {
-  #[derive(Serialize)]
-  struct Entry<'a> {
-    etag: &'a str,
-    data: &'a Parsed,
+/// How long a response may be reused without asking the registry again;
+/// mirrors `Freshness` in src/shared/http/etag-store.ts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Freshness {
+  /// When the request was sent, in ms since the Unix epoch.
+  pub fetched_at: u64,
+  /// Seconds after `fetched_at` the response stays fresh: max-age minus Age.
+  pub ttl: u64,
+}
+
+/// Upper bound on max-age, whatever a registry sends (MAX_TTL_SECONDS in etag-store.ts).
+pub const MAX_TTL_SECONDS: u64 = 300;
+
+/// A delta-seconds value: one or more ASCII digits. Saturates where JS numbers
+/// would merely lose precision, which ends up in the same freshness either way.
+fn parse_seconds(value: &str) -> Option<u64> {
+  if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+    return None;
   }
-  serde_json::to_string(&Entry { etag, data })
-    .expect("a struct of strings always serializes to JSON")
+  Some(value.bytes().fold(0u64, |n, b| {
+    n.saturating_mul(10).saturating_add(u64::from(b - b'0'))
+  }))
+}
+
+/// `responseFreshness`: the freshness a response grants from its (joined)
+/// Cache-Control and Age headers, or None when it must always be revalidated.
+pub fn response_freshness(
+  cache_control: Option<&str>,
+  age: Option<&str>,
+  fetched_at: u64,
+) -> Option<Freshness> {
+  let mut max_age: Option<u64> = None;
+  for directive in cache_control.unwrap_or_default().split(',') {
+    let (name, value) = match directive.split_once('=') {
+      Some((name, value)) => (name.trim(), Some(value.trim())),
+      None => (directive.trim(), None),
+    };
+    let name = name.to_lowercase();
+    if name == "no-cache" || name == "no-store" || name == "private" {
+      return None;
+    }
+    if name == "max-age" {
+      let seconds = parse_seconds(value?)?;
+      max_age = Some(max_age.map_or(seconds, |current| current.min(seconds)));
+    }
+  }
+  let age = match age {
+    Some(value) => parse_seconds(value.trim())?,
+    None => 0,
+  };
+  let ttl = max_age?.min(MAX_TTL_SECONDS).checked_sub(age)?;
+  (ttl > 0).then_some(Freshness { fetched_at, ttl })
+}
+
+/// `JSON.stringify` of an entry, freshness fields last and only when present.
+fn entry_json<D: Serialize + ?Sized>(etag: &str, data: &D, freshness: Option<Freshness>) -> String {
+  #[derive(Serialize)]
+  #[serde(rename_all = "camelCase")]
+  struct Entry<'a, D: ?Sized> {
+    etag: &'a str,
+    data: &'a D,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fetched_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ttl: Option<u64>,
+  }
+  serde_json::to_string(&Entry {
+    etag,
+    data,
+    fetched_at: freshness.map(|f| f.fetched_at),
+    ttl: freshness.map(|f| f.ttl),
+  })
+  .expect("a struct of strings and numbers always serializes to JSON")
+}
+
+/// The ETag cache entry writeEtag stores: `JSON.stringify({ etag, data })`,
+/// plus `fetchedAt` and `ttl` when the response granted freshness. serde_json
+/// escapes exactly the characters JSON.stringify does for valid Unicode
+/// strings, so the bytes match.
+pub fn cache_entry_json(etag: &str, data: &Parsed, freshness: Option<Freshness>) -> String {
+  entry_json(etag, data, freshness)
+}
+
+/// A stored entry with renewed freshness after a 304, as renewEtag writes it.
+/// The data is copied as raw JSON text, unchanged.
+pub fn renewed_cache_entry_json(entry: &CacheEntry, freshness: Freshness) -> String {
+  entry_json(&entry.etag, &*entry.data, Some(freshness))
 }
 
 #[cfg(test)]
@@ -167,6 +245,101 @@ mod tests {
       r#"","enginesNode":">=20"}}"#,
     ]
     .concat();
-    assert_eq!(cache_entry_json("W/\"1\"", &data), want);
+    assert_eq!(cache_entry_json("W/\"1\"", &data, None), want);
+  }
+
+  #[test]
+  fn cache_entry_appends_freshness_like_write_etag() {
+    let fresh = Freshness {
+      fetched_at: 1_760_000_000_123,
+      ttl: 169,
+    };
+    let want = [
+      r#"{"etag":"e","data":{"latestVersion":"2.0.0","allVersions":["2.0.0","1.0.0"],"#,
+      r#""prereleaseVersions":[],"enginesNode":">=20"},"fetchedAt":1760000000123,"ttl":169}"#,
+    ]
+    .concat();
+    assert_eq!(cache_entry_json("e", &expected(), Some(fresh)), want);
+  }
+
+  #[test]
+  fn renewed_entry_keeps_the_raw_data_and_replaces_freshness() {
+    let dir = std::env::temp_dir().join(format!("inup-core-renew-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("entry.json");
+    let data = r#"{"latestVersion":"1.0.0","allVersions":["1.0.0"],"x":"\u0001"}"#;
+    std::fs::write(
+      &file,
+      format!(r#"{{"etag":"W/\"1\"","data":{data},"fetchedAt":1,"ttl":300}}"#),
+    )
+    .unwrap();
+    let entry = read_cache_entry(file.to_str().unwrap()).unwrap();
+    let fresh = Freshness {
+      fetched_at: 42,
+      ttl: 7,
+    };
+    assert_eq!(
+      renewed_cache_entry_json(&entry, fresh),
+      format!(r#"{{"etag":"W/\"1\"","data":{data},"fetchedAt":42,"ttl":7}}"#)
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
+  }
+
+  #[test]
+  fn freshness_follows_max_age_minus_age() {
+    let at = 1000;
+    let fresh = |ttl| {
+      Some(Freshness {
+        fetched_at: at,
+        ttl,
+      })
+    };
+    let cases: &[(Option<&str>, Option<&str>, Option<Freshness>)] = &[
+      (Some("public, max-age=300"), Some("131"), fresh(169)),
+      (Some("public, max-age=300"), None, fresh(300)),
+      (Some("max-age=60"), Some(" 0 "), fresh(60)),
+      (Some("PUBLIC, MAX-AGE = 120"), None, fresh(120)),
+      (Some("max-age=86400"), Some("100"), fresh(200)),
+      (Some("max-age=99999999999999999999999"), None, fresh(300)),
+      (Some("max-age=300, max-age=30"), None, fresh(30)),
+      (Some("max-age=300,max-age=30"), Some("10"), fresh(20)),
+      (Some("public, max-age=300"), Some("300"), None),
+      (Some("public, max-age=300"), Some("301"), None),
+      (
+        Some("public, max-age=300"),
+        Some("99999999999999999999999"),
+        None,
+      ),
+      (Some("public, max-age=300"), Some("-1"), None),
+      (Some("public, max-age=300"), Some(""), None),
+      (Some("public, max-age=300"), Some("1.5"), None),
+      (Some("max-age=0"), None, None),
+      (Some("max-age=\"300\""), None, None),
+      (Some("max-age=30x"), None, None),
+      (Some("max-age"), None, None),
+      (Some("max-age="), None, None),
+      (Some("max-age=30=0"), None, None),
+      (Some("public"), None, None),
+      (Some(""), None, None),
+      (None, None, None),
+      (Some("no-cache, max-age=300"), None, None),
+      (Some("max-age=300, no-store"), None, None),
+      (Some("private, max-age=300"), None, None),
+      (Some("max-age=300, private=\"set-cookie\""), None, None),
+      (Some("max-age=300, No-Cache"), None, None),
+      (Some("s-maxage=300"), None, None),
+      (
+        Some("public, s-maxage=600, max-age=300, must-revalidate"),
+        Some("5"),
+        fresh(295),
+      ),
+    ];
+    for (cache_control, age, want) in cases {
+      assert_eq!(
+        response_freshness(*cache_control, *age, at),
+        *want,
+        "cache-control {cache_control:?}, age {age:?}"
+      );
+    }
   }
 }

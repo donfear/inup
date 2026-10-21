@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingHttpHeaders, type Server, type ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { responseFreshness } from '../../../../src/shared/http/etag-store'
 import {
   configureNativeCore,
   detectHost,
@@ -129,6 +130,66 @@ describe.skipIf(!built && !required)('native transport parity', () => {
 
     expect(outcome).toMatchObject({ kind: 'success', revalidated: true, bytes: 0, status: 304 })
     expect(JSON.parse(outcome.dataJson ?? 'null')).toEqual(JSON.parse(JSON.stringify(expected)))
+  })
+
+  it.each([
+    [{ 'cache-control': 'public, max-age=300', age: '131' }],
+    [{ 'cache-control': 'public, max-age=300' }],
+    [{ 'cache-control': ['public', 'max-age=600'], age: '20' }],
+    [{ 'cache-control': 'max-age=300, max-age=30', age: ' 5 ' }],
+    [{ 'cache-control': 'Max-Age = 90' }],
+    [{ 'cache-control': 'public, max-age=300', age: '300' }],
+    [{ 'cache-control': 'public, max-age=300', age: 'x' }],
+    [{ 'cache-control': 'private, max-age=300' }],
+    [{ 'cache-control': 'no-cache' }],
+    [{ 'cache-control': 'max-age=30=0' }],
+    [{}],
+  ])('stores the freshness the TypeScript transport would for %j', async (headers) => {
+    const path = `/fresh-${JSON.stringify(headers).replace(/\W+/g, '-')}`
+    routes.set(path, (res) => res.writeHead(200, { etag: 'W/"f"', ...headers }).end(body))
+    const cacheFile = join(tmp, `${path.slice(1)}.json`)
+    const before = Date.now()
+
+    const outcome = await fetchPath(path, { cacheFile })
+
+    expect(outcome.kind).toBe('success')
+    const stored = JSON.parse(readFileSync(cacheFile, 'utf8'))
+    const fetchedAt = stored.fetchedAt ?? before
+    expect(fetchedAt).toBeGreaterThanOrEqual(before)
+    expect(fetchedAt).toBeLessThanOrEqual(Date.now())
+    const freshness = responseFreshness(headers['cache-control'], headers.age, fetchedAt)
+    const entry = freshness
+      ? { etag: 'W/"f"', data: expected, ...freshness }
+      : { etag: 'W/"f"', data: expected }
+    expect(readFileSync(cacheFile, 'utf8')).toBe(JSON.stringify(entry))
+  })
+
+  it('renews the freshness of the entry a 304 confirms, keeping its data', async () => {
+    const cacheFile = join(tmp, 'renew.json')
+    const stale = { etag: 'W/"v8"', data: expected, fetchedAt: 1, ttl: 300 }
+    writeFileSync(cacheFile, JSON.stringify(stale))
+    routes.set('/renew', (res) =>
+      res.writeHead(304, { 'cache-control': 'public, max-age=300', age: '45' }).end()
+    )
+    const before = Date.now()
+
+    const outcome = await fetchPath('/renew', { cacheFile })
+
+    expect(outcome).toMatchObject({ kind: 'success', revalidated: true, status: 304 })
+    const renewed = JSON.parse(readFileSync(cacheFile, 'utf8'))
+    expect(renewed.fetchedAt).toBeGreaterThanOrEqual(before)
+    expect(renewed.fetchedAt).toBeLessThanOrEqual(Date.now())
+    expect(readFileSync(cacheFile, 'utf8')).toBe(
+      JSON.stringify({ ...stale, fetchedAt: renewed.fetchedAt, ttl: 255 })
+    )
+    // Written through a temp file renamed over the entry, like renewEtag.
+    expect(readdirSync(tmp).filter((name) => name.endsWith('.tmp'))).toEqual([])
+
+    // A 304 that grants no freshness leaves the entry as it was.
+    routes.set('/renew', (res) => res.writeHead(304).end())
+    const unchanged = readFileSync(cacheFile, 'utf8')
+    await fetchPath('/renew', { cacheFile })
+    expect(readFileSync(cacheFile, 'utf8')).toBe(unchanged)
   })
 
   it('ignores unreadable cache entries (no conditional request)', async () => {

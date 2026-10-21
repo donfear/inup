@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Running inup again within a few minutes no longer asks the registry about every package a second time. inup now reuses a registry answer for as long as the registry says it stays fresh (npm's registry says 5 minutes, and inup never goes beyond that), so a repeat run spends much less time waiting on the network. The trade-off: a version published in the last few minutes can take up to 5 minutes to show up.
+
 ## [1.8.5] - 2026-10-10
 
 ### Added

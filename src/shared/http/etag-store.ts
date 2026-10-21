@@ -9,6 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import envPaths from 'env-paths'
 import { PACKAGE_NAME } from '../config'
@@ -23,19 +24,36 @@ import type { PackageVersionData } from '../registry/npm-registry'
  * replies `304 Not Modified` with no body (~37ms vs downloading multiple MB), and
  * we reuse the stored data.
  *
- * FRESHNESS: this never serves stale data. Every run still issues a request; a
- * 304 is the registry *validating* that nothing changed. We skip the re-download,
- * never the network round-trip.
+ * FRESHNESS: data can be up to max-age old. An entry also records how long the
+ * registry said its response may be reused (`Cache-Control: max-age` minus `Age`,
+ * with max-age capped at 5 minutes). Until that runs out, a lookup is answered
+ * from the entry with no request at all; after it, the next run revalidates as
+ * above and a 304 renews it. That is the same bound the registry's CDN already
+ * serves within (npm sends `max-age=300`), so a version published moments ago
+ * can take up to 5 minutes to show up. Responses marked `no-cache`, `no-store`
+ * or `private`, or without a max-age, are revalidated on every run as before.
  *
  * Best-effort throughout: any read/write/parse failure is swallowed and the fetch
  * falls back to a normal unconditional request. A corrupt, missing, or
  * un-writable cache can never break a run or produce incorrect results.
  */
 
-interface EtagEntry {
+/** How long a response may be reused without asking the registry again. */
+export interface Freshness {
+  /** When the request was sent, in ms since the epoch. */
+  fetchedAt: number
+  /** Seconds after `fetchedAt` the response stays fresh: max-age minus Age. */
+  ttl: number
+}
+
+/** Freshness fields are optional: entries without them are always revalidated. */
+interface EtagEntry extends Partial<Freshness> {
   etag: string
   data: PackageVersionData
 }
+
+/** Upper bound on max-age, whatever a registry sends; npm's own is 5 minutes. */
+const MAX_TTL_SECONDS = 300
 
 /** Bump when the on-disk entry shape changes; old generations are ignored. */
 const SCHEMA = 'v2' // v2: PackageVersionData gained prereleaseVersions
@@ -136,24 +154,97 @@ function fileFor(key: string): string {
   return join(cacheDir(), `${hash}.json`)
 }
 
+/**
+ * The freshness a response grants, from its Cache-Control and Age headers, or
+ * null when it must be revalidated on every run: no max-age, a `no-cache`,
+ * `no-store` or `private` directive (with or without a field list), an
+ * unparseable max-age or Age, or an Age that already used up the max-age.
+ * Several max-age values (repeated headers) count as the smallest.
+ *
+ * Mirrors `response_freshness` in native/core/src/lib.rs: both transports must
+ * store the same entry for the same headers.
+ */
+export function responseFreshness(
+  cacheControl: string | string[] | undefined,
+  age: string | string[] | undefined,
+  fetchedAt: number
+): Freshness | null {
+  const header = Array.isArray(cacheControl) ? cacheControl.join(',') : (cacheControl ?? '')
+  let maxAge: number | null = null
+  for (const directive of header.split(',')) {
+    const eq = directive.indexOf('=')
+    const name = (eq < 0 ? directive : directive.slice(0, eq)).trim().toLowerCase()
+    if (name === 'no-cache' || name === 'no-store' || name === 'private') return null
+    if (name !== 'max-age') continue
+    const seconds = parseSeconds(eq < 0 ? undefined : directive.slice(eq + 1).trim())
+    if (seconds === null) return null
+    maxAge = Math.min(maxAge ?? seconds, seconds)
+  }
+  if (maxAge === null) return null
+  const ageValue = Array.isArray(age) ? age[0] : age
+  const ageSeconds = ageValue === undefined ? 0 : parseSeconds(ageValue.trim())
+  if (ageSeconds === null) return null
+  const ttl = Math.min(maxAge, MAX_TTL_SECONDS) - ageSeconds
+  return ttl > 0 ? { fetchedAt, ttl } : null
+}
+
+/** A delta-seconds value (RFC 9111): one or more ASCII digits, nothing else. */
+function parseSeconds(value: string | undefined): number | null {
+  return value !== undefined && /^[0-9]+$/.test(value) ? Number(value) : null
+}
+
+/** Whether an entry's freshness still holds at `now`. */
+function isFresh({ fetchedAt, ttl }: EtagEntry, now: number): boolean {
+  if (typeof fetchedAt !== 'number' || typeof ttl !== 'number') return false
+  // A clock that went backwards (now before fetchedAt) makes an entry stale,
+  // and the cap applies again in case an entry carries a longer ttl.
+  const elapsed = now - fetchedAt
+  return elapsed >= 0 && elapsed < Math.min(ttl, MAX_TTL_SECONDS) * 1000
+}
+
+/**
+ * The stored data for `key` while its response is still fresh, else null.
+ * A fresh entry needs no request at all, not even a conditional one.
+ */
+export function readFresh(key: string, now = Date.now()): PackageVersionData | null {
+  if (!enabled) return null
+  try {
+    // Every write sets the file's mtime, and the response it holds is never
+    // newer than that, so a file untouched for longer than the cap cannot be
+    // fresh: a stat skips reading and parsing it (the usual case on a later run).
+    const file = fileFor(key)
+    const stats = statSync(file, { throwIfNoEntry: false })
+    if (!stats || stats.mtimeMs < now - MAX_TTL_SECONDS * 1000) return null
+    const entry = parseEntry(file)
+    return entry && isFresh(entry, now) ? entry.data : null
+  } catch {
+    return null
+  }
+}
+
 /** Read a stored entry, or null if absent/unreadable/disabled. */
 export function readEtag(key: string): EtagEntry | null {
   if (!enabled) return null
   try {
     const file = fileFor(key)
     if (!existsSync(file)) return null
-    const parsed = JSON.parse(readFileSync(file, 'utf8')) as EtagEntry
-    if (!parsed || typeof parsed.etag !== 'string' || !parsed.data) return null
-    return parsed
+    return parseEntry(file)
   } catch {
     return null
   }
 }
 
+/** The entry stored in `file`, or null when its shape is wrong. Throws on I/O or JSON errors. */
+function parseEntry(file: string): EtagEntry | null {
+  const parsed = JSON.parse(readFileSync(file, 'utf8')) as EtagEntry
+  if (!parsed || typeof parsed.etag !== 'string' || !parsed.data) return null
+  return parsed
+}
+
 /**
  * The file an entry for `key` lives in, or null when the store is disabled or
  * the directory is unusable. Lets the optional Rust core write the entry off
- * the main thread; its content must match writeEtag's JSON.stringify({ etag, data }).
+ * the main thread; its content must match writeEtag's JSON.
  */
 export function etagFileFor(key: string): string | null {
   if (!enabled) return null
@@ -164,11 +255,53 @@ export function etagFileFor(key: string): string | null {
   }
 }
 
+/** The JSON of an entry; the freshness fields only when the response granted any. */
+function entryJson(etag: string, data: PackageVersionData, freshness: Freshness | null): string {
+  return JSON.stringify(
+    freshness ? { etag, data, fetchedAt: freshness.fetchedAt, ttl: freshness.ttl } : { etag, data }
+  )
+}
+
 /** Persist an entry. Best-effort; failures are ignored. */
-export function writeEtag(key: string, etag: string, data: PackageVersionData): void {
+export function writeEtag(
+  key: string,
+  etag: string,
+  data: PackageVersionData,
+  freshness: Freshness | null = null
+): void {
   if (!enabled || !etag) return
   try {
-    writeFileSync(fileFor(key), JSON.stringify({ etag, data }))
+    writeFileSync(fileFor(key), entryJson(etag, data, freshness))
+  } catch {
+    /* best-effort */
+  }
+}
+
+/**
+ * Renew the freshness of an entry the registry just confirmed with a 304. The
+ * data is unchanged, so the write goes off the main thread and nothing waits
+ * for it. Best-effort; never rejects.
+ *
+ * The new entry goes to a temp file beside the old one and is renamed over it.
+ * A process that exits mid-write (Ctrl+C while packages load) then leaves the
+ * old entry whole, not a truncated one that would cost a full download next
+ * run. A temp file orphaned by an exit is swept with the other stale files.
+ */
+export async function renewEtag(
+  key: string,
+  entry: { etag: string; data: PackageVersionData },
+  freshness: Freshness
+): Promise<void> {
+  if (!enabled) return
+  try {
+    const file = fileFor(key)
+    const temp = `${file}.${process.pid}.tmp`
+    try {
+      await writeFile(temp, entryJson(entry.etag, entry.data, freshness))
+      await rename(temp, file)
+    } catch {
+      await rm(temp, { force: true })
+    }
   } catch {
     /* best-effort */
   }

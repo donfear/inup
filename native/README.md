@@ -6,9 +6,9 @@ It has two capabilities, and inup uses whichever the loaded addon provides:
 
 - **Transport** (`fetchPackument`): one whole registry attempt.
   - Reads the ETag cache and sends a conditional GET (reqwest, HTTP/1, rustls with the OS trust store plus `NODE_EXTRA_CA_CERTS`).
-  - Streams and decompresses the body (C brotli, gzip, deflate), parses the packument and writes the cache entry.
+  - Streams and decompresses the body (C brotli, gzip, deflate), parses the packument and writes the cache entry, with the freshness its `Cache-Control: max-age` and `Age` grant. A `304` renews that freshness.
   - Returns version data as JSON text, which `JSON.parse` turns into objects far faster than napi can build them.
-- **Decoder** (`decodePackument`): decompress, parse and write the cache for a body the JS transport fetched.
+- **Decoder** (`decodePackument`): decompress, parse and write the cache for a body the JS transport fetched (with the freshness the JS side read from its headers).
 
 Output is byte-identical to the TypeScript path in both cases. Scheduling, retries and the adaptive concurrency controller stay in TypeScript. The controller reads streamed byte counts through `takeReceivedBytes()`.
 
@@ -29,7 +29,7 @@ With native on, `src/shared/registry/rust-core.ts` resolves the addon once per p
 
 The file in the repository pins nothing. Builds from source therefore never download a native core: they use `native/out` if you have built it, and TypeScript otherwise.
 
-Each registry attempt then takes the first path that works:
+A package whose cached response is still fresh (see FRESHNESS in `src/shared/http/etag-store.ts`) makes no attempt at all: TypeScript answers it from the cache file. Every other registry attempt takes the first path that works:
 
 | Situation | Path |
 |---|---|
@@ -81,14 +81,14 @@ pnpm test            # includes the parity suite once the addon is built
 
 To try it from a source checkout, run `pnpm build:all`, then `node dist/cli.js`: it loads the addon from `native/out`. Without that build a source checkout stays on TypeScript, because it pins no addon to download.
 
-To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src/lib.rs` and `CORE_ABI_VERSION` in `rust-core.ts` together.
+To change a binding's signature or result shape, bump `ABI_VERSION` in `core/src/lib.rs` and `CORE_ABI_VERSION` in `rust-core.ts` together. An addition an older addon safely ignores, such as `decodePackument`'s trailing `fetchedAt` / `ttl` arguments, needs no bump.
 
 ## Tests
 
-- `cargo test` covers encodings, semver precedence and grammar, JSON edge cases, cache-entry escaping, and the ABI constant.
+- `cargo test` covers encodings, semver precedence and grammar, JSON edge cases, cache-entry escaping and freshness fields, `Cache-Control` / `Age` parsing, and the ABI constant.
 - `test/unit/shared/registry/rust-core.test.ts` covers host detection, resolution order, the pinned-hash check of the cached addon and every fallback, using stub modules. It runs everywhere.
 - `test/unit/shared/registry/rust-core.parity.test.ts` loads the real addon through the loader and checks it against `parseVersions` / `writeEtag` in every encoding.
-- `test/unit/shared/registry/rust-transport.parity.test.ts` runs the real transport against a local HTTP server. It covers every encoding, ETag + 304, all status classes and Retry-After, header timeouts, refused connections, undecodable bodies, TLS failure (which must return `fallback`), and cancellation.
+- `test/unit/shared/registry/rust-transport.parity.test.ts` runs the real transport against a local HTTP server. It covers every encoding, ETag + 304, the freshness written for each kind of `Cache-Control` / `Age` and renewed on a 304, all status classes and Retry-After, header timeouts, refused connections, undecodable bodies, TLS failure (which must return `fallback`), and cancellation.
   - It is skipped when the addon isn't built.
   - `INUP_PARITY_REQUIRED=1` turns that skip into a failure.
 

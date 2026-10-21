@@ -51,6 +51,7 @@ pub struct DecodeTask {
 struct CacheTarget {
   file: String,
   etag: String,
+  freshness: Option<inup_core::Freshness>,
 }
 
 impl DecodeTask {
@@ -60,7 +61,7 @@ impl DecodeTask {
       // Best-effort, like writeEtag: a failed cache write never fails the fetch.
       let _ = std::fs::write(
         &cache.file,
-        inup_core::cache_entry_json(&cache.etag, &parsed),
+        inup_core::cache_entry_json(&cache.etag, &parsed, cache.freshness),
       );
     }
     Ok(parsed)
@@ -88,7 +89,8 @@ impl Task for DecodeTask {
 }
 
 /// Decompress + parse on the libuv thread pool, writing the ETag cache entry
-/// there too when `cacheFile` and `etag` are given. Only building the result
+/// there too when `cacheFile` and `etag` are given, with the freshness
+/// `fetchedAt` + `ttl` grant when both are given. Only building the result
 /// object touches the JS thread.
 #[napi]
 pub fn decode_packument(
@@ -96,10 +98,21 @@ pub fn decode_packument(
   encoding: String,
   cache_file: Option<String>,
   etag: Option<String>,
+  fetched_at: Option<f64>,
+  ttl: Option<f64>,
 ) -> AsyncTask<DecodeTask> {
-  let cache = cache_file
-    .zip(etag)
-    .map(|(file, etag)| CacheTarget { file, etag });
+  // JS hands over whole numbers (Date.now() and delta seconds).
+  let freshness = fetched_at
+    .zip(ttl)
+    .map(|(fetched_at, ttl)| inup_core::Freshness {
+      fetched_at: fetched_at as u64,
+      ttl: ttl as u64,
+    });
+  let cache = cache_file.zip(etag).map(|(file, etag)| CacheTarget {
+    file,
+    etag,
+    freshness,
+  });
   AsyncTask::new(DecodeTask {
     raw: raw.to_vec(),
     encoding,
