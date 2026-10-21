@@ -1,0 +1,176 @@
+name: Benchmark
+
+# Times inup next to npm-check-updates, taze, npm-check and npm/pnpm outdated on
+# public repositories pinned to a commit (scripts/bench-compare.mjs), then opens a
+# pull request that updates the README's speed section, docs/guide/benchmarks.md
+# and the chart (scripts/bench-report.mjs). Pull requests that change the
+# benchmark get a short run, with the tables in the job summary only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Timed runs per tool, for first runs and repeat runs each
+        type: number
+        default: 10
+  workflow_run:
+    workflows: [Publish to npm]
+    types: [completed]
+  pull_request:
+    paths:
+      - scripts/bench-compare.mjs
+      - scripts/bench-report.mjs
+      - .github/workflows/benchmark.yml
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    name: Benchmark (${{ matrix.fixture }})
+    # After a release, only once it is published.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    # A fixed image, so successive results come from the same software.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        fixture: [express, vue-core, tanstack-query]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # After a release: the published commit.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Install hyperfine
+        env:
+          HYPERFINE_VERSION: '1.20.0'
+          HYPERFINE_SHA256: 3285ec7959285288137043dd81dce0dde056227018a8277532d9a364b4f03c2b
+        run: |
+          set -euo pipefail
+          NAME="hyperfine-v${HYPERFINE_VERSION}-x86_64-unknown-linux-musl"
+          curl -fsSL -o "$RUNNER_TEMP/hyperfine.tar.gz" \
+            "https://github.com/sharkdp/hyperfine/releases/download/v${HYPERFINE_VERSION}/${NAME}.tar.gz"
+          echo "${HYPERFINE_SHA256}  $RUNNER_TEMP/hyperfine.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/hyperfine.tar.gz" -C "$RUNNER_TEMP"
+          sudo install -m 0755 "$RUNNER_TEMP/${NAME}/hyperfine" /usr/local/bin/hyperfine
+          hyperfine --version
+
+      - name: Benchmark
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+          # Pull requests check that the benchmark works; their numbers are not published.
+          RUNS: ${{ github.event_name == 'pull_request' && 3 || inputs.runs || 10 }}
+        run: |
+          node scripts/bench-compare.mjs --fixture "$FIXTURE" --runs "$RUNS" \
+            --workdir "$RUNNER_TEMP/bench" --out "bench-results/$FIXTURE.json"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-${{ matrix.fixture }}
+          path: bench-results/${{ matrix.fixture }}.json
+          retention-days: 90
+
+  report:
+    name: Report
+    needs: bench
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Results go to main whichever commit was measured; a pull request renders its own scripts.
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}
+          token: ${{ github.event_name == 'pull_request' && github.token || secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: bench-*
+          path: bench-results
+          merge-multiple: true
+
+      - name: Render README section, docs page and chart
+        run: |
+          node scripts/bench-report.mjs bench-results/*.json
+          cat bench-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open pull request with results
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GIT_EMAIL: ${{ secrets.GH_EMAIL }}
+          GIT_NAME: ${{ secrets.GH_USERNAME }}
+          PR_BRANCH: automated-benchmark
+          MEASURED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          FILES=(README.md docs/guide/benchmarks.md docs/benchmark/speed-light.svg docs/benchmark/speed-dark.svg)
+
+          git config user.email "$GIT_EMAIL"
+          git config user.name "$GIT_NAME"
+          git checkout -B "$PR_BRANCH"
+          git add "${FILES[@]}"
+
+          if git diff --cached --quiet; then
+            echo "Results are identical to the ones on main; nothing to publish."
+            exit 0
+          fi
+
+          git commit -m "docs: update benchmark results"
+          git push --force origin "$PR_BRANCH"
+
+          BODY_FILE="$RUNNER_TEMP/pr-body.md"
+          {
+            printf '%s\n\n' "Benchmark of inup at \`${MEASURED_SHA:0:7}\` ([run](${RUN_URL}))."
+            printf '%s\n\n' "![Benchmark chart](https://raw.githubusercontent.com/${REPOSITORY}/${PR_BRANCH}/docs/benchmark/speed-light.svg)"
+            cat bench-results/summary.md
+            printf '\n%s\n' "_Generated by the Benchmark workflow._"
+          } > "$BODY_FILE"
+
+          if gh pr view "$PR_BRANCH" --json state --jq '.state' 2>/dev/null | grep -qx OPEN; then
+            PR_URL="$(gh pr view "$PR_BRANCH" --json url --jq '.url')"
+            gh pr edit "$PR_BRANCH" --body-file "$BODY_FILE"
+            echo "Updated existing PR: $PR_URL"
+          else
+            PR_URL="$(gh pr create \
+              --base main \
+              --head "$PR_BRANCH" \
+              --title "docs: update benchmark results" \
+              --body-file "$BODY_FILE")"
+            echo "Opened PR: $PR_URL"
+          fi
+
+          echo "### Benchmark PR ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "$PR_URL" >> "$GITHUB_STEP_SUMMARY"
