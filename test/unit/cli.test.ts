@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -180,7 +180,7 @@ describe('CLI git dirty preflight', () => {
     const run = runCli(baseOptions)
     await started
 
-    expect(mocks.getGitWorkingTreeState).toHaveBeenCalledWith('/repo')
+    expect(mocks.getGitWorkingTreeState).toHaveBeenCalledWith(resolve('/repo'))
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
     settleGit({ isRepo: true, isDirty: true })
     await run
