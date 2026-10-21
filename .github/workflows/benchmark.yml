@@ -1,10 +1,12 @@
 name: Benchmark
 
 # Times inup next to npm-check-updates, taze, syncpack, npm-check and npm/pnpm/bun
-# outdated on public repositories pinned to a commit (scripts/bench-compare.mjs), then opens a
-# pull request that updates the README's speed section, docs/guide/benchmarks.md
-# and the chart (scripts/bench-report.mjs). Pull requests that change the
-# benchmark get a short run, with the tables in the job summary only.
+# outdated, and their interactive pickers next to yarn upgrade-interactive and
+# pnpm/bun update -i, on public repositories pinned to a commit
+# (scripts/bench-compare.mjs). Then it opens a pull request that updates the
+# README's speed section, docs/guide/benchmarks.md and the chart
+# (scripts/bench-report.mjs). Pull requests that change the benchmark get a
+# short run, with the tables in the job summary only.
 
 on:
   workflow_dispatch:
@@ -19,6 +21,7 @@ on:
   pull_request:
     paths:
       - scripts/bench-compare.mjs
+      - scripts/bench-pty.py
       - scripts/bench-report.mjs
       - .github/workflows/benchmark.yml
 
@@ -36,7 +39,7 @@ jobs:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     # A fixed image, so successive results come from the same software.
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       matrix:
         fixture: [express, vue-core, tanstack-query, vendure, backstage]

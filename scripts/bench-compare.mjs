@@ -13,12 +13,18 @@
 //         gives it a fresh HOME, XDG directories and TMPDIR
 //   warm  the tool keeps its caches; an untimed warmup run fills them
 //
+// Then each tool's interactive picker, where it has one, runs in a terminal
+// (scripts/bench-pty.py, so python3 is needed) and is timed until it has every
+// update loaded: the last thing it draws or writes to its cache before going
+// quiet. The same two modes apply.
+//
 // Cloning and installing the fixture, and installing the tools, happen before
 // any timing. Before timing, each tool runs once to prove it works on the
 // fixture and found updates. The output is one JSON file per fixture, which
 // scripts/bench-report.mjs turns into the README section, docs page and chart.
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   mkdirSync,
@@ -26,6 +32,8 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  watch,
   writeFileSync,
 } from 'node:fs'
 import { cpus, release, tmpdir, totalmem, type } from 'node:os'
@@ -65,7 +73,8 @@ const tableRows = (text) =>
  * version without writing anything. `fixture` is a described fixture:
  * `{ pm, workspaces }`. `count` reads the number of updates from the output,
  * `{ stdout, stderr }`; `failsWhenOutdated` marks the tools that exit 1 when
- * they find updates.
+ * they find updates. `picker` opens the tool's interactive list of updates
+ * instead, where it has one that shows every update at once.
  */
 export const TOOLS = [
   {
@@ -73,6 +82,7 @@ export const TOOLS = [
     name: () => 'inup',
     args: () => ['--json'],
     count: ({ stdout }) => JSON.parse(stdout).summary.outdated,
+    picker: { args: () => [] },
   },
   {
     id: 'ncu',
@@ -86,6 +96,12 @@ export const TOOLS = [
         (n, value) => n + (typeof value === 'object' ? Object.keys(value).length : 1),
         0
       ),
+    picker: {
+      args: () => ['--interactive'],
+      // With --workspaces it lists one package.json, and fetches the next after you answer.
+      unsupported: (fixture) =>
+        fixture.workspaces ? 'asks about one package.json at a time' : null,
+    },
   },
   {
     id: 'taze',
@@ -108,6 +124,16 @@ export const TOOLS = [
         (n, pkg) => n + pkg.resolved.filter((dep) => dep.update).length,
         0
       ),
+    picker: {
+      args: (fixture) => [
+        'major',
+        '--interactive',
+        ...(fixture.workspaces ? ['--recursive'] : []),
+        '--include-locked',
+        '--no-github-actions',
+        '--no-node-version',
+      ],
+    },
   },
   {
     id: 'syncpack',
@@ -120,6 +146,7 @@ export const TOOLS = [
     failsWhenOutdated: true,
     count: ({ stderr }) =>
       stderr.split('\n').filter((line) => /^\s+\d+x \S.* → /.test(line)).length,
+    picker: { args: () => ['update', '--interactive'] },
   },
   {
     id: 'npm-check',
@@ -131,6 +158,10 @@ export const TOOLS = [
     failsWhenOutdated: true,
     unsupported: (fixture) => (fixture.workspaces ? 'no workspace support' : null),
     count: () => null, // prints a table only
+    picker: {
+      args: () => ['--update', '--skip-unused'],
+      unsupported: (fixture) => (fixture.workspaces ? 'no workspace support' : null),
+    },
   },
   {
     id: 'pm',
@@ -154,6 +185,17 @@ export const TOOLS = [
       fixture.pm === 'yarn' ? 'Yarn 2+ lists updates only in this interactive picker' : null,
     count: ({ stdout }, fixture) =>
       fixture.pm === 'bun' ? tableRows(stdout) : countEntries(JSON.parse(stdout)),
+    picker: {
+      name: (fixture) =>
+        fixture.pm === 'yarn' ? 'yarn upgrade-interactive' : `${fixture.pm} update -i`,
+      args: (fixture) => {
+        const recursive = fixture.workspaces ? ['--recursive'] : []
+        if (fixture.pm === 'yarn') return ['upgrade-interactive']
+        if (fixture.pm === 'pnpm') return ['update', '--interactive', '--latest', ...recursive]
+        return ['update', '--interactive', ...recursive]
+      },
+      unsupported: (fixture) => (fixture.pm === 'npm' ? 'npm has no interactive update' : null),
+    },
   },
 ]
 
@@ -186,6 +228,122 @@ export function shellCommand(argv, box, { failsWhenOutdated = false } = {}) {
   const command = [...env, ...argv.map(quote)].join(' ')
   // hyperfine stops at a non-zero exit; for these tools, 1 means "found updates".
   return failsWhenOutdated ? `${command} || [ $? -eq 1 ]` : command
+}
+
+const PTY_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'bench-pty.py')
+/** How long a picker must stay quiet to count as loaded. */
+const PICKER_IDLE_MS = 5000
+const PICKER_LIMIT_MS = 180_000
+/** Pickers refuse to open in CI; these are the variables they look at. */
+const CI_VARIABLES = ['CI', 'CONTINUOUS_INTEGRATION', 'GITHUB_ACTIONS', 'BUILD_NUMBER', 'RUN_ID']
+
+/** A picker's environment: the sandbox, a color terminal, and no sign of CI. */
+export function pickerEnv(box, env = process.env) {
+  const result = { ...env, ...sandboxEnv(box), TERM: 'xterm-256color' }
+  for (const key of CI_VARIABLES) delete result[key]
+  return result
+}
+
+/**
+ * Time a picker, in seconds: launch `argv` in a terminal (scripts/bench-pty.py)
+ * and wait until it goes quiet, with nothing drawn and nothing written under
+ * `box` for `idleMs`. The time is the last thing it drew or wrote: a picker
+ * may finish drawing the rows on screen and keep fetching the rest, writing
+ * each into its cache. One that exits first never opened; one that is still
+ * busy after `limitMs` fails too.
+ */
+export function timePicker(argv, { cwd, box, idleMs = PICKER_IDLE_MS, limitMs = PICKER_LIMIT_MS }) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now()
+    let lastDrawn = 0
+    let lastEvent = 0
+    let lastWritten = 0
+    let drawn = 0
+    let stderr = ''
+    let exit = null
+    const watcher = watch(box, { recursive: true }, (_event, file) => {
+      lastEvent = Date.now()
+      let written = lastEvent
+      try {
+        if (file) written = statSync(join(box, file)).mtimeMs
+      } catch {
+        // renamed or removed already
+      }
+      lastWritten = Math.max(lastWritten, written)
+    })
+    const child = spawn('python3', ['-I', PTY_SCRIPT, ...argv], {
+      cwd,
+      env: pickerEnv(box),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    child.stdout.on('data', (data) => {
+      drawn += data.length
+      lastDrawn = Date.now()
+    })
+    child.stderr.on('data', (data) => {
+      stderr += data
+    })
+    child.on('exit', (code, signal) => {
+      exit ??= code ?? signal
+    })
+    child.on('error', (error) => {
+      exit ??= error.message
+    })
+    // Settle once the picker is gone, so the next run starts on a quiet machine.
+    let outcome
+    let closed = false
+    const settle = () => {
+      if (outcome === undefined || !closed) return
+      outcome instanceof Error ? reject(outcome) : resolve(outcome)
+    }
+    child.on('close', () => {
+      closed = true
+      settle()
+    })
+    const poll = setInterval(() => {
+      const now = Date.now()
+      const quiet = now - Math.max(start, lastDrawn, lastEvent)
+      if (exit === null && quiet < idleMs && now - start < limitMs) return
+      clearInterval(poll)
+      watcher.close()
+      const command = argv.join(' ')
+      if (exit !== null) {
+        outcome = new Error(
+          `${command} exited (${exit}) instead of waiting\n${stderr.slice(-2000)}`
+        )
+      } else if (quiet < idleMs) {
+        outcome = new Error(`${command} was still busy after ${limitMs / 1000} s`)
+      } else if (drawn === 0) {
+        outcome = new Error(`${command} drew nothing`)
+      } else {
+        outcome = (Math.max(lastDrawn, lastWritten) - start) / 1000
+      }
+      child.kill('SIGTERM')
+      settle()
+    }, 50)
+  })
+}
+
+/** Median, mean, sample standard deviation and range, as hyperfine reports them. */
+export function summarize(times) {
+  const sorted = [...times].sort((a, b) => a - b)
+  const middle = sorted.length / 2
+  const median = Number.isInteger(middle)
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[Math.floor(middle)]
+  const mean = times.reduce((sum, time) => sum + time, 0) / times.length
+  const variance =
+    times.length > 1
+      ? times.reduce((sum, time) => sum + (time - mean) ** 2, 0) / (times.length - 1)
+      : 0
+  return {
+    median,
+    mean,
+    stddev: Math.sqrt(variance),
+    min: sorted[0],
+    max: sorted.at(-1),
+    times,
+  }
 }
 
 /** Empty `box` and recreate it, ready for a run. */
@@ -437,6 +595,46 @@ function environment() {
   }
 }
 
+/**
+ * Keep what installing left behind out of `git status`: inup's picker asks
+ * before it works on a tree with uncommitted changes.
+ */
+function hideFromGit(dir) {
+  const git = (...args) => run('git', args, { cwd: dir })
+  for (const entry of git('status', '--porcelain', '-z').split('\0').filter(Boolean)) {
+    const path = entry.slice(3)
+    if (entry.startsWith('??')) appendFileSync(join(dir, '.git', 'info', 'exclude'), `/${path}\n`)
+    else git('update-index', '--assume-unchanged', path)
+  }
+  if (git('status', '--porcelain')) throw new Error(`could not clean the git status of ${dir}`)
+}
+
+/**
+ * Time each picker `runs` times, in rounds: every tool once per round, so a
+ * slow spell on the network lands on all of them alike. An untimed first run
+ * proves each one opens and, for warm runs, fills its caches.
+ */
+async function timePickers(tools, { cwd, runs, mode, workdir }) {
+  const boxes = tools.map((tool) => join(workdir, 'boxes', `picker-${mode}`, tool.id))
+  const reset = (box) => {
+    rmSync(box, { recursive: true, force: true })
+    mkdirSync(join(box, 'tmp'), { recursive: true })
+  }
+  const time = async (i) => {
+    if (mode === 'cold') reset(boxes[i])
+    const seconds = await timePicker(tools[i].argv, { cwd, box: boxes[i] })
+    console.error(`  ${tools[i].name}: ${seconds.toFixed(2)} s`)
+    return seconds
+  }
+  boxes.forEach(reset)
+  for (const i of tools.keys()) await time(i)
+  const times = tools.map(() => [])
+  for (let round = 0; round < runs; round++) {
+    for (const i of tools.keys()) times[i].push(await time(i))
+  }
+  return Object.fromEntries(tools.map((tool, i) => [tool.id, summarize(times[i])]))
+}
+
 export async function benchmark({ fixtureId, runs, out, workdir }) {
   const fixture = FIXTURES.find((candidate) => candidate.id === fixtureId)
   if (!fixture) {
@@ -448,6 +646,9 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
   }
   if (!existsSync(join(ROOT, 'dist', 'cli.js'))) {
     throw new Error('dist/cli.js not found; run pnpm build')
+  }
+  if (spawnSync('python3', ['--version']).error) {
+    throw new Error('python3 not found; the picker timings run in a terminal it provides')
   }
 
   const dir = join(workdir, 'fixtures', fixture.id)
@@ -464,6 +665,7 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
     cwd: dir,
     stdio: ['ignore', 'ignore', 'inherit'],
   })
+  hideFromGit(dir)
 
   const tools = []
   const skipped = []
@@ -503,6 +705,30 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
     results[mode] = Object.fromEntries(timed.map((tool, i) => [tool.id, stats(measured[i])]))
   }
 
+  const pickers = []
+  const pickersSkipped = []
+  for (const tool of TOOLS) {
+    const name = tool.picker.name?.(described) ?? tool.name(described)
+    const reason = tool.picker.unsupported?.(described)
+    if (reason) {
+      pickersSkipped.push({ id: tool.id, name, reason })
+      continue
+    }
+    const args = tool.picker.args(described)
+    pickers.push({
+      id: tool.id,
+      name,
+      version: bins[tool.id].version,
+      display: [tool.bin ?? name.split(' ')[0], ...args].join(' '),
+      argv: [...bins[tool.id].argv, ...args],
+    })
+  }
+  const picker = { tools: pickers.map(({ argv, ...tool }) => tool), skipped: pickersSkipped }
+  for (const mode of ['cold', 'warm']) {
+    log(`Timing ${mode} picker runs (${runs} per tool)`)
+    picker[mode] = await timePickers(pickers, { cwd: dir, runs, mode, workdir })
+  }
+
   const report = {
     schema: 1,
     date: new Date().toISOString(),
@@ -525,6 +751,7 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
     })),
     skipped,
     results,
+    picker,
   }
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`)

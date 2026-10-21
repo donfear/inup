@@ -57,19 +57,26 @@ export function joinNames(names) {
 }
 
 /**
+ * What a table shows, as `{ tools, skipped, cold, warm }`: the tools listing
+ * outdated dependencies, or their pickers.
+ */
+const LISTING = (result) => ({ tools: result.tools, skipped: result.skipped, ...result.results })
+const PICKER = (result) => result.picker
+
+/**
  * One row per tool across all fixtures, in the order the tools ran, named for
  * the fixtures it ran on (a skipped tool names its row only if it ran nowhere).
  */
-function toolRows(results) {
+function toolRows(views) {
   const rows = new Map()
   const add = (tool, kind) => {
     const row = rows.get(tool.id) ?? { id: tool.id, ran: new Set(), skipped: new Set() }
     row[kind].add(tool.name)
     rows.set(tool.id, row)
   }
-  for (const result of results) {
-    for (const tool of result.tools) add(tool, 'ran')
-    for (const tool of result.skipped) add(tool, 'skipped')
+  for (const view of views) {
+    for (const tool of view.tools) add(tool, 'ran')
+    for (const tool of view.skipped) add(tool, 'skipped')
   }
   return [...rows.values()].map((row) => ({
     id: row.id,
@@ -79,7 +86,7 @@ function toolRows(results) {
 
 const fastest = (timings) => Math.min(...Object.values(timings).map((timing) => timing.median))
 
-function table(results, mode, { title, withSizes }) {
+function table(results, view, mode, { title, withSizes }) {
   const header = results.map(({ fixture }) => {
     const link = `[${fixture.repo}](${repoUrl(fixture)})`
     return withSizes ? `${link}<br><sub>${sizes(fixture)}</sub>` : link
@@ -88,12 +95,13 @@ function table(results, mode, { title, withSizes }) {
     `| ${title} | ${header.join(' | ')} |`,
     `| :-- | ${results.map(() => '--:').join(' | ')} |`,
   ]
-  for (const row of toolRows(results)) {
-    const cells = results.map((result) => {
-      const timing = result.results[mode][row.id]
+  const views = results.map(view)
+  for (const row of toolRows(views)) {
+    const cells = views.map((timings) => {
+      const timing = timings[mode][row.id]
       if (!timing) return '—'
       const text = formatSeconds(timing.median)
-      return timing.median === fastest(result.results[mode]) ? `**${text}**` : text
+      return timing.median === fastest(timings[mode]) ? `**${text}**` : text
     })
     lines.push(`| ${row.name} | ${cells.join(' | ')} |`)
   }
@@ -105,18 +113,38 @@ function where(environment) {
   return `${machine}, ${plural(environment.cores, 'CPU', 'CPUs')}, Node ${environment.node}`
 }
 
-/** The two tables (first run, repeat run) and the line under them. */
+/**
+ * The tables - listing outdated dependencies, then opening the picker, each
+ * as a first run and a repeat run - and the line under them.
+ */
 export function renderTables(results) {
   const [first] = results
+  const pickers = results.every((result) => result.picker)
   const note = [
     'First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept.',
-    `Median of ${first.runs} runs per tool with [hyperfine](https://github.com/sharkdp/hyperfine) ${first.environment.hyperfine} on ${where(first.environment)}, ${formatDate(first.date)}.`,
+    `Median of ${first.runs} runs per tool on ${where(first.environment)}, ${formatDate(first.date)}; listing timed with [hyperfine](https://github.com/sharkdp/hyperfine) ${first.environment.hyperfine}.`,
+    pickers
+      ? 'Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too.'
+      : null,
     "inup's times include its vulnerability check, which the other tools don't run.",
+    pickers ? "inup's first picker run also downloads its native core (about 1.5 MB)." : null,
     'Fastest in **bold**.',
-  ].join(' ')
+  ]
+    .filter(Boolean)
+    .join(' ')
   return [
-    table(results, 'cold', { title: 'First run', withSizes: true }),
-    table(results, 'warm', { title: 'Repeat run', withSizes: false }),
+    '### Listing outdated dependencies',
+    'Each tool prints every outdated dependency and exits.',
+    table(results, LISTING, 'cold', { title: 'First run', withSizes: true }),
+    table(results, LISTING, 'warm', { title: 'Repeat run', withSizes: false }),
+    ...(pickers
+      ? [
+          '### Opening the picker',
+          "Each tool's interactive list of updates, timed until every update is loaded.",
+          table(results, PICKER, 'cold', { title: 'First run', withSizes: false }),
+          table(results, PICKER, 'warm', { title: 'Repeat run', withSizes: false }),
+        ]
+      : []),
     `<sub>${note}</sub>`,
   ].join('\n\n')
 }
@@ -137,7 +165,7 @@ export function describeChart(results) {
 export function renderReadme(results) {
   return [
     '## Speed',
-    'How long each tool takes to list every outdated dependency, from launch to exit, on public repositories pinned to a commit. Lower is better.',
+    'How long each tool takes, on public repositories pinned to a commit, to list every outdated dependency and to open its picker with every update loaded. Lower is better.',
     [
       '<picture>',
       `  <source media="(prefers-color-scheme: dark)" srcset="${CHART_PATHS.dark}">`,
@@ -156,22 +184,40 @@ function timingCell(timing, best) {
   return `${timing.median === best ? `**${median}**` : median} ${spread}`
 }
 
+/** One tool per row: version, first run, repeat run and any extra columns. */
+function detailTable({ tools, skipped, cold, warm }, extra = []) {
+  const bestCold = fastest(cold)
+  const bestWarm = fastest(warm)
+  const rows = tools.map((tool) =>
+    [
+      tool.name,
+      tool.version,
+      timingCell(cold[tool.id], bestCold),
+      timingCell(warm[tool.id], bestWarm),
+      ...extra.map(({ value }) => value(tool)),
+    ].join(' | ')
+  )
+  for (const tool of skipped) {
+    rows.push([tool.name, '—', `not run: ${tool.reason}`, '', ...extra.map(() => '')].join(' | '))
+  }
+  return [
+    `| Tool | Version | First run | Repeat run |${extra.map(({ title }) => ` ${title} |`).join('')}`,
+    `| :-- | :-- | --: | --: |${extra.map(() => ' --: |').join('')}`,
+    ...rows.map((row) => `| ${row} |`),
+  ].join('\n')
+}
+
+const commands = (tools) => ['```sh', ...tools.map((tool) => tool.display), '```'].join('\n')
+
 /** The per-repository detail on docs/guide/benchmarks.md. */
 export function renderDetails(results) {
   const sections = results.map((result) => {
-    const { fixture, environment, tools, skipped } = result
-    const bestCold = fastest(result.results.cold)
-    const bestWarm = fastest(result.results.warm)
+    const { fixture, environment, tools } = result
     const facts = [
       `[\`${fixture.repo}@${fixture.sha.slice(0, 7)}\`](${repoUrl(fixture)})`,
       fixture.packageManager,
       sizes(fixture),
     ].join(' · ')
-    const rows = tools.map(
-      (tool) =>
-        `| ${tool.name} | ${tool.version} | ${timingCell(result.results.cold[tool.id], bestCold)} | ${timingCell(result.results.warm[tool.id], bestWarm)} | ${tool.updates ?? '—'} |`
-    )
-    for (const tool of skipped) rows.push(`| ${tool.name} | — | not run: ${tool.reason} | | |`)
     const machine = [
       environment.image ? `GitHub Actions ${environment.image}` : null,
       environment.os,
@@ -184,17 +230,23 @@ export function renderDetails(results) {
       .filter(Boolean)
       .join(' · ')
     const run = environment.run ? ` · [workflow run](${environment.run})` : ''
+    const updates = { title: 'Updates found', value: (tool) => tool.updates ?? '—' }
     return [
       `### ${fixture.repo}`,
       facts,
-      [
-        '| Tool | Version | First run | Repeat run | Updates found |',
-        '| :-- | :-- | --: | --: | --: |',
-        ...rows,
-      ].join('\n'),
       `Median, ± standard deviation, min–max, over ${result.runs} runs. Measured ${formatDate(result.date)} on ${machine}${run}.`,
+      '#### Listing outdated dependencies',
+      detailTable(LISTING(result), [updates]),
       'Commands, run in the repository root:',
-      ['```sh', ...tools.map((tool) => tool.display), '```'].join('\n'),
+      commands(tools),
+      ...(result.picker
+        ? [
+            '#### Opening the picker',
+            detailTable(result.picker),
+            'Commands, run in the repository root in a 160×50 terminal:',
+            commands(result.picker.tools),
+          ]
+        : []),
     ].join('\n\n')
   })
   return sections.join('\n\n')
@@ -237,7 +289,12 @@ export function renderChart(results, theme) {
   const text = (x, y, content, attrs = '') =>
     parts.push(`<text x="${x}" y="${y}"${attrs}>${escapeXml(content)}</text>`)
 
-  text(0, 14, 'First run, empty caches · seconds, lower is better', ` fill="${color.muted}"`)
+  text(
+    0,
+    14,
+    'Listing outdated dependencies, first run (empty caches) · seconds, lower is better',
+    ` fill="${color.muted}"`
+  )
   let y = 36
   for (const { fixture, tools, results: timings } of results) {
     text(0, y + 14, fixture.repo, ` fill="${color.ink}" font-weight="600"`)

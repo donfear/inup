@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -7,11 +7,14 @@ import {
   countManifests,
   FIXTURES,
   inspectFixture,
+  pickerEnv,
   quote,
   resetBoxCommand,
   sandboxEnv,
   shellCommand,
+  summarize,
   TOOLS,
+  timePicker,
 } from '../../../scripts/bench-compare.mjs'
 
 const tool = (id: string) => {
@@ -160,6 +163,113 @@ describe('TOOLS', () => {
   it('fails loudly on output it cannot read', () => {
     expect(() => tool('inup').count(out('Error: something broke'))).toThrow()
     expect(() => tool('taze').count(out('{}'))).toThrow()
+  })
+})
+
+describe('pickers', () => {
+  const picker = (id: string) => tool(id).picker
+  const npmSingle = { pm: 'npm', workspaces: false }
+
+  it('opens each interactive list, every update included', () => {
+    expect(picker('inup').args(pnpmWorkspace)).toEqual([])
+    expect(picker('ncu').args(single)).toEqual(['--interactive'])
+    expect(picker('taze').args(pnpmWorkspace)).toEqual([
+      'major',
+      '--interactive',
+      '--recursive',
+      '--include-locked',
+      '--no-github-actions',
+      '--no-node-version',
+    ])
+    expect(picker('syncpack').args(pnpmWorkspace)).toEqual(['update', '--interactive'])
+    expect(picker('npm-check').args(single)).toEqual(['--update', '--skip-unused'])
+  })
+
+  it("opens the package manager's own picker", () => {
+    const pm = picker('pm')
+    expect(pm.name(yarnWorkspace)).toBe('yarn upgrade-interactive')
+    expect(pm.args(yarnWorkspace)).toEqual(['upgrade-interactive'])
+    expect(pm.name(pnpmWorkspace)).toBe('pnpm update -i')
+    expect(pm.args(pnpmWorkspace)).toEqual(['update', '--interactive', '--latest', '--recursive'])
+    expect(pm.args(bunWorkspace)).toEqual(['update', '--interactive', '--recursive'])
+    expect(pm.unsupported(npmSingle)).toBe('npm has no interactive update')
+    expect(pm.unsupported(yarnWorkspace)).toBeNull()
+  })
+
+  it('skips pickers that cannot show a whole workspace at once', () => {
+    expect(picker('ncu').unsupported(pnpmWorkspace)).toBe('asks about one package.json at a time')
+    expect(picker('ncu').unsupported(single)).toBeNull()
+    expect(picker('npm-check').unsupported(pnpmWorkspace)).toBe('no workspace support')
+  })
+
+  it('runs them sandboxed, in a color terminal, outside CI', () => {
+    const env = pickerEnv('/box', {
+      PATH: '/bin',
+      CI: 'true',
+      GITHUB_ACTIONS: 'true',
+      CONTINUOUS_INTEGRATION: '1',
+    })
+    expect(env).toMatchObject({ PATH: '/bin', HOME: '/box', TERM: 'xterm-256color' })
+    expect(env).not.toHaveProperty('CI')
+    expect(env).not.toHaveProperty('GITHUB_ACTIONS')
+    expect(env).not.toHaveProperty('CONTINUOUS_INTEGRATION')
+  })
+})
+
+describe('summarize', () => {
+  it('reports what hyperfine reports', () => {
+    expect(summarize([3, 1, 2])).toEqual({
+      median: 2,
+      mean: 2,
+      stddev: 1,
+      min: 1,
+      max: 3,
+      times: [3, 1, 2],
+    })
+    expect(summarize([4, 1, 2, 3]).median).toBe(2.5)
+    expect(summarize([5]).stddev).toBe(0)
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('timePicker', () => {
+  let box = ''
+  afterEach(() => rmSync(box, { recursive: true, force: true }))
+  const start = (script: string, options: { idleMs?: number; limitMs?: number } = {}) => {
+    box = mkdtempSync(join(tmpdir(), 'inup-bench-picker-'))
+    return timePicker(['sh', '-c', script], { cwd: box, box, idleMs: 300, ...options })
+  }
+
+  it('times a picker until it goes quiet, in a terminal', async () => {
+    const seconds = await start('[ -t 1 ] && printf ready; sleep 30')
+    expect(seconds).toBeGreaterThanOrEqual(0)
+    expect(seconds).toBeLessThan(2)
+  })
+
+  it('counts cache writes after the last thing drawn', async () => {
+    const seconds = await start('printf ready; sleep 0.5; touch "$HOME/fetched"; sleep 30', {
+      idleMs: 1000,
+    })
+    expect(seconds).toBeGreaterThanOrEqual(0.45)
+  })
+
+  it('stops the picker once timed', async () => {
+    await start('echo $$ > "$HOME/pid"; printf ready; sleep 30')
+    const pid = Number(readFileSync(join(box, 'pid'), 'utf8'))
+    expect(() => process.kill(pid, 0)).toThrow()
+  })
+
+  it('fails a picker that exits instead of waiting', async () => {
+    await expect(start('printf oops; exit 3')).rejects.toThrow('exited (3) instead of waiting')
+  })
+
+  it('fails a picker that draws nothing', async () => {
+    await expect(start('sleep 30')).rejects.toThrow('drew nothing')
+  })
+
+  it('fails a picker that never goes quiet', async () => {
+    await expect(
+      start('while true; do printf x; sleep 0.05; done', { limitMs: 800 })
+    ).rejects.toThrow('still busy')
   })
 })
 
