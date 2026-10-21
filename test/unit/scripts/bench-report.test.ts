@@ -125,6 +125,9 @@ describe('joinNames', () => {
     expect(joinNames(['npm outdated', 'yarn upgrade-interactive'])).toBe(
       'npm outdated / yarn upgrade-interactive'
     )
+    expect(joinNames(['pnpm update -i', 'bun update -i', 'yarn upgrade-interactive'])).toBe(
+      'pnpm / bun update -i / yarn upgrade-interactive'
+    )
   })
 })
 

@@ -46,14 +46,21 @@ export function sortResults(results) {
   return [...results].sort((a, b) => order(a) - order(b))
 }
 
-/** "npm outdated", "pnpm outdated" reads as "npm / pnpm outdated". */
+/**
+ * Names that share a command after the tool's name read as one:
+ * "npm outdated", "pnpm outdated" as "npm / pnpm outdated".
+ */
 export function joinNames(names) {
-  const last = (name) => name.split(' ').at(-1)
-  const shared = last(names[0])
-  if (names.length > 1 && names.every((name) => name.includes(' ') && last(name) === shared)) {
-    return `${names.map((name) => name.slice(0, -shared.length - 1)).join(' / ')} ${shared}`
+  const groups = new Map()
+  for (const name of names) {
+    const space = name.indexOf(' ')
+    const command = space === -1 ? '' : name.slice(space)
+    groups.set(command, [
+      ...(groups.get(command) ?? []),
+      name.slice(0, name.length - command.length),
+    ])
   }
-  return names.join(' / ')
+  return [...groups].map(([command, tools]) => `${tools.join(' / ')}${command}`).join(' / ')
 }
 
 /**
