@@ -78,6 +78,9 @@ inup detects your package manager and finds dependencies across workspaces. Priv
 
 Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
+<!-- BENCHMARK:START -->
+<!-- BENCHMARK:END -->
+
 ## Let a release age before you take it
 
 A version published an hour ago is the one most likely to be a compromised release nobody has caught yet. Give releases a cooldown and inup stops offering anything younger — in the picker, in reports, and in `--apply`:
@@ -164,7 +167,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-1945_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1986_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

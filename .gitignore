@@ -68,6 +68,9 @@ dist
 tmp/
 temp/
 
+# pnpm bench:compare output
+bench-results/
+
 # Demo backups
 docs/demo-project/package.json.backup
 docs/demo-project/node_modules/
