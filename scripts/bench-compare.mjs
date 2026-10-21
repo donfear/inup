@@ -44,24 +44,35 @@ export const FIXTURES = [
     repo: 'TanStack/query',
     sha: 'ce77be5e15c695df9d4d9122caf9256d334433ba',
   },
+  { id: 'vendure', repo: 'vendurehq/vendure', sha: '1dcaf0ee504675f3462d6302c23ff9f16beb2773' },
+  {
+    id: 'backstage',
+    repo: 'backstage/backstage',
+    sha: '76b0c7a48ef737b1a46342c29269827715d70684',
+  },
 ]
 
 /** Entries in a JSON report keyed by package (or by package.json, holding arrays). */
 const countEntries = (json) =>
   Object.values(json).reduce((n, value) => n + (Array.isArray(value) ? value.length : 1), 0)
 
+/** Rows of a `| Package | Current | ... |` table, header excluded. */
+const tableRows = (text) =>
+  Math.max(0, text.split('\n').filter((line) => /^\| \S/.test(line)).length - 1)
+
 /**
  * The tools, each set up to report every dependency against its latest
  * version without writing anything. `fixture` is a described fixture:
- * `{ pm, workspaces }`. `count` reads the number of updates from stdout;
- * `failsWhenOutdated` marks the tools that exit 1 when they find updates.
+ * `{ pm, workspaces }`. `count` reads the number of updates from the output,
+ * `{ stdout, stderr }`; `failsWhenOutdated` marks the tools that exit 1 when
+ * they find updates.
  */
 export const TOOLS = [
   {
     id: 'inup',
     name: () => 'inup',
     args: () => ['--json'],
-    count: (stdout) => JSON.parse(stdout).summary.outdated,
+    count: ({ stdout }) => JSON.parse(stdout).summary.outdated,
   },
   {
     id: 'ncu',
@@ -70,7 +81,7 @@ export const TOOLS = [
     bin: 'ncu',
     args: (fixture) => ['--jsonUpgraded', ...(fixture.workspaces ? ['--workspaces'] : [])],
     // One object of upgrades, or one per package.json with --workspaces.
-    count: (stdout) =>
+    count: ({ stdout }) =>
       Object.values(JSON.parse(stdout)).reduce(
         (n, value) => n + (typeof value === 'object' ? Object.keys(value).length : 1),
         0
@@ -92,11 +103,23 @@ export const TOOLS = [
       '--no-node-version',
       '--json',
     ],
-    count: (stdout) =>
+    count: ({ stdout }) =>
       JSON.parse(stdout).packages.reduce(
         (n, pkg) => n + pkg.resolved.filter((dep) => dep.update).length,
         0
       ),
+  },
+  {
+    id: 'syncpack',
+    name: () => 'syncpack',
+    pkg: 'syncpack',
+    bin: 'syncpack',
+    // --check lists updates without writing; it reports on stderr, one line
+    // per dependency and version: "  1x react ^18.3.1 (~1.9y) → ^19.2.0 (~3mo)".
+    args: () => ['update', '--check'],
+    failsWhenOutdated: true,
+    count: ({ stderr }) =>
+      stderr.split('\n').filter((line) => /^\s+\d+x \S.* → /.test(line)).length,
   },
   {
     id: 'npm-check',
@@ -111,24 +134,37 @@ export const TOOLS = [
   },
   {
     id: 'pm',
-    name: (fixture) => `${fixture.pm} outdated`,
-    args: (fixture) =>
-      fixture.pm === 'pnpm'
-        ? ['outdated', ...(fixture.workspaces ? ['--recursive'] : []), '--format', 'json']
-        : [
-            'outdated',
-            ...(fixture.workspaces ? ['--workspaces', '--include-workspace-root'] : []),
-            '--json',
-          ],
+    name: (fixture) =>
+      fixture.pm === 'yarn' ? 'yarn upgrade-interactive' : `${fixture.pm} outdated`,
+    args: (fixture) => {
+      const workspaces = fixture.workspaces
+      if (fixture.pm === 'pnpm') {
+        return ['outdated', ...(workspaces ? ['--recursive'] : []), '--format', 'json']
+      }
+      if (fixture.pm === 'bun') return ['outdated', ...(workspaces ? ['--recursive'] : [])]
+      return [
+        'outdated',
+        ...(workspaces ? ['--workspaces', '--include-workspace-root'] : []),
+        '--json',
+      ]
+    },
+    // npm and pnpm exit 1 when they find updates; bun exits 0.
     failsWhenOutdated: true,
-    count: (stdout) => countEntries(JSON.parse(stdout)),
+    unsupported: (fixture) =>
+      fixture.pm === 'yarn' ? 'Yarn 2+ lists updates only in this interactive picker' : null,
+    count: ({ stdout }, fixture) =>
+      fixture.pm === 'bun' ? tableRows(stdout) : countEntries(JSON.parse(stdout)),
   },
 ]
 
 /** POSIX shell quoting. */
 export const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`
 
-/** The environment that points every cache a tool might use into `box`. */
+/**
+ * The environment that points every cache a tool might use into `box`. Most
+ * follow HOME, XDG and TMPDIR; the rest have variables of their own that a
+ * developer's shell may set (BUN_INSTALL, for one).
+ */
 export function sandboxEnv(box) {
   return {
     HOME: box,
@@ -137,6 +173,10 @@ export function sandboxEnv(box) {
     XDG_DATA_HOME: join(box, '.local', 'share'),
     XDG_STATE_HOME: join(box, '.local', 'state'),
     TMPDIR: join(box, 'tmp'),
+    npm_config_cache: join(box, '.npm'),
+    BUN_INSTALL: join(box, '.bun'),
+    BUN_INSTALL_CACHE_DIR: join(box, '.bun', 'install', 'cache'),
+    YARN_GLOBAL_FOLDER: join(box, '.yarn', 'berry'),
   }
 }
 
@@ -196,32 +236,52 @@ const run = (command, args, options = {}) =>
 const log = (message) => console.error(`\n> ${message}`)
 
 function checkout(fixture, dir) {
-  if (
-    existsSync(join(dir, '.git')) &&
-    run('git', ['rev-parse', 'HEAD'], { cwd: dir }) === fixture.sha
-  )
-    return
+  const git = (...args) => run('git', args, { cwd: dir })
+  if (existsSync(join(dir, '.git')) && git('rev-parse', 'HEAD') === fixture.sha) return
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
-  run('git', ['init', '-q'], { cwd: dir })
-  run(
-    'git',
-    ['fetch', '-q', '--depth', '1', `https://github.com/${fixture.repo}.git`, fixture.sha],
-    {
-      cwd: dir,
-    }
-  )
-  run('git', ['checkout', '-q', 'FETCH_HEAD'], { cwd: dir })
+  git('init', '-q')
+  git('fetch', '-q', '--depth', '1', `https://github.com/${fixture.repo}.git`, fixture.sha)
+  git('checkout', '-q', 'FETCH_HEAD')
 }
 
-/** The fixture's package manager (from `packageManager`) and whether it is a monorepo. */
-function inspectFixture(dir) {
+const LOCKFILES = [
+  ['pnpm-lock.yaml', 'pnpm'],
+  ['yarn.lock', 'yarn'],
+  ['bun.lock', 'bun'],
+  ['bun.lockb', 'bun'],
+]
+
+/**
+ * The fixture's package manager - from `packageManager`, else its lockfile -
+ * and whether it is a monorepo.
+ */
+export function inspectFixture(dir) {
   const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
   const spec = pkg.packageManager?.split('+')[0]
-  const [pm, version] = spec ? spec.split('@') : ['npm']
-  if (pm !== 'npm' && pm !== 'pnpm') throw new Error(`unsupported package manager: ${pm}`)
+  const fromLockfile = LOCKFILES.find(([file]) => existsSync(join(dir, file)))?.[1] ?? 'npm'
+  const [pm, version] = spec ? spec.split('@') : [fromLockfile]
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(pm)) {
+    throw new Error(`unsupported package manager: ${pm}`)
+  }
+  if (pm === 'yarn' && !(Number(version?.split('.')[0]) >= 2)) {
+    throw new Error('only Yarn 2+ projects with a packageManager version are supported')
+  }
   const workspaces = existsSync(join(dir, 'pnpm-workspace.yaml')) || pkg.workspaces !== undefined
   return { pm, pmVersion: version ?? null, workspaces }
+}
+
+/** Arguments that install a fixture's dependencies without running its scripts. */
+const INSTALL = {
+  npm: (dir) => [
+    existsSync(join(dir, 'package-lock.json')) ? 'ci' : 'install',
+    '--ignore-scripts',
+    '--no-audit',
+    '--no-fund',
+  ],
+  pnpm: () => ['install', '--frozen-lockfile', '--ignore-scripts'],
+  bun: () => ['install', '--frozen-lockfile', '--ignore-scripts'],
+  yarn: () => ['install', '--immutable', '--mode=skip-build'],
 }
 
 /** Install npm packages into `dir`; returns the directory holding node_modules. */
@@ -251,24 +311,47 @@ function nodeBin(prefix, name, bin) {
 }
 
 /**
- * pnpm as people run it. Since pnpm 11 the `pnpm` bin is a native executable
- * shipped in `@pnpm/exe.<platform>`; corepack starts it too. Older versions are
- * a Node.js script.
+ * The native executable an npm package ships in a per-platform optional
+ * dependency (`@pnpm/exe.linux-x64/pnpm`, `@oven/bun-linux-x64/bin/bun`): what
+ * its bin runs once installed. npm installs only the host's platform package.
  */
-function pnpmBin(prefix, version) {
-  const scope = join(prefix, 'node_modules', '@pnpm')
-  const exe = existsSync(scope)
-    ? readdirSync(scope)
-        .filter((name) => name.startsWith('exe.'))
-        .map((name) => join(scope, name, 'pnpm'))
-        .find((path) => existsSync(path))
-    : undefined
-  if (exe) return { argv: [exe], version }
-  return nodeBin(prefix, 'pnpm', 'pnpm')
+function platformBinary(prefix, scope, packagePrefix, file) {
+  const dir = join(prefix, 'node_modules', scope)
+  if (!existsSync(dir)) return undefined
+  return readdirSync(dir)
+    .filter((name) => name.startsWith(packagePrefix))
+    .map((name) => join(dir, name, file))
+    .find((path) => existsSync(path))
+}
+
+/** The package manager, run as its own users run it. */
+function packageManagerBin(fixture, dir, workdir) {
+  const { pm, pmVersion } = fixture
+  if (pm === 'npm') return { argv: ['npm'], version: run('npm', ['--version']) }
+  if (pm === 'yarn') {
+    // Yarn projects usually commit their Yarn release and point yarnPath at it.
+    const rc = join(dir, '.yarnrc.yml')
+    const yarnPath =
+      existsSync(rc) && /^yarnPath:\s*['"]?([^'"\s]+)/m.exec(readFileSync(rc, 'utf8'))?.[1]
+    if (yarnPath) return { argv: [process.execPath, join(dir, yarnPath)], version: pmVersion }
+    const prefix = npmInstall(join(workdir, `yarn-${pmVersion}`), [
+      `@yarnpkg/cli-dist@${pmVersion}`,
+    ])
+    return nodeBin(prefix, '@yarnpkg/cli-dist', 'yarn')
+  }
+  const spec = `${pm}@${pmVersion ?? 'latest'}`
+  const prefix = npmInstall(join(workdir, spec), [spec])
+  const version = readPackage(prefix, pm).version
+  // Since pnpm 11, and for bun, the bin is a native executable.
+  const exe =
+    pm === 'pnpm'
+      ? platformBinary(prefix, '@pnpm', 'exe.', 'pnpm')
+      : platformBinary(prefix, '@oven', 'bun-', join('bin', 'bun'))
+  return exe ? { argv: [exe], version } : nodeBin(prefix, pm, pm)
 }
 
 /** Where each tool's command comes from, and its version. */
-function resolveTools(fixture, workdir) {
+function resolveTools(fixture, dir, workdir) {
   const prefix = npmInstall(
     join(workdir, 'tools'),
     TOOLS.filter((tool) => tool.pkg).map((tool) => `${tool.pkg}@latest`)
@@ -280,13 +363,7 @@ function resolveTools(fixture, workdir) {
       argv: [process.execPath, join(ROOT, 'dist', 'cli.js')],
       version: `${inupVersion} (${commit})`,
     },
-    pm:
-      fixture.pm === 'pnpm'
-        ? pnpmBin(
-            npmInstall(join(workdir, `pnpm-${fixture.pmVersion}`), [`pnpm@${fixture.pmVersion}`]),
-            fixture.pmVersion
-          )
-        : { argv: ['npm'], version: run('npm', ['--version']) },
+    pm: packageManagerBin(fixture, dir, workdir),
   }
   for (const tool of TOOLS) {
     if (tool.pkg) bins[tool.id] = nodeBin(prefix, tool.pkg, tool.bin)
@@ -295,28 +372,30 @@ function resolveTools(fixture, workdir) {
 }
 
 /** Run each tool once, untimed: it must succeed and report updates. */
-function smokeTest(tool, argv, cwd, box) {
+function smokeTest(tool, fixture, argv, cwd, box) {
   rmSync(box, { recursive: true, force: true })
   mkdirSync(join(box, 'tmp'), { recursive: true })
-  // Into a file, as hyperfine's /dev/null is: some tools exit before a pipe
+  // Into files, as hyperfine's /dev/null is: some tools exit before a pipe
   // drains, cutting their output off at 64 KB.
   const outFile = join(box, 'stdout')
+  const errFile = join(box, 'stderr')
   const out = openSync(outFile, 'w')
+  const err = openSync(errFile, 'w')
   const result = spawnSync(argv[0], argv.slice(1), {
     cwd,
-    encoding: 'utf8',
     env: { ...process.env, ...sandboxEnv(box) },
-    stdio: ['ignore', out, 'pipe'],
+    stdio: ['ignore', out, err],
   })
   closeSync(out)
-  const stdout = readFileSync(outFile, 'utf8')
+  closeSync(err)
+  const output = { stdout: readFileSync(outFile, 'utf8'), stderr: readFileSync(errFile, 'utf8') }
   const ok = result.status === 0 || (tool.failsWhenOutdated && result.status === 1)
-  if (!ok || !stdout.trim()) {
+  if (!ok || !`${output.stdout}${output.stderr}`.trim()) {
     throw new Error(
-      `${argv.join(' ')} exited with ${result.status ?? result.signal}\n${result.stderr.slice(-2000)}`
+      `${argv.join(' ')} exited with ${result.status ?? result.signal}\n${output.stderr.slice(-2000)}`
     )
   }
-  const updates = tool.count(stdout)
+  const updates = tool.count(output, fixture)
   if (updates === 0) throw new Error(`${argv.join(' ')} reported no updates; it checked nothing`)
   return updates
 }
@@ -377,22 +456,14 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
   const described = { ...fixture, ...inspectFixture(dir) }
 
   log('Installing the tools')
-  const bins = resolveTools(described, workdir)
+  const bins = resolveTools(described, dir, workdir)
 
   log(`Installing ${fixture.repo} with ${described.pm}`)
-  const pm = bins.pm.argv
-  if (described.pm === 'pnpm') {
-    run(pm[0], [...pm.slice(1), 'install', '--frozen-lockfile', '--ignore-scripts'], {
-      cwd: dir,
-      stdio: ['ignore', 'ignore', 'inherit'],
-    })
-  } else {
-    const install = existsSync(join(dir, 'package-lock.json')) ? 'ci' : 'install'
-    run('npm', [install, '--ignore-scripts', '--no-audit', '--no-fund'], {
-      cwd: dir,
-      stdio: ['ignore', 'ignore', 'inherit'],
-    })
-  }
+  const [command, ...pmArgs] = bins.pm.argv
+  run(command, [...pmArgs, ...INSTALL[described.pm](dir)], {
+    cwd: dir,
+    stdio: ['ignore', 'ignore', 'inherit'],
+  })
 
   const tools = []
   const skipped = []
@@ -406,7 +477,7 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
     const args = tool.args(described)
     const argv = [...bins[tool.id].argv, ...args]
     log(`Checking ${name} works on ${fixture.repo}`)
-    const updates = smokeTest(tool, argv, dir, join(workdir, 'boxes', 'smoke', tool.id))
+    const updates = smokeTest(tool, described, argv, dir, join(workdir, 'boxes', 'smoke', tool.id))
     tools.push({
       id: tool.id,
       name,

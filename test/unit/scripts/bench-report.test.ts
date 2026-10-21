@@ -4,6 +4,7 @@ import {
   describeChart,
   escapeXml,
   formatSeconds,
+  joinNames,
   renderChart,
   renderDetails,
   renderReadme,
@@ -92,6 +93,49 @@ const vue = {
 
 const results = [express, vue]
 
+describe('joinNames', () => {
+  it('shares a common last word', () => {
+    expect(joinNames(['npm outdated', 'pnpm outdated', 'bun outdated'])).toBe(
+      'npm / pnpm / bun outdated'
+    )
+    expect(joinNames(['inup'])).toBe('inup')
+    expect(joinNames(['npm outdated', 'yarn upgrade-interactive'])).toBe(
+      'npm outdated / yarn upgrade-interactive'
+    )
+  })
+})
+
+describe('a repository where a tool did not run', () => {
+  const yarn = {
+    ...vue,
+    fixture: { ...vue.fixture, id: 'backstage', repo: 'backstage/backstage' },
+    tools: vue.tools.filter((t) => t.id !== 'pm'),
+    skipped: [
+      ...vue.skipped,
+      {
+        id: 'pm',
+        name: 'yarn upgrade-interactive',
+        reason: 'Yarn 2+ lists updates only in this interactive picker',
+      },
+    ],
+    results: {
+      cold: { inup: timing(6), ncu: timing(21) },
+      warm: { inup: timing(1), ncu: timing(20) },
+    },
+  }
+
+  it('keeps the row named for where it ran and shows a dash', () => {
+    const [first] = renderTables([express, vue, yarn]).split('\n\n')
+    expect(first).toContain('| npm / pnpm outdated | 0.90 s | 2.10 s | — |')
+  })
+
+  it('says why on the details page', () => {
+    expect(renderDetails([yarn])).toContain(
+      '| yarn upgrade-interactive | — | not run: Yarn 2+ lists updates only in this interactive picker | | |'
+    )
+  })
+})
+
 describe('formatSeconds', () => {
   it('keeps two decimals under ten seconds and one above', () => {
     expect(formatSeconds(0.389)).toBe('0.39 s')
@@ -129,9 +173,9 @@ describe('renderTables', () => {
     expect(first).toContain('| inup | **0.39 s** | **1.68 s** |')
     expect(first).toContain('| npm-check-updates | 0.73 s | 18.3 s |')
     expect(first).toContain('| npm-check | 1.20 s | — |')
-    expect(first).toContain('| npm outdated / pnpm outdated | 0.90 s | 2.10 s |')
+    expect(first).toContain('| npm / pnpm outdated | 0.90 s | 2.10 s |')
     expect(repeat).toContain('| inup | 0.38 s | 0.90 s |')
-    expect(repeat).toContain('| npm outdated / pnpm outdated | **0.13 s** | **0.80 s** |')
+    expect(repeat).toContain('| npm / pnpm outdated | **0.13 s** | **0.80 s** |')
   })
 
   it('says how, where and when it was measured', () => {

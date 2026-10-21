@@ -46,17 +46,35 @@ export function sortResults(results) {
   return [...results].sort((a, b) => order(a) - order(b))
 }
 
-/** One row per tool across all fixtures, in the order the tools ran. */
+/** "npm outdated", "pnpm outdated" reads as "npm / pnpm outdated". */
+export function joinNames(names) {
+  const last = (name) => name.split(' ').at(-1)
+  const shared = last(names[0])
+  if (names.length > 1 && names.every((name) => name.includes(' ') && last(name) === shared)) {
+    return `${names.map((name) => name.slice(0, -shared.length - 1)).join(' / ')} ${shared}`
+  }
+  return names.join(' / ')
+}
+
+/**
+ * One row per tool across all fixtures, in the order the tools ran, named for
+ * the fixtures it ran on (a skipped tool names its row only if it ran nowhere).
+ */
 function toolRows(results) {
   const rows = new Map()
-  for (const result of results) {
-    for (const tool of [...result.tools, ...result.skipped]) {
-      const row = rows.get(tool.id) ?? { id: tool.id, names: new Set() }
-      row.names.add(tool.name)
-      rows.set(tool.id, row)
-    }
+  const add = (tool, kind) => {
+    const row = rows.get(tool.id) ?? { id: tool.id, ran: new Set(), skipped: new Set() }
+    row[kind].add(tool.name)
+    rows.set(tool.id, row)
   }
-  return [...rows.values()].map((row) => ({ id: row.id, name: [...row.names].join(' / ') }))
+  for (const result of results) {
+    for (const tool of result.tools) add(tool, 'ran')
+    for (const tool of result.skipped) add(tool, 'skipped')
+  }
+  return [...rows.values()].map((row) => ({
+    id: row.id,
+    name: joinNames([...(row.ran.size > 0 ? row.ran : row.skipped)]),
+  }))
 }
 
 const fastest = (timings) => Math.min(...Object.values(timings).map((timing) => timing.median))
@@ -212,18 +230,19 @@ export function renderChart(results, theme) {
   const labelWidth = 150
   const valueWidth = 64
   const barArea = width - labelWidth - valueWidth
-  const rowHeight = 26
-  const barHeight = 16
+  const rowHeight = 22
+  const barHeight = 14
+  const panelGap = 16
   const parts = []
   const text = (x, y, content, attrs = '') =>
     parts.push(`<text x="${x}" y="${y}"${attrs}>${escapeXml(content)}</text>`)
 
   text(0, 14, 'First run, empty caches · seconds, lower is better', ` fill="${color.muted}"`)
-  let y = 40
+  let y = 36
   for (const { fixture, tools, results: timings } of results) {
     text(0, y + 14, fixture.repo, ` fill="${color.ink}" font-weight="600"`)
-    text(0, y + 32, sizes(fixture), ` fill="${color.muted}"`)
-    y += 44
+    text(0, y + 31, sizes(fixture), ` fill="${color.muted}"`)
+    y += 40
     const rows = tools
       .map((tool) => ({ ...tool, median: timings.cold[tool.id].median }))
       .sort((a, b) => a.median - b.median)
@@ -245,9 +264,9 @@ export function renderChart(results, theme) {
       )
       y += rowHeight
     }
-    y += 20
+    y += panelGap
   }
-  const height = y - 20
+  const height = y - panelGap
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">`,
     '<title id="title">How long each tool takes to list outdated dependencies</title>',
