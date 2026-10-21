@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { createRequire } from 'node:module'
+import { describe, expect, it, vi } from 'vitest'
 import {
   getVisualLength,
   stripAnsi,
@@ -6,6 +7,22 @@ import {
   truncatePlainText,
   wrapPlainText,
 } from '../../../../src/shared/terminal/text'
+
+// A top-level import of the width stack would run these factories as soon as text.ts loads.
+// The on-demand require() goes around vitest's module graph, so they must never run.
+const staticImports = vi.hoisted(() => new Set<string>())
+vi.mock('string-width', async (importOriginal) => {
+  staticImports.add('string-width')
+  return importOriginal()
+})
+vi.mock('cli-truncate', async (importOriginal) => {
+  staticImports.add('cli-truncate')
+  return importOriginal()
+})
+vi.mock('wrap-ansi', async (importOriginal) => {
+  staticImports.add('wrap-ansi')
+  return importOriginal()
+})
 
 describe('stripAnsi', () => {
   it('removes color escape sequences', () => {
@@ -196,6 +213,54 @@ describe('wrapPlainText', () => {
           }
         }
       }
+    }
+  })
+})
+
+describe('loading the width stack', () => {
+  const nodeRequire = createRequire(import.meta.url)
+  const [STRING_WIDTH, CLI_TRUNCATE, WRAP_ANSI] = ['string-width', 'cli-truncate', 'wrap-ansi'].map(
+    (id) => nodeRequire.resolve(id)
+  )
+  const loaded = () =>
+    [STRING_WIDTH, CLI_TRUNCATE, WRAP_ANSI].filter((path) => nodeRequire.cache[path] !== undefined)
+
+  it('loads each library only when text actually needs it', async () => {
+    // --version, --json and the registry only strip text: none of them may pay ~25 ms for
+    // string-width's Unicode tables. A fresh copy of the module, with nothing required yet.
+    for (const path of [STRING_WIDTH, CLI_TRUNCATE, WRAP_ANSI]) delete nodeRequire.cache[path]
+    vi.resetModules()
+    const text = await import('../../../../src/shared/terminal/text')
+    expect(staticImports).toEqual(new Set())
+
+    expect(text.stripAnsi('\u001b[31mred\u001b[39m')).toBe('red')
+    expect(text.stripControlCharacters('a\u0007b')).toBe('ab')
+    expect(text.getVisualLength('Reading dependencies…')).toBe(21)
+    expect(text.truncatePlainText('Scanning packages/api (found 2)', 80)).toBe(
+      'Scanning packages/api (found 2)'
+    )
+    expect(text.wrapPlainText('fits on one line', 80)).toEqual(['fits on one line'])
+    expect(loaded()).toEqual([])
+
+    expect(text.getVisualLength('你好')).toBe(4)
+    expect(loaded()).toEqual([STRING_WIDTH])
+
+    expect(text.truncatePlainText('hello world', 8)).toBe('hello...')
+    expect(loaded()).toEqual([STRING_WIDTH, CLI_TRUNCATE])
+
+    expect(text.wrapPlainText('the quick brown fox', 9)).toEqual(['the quick', 'brown fox'])
+    expect(loaded()).toEqual([STRING_WIDTH, CLI_TRUNCATE, WRAP_ANSI])
+  })
+
+  it('measures single-column text exactly as string-width does', () => {
+    // The shortcut skips string-width for printable ASCII and the ellipsis; it must never
+    // disagree with it.
+    const { default: stringWidth } = nodeRequire('string-width') as typeof import('string-width')
+    const printableAscii = Array.from({ length: 0x7f - 0x20 }, (_, i) =>
+      String.fromCharCode(0x20 + i)
+    ).join('')
+    for (const input of ['', ' ', printableAscii, '…', 'Reading dependencies…', '……', 'a…b']) {
+      expect(getVisualLength(input)).toBe(stringWidth(input))
     }
   })
 })

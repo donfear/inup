@@ -1,7 +1,7 @@
 import chalk from 'chalk'
 import { PackageManagerDetector } from '../../shared/package-manager'
 import { findBlockingPatch } from '../../shared/pnpm-patches'
-import { ConsoleUtils, truncatePlainText } from '../../shared/terminal'
+import { ConsoleUtils } from '../../shared/terminal'
 import type { PackageInfo, PackageUpgradeChoice, UpgradeOptions } from '../../shared/types'
 import { applyVersionPrefix, findHighestPatchVersion } from '../../shared/versions'
 import {
@@ -54,22 +54,20 @@ export class HeadlessRunner {
         } else if (event.type === 'status') {
           const { phase, packageJsonFiles, scanningDir } = event.payload.progress
           const count = packageJsonFiles ?? 0
-          const showProgress = (message: string) =>
-            ConsoleUtils.showProgress(truncatePlainText(message, process.stderr.columns || 80))
           switch (phase) {
             case 'discovering':
-              showProgress(
+              ConsoleUtils.showProgress(
                 scanningDir
                   ? `Scanning ${scanningDir} (found ${count})`
                   : 'Scanning repository for package.json files…'
               )
               break
             case 'collecting':
-              showProgress(`Found ${count} package.json file${count === 1 ? '' : 's'}`)
-              showProgress('Reading dependencies…')
+              ConsoleUtils.showProgress(`Found ${count} package.json file${count === 1 ? '' : 's'}`)
+              ConsoleUtils.showProgress('Reading dependencies…')
               break
             case 'resolving':
-              showProgress('Identifying unique packages…')
+              ConsoleUtils.showProgress('Identifying unique packages…')
               break
             case 'done':
               break
