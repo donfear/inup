@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.7] - 2026-10-21
+
 ### Changed
 
 - Faster startup: the `inup` command now ships as one bundled file instead of a few hundred small ones that Node had to find and read one by one, so every run starts sooner, `inup --version` and `--json` included. Using inup as a library is unchanged.
@@ -531,7 +533,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.6...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.7...HEAD
+[1.8.7]: https://github.com/donfear/inup/compare/v1.8.6...v1.8.7
 [1.8.6]: https://github.com/donfear/inup/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/donfear/inup/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/donfear/inup/compare/v1.8.3...v1.8.4
