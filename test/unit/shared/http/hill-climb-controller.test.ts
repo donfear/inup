@@ -635,6 +635,23 @@ describe('HillClimbController clock and mix safety (review fixes)', () => {
     expect(closeWindow(h, 1200)).toBe(8)
   })
 
+  it('closes a window that ran short of work without a decision', () => {
+    const h = makeController({})
+    h.c.noteStarved() // the caller was still adding work and a slot sat idle
+    expect(closeWindow(h, 1200)).toBe(null)
+    expect(h.ticks).toHaveLength(0)
+    expect(h.c.getLimit()).toBe(T.coldStart)
+    // The flag belongs to that window only: the next one is judged again.
+    expect(closeWindow(h, 1200)).toBe(8)
+  })
+
+  it('still backs off on errors in a window that ran short of work', () => {
+    const h = makeController({ profile: { learnedLimit: 16, baselineLatencyMs: 100 } })
+    h.c.noteStarved()
+    for (let i = 0; i < T.windowCompletions; i++) h.c.record('retryable')
+    expect(h.c.maybeTick(h.clock.advance(1200))).toBe(11) // soft-down 16 × 0.7
+  })
+
   it('discards the half-timed window after a hard-down instead of mis-measuring it', () => {
     const h = makeController({ profile: { learnedLimit: 16, baselineLatencyMs: 100 } })
     feed(h.c, T.validateAfterCompletions, 100)

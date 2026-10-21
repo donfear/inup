@@ -50,11 +50,15 @@ import {
   setEtagCacheEnabled,
   setEtagCacheRoot,
 } from '../../../../src/shared/http/etag-store'
-import type { ControlTick } from '../../../../src/shared/http/hill-climb-controller'
+import {
+  type ControlTick,
+  HillClimbController,
+} from '../../../../src/shared/http/hill-climb-controller'
 import { sleep } from '../../../../src/shared/http/retry'
 import {
   clearPackageCache,
   fetchPackageVersions,
+  startPackageVersionFetch,
 } from '../../../../src/shared/registry/npm-registry'
 
 type MockResponse = {
@@ -982,6 +986,93 @@ describe('npm-registry', () => {
 
       expect(ticks.some((t) => t.reason === 'hard-down')).toBe(true)
       expect(profiles).toHaveLength(0)
+    })
+  })
+
+  describe('a package list that is still growing', () => {
+    const names = (n: number, prefix = 'pkg') =>
+      Array.from({ length: n }, (_, i) => `${prefix}-${i + 1}`)
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      requestMock.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 10))
+        return makeOkBody({ versions: { '1.0.0': {} } })
+      })
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('holds a small list back until it is complete, since its size decides how it runs', async () => {
+      const fetch = startPackageVersionFetch()
+      fetch.add(names(5))
+      await vi.runAllTimersAsync()
+      expect(requestMock).not.toHaveBeenCalled()
+
+      const done = fetch.finish()
+      await vi.runAllTimersAsync()
+      expect((await done).size).toBe(5)
+    })
+
+    it('starts once the list is big enough to be controlled and takes packages added later', async () => {
+      const ready: string[] = []
+      const fetch = startPackageVersionFetch({
+        onPackageReady: ({ packageName }) => ready.push(packageName),
+      })
+      fetch.add(names(30))
+      await vi.runAllTimersAsync()
+      expect(ready).toHaveLength(30)
+
+      fetch.add(names(10, 'late'))
+      const done = fetch.finish()
+      await vi.runAllTimersAsync()
+      expect((await done).size).toBe(40)
+      expect(ready.slice(30).sort()).toEqual(names(10, 'late').sort())
+    })
+
+    it('judges no idle window and declares no run tail until the list is complete', async () => {
+      const starved = vi.spyOn(HillClimbController.prototype, 'noteStarved')
+      const freeze = vi.spyOn(HillClimbController.prototype, 'freeze')
+      try {
+        const fetch = startPackageVersionFetch()
+        fetch.add(names(40))
+        // Every package added so far resolves while more may still come.
+        await vi.runAllTimersAsync()
+        expect(starved).toHaveBeenCalled()
+        expect(freeze).not.toHaveBeenCalled()
+
+        fetch.add(names(40, 'late'))
+        const done = fetch.finish()
+        await vi.runAllTimersAsync()
+        await done
+        expect(freeze).toHaveBeenCalled()
+      } finally {
+        starved.mockRestore()
+        freeze.mockRestore()
+      }
+    })
+
+    it('never reads a complete list as short of work', async () => {
+      const starved = vi.spyOn(HillClimbController.prototype, 'noteStarved')
+      try {
+        const done = fetchPackageVersions(names(40))
+        await vi.runAllTimersAsync()
+        expect((await done).size).toBe(40)
+        expect(starved).not.toHaveBeenCalled()
+      } finally {
+        starved.mockRestore()
+      }
+    })
+
+    it('fails the run with a cancellation that lands before the list is complete', async () => {
+      const controller = new AbortController()
+      const fetch = startPackageVersionFetch({ signal: controller.signal })
+      fetch.add(names(30))
+      controller.abort(new Error('cancelled mid-scan'))
+      // The requests fail while nothing awaits the run yet.
+      await vi.runAllTimersAsync()
+      await expect(fetch.finish()).rejects.toThrow('cancelled mid-scan')
     })
   })
 

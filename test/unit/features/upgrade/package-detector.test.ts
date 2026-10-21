@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   findPackageJson: vi.fn(),
   readPackageJson: vi.fn(),
   findAllPackageJsonFilesAsync: vi.fn(),
-  collectAllDependenciesAsync: vi.fn(),
+  declaredDependencies: vi.fn(),
   findRangeTargetVersion: vi.fn(),
   fetchPackageVersions: vi.fn(),
   loadPnpmCatalogs: vi.fn(),
@@ -23,12 +23,24 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('../../../../src/shared/fs', () => ({
-  findPackageJson: mocks.findPackageJson,
-  readPackageJson: mocks.readPackageJson,
-  findAllPackageJsonFilesAsync: mocks.findAllPackageJsonFilesAsync,
-  collectAllDependenciesAsync: mocks.collectAllDependenciesAsync,
-}))
+// The detector reads each manifest the moment the scan reports it. These tests describe a repo
+// as its scan result plus one flat list of declared dependencies, which the first manifest read
+// hands out whole.
+vi.mock('../../../../src/shared/fs', () => {
+  let firstManifest: string | undefined
+  return {
+    findPackageJson: mocks.findPackageJson,
+    readPackageJson: mocks.readPackageJson,
+    findAllPackageJsonFilesAsync: (...args: any[]) =>
+      Promise.resolve(mocks.findAllPackageJsonFilesAsync(...args)).then((files: string[]) => {
+        firstManifest = files[0]
+        for (const file of files) args[4].onPackageJson(file)
+        return files
+      }),
+    collectDependenciesAsync: async (path: string, localNames: Set<string>) =>
+      path === firstManifest ? mocks.declaredDependencies(localNames) : [],
+  }
+})
 
 vi.mock('../../../../src/shared/versions', async (importOriginal) => {
   const actual = await importOriginal()
@@ -57,9 +69,10 @@ vi.mock('../../../../src/shared/debug-logger', () => ({
   },
 }))
 
-vi.mock('../../../../src/shared/registry/npm-registry', () => ({
-  fetchPackageVersions: mocks.fetchPackageVersions,
-}))
+vi.mock('../../../../src/shared/registry/npm-registry', async () => {
+  const { collectedFetch } = await import('../../../helpers/registry-fetch')
+  return { startPackageVersionFetch: collectedFetch(mocks.fetchPackageVersions) }
+})
 
 vi.mock('../../../../src/features/debug', () => ({
   getPerformanceTracker: () => mocks.performanceTracker,
@@ -109,7 +122,7 @@ describe('PackageDetector streaming', () => {
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       {
         name: 'zod',
         version: '^3.0.0',
@@ -218,7 +231,7 @@ describe('PackageDetector streaming', () => {
   })
 
   it('advances progress by one per package and flags failures without breaking order', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       { name: 'a', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
       { name: 'b', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
       { name: 'c', version: '^1.0.0', type: 'dependencies', packageJsonPath: '/repo/package.json' },
@@ -271,7 +284,7 @@ describe('PackageDetector streaming', () => {
       resolve: () => ({ catalog: 'default', range: '^1.0.0' }),
       entriesOf: () => [{ name: 'shared', range: '^1.0.0' }],
     })
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       {
         name: 'shared',
         version: '^1.0.0',
@@ -372,7 +385,7 @@ describe('PackageDetector streaming', () => {
             ]
           : [{ name: 'react', range: '^19.0.0' }],
     })
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       // Two packages referencing the same default-catalog entry → ONE dependency.
       {
         name: 'react',
@@ -447,7 +460,7 @@ describe('PackageDetector streaming', () => {
       resolve: () => ({ catalog: 'default', range: 'workspace:*' }),
       entriesOf: () => [],
     })
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       {
         name: 'internal-lib',
         version: 'catalog:',
@@ -472,7 +485,7 @@ describe('PackageDetector streaming', () => {
         spec === 'catalog:' ? { catalog: 'default', range: '^1.0.0' } : null,
       entriesOf: () => [{ name: 'shared-lib', range: '^1.0.0' }],
     })
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       {
         name: 'shared-lib',
         version: 'catalog:',
@@ -523,7 +536,7 @@ describe('PackageDetector streaming', () => {
         resolve: () => ({ catalog: 'default', range: '^18.0.0' }),
         entriesOf: () => [],
       })
-      mocks.collectAllDependenciesAsync.mockResolvedValue([
+      mocks.declaredDependencies.mockResolvedValue([
         {
           name: 'react',
           version: 'catalog:',
@@ -568,7 +581,7 @@ describe('PackageDetector edge paths', () => {
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockReset()
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('zod', '^1.0.0')])
     mocks.findRangeTargetVersion.mockReset()
     mocks.findRangeTargetVersion.mockImplementation(
       (version: string, versions: string[]) => versions[0] ?? version
@@ -590,7 +603,7 @@ describe('PackageDetector edge paths', () => {
         join(repo, 'pnpm-workspace.yaml'),
         'patchedDependencies:\n  zod@1.0.0: patches/zod@1.0.0.patch\n'
       )
-      mocks.collectAllDependenciesAsync.mockResolvedValue([
+      mocks.declaredDependencies.mockResolvedValue([
         dep('zod', '^1.0.0', join(repo, 'package.json')),
         dep('zod', '^1.0.0', join(repo, 'apps', 'web', 'package.json')),
         dep('yup', '^1.0.0', join(repo, 'package.json')),
@@ -629,7 +642,7 @@ describe('PackageDetector edge paths', () => {
 
   it('forwards control ticks and per-package latency to the tracker in every run', async () => {
     // Always forwarded: the in-app performance modal reads these timings.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('zod', '^1.0.0'),
       dep('never-resolved', '^1.0.0'),
     ])
@@ -690,7 +703,7 @@ describe('PackageDetector edge paths', () => {
         resolve: () => ({ catalog: 'default', range: '^1.0.0' }),
         entriesOf: () => [{ name: 'shared-lib', range: '^1.0.0' }],
       })
-      mocks.collectAllDependenciesAsync.mockResolvedValue([
+      mocks.declaredDependencies.mockResolvedValue([
         dep('internal', 'workspace:*', '/repo/packages/a/package.json'),
         dep('internal', 'workspace:*', '/repo/packages/b/package.json'),
         dep('left-pad', '^1.0.0', '/repo/packages/a/package.json'),
@@ -725,7 +738,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('skips npm: aliases and git/tarball URL specifiers', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       // An alias must never be looked up under its alias name — 'my-fork' is not
       // the packument that 'npm:real-pkg@^1.0.0' points at.
       dep('my-fork', 'npm:real-pkg@^1.0.0'),
@@ -753,7 +766,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('skips specifiers that are not one simple version, so they are never rewritten', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       // Re-prefixing these drops half a range or corrupts the protocol: '^17.0.0 || ^18.0.0'
       // was written as '^17.0.2', and the patch: spec as 'patch:lodash@npm%2.0.0'.
       dep('react', '^17.0.0 || ^18.0.0'),
@@ -792,7 +805,7 @@ describe('PackageDetector edge paths', () => {
       resolve: () => ({ catalog: 'default', range: '^17.0.0 || ^18.0.0' }),
       entriesOf: () => [{ name: 'react', range: '^17.0.0 || ^18.0.0' }],
     })
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('react', 'catalog:', '/repo/packages/a/package.json'),
     ])
     const requested: string[][] = []
@@ -813,7 +826,7 @@ describe('PackageDetector edge paths', () => {
       patterns.includes(name)
     )
     try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      mocks.declaredDependencies.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
       // No in-range update: the only available bump crosses the major boundary.
       mocks.findRangeTargetVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
@@ -853,7 +866,7 @@ describe('PackageDetector edge paths', () => {
       patterns.includes(name)
     )
     try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
+      mocks.declaredDependencies.mockResolvedValue([dep('@tiptap/core', '^2.0.0')])
       mocks.findRangeTargetVersion.mockImplementation(() => '2.6.0')
       mocks.fetchPackageVersions.mockImplementation(
         async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
@@ -891,7 +904,7 @@ describe('PackageDetector edge paths', () => {
       patterns.includes(name)
     )
     try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('react', '^17.0.0')])
+      mocks.declaredDependencies.mockResolvedValue([dep('react', '^17.0.0')])
       mocks.findRangeTargetVersion.mockImplementation(() => null)
       mocks.fetchPackageVersions.mockImplementation(
         async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
@@ -919,7 +932,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('sorts scoped packages before unscoped ones', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('zod', '^1.0.0'),
       dep('@s/b', '^1.0.0'),
       dep('alpha', '^1.0.0'),
@@ -943,7 +956,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('logs missing registry data once per package name', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('zod', '^1.0.0', '/repo/packages/a/package.json'),
       dep('zod', '^1.0.0', '/repo/packages/b/package.json'),
     ])
@@ -967,7 +980,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('falls back to raw version strings when semver cannot coerce them', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('zod', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('zod', '^1.0.0')])
     mocks.findRangeTargetVersion.mockReturnValue('weird-version')
     mocks.fetchPackageVersions.mockImplementation(
       async (_names: string[], options: { onPackageReady: (result: any) => void }) => {
@@ -989,7 +1002,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('detects a pure major update when no in-range version exists', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('major-only', '^1.0.0', '/repo/packages/a/package.json'),
       dep('major-only', '^1.0.0', '/repo/packages/b/package.json'),
     ])
@@ -1087,7 +1100,7 @@ describe('PackageDetector edge paths', () => {
     await expect(detector.streamOutdatedPackages(() => {}, controller.signal)).rejects.toThrow(
       'cancelled scan'
     )
-    expect(mocks.collectAllDependenciesAsync).not.toHaveBeenCalled()
+    expect(mocks.declaredDependencies).not.toHaveBeenCalled()
     expect(mocks.fetchPackageVersions).not.toHaveBeenCalled()
   })
 
@@ -1134,7 +1147,7 @@ describe('PackageDetector edge paths', () => {
   })
 
   it('warns once per registry that refused access, before the scan completes', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('@a/one', '^1.0.0'),
       dep('@a/two', '^1.0.0'),
       dep('@b/three', '^1.0.0'),
@@ -1254,9 +1267,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('reports a newer rc to a beta install (vuetify-nuxt-module bug report)', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
-      dep('vuetify-nuxt-module', '^1.0.0-beta.2'),
-    ])
+    mocks.declaredDependencies.mockResolvedValue([dep('vuetify-nuxt-module', '^1.0.0-beta.2')])
     mockRegistry({
       'vuetify-nuxt-module': {
         latestVersion: '0.19.5',
@@ -1297,7 +1308,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('reports a newer preview build to a preview install (next-style tags)', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('next', '16.0.0-preview.9')])
+    mocks.declaredDependencies.mockResolvedValue([dep('next', '16.0.0-preview.9')])
     mockRegistry({
       next: {
         latestVersion: '15.5.4',
@@ -1319,7 +1330,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('never surfaces prereleases to a stable install', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.2.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.2.0')])
     mockRegistry({
       lib: {
         latestVersion: '1.2.0',
@@ -1341,7 +1352,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('offers both the same-tuple rc and the newer stable major to a beta install', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
     mockRegistry({
       lib: {
         latestVersion: '2.0.0',
@@ -1368,7 +1379,7 @@ describe('PackageDetector prerelease handling', () => {
       patterns.includes(name)
     )
     try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+      mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
       mockRegistry({
         lib: {
           latestVersion: '2.0.0',
@@ -1396,7 +1407,7 @@ describe('PackageDetector prerelease handling', () => {
     // Hard invariant: a stable install is never offered a prerelease, even
     // when the package has zero stable publishes — same behavior as before
     // prerelease support (unavailable), not a ^1.0.0-alpha.2 suggestion.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^0.9.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('early-lib', '^0.9.0')])
     mockRegistry({
       'early-lib': {
         latestVersion: '1.0.0-alpha.2',
@@ -1420,10 +1431,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('skips wildcard specifiers instead of resolving them to 0.0.0', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
-      dep('anything-goes', 'x'),
-      dep('star', '*'),
-    ])
+    mocks.declaredDependencies.mockResolvedValue([dep('anything-goes', 'x'), dep('star', '*')])
     mockRegistry({
       'anything-goes': { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
       star: { latestVersion: '2.5.1', allVersions: ['2.5.1', '1.0.0'] },
@@ -1439,7 +1447,7 @@ describe('PackageDetector prerelease handling', () => {
     // same-tuple bump exists and no major is crossed, but latest must still
     // show it — otherwise headless --target latest writes a version the
     // interactive UI never displayed.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
     mockRegistry({
       lib: {
         latestVersion: '0.19.5',
@@ -1465,7 +1473,7 @@ describe('PackageDetector prerelease handling', () => {
       patterns.includes(name)
     )
     try {
-      mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+      mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
       mockRegistry({
         lib: {
           latestVersion: '0.19.5',
@@ -1490,7 +1498,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('resolves prerelease-only packages instead of marking them unavailable', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
+    mocks.declaredDependencies.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
     mockRegistry({
       'early-lib': {
         latestVersion: '1.0.0-beta.2',
@@ -1513,7 +1521,7 @@ describe('PackageDetector prerelease handling', () => {
   it('falls back to the reported latest when the version lists are empty', async () => {
     // Degenerate blob: a latest version but no version lists at all. The
     // effective-latest computation must fall back rather than crash or blank.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
     mockRegistry({
       lib: { latestVersion: '1.0.0-rc.3', allVersions: [] },
     })
@@ -1528,7 +1536,7 @@ describe('PackageDetector prerelease handling', () => {
   })
 
   it('tolerates registry data without a prereleaseVersions field (pre-v2 shape)', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
+    mocks.declaredDependencies.mockResolvedValue([dep('lib', '^1.0.0-beta.2')])
     mockRegistry({
       lib: { latestVersion: '0.19.5', allVersions: ['0.19.5'] },
     })
@@ -1562,7 +1570,7 @@ describe('PackageDetector range target follows the specifier operator', () => {
   }
 
   const resolve = async (name: keyof typeof REGISTRY, specifier: string, ignoreMajor?: string) => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep(name, specifier)])
+    mocks.declaredDependencies.mockResolvedValue([dep(name, specifier)])
     mocks.fetchPackageVersions.mockImplementation(
       async (packageNames: string[], options: { onPackageReady: (result: any) => void }) => {
         for (const packageName of packageNames) {
@@ -1673,7 +1681,7 @@ describe('PackageDetector concurrency plumbing', () => {
     mocks.findPackageJson.mockReturnValue('/repo/package.json')
     mocks.readPackageJson.mockReturnValue({ name: 'fixture' })
     mocks.findAllPackageJsonFilesAsync.mockResolvedValue(['/repo/package.json'])
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       {
         name: 'zod',
         version: '^1.0.0',
@@ -1828,7 +1836,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('only requests the full packument when the cooldown is enabled', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({ axios: { latestVersion: '1.0.0', allVersions: ['1.0.0'] } })
 
     await new PackageDetector({ cwd: '/repo' }).streamOutdatedPackages(logWarnings)
@@ -1843,7 +1851,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('withholds a too-fresh stable release and falls back to the newest eligible one', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.2.0',
@@ -1874,7 +1882,7 @@ describe('PackageDetector release-age cooldown', () => {
   it('withholds a too-fresh PRERELEASE from a prerelease install', async () => {
     // The gap PR #87 left open: gating only the stable pool lets a compromised
     // prerelease straight through for anyone on the prerelease channel.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.2')])
+    mocks.declaredDependencies.mockResolvedValue([dep('early-lib', '^1.0.0-beta.2')])
     mockRegistry({
       'early-lib': {
         latestVersion: '0.9.0',
@@ -1901,7 +1909,7 @@ describe('PackageDetector release-age cooldown', () => {
   it('never falls back onto the prerelease pool when every stable release is too fresh', () => {
     // A package with stable publishes must not silently switch channels just
     // because its recent stable releases are inside the window.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.1.0',
@@ -1924,7 +1932,7 @@ describe('PackageDetector release-age cooldown', () => {
   it('drops deprecation and engines signals when the cooldown changes the latest', () => {
     // Those signals describe the true latest; attributing them to an older
     // effective latest would be a lie.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.2.0',
@@ -1944,7 +1952,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('keeps health signals when the cooldown withheld only versions below the latest', () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.2.0',
@@ -1967,7 +1975,7 @@ describe('PackageDetector release-age cooldown', () => {
     // Repeating it per location turns the debug log into noise at exactly the moment
     // someone is reading it to understand why an upgrade disappeared.
     vi.mocked(debugLog.info).mockClear()
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
+    mocks.declaredDependencies.mockResolvedValue([
       dep('axios', '^1.0.0', '/repo/packages/a/package.json'),
       dep('axios', '^1.0.0', '/repo/packages/b/package.json'),
       dep('axios', '^1.0.0', '/repo/packages/c/package.json'),
@@ -1998,7 +2006,7 @@ describe('PackageDetector release-age cooldown', () => {
     // The stable install can never be offered 7.0.0-dev.1, so naming it as held back
     // would invent a missed upgrade that was never on the table. The gate still applies
     // to both channels — only the reporting narrows.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('typescript', '^6.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('typescript', '^6.0.0')])
     mockRegistry({
       typescript: {
         latestVersion: '6.0.3',
@@ -2023,7 +2031,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('does report a withheld prerelease to a prerelease install', async () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('typescript', '^7.0.0-dev.1')])
+    mocks.declaredDependencies.mockResolvedValue([dep('typescript', '^7.0.0-dev.1')])
     mockRegistry({
       typescript: {
         latestVersion: '6.0.3',
@@ -2054,7 +2062,7 @@ describe('PackageDetector release-age cooldown', () => {
     const { isPackageIgnored } = await import('../../../../src/shared/config')
     vi.mocked(isPackageIgnored).mockImplementation(actualConfig.isPackageIgnored)
 
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('@myco/ui', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('@myco/ui', '^1.0.0')])
     mockRegistry({
       '@myco/ui': {
         latestVersion: '1.2.0',
@@ -2076,7 +2084,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('is inert when disabled or when nothing falls inside the window', () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.2.0',
@@ -2097,7 +2105,7 @@ describe('PackageDetector release-age cooldown', () => {
     // A withheld version below the effective latest was never going to be offered,
     // so announcing it would be a false alarm on a control whose value is that its
     // alarms mean something.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: {
         latestVersion: '1.2.0',
@@ -2120,7 +2128,7 @@ describe('PackageDetector release-age cooldown', () => {
     // The package has zero stable publishes, so its true latest is a prerelease.
     // The fallback must stay on that channel rather than jumping to a stable pool
     // that does not exist.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-alpha.1')])
+    mocks.declaredDependencies.mockResolvedValue([dep('early-lib', '^1.0.0-alpha.1')])
     mockRegistry({
       'early-lib': {
         latestVersion: '1.0.0-alpha.3',
@@ -2146,7 +2154,7 @@ describe('PackageDetector release-age cooldown', () => {
     // Brand-new prerelease-only package: the whole pool is inside the window, so
     // the installed version becomes the effective latest rather than the run
     // offering a version the cooldown just withheld.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('brand-new', '^1.0.0-alpha.1')])
+    mocks.declaredDependencies.mockResolvedValue([dep('brand-new', '^1.0.0-alpha.1')])
     mockRegistry({
       'brand-new': {
         latestVersion: '1.0.0-alpha.2',
@@ -2179,7 +2187,7 @@ describe('PackageDetector release-age cooldown', () => {
     // The policy fails open on missing `time`, so an inert cooldown produces an empty
     // held list — byte-identical to "every version is old enough". Callers need to be
     // able to tell those apart, or a disabled control reads as a passing check.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({
       axios: { latestVersion: '2.0.0', allVersions: ['2.0.0', '1.0.0'] },
     })
@@ -2196,10 +2204,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('reports the cooldown as supported once any packument carried publish times', () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([
-      dep('axios', '^1.0.0'),
-      dep('lodash', '^4.0.0'),
-    ])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0'), dep('lodash', '^4.0.0')])
     mockRegistry({
       axios: { latestVersion: '2.0.0', allVersions: ['2.0.0'] },
       lodash: {
@@ -2216,7 +2221,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('reports no diagnostics at all when the cooldown is disabled', () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({ axios: { latestVersion: '2.0.0', allVersions: ['2.0.0'] } })
 
     const detector = new PackageDetector({ cwd: '/repo' })
@@ -2227,7 +2232,7 @@ describe('PackageDetector release-age cooldown', () => {
 
   it('does not blame the registry when nothing resolved at all', () => {
     // A total fetch failure is not evidence that the registry lacks publish times.
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('axios', '^1.0.0')])
+    mocks.declaredDependencies.mockResolvedValue([dep('axios', '^1.0.0')])
     mockRegistry({ axios: { latestVersion: 'unknown', allVersions: [] } })
 
     const detector = new PackageDetector({ cwd: '/repo', minimumReleaseAge: 60 })
@@ -2237,7 +2242,7 @@ describe('PackageDetector release-age cooldown', () => {
   })
 
   it('counts every withheld version across both channels', () => {
-    mocks.collectAllDependenciesAsync.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
+    mocks.declaredDependencies.mockResolvedValue([dep('early-lib', '^1.0.0-beta.1')])
     mockRegistry({
       'early-lib': {
         latestVersion: '1.0.0',

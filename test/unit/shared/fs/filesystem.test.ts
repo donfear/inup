@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  collectAllDependenciesAsync,
+  collectDependenciesAsync,
   findAllPackageJsonFilesAsync,
   findPackageJson,
   findWorkspaceRoot,
@@ -97,7 +97,7 @@ describe('filesystem utils', () => {
     })
   })
 
-  describe('collectAllDependenciesAsync()', () => {
+  describe('collectDependenciesAsync()', () => {
     it('should collect dependencies and devDependencies by default', async () => {
       const packageJson = {
         name: 'test',
@@ -112,7 +112,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = await collectAllDependenciesAsync([path])
+      const result = await collectDependenciesAsync(path)
 
       expect(result).toHaveLength(3)
       expect(result).toContainEqual({
@@ -139,7 +139,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = await collectAllDependenciesAsync([path])
+      const result = await collectDependenciesAsync(path)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({
@@ -158,7 +158,7 @@ describe('filesystem utils', () => {
       const path = join(testDir, 'package.json')
       writeFileSync(path, JSON.stringify(packageJson))
 
-      const result = await collectAllDependenciesAsync([path])
+      const result = await collectDependenciesAsync(path)
 
       expect(result).toHaveLength(1)
       expect(result[0]).toMatchObject({
@@ -167,7 +167,7 @@ describe('filesystem utils', () => {
       })
     })
 
-    it('should skip malformed package.json files', async () => {
+    it('should declare nothing for a malformed package.json', async () => {
       const validPath = join(testDir, 'valid', 'package.json')
       const invalidPath = join(testDir, 'invalid', 'package.json')
 
@@ -177,30 +177,8 @@ describe('filesystem utils', () => {
       writeFileSync(validPath, JSON.stringify({ name: 'valid', dependencies: { chalk: '5.0.0' } }))
       writeFileSync(invalidPath, 'invalid json{')
 
-      const result = await collectAllDependenciesAsync([validPath, invalidPath])
-
-      expect(result).toHaveLength(1)
-      expect(result[0].name).toBe('chalk')
-    })
-
-    it('should handle multiple package.json files', async () => {
-      const pkg1Path = join(testDir, 'pkg1', 'package.json')
-      const pkg2Path = join(testDir, 'pkg2', 'package.json')
-
-      mkdirSync(join(testDir, 'pkg1'), { recursive: true })
-      mkdirSync(join(testDir, 'pkg2'), { recursive: true })
-
-      writeFileSync(pkg1Path, JSON.stringify({ name: 'pkg1', dependencies: { chalk: '5.0.0' } }))
-      writeFileSync(
-        pkg2Path,
-        JSON.stringify({ name: 'pkg2', dependencies: { commander: '12.0.0' } })
-      )
-
-      const result = await collectAllDependenciesAsync([pkg1Path, pkg2Path])
-
-      expect(result).toHaveLength(2)
-      expect(result.find((d) => d.name === 'chalk')).toBeDefined()
-      expect(result.find((d) => d.name === 'commander')).toBeDefined()
+      expect(await collectDependenciesAsync(validPath)).toHaveLength(1)
+      expect(await collectDependenciesAsync(invalidPath)).toEqual([])
     })
   })
 
@@ -242,6 +220,20 @@ describe('filesystem utils', () => {
       })
 
       expect(progressCalls.length).toBeGreaterThan(0)
+    })
+
+    it('reports each package.json as it is found, in the order of the result', async () => {
+      writeFileSync(join(testDir, 'package.json'), '{}')
+      mkdirSync(join(testDir, 'packages', 'a'), { recursive: true })
+      writeFileSync(join(testDir, 'packages', 'a', 'package.json'), '{}')
+      const found: string[] = []
+
+      const result = await findAllPackageJsonFilesAsync(testDir, [], 10, undefined, {
+        onPackageJson: (path) => found.push(path),
+      })
+
+      expect(found).toEqual(result)
+      expect(found).toHaveLength(2)
     })
 
     it('ignores a directory literally named package.json', async () => {
