@@ -40,12 +40,13 @@ vi.mock('../../../../src/shared/registry/rust-core', async (importOriginal) => (
   nativeTransport: nativeTransportMock,
 }))
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { debugLog } from '../../../../src/shared/debug-logger'
 import {
+  etagFileFor,
   readEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
@@ -85,14 +86,14 @@ const makeErrBody = (statusCode: number): MockResponse => ({
 })
 
 describe('npm-registry', () => {
-  const requestMock = vi.fn<(opts: { path: string }) => Promise<MockResponse>>()
+  const requestMock = vi.fn<(opts: { path: string; method?: string }) => Promise<MockResponse>>()
 
   // Responses have the shape httpRequest resolves: status, headers and a
   // streamed body (the test's chunks, or the whole body as one chunk).
   const poolRequestSpy = requestSpy
   const defaultRequest = async (opts: unknown) => {
-    const { path } = opts as { path: string }
-    const response = await requestMock({ path })
+    const { path, method } = opts as { path: string; method?: string }
+    const response = await requestMock(method ? { path, method } : { path })
     if (response.delayMs) {
       await new Promise((resolve) => setTimeout(resolve, response.delayMs))
     }
@@ -568,6 +569,308 @@ describe('npm-registry', () => {
     ])
   })
 
+  describe('latest probe', () => {
+    const packument = makeOkBody({ versions: { '1.0.0': {}, '1.2.0': {}, '2.0.0': {} } })
+    const latest = (version: string, extra: object = {}) => makeOkBody({ version, ...extra })
+    /** Answers `/<name>/latest` with `probe` and everything else with the packument. */
+    const serve = (probe: MockResponse | ((path: string) => MockResponse)) =>
+      requestMock.mockImplementation(async ({ path }) => {
+        if (!path.endsWith('/latest')) return packument
+        return typeof probe === 'function' ? probe(path) : probe
+      })
+    const paths = () =>
+      requestMock.mock.calls.map(([opts]) =>
+        opts.method ? `${opts.method} ${opts.path}` : opts.path
+      )
+    const probing = (...names: string[]) => new Map(names.map((name) => [name, '2.0.0']))
+
+    it('settles a package on the latest version without downloading its version list', async () => {
+      serve(
+        latest('2.0.0', {
+          deprecated: 'use\x1b]0;x\x07 other',
+          engines: { node: '>=20\x1b[2J' },
+        })
+      )
+      const timings: string[] = []
+
+      const result = await fetchPackageVersions(['demo-pkg'], {
+        latestProbes: probing('demo-pkg'),
+        onPackageTiming: (name) => timings.push(name),
+      })
+
+      // No HEAD either: with the ETag store off there is nowhere to keep its answer.
+      expect(paths()).toEqual(['/demo-pkg/latest'])
+      const opts = poolRequestSpy.mock.calls[0][0] as {
+        headers: Record<string, string>
+        pool?: string
+      }
+      expect(opts.headers.accept).toBe('application/json')
+      expect(opts.headers.authorization).toBeUndefined()
+      expect(opts.pool).toBe('probe')
+      expect(timings).toEqual(['demo-pkg'])
+      expect(result.get('demo-pkg')).toEqual({
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0'],
+        deprecated: 'use other',
+        enginesNode: '>=20',
+      })
+    })
+
+    it('decodes a compressed answer and sends the registry credentials', async () => {
+      registryTargetMock.mockReturnValueOnce({
+        origin: 'https://registry.example.com',
+        pathPrefix: '/npm',
+        authHeader: 'Bearer sekret',
+      })
+      poolRequestSpy.mockImplementationOnce(async () => ({
+        statusCode: 200,
+        headers: { 'content-encoding': 'GZIP' },
+        body: { ...streamOf(gzipSync(JSON.stringify({ version: '1.0.0' }))), dump: async () => {} },
+      }))
+
+      const result = await fetchPackageVersions(['@myco/pkg'], {
+        latestProbes: new Map([['@myco/pkg', '1.0.0']]),
+      })
+
+      const opts = poolRequestSpy.mock.calls[0][0] as {
+        path: string
+        headers: Record<string, string>
+      }
+      expect(opts.path).toBe('/npm/@myco/pkg/latest')
+      expect(opts.headers.authorization).toBe('Bearer sekret')
+      expect(result.get('@myco/pkg')).toMatchObject({
+        latestVersion: '1.0.0',
+        allVersions: ['1.0.0'],
+      })
+    })
+
+    it('fetches the version list when the latest tag names another version', async () => {
+      serve(latest('2.0.0'))
+
+      const result = await fetchPackageVersions(['demo-pkg'], {
+        latestProbes: new Map([['demo-pkg', '1.2.0']]),
+      })
+
+      expect(paths()).toEqual(['/demo-pkg/latest', '/demo-pkg'])
+      expect(result.get('demo-pkg')).toEqual({
+        latestVersion: '2.0.0',
+        allVersions: ['2.0.0', '1.2.0', '1.0.0'],
+        prereleaseVersions: [],
+      })
+    })
+
+    it('probes only the packages it is given a version for', async () => {
+      serve(latest('2.0.0'))
+
+      await fetchPackageVersions(['probed', 'listed'], { latestProbes: probing('probed') })
+
+      expect(paths().sort()).toEqual(['/listed', '/probed/latest'])
+    })
+
+    it('never probes for a release-age cooldown, which needs the publish times', async () => {
+      serve(latest('2.0.0'))
+
+      await fetchPackageVersions(['demo-pkg'], {
+        fullMetadata: true,
+        latestProbes: probing('demo-pkg'),
+      })
+
+      expect(paths()).toEqual(['/demo-pkg'])
+    })
+
+    it.each([
+      ['a 404', makeErrBody(404)],
+      ['a 401', makeErrBody(401)],
+      ['a 503', makeErrBody(503)],
+      ['a body without a version', makeOkBody({ versions: { '2.0.0': {} } })],
+      ['a body that is not JSON', { statusCode: 200, body: '<html>' }],
+      ['a JSON null', { statusCode: 200, body: 'null' }],
+    ])('falls back to the version list after %s', async (_label, answer) => {
+      serve(answer)
+
+      const result = await fetchPackageVersions(['demo-pkg'], { latestProbes: probing('demo-pkg') })
+
+      expect(paths()).toEqual(['/demo-pkg/latest', '/demo-pkg'])
+      expect(result.get('demo-pkg')?.allVersions).toEqual(['2.0.0', '1.2.0', '1.0.0'])
+    })
+
+    it('falls back to the version list after a network error', async () => {
+      serve(() => {
+        throw new Error('socket hang up')
+      })
+
+      const result = await fetchPackageVersions(['demo-pkg'], { latestProbes: probing('demo-pkg') })
+
+      expect(paths()).toEqual(['/demo-pkg/latest', '/demo-pkg'])
+      expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+    })
+
+    it('drains a refused answer even when the drain fails', async () => {
+      poolRequestSpy.mockImplementationOnce(async () => ({
+        statusCode: 404,
+        headers: {},
+        body: {
+          ...streamOf(Buffer.alloc(0)),
+          dump: async () => {
+            throw new Error('drain failed')
+          },
+        },
+      }))
+      requestMock.mockResolvedValue(packument)
+
+      const result = await fetchPackageVersions(['demo-pkg'], { latestProbes: probing('demo-pkg') })
+
+      expect(result.get('demo-pkg')?.allVersions).toEqual(['2.0.0', '1.2.0', '1.0.0'])
+    })
+
+    describe('yield', () => {
+      const names = (count: number, prefix = 'pkg') =>
+        Array.from({ length: count }, (_, i) => `${prefix}-${String(i).padStart(2, '0')}`)
+      const probesSent = () => paths().filter((path) => path.endsWith('/latest')).length
+
+      it('stops probing once fewer than a third of the answers found the package current', async () => {
+        serve(latest('3.0.0'))
+        const all = names(30)
+
+        // Pinned to one: probes go out one at a time, so the yield is judged after each.
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(24)
+        expect(paths().filter((path) => !path.endsWith('/latest'))).toHaveLength(30)
+      })
+
+      it('keeps probing while a third of the answers find the package current', async () => {
+        serve((path) => latest(Number(path.slice(-9, -7)) % 3 === 0 ? '2.0.0' : '3.0.0'))
+        const all = names(30)
+
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(30)
+      })
+
+      it('counts registries that answer without a version document as not paying', async () => {
+        serve(makeErrBody(404))
+        const all = names(30)
+
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(24)
+      })
+
+      it('does not count failures, which say nothing about the registry', async () => {
+        serve(makeErrBody(500))
+        const all = names(30)
+
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(30)
+      })
+
+      it.each([429, 503])('stops probing a registry that answers %i', async (status) => {
+        serve(makeErrBody(status))
+        const all = names(30)
+
+        await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+
+        expect(probesSent()).toBe(1)
+        expect(paths().filter((path) => !path.endsWith('/latest'))).toHaveLength(30)
+      })
+
+      it('judges each registry on its own answers', async () => {
+        registryTargetMock.mockImplementation((name: string) =>
+          name.startsWith('@private/')
+            ? { origin: 'https://npm.example.com', pathPrefix: '' }
+            : { origin: 'https://registry.npmjs.org', pathPrefix: '' }
+        )
+        serve((path) => (path.startsWith('/@private/') ? makeErrBody(404) : latest('2.0.0')))
+        const all = [...names(30, '@private/pkg'), ...names(30, 'public')]
+
+        try {
+          await fetchPackageVersions(all, { concurrency: 1, latestProbes: probing(...all) })
+        } finally {
+          registryTargetMock.mockReset()
+          registryTargetMock.mockReturnValue({
+            origin: 'https://registry.npmjs.org',
+            pathPrefix: '',
+          })
+        }
+
+        const sent = paths().filter((path) => path.endsWith('/latest'))
+        expect(sent.filter((path) => path.startsWith('/@private/'))).toHaveLength(24)
+        expect(sent.filter((path) => path.startsWith('/public'))).toHaveLength(30)
+      })
+    })
+
+    it('probes beside the controlled pool and never feeds the controller', async () => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        inFlight--
+        return latest('2.0.0')
+      })
+      const all = Array.from({ length: 40 }, (_, i) => `pkg-${i}`)
+      const ticks: ControlTick[] = []
+
+      await fetchPackageVersions(all, {
+        latestProbes: probing(...all),
+        onControlTick: (tick) => ticks.push(tick),
+      })
+
+      // The controller starts at 4 slots; the probe lane is wider than the whole pool.
+      expect(peak).toBeGreaterThan(4)
+      expect(ticks).toEqual([])
+    })
+
+    it('keeps a pinned limit across probes and version lists', async () => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async ({ path }) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 2))
+        inFlight--
+        return path.endsWith('/latest') ? latest('3.0.0') : packument
+      })
+      const all = Array.from({ length: 8 }, (_, i) => `pkg-${i}`)
+
+      await fetchPackageVersions(all, { concurrency: 2, latestProbes: probing(...all) })
+
+      expect(requestMock).toHaveBeenCalledTimes(16)
+      expect(peak).toBe(2)
+    })
+
+    it('turns a cancelled probe into the abort error of the run', async () => {
+      const controller = new AbortController()
+      poolRequestSpy.mockImplementationOnce(async () => {
+        controller.abort(new Error('cancelled mid-probe'))
+        throw new Error('aborted')
+      })
+
+      await expect(
+        fetchPackageVersions(['demo-pkg'], {
+          signal: controller.signal,
+          latestProbes: probing('demo-pkg'),
+        })
+      ).rejects.toThrow('cancelled mid-probe')
+      expect(poolRequestSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('settles a cancellable run from the probe too', async () => {
+      serve(latest('2.0.0'))
+
+      const result = await fetchPackageVersions(['demo-pkg'], {
+        signal: new AbortController().signal,
+        latestProbes: probing('demo-pkg'),
+      })
+
+      expect(paths()).toEqual(['/demo-pkg/latest'])
+      expect(result.get('demo-pkg')?.latestVersion).toBe('2.0.0')
+    })
+  })
+
   describe('adaptive concurrency', () => {
     // Instrument the mock to record the peak number of simultaneously in-flight
     // requests, with a small delay so requests actually overlap.
@@ -1040,6 +1343,158 @@ describe('npm-registry', () => {
       })
     })
 
+    describe('with the latest probe', () => {
+      const probes = new Map([['demo-pkg', '1.1.0']])
+      const listKey = 'https://registry.npmjs.org/demo-pkg'
+      const probedKey = `${listKey}#latest`
+      const settled = { latestVersion: '1.1.0', allVersions: ['1.1.0'] }
+      const list = (etag?: string): MockResponse => ({
+        statusCode: 200,
+        body: JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {}, '1.2.0': {} } }),
+        headers: etag ? { etag } : {},
+      })
+      const sent = () =>
+        poolRequestSpy.mock.calls.map(([opts]) => {
+          const o = opts as { path: string; method?: string; headers: Record<string, string> }
+          return [o.method ?? 'GET', o.path, o.headers['if-none-match'] ?? '-'].join(' ')
+        })
+      /** A first run: the probe finds 1.1.0 current and the HEAD answers `head`. */
+      const probeRun = async (head: MockResponse | Error) => {
+        requestMock.mockImplementation(async ({ path, method }) => {
+          if (method === 'HEAD') {
+            if (head instanceof Error) throw head
+            return head
+          }
+          return path.endsWith('/latest') ? makeOkBody({ version: '1.1.0' }) : list()
+        })
+        const result = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+        clearPackageCache()
+        requestMock.mockReset()
+        poolRequestSpy.mockClear()
+        return result
+      }
+
+      it('revalidates a cached version list instead of probing', async () => {
+        requestMock.mockResolvedValueOnce(list('W/"v1"'))
+        await fetchPackageVersions(['demo-pkg'])
+        clearPackageCache()
+        requestMock.mockReset()
+        poolRequestSpy.mockClear()
+        requestMock.mockResolvedValue({ statusCode: 304, body: '' })
+
+        const result = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(sent()).toEqual(['GET /demo-pkg W/"v1"'])
+        expect(result.get('demo-pkg')?.allVersions).toEqual(['1.2.0', '1.1.0', '1.0.0'])
+      })
+
+      it('keeps the version list ETag from a HEAD, and the next run revalidates it', async () => {
+        const first = await probeRun({ statusCode: 200, body: '', headers: { etag: 'W/"v1"' } })
+        expect(first.get('demo-pkg')).toMatchObject(settled)
+        expect(readEtag(probedKey)?.etag).toBe('W/"v1"')
+        expect(readEtag(listKey)).toBeNull()
+
+        requestMock.mockResolvedValue({ statusCode: 304, body: '' })
+        const second = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(sent()).toEqual(['GET /demo-pkg W/"v1"'])
+        expect(second.get('demo-pkg')).toMatchObject(settled)
+        expect(readEtag(probedKey)?.etag).toBe('W/"v1"')
+      })
+
+      it('sends the HEAD on the probe pool with the version list media type', async () => {
+        registryTargetMock.mockReturnValueOnce({
+          origin: 'https://registry.npmjs.org',
+          pathPrefix: '',
+          authHeader: 'Bearer sekret',
+        })
+        requestMock.mockImplementation(async ({ path, method }) =>
+          method === 'HEAD' || !path.endsWith('/latest')
+            ? { statusCode: 200, body: '', headers: { etag: 'W/"v1"' } }
+            : makeOkBody({ version: '1.1.0' })
+        )
+
+        await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        const head = poolRequestSpy.mock.calls
+          .map(
+            ([opts]) => opts as { method?: string; path: string; pool?: string; headers: object }
+          )
+          .find((opts) => opts.method === 'HEAD')
+        expect(head).toMatchObject({
+          path: '/demo-pkg',
+          pool: 'probe',
+          headers: {
+            accept: 'application/vnd.npm.install-v1+json',
+            authorization: 'Bearer sekret',
+          },
+        })
+      })
+
+      it.each([
+        ['answers without an ETag', { statusCode: 200, body: '' }],
+        ['is refused', { statusCode: 403, body: '' }],
+        ['fails', new Error('socket hang up')],
+      ])('probes again next run when the HEAD %s', async (_label, head) => {
+        await probeRun(head as MockResponse | Error)
+        expect(readEtag(probedKey)).toBeNull()
+
+        requestMock.mockResolvedValue(makeOkBody({ version: '1.1.0' }))
+        await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(sent()[0]).toBe('GET /demo-pkg/latest -')
+      })
+
+      it('moves a changed version list to the list entry', async () => {
+        await probeRun({ statusCode: 200, body: '', headers: { etag: 'W/"v1"' } })
+
+        requestMock.mockResolvedValue(list('W/"v2"'))
+        const changed = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(sent()).toEqual(['GET /demo-pkg W/"v1"'])
+        expect(changed.get('demo-pkg')?.latestVersion).toBe('1.2.0')
+        expect(readEtag(probedKey)).toBeNull()
+        expect(readEtag(listKey)?.etag).toBe('W/"v2"')
+
+        // The package is behind now: its list is revalidated from here on.
+        clearPackageCache()
+        poolRequestSpy.mockClear()
+        requestMock.mockResolvedValue({ statusCode: 304, body: '' })
+        await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+        expect(sent()).toEqual(['GET /demo-pkg W/"v2"'])
+      })
+
+      it('drops the entry when the changed version list comes without an ETag', async () => {
+        await probeRun({ statusCode: 200, body: '', headers: { etag: 'W/"v1"' } })
+
+        requestMock.mockResolvedValue(list())
+        const changed = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(changed.get('demo-pkg')?.latestVersion).toBe('1.2.0')
+        expect(readEtag(probedKey)).toBeNull()
+        expect(readEtag(listKey)).toBeNull()
+      })
+
+      it('ignores an entry made for another version', async () => {
+        await probeRun({ statusCode: 200, body: '', headers: { etag: 'W/"v1"' } })
+
+        requestMock.mockResolvedValue(makeOkBody({ version: '1.1.0' }))
+        await fetchPackageVersions(['demo-pkg'], { latestProbes: new Map([['demo-pkg', '1.0.0']]) })
+
+        expect(sent()[0]).toBe('GET /demo-pkg/latest -')
+      })
+
+      it('uses neither the entry nor the probe for a declaration it was not given for', async () => {
+        await probeRun({ statusCode: 200, body: '', headers: { etag: 'W/"v1"' } })
+
+        requestMock.mockResolvedValue(list('W/"v1"'))
+        const result = await fetchPackageVersions(['demo-pkg'])
+
+        expect(sent()).toEqual(['GET /demo-pkg -'])
+        expect(result.get('demo-pkg')?.allVersions).toEqual(['1.2.0', '1.1.0', '1.0.0'])
+      })
+    })
+
     describe('with a release-age cooldown (fullMetadata)', () => {
       const fullBody = {
         versions: { '1.0.0': {}, '1.1.0': {} },
@@ -1212,6 +1667,70 @@ describe('npm-registry', () => {
         expect(request.authorization).toBe('Bearer secret')
         expect(request.cacheFile.startsWith(etagTestRoot)).toBe(true)
         expect(requestMock).not.toHaveBeenCalled()
+      })
+
+      it('probes through the JS transport and fetches a moved package natively', async () => {
+        const { fetch } = useTransport(outcome({}))
+        requestMock.mockImplementation(async ({ method }) =>
+          method === 'HEAD' ? makeErrBody(404) : makeOkBody({ version: '2.0.0' })
+        )
+
+        const result = await fetchPackageVersions(['current', 'behind'], {
+          latestProbes: new Map([
+            ['current', '2.0.0'],
+            ['behind', '1.0.0'],
+          ]),
+        })
+
+        expect(requestMock.mock.calls.map(([opts]) => opts.path).sort()).toEqual([
+          '/behind/latest',
+          '/current',
+          '/current/latest',
+        ])
+        expect(fetch).toHaveBeenCalledTimes(1)
+        expect((fetch.mock.calls[0][0] as { url: string }).url).toBe(
+          'https://registry.npmjs.org/behind'
+        )
+        expect(result.get('current')?.allVersions).toEqual(['2.0.0'])
+        expect(result.get('behind')?.allVersions).toEqual(['2.0.0', '1.0.0'])
+      })
+
+      it("revalidates a probe's entry natively and moves a changed list where lists live", async () => {
+        const listKey = 'https://registry.npmjs.org/demo-pkg'
+        const probedFile = etagFileFor(`${listKey}#latest`) as string
+        writeFileSync(
+          probedFile,
+          JSON.stringify({
+            etag: 'W/"v1"',
+            data: { latestVersion: '2.0.0', allVersions: ['2.0.0'] },
+          })
+        )
+        const { fetch } = useTransport(
+          outcome({
+            dataJson: JSON.stringify({ latestVersion: '2.0.0', allVersions: ['2.0.0'] }),
+            revalidated: true,
+            bytes: 0,
+          })
+        )
+        const probes = new Map([['demo-pkg', '2.0.0']])
+
+        const unchanged = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect((fetch.mock.calls[0][0] as { cacheFile: string }).cacheFile).toBe(probedFile)
+        expect(unchanged.get('demo-pkg')?.allVersions).toEqual(['2.0.0'])
+        expect(requestMock).not.toHaveBeenCalled()
+
+        // The list changed: the native transport wrote the whole list over the entry.
+        clearPackageCache()
+        fetch.mockImplementationOnce(async () => {
+          writeFileSync(probedFile, JSON.stringify({ etag: 'W/"v2"', data }))
+          return outcome({})
+        })
+        const changed = await fetchPackageVersions(['demo-pkg'], { latestProbes: probes })
+
+        expect(changed.get('demo-pkg')?.allVersions).toEqual(['2.0.0', '1.0.0'])
+        expect(readEtag(`${listKey}#latest`)).toBeNull()
+        expect(readEtag(listKey)).toEqual({ etag: 'W/"v2"', data })
       })
 
       it('strips terminal escape sequences from text the Rust core decoded', async () => {

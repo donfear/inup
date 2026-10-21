@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   etagCacheDir,
   etagFileFor,
+  hasEtag,
+  moveEtag,
   readEtag,
+  removeEtag,
   setEtagCacheEnabled,
   setEtagCacheRoot,
   writeEtag,
@@ -84,6 +87,43 @@ describe('etag-store', () => {
     writeFileSync(blocker, '')
     setEtagCacheRoot(blocker)
     expect(etagFileFor('/pkg')).toBeNull()
+  })
+
+  it('reports whether an entry is on disk without reading it', () => {
+    expect(hasEtag('/pkg')).toBe(false)
+    writeFileSync(etagFileFor('/pkg') as string, 'not json')
+    expect(hasEtag('/pkg')).toBe(true)
+
+    setEtagCacheEnabled(false)
+    expect(hasEtag('/pkg')).toBe(false)
+    setEtagCacheEnabled(true)
+
+    const blocker = join(testRoot, 'not-a-dir')
+    writeFileSync(blocker, '')
+    setEtagCacheRoot(blocker)
+    expect(hasEtag('/pkg')).toBe(false)
+  })
+
+  it('moves and removes entries, best-effort', () => {
+    writeEtag('/from', 'etag', data)
+    writeEtag('/to', 'old', data)
+    moveEtag('/from', '/to')
+    expect(readEtag('/from')).toBeNull()
+    expect(readEtag('/to')?.etag).toBe('etag')
+
+    removeEtag('/to')
+    expect(readEtag('/to')).toBeNull()
+    // Nothing to move or remove: no throw.
+    moveEtag('/missing', '/to')
+    removeEtag('/missing')
+    expect(hasEtag('/to')).toBe(false)
+
+    writeEtag('/kept', 'etag', data)
+    setEtagCacheEnabled(false)
+    moveEtag('/kept', '/to')
+    removeEtag('/kept')
+    setEtagCacheEnabled(true)
+    expect(readEtag('/kept')?.etag).toBe('etag')
   })
 
   it('resolves the cache dir under the configured root', () => {

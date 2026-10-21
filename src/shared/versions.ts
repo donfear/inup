@@ -10,6 +10,10 @@ export function toComparableVersion(version: string): string | null {
 
 export interface ParsedVersions {
   latestVersion: string
+  /**
+   * Stable versions, sorted descending. Just the latest one when the registry's `latest` tag
+   * showed the declared version is current, and the full list was never fetched.
+   */
   allVersions: string[]
   // Prerelease versions (any tag: alpha/beta/rc/preview/…), sorted descending.
   // Optional so callers tolerate data from sources that never carried it

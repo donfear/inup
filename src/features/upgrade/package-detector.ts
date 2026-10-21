@@ -50,9 +50,27 @@ interface PreparedDependencies {
   dependenciesByName: Map<string, DependencyEntry[]>
   uniquePackages: string[]
   currentVersions: Map<string, string>
+  /** Packages whose declarations all sit on one stable version, with that version. */
+  latestProbes: Map<string, string>
   /** `name` of every scanned package.json: the repo's own packages. */
   localPackageNames: Set<string>
   declaredVersions: Array<{ name: string; version: string }>
+}
+
+/**
+ * The stable version every declaration of a package is on, or null. Only then can the
+ * registry's `latest` tag alone show the package is up to date: two different versions cannot
+ * both be the latest, and a prerelease install needs the prerelease list.
+ */
+function sharedStableVersion(declarations: DependencyEntry[]): string | null {
+  let shared: string | null = null
+  for (const dep of declarations) {
+    const version = parseCurrentVersion(dep.version)
+    if (!version || version.prerelease.length > 0) return null
+    if (shared !== null && version.version !== shared) return null
+    shared = version.version
+  }
+  return shared
 }
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
@@ -154,6 +172,7 @@ export class PackageDetector {
     await fetchPackageVersions(prepared.uniquePackages, {
       signal,
       currentVersions: prepared.currentVersions,
+      latestProbes: prepared.latestProbes,
       // Publish times live only in the full packument; fetch it only when the
       // release-age policy actually needs them.
       fullMetadata: this.minimumReleaseAge > 0,
@@ -387,9 +406,12 @@ export class PackageDetector {
 
     // First declaration wins, matching the order dependencies were collected.
     const currentVersions = new Map<string, string>()
+    const latestProbes = new Map<string, string>()
     const declaredVersions: Array<{ name: string; version: string }> = []
     for (const [name, group] of dependenciesByName) {
       currentVersions.set(name, group[0].version)
+      const shared = sharedStableVersion(group)
+      if (shared !== null) latestProbes.set(name, shared)
       for (const version of new Set(group.map((dep) => dep.version))) {
         declaredVersions.push({ name, version })
       }
@@ -399,6 +421,7 @@ export class PackageDetector {
       dependenciesByName,
       uniquePackages,
       currentVersions,
+      latestProbes,
       localPackageNames,
       declaredVersions,
     }

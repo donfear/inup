@@ -1,14 +1,15 @@
 import { once } from 'node:events'
 import http, { type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
 import https from 'node:https'
-import { POOL_CONNECTIONS } from '../config/constants'
+import { POOL_CONNECTIONS, PROBE_CONNECTIONS } from '../config/constants'
 
 /**
  * Minimal GET client on Node's built-in `http`/`https` modules: the TypeScript
  * registry transport, used whenever the native one is not.
  *
  * - One keep-alive agent per protocol, capped at the adaptive controller's
- *   ceiling so it is never silently throttled below its chosen limit.
+ *   ceiling so it is never silently throttled below its chosen limit. A second
+ *   pool serves `latest` probes, so they never queue behind downloads.
  * - The body is streamed raw: no automatic decompression, so the controller
  *   can account compressed bytes and the decoder gets the original encoding.
  * - A headers timeout catches stalled connections (they would otherwise be
@@ -30,7 +31,11 @@ export interface HttpResponse {
 export interface HttpRequestOptions {
   /** Path including query, e.g. `/@scope%2Fname`. */
   path: string
+  /** Default GET. A HEAD response has an empty body. */
+  method?: 'GET' | 'HEAD'
   headers: Record<string, string>
+  /** `probe`: the connection pool for `latest` probes instead of the download pool. */
+  pool?: 'probe'
   /** Time allowed until response headers arrive (connect included). */
   headersTimeoutMs: number
   signal?: AbortSignal
@@ -41,10 +46,11 @@ export class HeadersTimeoutError extends Error {
   override readonly name = 'HeadersTimeoutError'
 }
 
-const agents = {
-  'http:': new http.Agent({ keepAlive: true, maxSockets: POOL_CONNECTIONS, scheduling: 'lifo' }),
-  'https:': new https.Agent({ keepAlive: true, maxSockets: POOL_CONNECTIONS, scheduling: 'lifo' }),
-}
+const agentsFor = (maxSockets: number) => ({
+  'http:': new http.Agent({ keepAlive: true, maxSockets, scheduling: 'lifo' }),
+  'https:': new https.Agent({ keepAlive: true, maxSockets, scheduling: 'lifo' }),
+})
+const pools = { default: agentsFor(POOL_CONNECTIONS), probe: agentsFor(PROBE_CONNECTIONS) }
 
 function bodyOf(response: IncomingMessage): HttpResponseBody {
   return {
@@ -71,9 +77,9 @@ export function httpRequest(origin: string, options: HttpRequestOptions): Promis
         hostname: url.hostname.replace(/^\[(.*)\]$/, '$1'),
         port: url.port || undefined,
         path: options.path,
-        method: 'GET',
+        method: options.method ?? 'GET',
         headers: options.headers,
-        agent: agents[protocol],
+        agent: pools[options.pool ?? 'default'][protocol],
         signal: options.signal,
       },
       (response) => {

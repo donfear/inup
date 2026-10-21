@@ -1253,6 +1253,38 @@ describe('PackageDetector prerelease handling', () => {
     mocks.fetchPackageVersions.mockReset()
   })
 
+  it('reads a package the latest probe settled as up to date, keeping its health signals', async () => {
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      dep('request', '^2.88.2'),
+      dep('request', '2.88.2', '/repo/a/package.json'),
+    ])
+    mockRegistry({
+      request: {
+        latestVersion: '2.88.2',
+        allVersions: ['2.88.2'],
+        deprecated: 'request has been deprecated',
+        enginesNode: '>= 6',
+      },
+    })
+
+    const detector = new PackageDetector({ cwd: '/repo' })
+    const packages = await detector.streamOutdatedPackages(() => {})
+
+    expect(packages).toHaveLength(2)
+    for (const pkg of packages) {
+      expect(pkg).toMatchObject({
+        latestVersion: '2.88.2',
+        isOutdated: false,
+        hasRangeUpdate: false,
+        hasMajorUpdate: false,
+        allVersions: ['2.88.2'],
+        deprecated: 'request has been deprecated',
+        enginesNode: '>= 6',
+      })
+      expect(pkg.rangeVersion).toBe(pkg.currentVersion)
+    }
+  })
+
   it('reports a newer rc to a beta install (vuetify-nuxt-module bug report)', async () => {
     mocks.collectAllDependenciesAsync.mockResolvedValue([
       dep('vuetify-nuxt-module', '^1.0.0-beta.2'),
@@ -1716,6 +1748,35 @@ describe('PackageDetector concurrency plumbing', () => {
     expect(onNetworkProfile).toBeTypeOf('function')
     onNetworkProfile(storedProfile)
     expect(mocks.setNetworkProfile).toHaveBeenCalledWith(storedProfile)
+  })
+
+  it('asks for a latest probe only where every declaration is on one stable version', async () => {
+    const declare = (name: string, version: string, packageJsonPath = '/repo/package.json') => ({
+      name,
+      version,
+      type: 'dependencies',
+      packageJsonPath,
+    })
+    mocks.collectAllDependenciesAsync.mockResolvedValue([
+      declare('zod', '^3.2.0'),
+      declare('react', '^19.1.0'),
+      declare('react', '~19.1.0', '/repo/a/package.json'),
+      declare('react', '19.1.0', '/repo/b/package.json'),
+      declare('vite', '^6.0.0'),
+      declare('vite', '^7.0.0', '/repo/a/package.json'),
+      declare('next', '^16.0.0-canary.3'),
+      declare('lodash', '^4.17.21'),
+      declare('lodash', '5.0.0-rc.1', '/repo/a/package.json'),
+    ])
+
+    await run()
+
+    expect(fetchOptions.latestProbes).toEqual(
+      new Map([
+        ['zod', '3.2.0'],
+        ['react', '19.1.0'],
+      ])
+    )
   })
 
   it('ignores the deprecated adaptive option', async () => {

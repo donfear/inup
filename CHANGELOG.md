@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Runs without a warm cache (a new machine, CI) download far less. For a dependency already on its latest version, inup now asks the registry for just that version, a few KB, instead of the package's full version list, which can run to megabytes. To tell, it trusts the version the registry tags `latest`, as `npm outdated` does. Later runs check these packages as cheaply as before.
+
 ## [1.8.5] - 2026-10-10
 
 ### Added
