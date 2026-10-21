@@ -300,6 +300,8 @@ describe('UpgradeRunner terminal handoff', () => {
       snapshotsAtPackage.push(seenProgress?.slowNetwork)
     })
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      // The detector awaits discovery I/O before any package arrives; the picker is up by then.
+      await Promise.resolve()
       onEvent({
         type: 'initial',
         payload: {
@@ -348,16 +350,21 @@ describe('UpgradeRunner terminal handoff', () => {
     expect(seenProgress?.slowNetwork).toBe(false) // and clear again on recovery
   })
 
-  it('mounts before discovery, refreshes scan status, and defers warnings until screen release', async () => {
+  it('starts discovery, then mounts, refreshes scan status, and defers warnings until screen release', async () => {
     const order: string[] = []
     let liveProgress!: PackageLoadProgress
     let finish!: () => void
+    let markMounted!: () => void
+    const mounted = new Promise<void>((resolve) => {
+      markMounted = resolve
+    })
     const refresh = vi.fn(() => order.push(liveProgress.phase))
     mocks.selectPackagesToUpgradeProgressive.mockImplementation((_selection, progress, ready) => {
       liveProgress = progress
       order.push('mounted')
       expect(progress.phase).toBe('discovering')
       ready({ refresh, abort: vi.fn() })
+      markMounted()
       return new Promise((resolve) => {
         finish = () => {
           order.push('released')
@@ -368,13 +375,14 @@ describe('UpgradeRunner terminal handoff', () => {
     })
     mocks.streamOutdatedPackages.mockImplementation(
       async (onEvent: StreamOutdatedPackagesCallback) => {
-        expect(order).toEqual(['mounted'])
+        order.push('scanning')
+        await mounted
         onEvent({
           type: 'status',
           payload: { progress: { ...liveProgress, phase: 'collecting', packageJsonFiles: 2 } },
         })
         onEvent({ type: 'warning', payload: { message: 'Skipped directory' } })
-        expect(order).toEqual(['mounted', 'collecting'])
+        expect(order).toEqual(['scanning', 'mounted', 'collecting'])
         onEvent({
           type: 'complete',
           payload: { packages: [], progress: { ...liveProgress, phase: 'done', isLoading: false } },
@@ -388,12 +396,170 @@ describe('UpgradeRunner terminal handoff', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       await new UpgradeRunner({ cwd: '/repo' }).run()
-      expect(order).toEqual(['mounted', 'collecting', 'done', 'released', 'warning'])
+      expect(order).toEqual(['scanning', 'mounted', 'collecting', 'done', 'released', 'warning'])
       expect(log).toHaveBeenCalledWith(expect.stringContaining('Everything is up to date'))
     } finally {
       warn.mockRestore()
       log.mockRestore()
     }
+  })
+
+  describe('with a confirmation before the picker opens', () => {
+    const streamedPackage = {
+      name: 'next',
+      currentVersion: '^1.0.0',
+      rangeVersion: '^1.1.0',
+      latestVersion: '^2.0.0',
+      type: 'dependencies',
+      packageJsonPath: '/repo/package.json',
+      isOutdated: true,
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+    }
+
+    /** A gate the test answers by hand, recording when it was asked. */
+    const manualGate = (order: string[]) => {
+      let answer!: (proceed: boolean) => void
+      const confirmStart = vi.fn(() => {
+        order.push('asked')
+        return new Promise<boolean>((resolve) => {
+          answer = resolve
+        })
+      })
+      return { confirmStart, answer: (proceed: boolean) => answer(proceed) }
+    }
+
+    it('loads packages while it waits, then opens the picker with what has loaded', async () => {
+      const order: string[] = []
+      const gate = manualGate(order)
+      let scanSignal!: AbortSignal
+      mocks.streamOutdatedPackages.mockImplementation(
+        async (onEvent: StreamOutdatedPackagesCallback, signal: AbortSignal) => {
+          scanSignal = signal
+          order.push('scanning')
+          // The detector awaits I/O before its first package; the gate is asked by then.
+          await Promise.resolve()
+          onEvent({
+            type: 'package',
+            payload: {
+              packageName: 'next',
+              packageInfo: [streamedPackage] as any,
+              progress: { phase: 'resolving', resolved: 1, total: 1, failed: 0, isLoading: true },
+            },
+          })
+          onEvent({
+            type: 'complete',
+            payload: {
+              packages: [streamedPackage] as any,
+              progress: { phase: 'done', resolved: 1, total: 1, failed: 0, isLoading: false },
+            },
+          })
+          order.push('loaded')
+          gate.answer(true)
+        }
+      )
+      let progressAtMount: PackageLoadProgress | undefined
+      const refresh = vi.fn()
+      mocks.selectPackagesToUpgradeProgressive.mockImplementation(
+        async (_selection, progress, ready) => {
+          order.push('mounted')
+          progressAtMount = { ...progress }
+          ready({ refresh, abort: vi.fn() })
+          return []
+        }
+      )
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        await new UpgradeRunner({ cwd: '/repo' }).run(gate.confirmStart)
+
+        expect(order).toEqual(['scanning', 'asked', 'loaded', 'mounted'])
+        // Rows streamed in before the picker existed, with nothing to refresh yet.
+        expect(mocks.insertResolvedPackages).toHaveBeenCalledTimes(1)
+        expect(refresh).not.toHaveBeenCalled()
+        expect(progressAtMount).toMatchObject({ phase: 'done', resolved: 1, isLoading: false })
+        expect(scanSignal.aborted).toBe(true) // released once the run ends, as before
+      } finally {
+        log.mockRestore()
+      }
+    })
+
+    it('aborts the scan and opens no picker when the answer is no', async () => {
+      const order: string[] = []
+      const gate = manualGate(order)
+      let scanSignal!: AbortSignal
+      mocks.streamOutdatedPackages.mockImplementation(
+        (onEvent: StreamOutdatedPackagesCallback, signal: AbortSignal) => {
+          scanSignal = signal
+          onEvent({ type: 'warning', payload: { message: 'Skipped directory' } })
+          return new Promise((_resolve, reject) =>
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+          )
+        }
+      )
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
+      try {
+        const run = new UpgradeRunner({ cwd: '/repo' }).run(gate.confirmStart)
+        await Promise.resolve()
+        expect(scanSignal.aborted).toBe(false)
+        gate.answer(false)
+        await run
+        await Promise.resolve()
+
+        expect(scanSignal.aborted).toBe(true)
+        expect(mocks.selectPackagesToUpgradeProgressive).not.toHaveBeenCalled()
+        // The caller says why the run stopped; the runner adds nothing.
+        expect(log).not.toHaveBeenCalled()
+        expect(warn).not.toHaveBeenCalled()
+        expect(error).not.toHaveBeenCalled()
+        expect(exit).not.toHaveBeenCalled()
+      } finally {
+        log.mockRestore()
+        warn.mockRestore()
+        error.mockRestore()
+        exit.mockRestore()
+      }
+    })
+
+    it('reports a scan that failed while it waited without opening the picker', async () => {
+      const order: string[] = []
+      const gate = manualGate(order)
+      mocks.streamOutdatedPackages.mockRejectedValue(new Error('discovery timed out'))
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
+      try {
+        const run = new UpgradeRunner({ cwd: '/repo' }).run(gate.confirmStart)
+        await new Promise((resolve) => setImmediate(resolve))
+        gate.answer(true)
+        await run
+
+        expect(mocks.selectPackagesToUpgradeProgressive).not.toHaveBeenCalled()
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('discovery timed out'))
+        expect(exit).toHaveBeenCalledWith(2)
+      } finally {
+        error.mockRestore()
+        exit.mockRestore()
+      }
+    })
+
+    it('fails on a missing package.json before asking anything', async () => {
+      mocks.hasPackageJson.mockReturnValue(false)
+      const confirmStart = vi.fn(async () => true)
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
+      try {
+        await new UpgradeRunner({ cwd: '/no-pkg' }).run(confirmStart)
+
+        expect(confirmStart).not.toHaveBeenCalled()
+        expect(mocks.streamOutdatedPackages).not.toHaveBeenCalled()
+        expect(exit).toHaveBeenCalledWith(2)
+      } finally {
+        error.mockRestore()
+        exit.mockRestore()
+      }
+    })
   })
 
   it('releases the session before reporting a scan failure', async () => {
@@ -633,6 +799,8 @@ describe('UpgradeRunner terminal handoff', () => {
       { name: 'zod', version: '^1.0.0' },
     ]
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: any) => {
+      // The detector awaits discovery I/O before any package arrives; the picker is up by then.
+      await Promise.resolve()
       const progress = { resolved: 0, total: 2, failed: 0, isLoading: true }
       onEvent({
         type: 'initial',

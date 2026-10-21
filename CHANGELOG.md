@@ -12,6 +12,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 - The picker's security audit finishes sooner. It checks every dependency in one request, sent while versions are still loading, instead of one request for every 20 packages after they appear.
 - Faster startup for `--version` and scripted runs (`--json`, `--check`, `--apply`). They no longer load the libraries that measure text width for the picker, and a project without a `pnpm-workspace.yaml` no longer loads the YAML parser.
 - Upgrading starts the install straight away. inup no longer runs `pnpm --version` (or the npm, Yarn or Bun equivalent) before each install, which cost about 0.1 s per project. A missing package manager is still reported by name, along with the folders that need an install.
+- The picker loads sooner. inup starts finding and checking your packages while it looks at your git working tree, and keeps going while the dirty working tree warning waits for your answer, so the list is usually complete by the time you press `y`. Answering no still exits right away.
 
 ## [1.8.5] - 2026-10-10
 

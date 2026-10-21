@@ -72,6 +72,14 @@ export class InteractiveUI {
   private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
+  /**
+   * The scan starts before the picker opens (while the dirty-tree prompt waits). Rows that
+   * arrive before then are only listed: the picker audits the whole list when it opens, so a
+   * declined prompt leaves no audit request holding the process open.
+   */
+  private pickerOpened = false
+  /** Declared versions whose bulk audit waits for the picker to open. */
+  private pendingAuditPrefetch: AuditPackageInput[] | null = null
 
   constructor(packageManager: PackageManagerInfo, options?: InteractiveUIOptions) {
     this.renderer = new UIRenderer()
@@ -132,7 +140,9 @@ export class InteractiveUI {
   ): void {
     const rows = this.createSelectionStates(packageInfo, previousSelections, false)
     const inserted = selection.insert(rows)
-    if (inserted.length > 0) this.enqueueSecurityAudit(inserted, selection.items)
+    if (this.pickerOpened && inserted.length > 0) {
+      this.enqueueSecurityAudit(inserted, selection.items)
+    }
   }
 
   /**
@@ -144,6 +154,12 @@ export class InteractiveUI {
     progress: PackageLoadProgress,
     attachSession: (session: InteractiveSessionHandle | undefined) => void
   ): Promise<PackageUpgradeChoice[]> {
+    this.pickerOpened = true
+    // Before the rows are queued, so the ones it covers make no request of their own.
+    if (this.pendingAuditPrefetch) {
+      this.vulnerabilityAuditController.prefetch(this.pendingAuditPrefetch)
+      this.pendingAuditPrefetch = null
+    }
     this.enqueueSecurityAudit(selection.items)
     const selectedStates = await runInteractiveSession(
       selection,
@@ -163,9 +179,14 @@ export class InteractiveUI {
 
   /**
    * Starts the security audit of every declared version in one request, before the first
-   * row resolves. Rows inserted later take their advisories from it as they arrive.
+   * row resolves. Rows inserted later take their advisories from it as they arrive. Called
+   * before the picker opens (while the dirty-tree prompt waits), it is held until it does.
    */
   public prefetchSecurityAudit(packages: AuditPackageInput[]): void {
+    if (!this.pickerOpened) {
+      this.pendingAuditPrefetch = packages
+      return
+    }
     this.vulnerabilityAuditController.prefetch(packages)
   }
 

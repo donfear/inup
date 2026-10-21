@@ -144,10 +144,26 @@ describe('InteractiveUI.insertResolvedPackages', () => {
     makePackageInfo({ name, ...overrides }),
   ]
 
+  /** These tests are about which rows reach the audit queue, not the requests it makes. */
+  const stubAudit = (ui: InteractiveUI) =>
+    vi.spyOn(ui, 'enqueueSecurityAudit').mockImplementation(() => {})
+
+  /** A picker that opens over `selection` and stays open, as it does while packages stream in. */
+  const openPicker = (ui: InteractiveUI, selection: SelectionList) => {
+    sessionMock.mockImplementation(() => new Promise(() => {}))
+    void ui.selectPackagesToUpgradeProgressive(
+      selection,
+      { resolved: 0, total: 1, failed: 0, isLoading: true },
+      () => {}
+    )
+  }
+
   it('inserts outdated rows at their sorted position and audits only those rows', () => {
     const ui = new InteractiveUI(npmInfo)
-    const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList([makeSelectionState({ name: 'm-existing' })])
+    const audit = stubAudit(ui)
+    openPicker(ui, selection)
+    audit.mockClear()
 
     ui.insertResolvedPackages(selection, resolved('a-fresh'))
     ui.insertResolvedPackages(selection, resolved('z-fresh'))
@@ -159,12 +175,33 @@ describe('InteractiveUI.insertResolvedPackages', () => {
     expect(applyTo).toBe(selection.items)
   })
 
+  it('lists rows that arrive before the picker opens and audits them all when it does', () => {
+    // The scan starts while the dirty-tree prompt waits; a declined prompt must not leave
+    // audit requests holding the process open.
+    const ui = new InteractiveUI(npmInfo)
+    const audit = stubAudit(ui)
+    const selection = new SelectionList()
+
+    ui.insertResolvedPackages(selection, resolved('a-early'))
+    ui.insertResolvedPackages(selection, resolved('b-early'))
+
+    expect(selection.items.map((s) => s.name)).toEqual(['a-early', 'b-early'])
+    expect(audit).not.toHaveBeenCalled()
+
+    openPicker(ui, selection)
+
+    expect(audit).toHaveBeenCalledTimes(1)
+    expect(audit.mock.calls[0][0]).toBe(selection.items)
+  })
+
   it('skips rows already present by name, specifier, and type, and audits nothing', () => {
     const ui = new InteractiveUI(npmInfo)
-    const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList([
       makeSelectionState({ name: 'test-pkg', currentVersionSpecifier: '^1.0.0' }),
     ])
+    const audit = stubAudit(ui)
+    openPicker(ui, selection)
+    audit.mockClear()
 
     ui.insertResolvedPackages(selection, resolved('test-pkg'))
 
@@ -174,8 +211,10 @@ describe('InteractiveUI.insertResolvedPackages', () => {
 
   it('ignores an up-to-date package and skips the audit', () => {
     const ui = new InteractiveUI(npmInfo)
-    const audit = vi.spyOn(ui, 'enqueueSecurityAudit')
     const selection = new SelectionList()
+    const audit = stubAudit(ui)
+    openPicker(ui, selection)
+    audit.mockClear()
 
     ui.insertResolvedPackages(selection, resolved('current-pkg', { isOutdated: false }))
 
@@ -375,20 +414,65 @@ describe('InteractiveUI refresh plumbing', () => {
     expect(refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('hands the declared versions to the audit controller as one prefetch', () => {
-    const ui = new InteractiveUI(npmInfo)
-    const prefetchSpy = vi
-      .spyOn(
-        (ui as unknown as { vulnerabilityAuditController: { prefetch: unknown } })
-          .vulnerabilityAuditController,
-        'prefetch' as never
+  describe('prefetchSecurityAudit', () => {
+    const spyOnAudit = (ui: InteractiveUI) => {
+      const controller = (
+        ui as unknown as {
+          vulnerabilityAuditController: { prefetch: unknown; enqueueStates: unknown }
+        }
+      ).vulnerabilityAuditController
+      return {
+        prefetch: vi.spyOn(controller, 'prefetch' as never).mockImplementation((() => {}) as never),
+        enqueue: vi
+          .spyOn(controller, 'enqueueStates' as never)
+          .mockImplementation((() => {}) as never),
+      }
+    }
+    const openPicker = (ui: InteractiveUI) => {
+      sessionMock.mockImplementation(() => new Promise(() => {}))
+      void ui.selectPackagesToUpgradeProgressive(
+        new SelectionList([makeSelectionState({ name: 'listed' })]),
+        { resolved: 0, total: 1, failed: 0, isLoading: true },
+        () => {}
       )
-      .mockImplementation((() => {}) as never)
+    }
     const declared = [{ name: 'next', version: '^1.0.0' }]
 
-    ui.prefetchSecurityAudit(declared)
+    it('hands the declared versions to the audit controller as one prefetch', () => {
+      const ui = new InteractiveUI(npmInfo)
+      const audit = spyOnAudit(ui)
+      openPicker(ui)
 
-    expect(prefetchSpy).toHaveBeenCalledExactlyOnceWith(declared)
+      ui.prefetchSecurityAudit(declared)
+
+      expect(audit.prefetch).toHaveBeenCalledExactlyOnceWith(declared)
+    })
+
+    it('holds a prefetch made before the picker opens and sends it ahead of the queued rows', () => {
+      const ui = new InteractiveUI(npmInfo)
+      const audit = spyOnAudit(ui)
+
+      ui.prefetchSecurityAudit(declared)
+      expect(audit.prefetch).not.toHaveBeenCalled()
+
+      openPicker(ui)
+
+      expect(audit.prefetch).toHaveBeenCalledExactlyOnceWith(declared)
+      expect(audit.prefetch.mock.invocationCallOrder[0]).toBeLessThan(
+        audit.enqueue.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('sends a held prefetch only once when the picker opens again', () => {
+      const ui = new InteractiveUI(npmInfo)
+      const audit = spyOnAudit(ui)
+
+      ui.prefetchSecurityAudit(declared)
+      openPicker(ui)
+      openPicker(ui)
+
+      expect(audit.prefetch).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('stores the refresh hook in the progressive flow too', async () => {

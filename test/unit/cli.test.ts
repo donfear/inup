@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   promptForImmediateConfirmation: vi.fn(),
   upgradeRunnerOptions: [] as unknown[],
   configureNativeCore: vi.fn(),
+  openPicker: vi.fn(),
 }))
 
 vi.mock('../../src/index', () => ({
@@ -88,9 +89,12 @@ describe('CLI git dirty preflight', () => {
 
     mocks.loadProjectConfig.mockReturnValue({})
     mocks.checkForUpdateAsync.mockResolvedValue(null)
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
-    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    // The runner starts its scan, then asks the CLI before it opens the picker.
+    mocks.upgradeRunnerRun.mockImplementation(async (confirmStart: () => Promise<boolean>) => {
+      if (await confirmStart()) mocks.openPicker()
+    })
     mocks.headlessRun.mockResolvedValue(undefined)
   })
 
@@ -100,76 +104,89 @@ describe('CLI git dirty preflight', () => {
     else process.env.CI = originalCI
   })
 
-  it('aborts before running upgrades when repo is dirty and user declines', async () => {
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
-    mocks.promptForImmediateConfirmation.mockResolvedValue(false)
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
 
-    await runCli({
-      dir: '/repo',
-      exclude: '',
-      ignore: '',
-      maxDepth: '10',
-    })
+  it('cancels before the picker opens when repo is dirty and user declines', async () => {
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
+    mocks.promptForImmediateConfirmation.mockResolvedValue(false)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await runCli(baseOptions)
 
     expectDirtyTreePrompt()
-    expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+    expect(mocks.openPicker).not.toHaveBeenCalled()
+    expect(stripAnsi(String(log.mock.calls[0][0]))).toBe('Upgrade cancelled.')
+    // Nothing left in flight to hold the process open after a declined prompt.
+    expect(mocks.checkForUpdateAsync).not.toHaveBeenCalled()
+    log.mockRestore()
   })
 
   it('continues when repo is dirty and user confirms', async () => {
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
 
-    await runCli({
-      dir: '/repo',
-      exclude: '',
-      ignore: '',
-      maxDepth: '10',
-    })
+    await runCli(baseOptions)
 
     expectDirtyTreePrompt()
-    expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
+    expect(mocks.openPicker).toHaveBeenCalledTimes(1)
+    expect(mocks.checkForUpdateAsync).toHaveBeenCalledTimes(1)
   })
 
   it('skips the warning for a clean repo', async () => {
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: false })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: false })
 
-    await runCli({
-      dir: '/repo',
-      exclude: '',
-      ignore: '',
-      maxDepth: '10',
-    })
+    await runCli(baseOptions)
 
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
-    expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
+    expect(mocks.openPicker).toHaveBeenCalledTimes(1)
   })
 
   it('skips the warning outside git', async () => {
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
 
-    await runCli({
-      dir: '/repo',
-      exclude: '',
-      ignore: '',
-      maxDepth: '10',
-    })
+    await runCli(baseOptions)
 
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
-    expect(mocks.upgradeRunnerRun).toHaveBeenCalledTimes(1)
+    expect(mocks.openPicker).toHaveBeenCalledTimes(1)
   })
 
   it('treats Ctrl+C at the prompt as cancel', async () => {
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
     mocks.promptForImmediateConfirmation.mockResolvedValue(false)
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-    await runCli({
-      dir: '/repo',
-      exclude: '',
-      ignore: '',
-      maxDepth: '10',
+    await runCli(baseOptions)
+
+    expect(mocks.openPicker).not.toHaveBeenCalled()
+    log.mockRestore()
+  })
+
+  it('starts the runner, and with it the scan, while git is still checking the tree', async () => {
+    let settleGit!: (state: { isRepo: boolean; isDirty: boolean }) => void
+    mocks.getGitWorkingTreeState.mockReturnValue(
+      new Promise((resolve) => {
+        settleGit = resolve
+      })
+    )
+    let runnerStarted!: () => void
+    const started = new Promise<void>((resolve) => {
+      runnerStarted = resolve
+    })
+    mocks.upgradeRunnerRun.mockImplementation(async (confirmStart: () => Promise<boolean>) => {
+      runnerStarted()
+      if (await confirmStart()) mocks.openPicker()
     })
 
-    expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
+    const run = runCli(baseOptions)
+    await started
+
+    expect(mocks.getGitWorkingTreeState).toHaveBeenCalledWith(resolve('/repo'))
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
+    settleGit({ isRepo: true, isDirty: true })
+    await run
+
+    expectDirtyTreePrompt()
+    expect(mocks.openPicker).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -182,7 +199,7 @@ describe('CLI headless routing', () => {
     mocks.loadProjectConfig.mockReturnValue({})
     mocks.checkForUpdateAsync.mockResolvedValue(null)
     // A dirty repo to prove the preflight is skipped (would hang) on the headless path.
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
     mocks.headlessRun.mockResolvedValue(undefined)
@@ -208,6 +225,7 @@ describe('CLI headless routing', () => {
     })
     expect(mocks.upgradeRunnerRun).not.toHaveBeenCalled()
     expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
+    expect(mocks.getGitWorkingTreeState).not.toHaveBeenCalled()
   })
 
   it('routes to runHeadless when stdin is not a terminal (inup < /dev/null)', async () => {
@@ -238,7 +256,7 @@ describe('CLI headless routing', () => {
     'opens the picker when $CI is %j, which is not a CI run',
     async (ci) => {
       process.env.CI = ci
-      mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+      mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
 
       await runCli({ dir: '/repo', exclude: '', ignore: '', maxDepth: '10' })
 
@@ -289,7 +307,7 @@ describe('CLI concurrency flag', () => {
 
     mocks.loadProjectConfig.mockReturnValue({})
     mocks.checkForUpdateAsync.mockResolvedValue(null)
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
     mocks.headlessRun.mockResolvedValue(undefined)
   })
@@ -415,7 +433,7 @@ describe('CLI release-age cooldown flag', () => {
 
     mocks.loadProjectConfig.mockReturnValue({})
     mocks.checkForUpdateAsync.mockResolvedValue(null)
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: false, isDirty: false })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
     mocks.headlessRun.mockResolvedValue(undefined)
   })
@@ -499,7 +517,7 @@ describe('CLI invalid project config', () => {
 
     mocks.checkForUpdateAsync.mockResolvedValue(null)
     // A dirty repo, to prove the interactive path fails before asking anything.
-    mocks.getGitWorkingTreeState.mockReturnValue({ isRepo: true, isDirty: true })
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
     mocks.promptForImmediateConfirmation.mockResolvedValue(true)
     mocks.upgradeRunnerRun.mockResolvedValue(undefined)
     mocks.headlessRun.mockResolvedValue(undefined)
