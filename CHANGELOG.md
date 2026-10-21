@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.6] - 2026-10-21
+
 ### Changed
 
 - The picker's security audit finishes sooner. It checks every dependency in one request, sent while versions are still loading, instead of one request for every 20 packages after they appear.
@@ -525,7 +527,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.5...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.6...HEAD
+[1.8.6]: https://github.com/donfear/inup/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/donfear/inup/compare/v1.8.4...v1.8.5
 [1.8.4]: https://github.com/donfear/inup/compare/v1.8.3...v1.8.4
 [1.8.2]: https://github.com/donfear/inup/compare/v1.8.1...v1.8.2
