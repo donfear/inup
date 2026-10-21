@@ -79,6 +79,34 @@ inup detects your package manager and finds dependencies across workspaces. Priv
 Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
 <!-- BENCHMARK:START -->
+## Speed
+
+How long each tool takes to list every outdated dependency, from launch to exit, on public repositories pinned to a commit. Lower is better.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark/speed-dark.svg">
+  <img alt="First-run times in seconds. expressjs/express: inup 0.35 s, npm-check-updates 0.66 s, taze 0.65 s, npm-check 1.07 s, npm outdated 0.90 s; vuejs/core: inup 0.95 s, npm-check-updates 4.36 s, taze 1.46 s, pnpm outdated 1.45 s; TanStack/query: inup 2.68 s, npm-check-updates 12.4 s, taze 9.84 s, pnpm outdated 2.99 s" src="docs/benchmark/speed-light.svg">
+</picture>
+
+| First run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8)<br><sub>1 package.json · 44 dependencies</sub> | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395)<br><sub>22 package.json files · 69 dependencies</sub> | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba)<br><sub>105 package.json files · 190 dependencies</sub> |
+| :-- | --: | --: | --: |
+| inup | **0.35 s** | **0.95 s** | **2.68 s** |
+| npm-check-updates | 0.66 s | 4.36 s | 12.4 s |
+| taze | 0.65 s | 1.46 s | 9.84 s |
+| npm-check | 1.07 s | — | — |
+| npm outdated / pnpm outdated | 0.90 s | 1.45 s | 2.99 s |
+
+| Repeat run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8) | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395) | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba) |
+| :-- | --: | --: | --: |
+| inup | 0.31 s | 0.44 s | **0.64 s** |
+| npm-check-updates | 0.69 s | 4.37 s | 12.1 s |
+| taze | **0.21 s** | 0.53 s | 6.67 s |
+| npm-check | 1.09 s | — | — |
+| npm outdated / pnpm outdated | 0.69 s | **0.21 s** | 4.70 s |
+
+<sub>First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept. Median of 10 runs per tool with [hyperfine](https://github.com/sharkdp/hyperfine) 1.20.0 on GitHub Actions ubuntu24 20261018.339.1, 4 CPUs, Node v24.22.0, 21 Oct 2026. inup's times include its vulnerability check, which the other tools don't run. Fastest in **bold**.</sub>
+
+[How it's measured, tool versions and exact commands](docs/guide/benchmarks.md)
 <!-- BENCHMARK:END -->
 
 ## Let a release age before you take it
