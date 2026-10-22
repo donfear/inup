@@ -263,7 +263,13 @@ describe.skipIf(process.platform === 'win32')('timePicker', () => {
   })
 
   it('fails a picker that draws nothing', async () => {
-    await expect(start('sleep 30')).rejects.toThrow('drew nothing')
+    await expect(start('sleep 30', { limitMs: 800 })).rejects.toThrow('drew nothing in 0.8 s')
+  })
+
+  // On a slow machine python and the terminal can take longer to start than the idle window.
+  it('waits for the first thing drawn, however long the start takes', async () => {
+    const seconds = await start('sleep 0.6; printf ready; sleep 30', { idleMs: 200 })
+    expect(seconds).toBeGreaterThanOrEqual(0.6)
   })
 
   it('fails a picker that never goes quiet', async () => {

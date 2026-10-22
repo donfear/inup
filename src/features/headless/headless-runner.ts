@@ -41,10 +41,12 @@ export class HeadlessRunner {
       // them, so each declaration gets its own advisories), which the detector knows
       // before it touches the registry. Start it from the `initial` event so it
       // overlaps the fetch instead of adding a round-trip at the end.
-      // Best-effort like the audit itself: a failure resolves to an empty map.
+      // Best-effort: a failure resolves to an empty map, and the run warns about it at the end.
       // The detector always emits `initial` before `complete`; the empty default only
       // gives the variable a value until then.
       let advisories: Promise<Map<string, PackageVulnerabilities>> = Promise.resolve(new Map())
+      // Why the audit could not be completed, if it could not: reported once the run is done.
+      let auditFailure: string | null = null
       let packages: PackageInfo[] = []
       await this.detector.streamOutdatedPackages((event) => {
         if (event.type === 'warning') {
@@ -73,7 +75,12 @@ export class HeadlessRunner {
               break
           }
         } else if (event.type === 'initial') {
-          advisories = fetchVulnerabilitiesPerVersion(event.payload.declaredVersions)
+          advisories = fetchVulnerabilitiesPerVersion(event.payload.declaredVersions, {
+            rejectOnFailure: true,
+          }).catch((error: unknown) => {
+            auditFailure = error instanceof Error ? error.message : String(error)
+            return new Map()
+          })
         } else if (event.type === 'complete') {
           packages = event.payload.packages
           ConsoleUtils.clearProgress()
@@ -101,6 +108,15 @@ export class HeadlessRunner {
         console.error(
           chalk.yellow(
             `Warning: --minimum-release-age ${cooldown.minimumReleaseAge} had no effect — the registry did not return publish times for any package.`
+          )
+        )
+      }
+
+      // An audit that failed reads like a clean one: no advisories. Say so, as for failed lookups.
+      if (auditFailure !== null) {
+        console.error(
+          chalk.yellow(
+            `Warning: vulnerabilities could not be checked — the advisory request failed: ${auditFailure}. The report lists none.`
           )
         )
       }
