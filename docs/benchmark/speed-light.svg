@@ -1,91 +1,91 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="850" viewBox="0 0 720 850" role="img" aria-labelledby="title desc">
 <title id="title">How long each tool takes to list outdated dependencies</title>
-<desc id="desc">First-run times in seconds. expressjs/express: inup 0.40 s, npm-check-updates 0.73 s, taze 0.56 s, syncpack 0.25 s, npm-check 1.07 s, npm outdated 0.84 s; vuejs/core: inup 0.78 s, npm-check-updates 3.10 s, taze 1.48 s, syncpack 0.96 s, pnpm outdated 1.47 s; TanStack/query: inup 1.41 s, npm-check-updates 9.22 s, taze 8.83 s, syncpack 2.73 s, pnpm outdated 2.87 s; vendurehq/vendure: inup 2.09 s, npm-check-updates 2.81 s, taze 4.83 s, syncpack 4.21 s, bun outdated 1.58 s; backstage/backstage: inup 1.98 s, npm-check-updates 11.7 s, taze 8.13 s, syncpack 3.19 s</desc>
+<desc id="desc">First-run times in seconds. expressjs/express: inup 0.29 s, npm-check-updates 0.56 s, taze 0.39 s, syncpack 0.19 s, npm-check 0.90 s, npm outdated 0.73 s; vuejs/core: inup 0.68 s, npm-check-updates 3.02 s, taze 2.74 s, syncpack 0.93 s, pnpm outdated 1.48 s; TanStack/query: inup 1.28 s, npm-check-updates 9.57 s, taze 9.10 s, syncpack 2.73 s, pnpm outdated 2.95 s; vendurehq/vendure: inup 1.92 s, npm-check-updates 2.94 s, taze 5.15 s, syncpack 4.11 s, bun outdated 1.52 s; backstage/backstage: inup 1.78 s, npm-check-updates 7.89 s, taze 8.72 s, syncpack 3.33 s</desc>
 <style>text{font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;font-size:13px}</style>
 <text x="0" y="14" fill="#52514e">Listing outdated dependencies, first run (empty caches) · seconds, lower is better</text>
 <text x="0" y="50" fill="#0b0b0b" font-weight="600">expressjs/express</text>
 <text x="0" y="67" fill="#52514e">1 package.json · 44 dependencies</text>
 <text x="0" y="87" fill="#0b0b0b" dominant-baseline="central">syncpack</text>
-<path d="M150 80h112.45682070139439a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-112.45682070139439z" fill="#898781"/>
-<text x="272.4568207013944" y="87" fill="#0b0b0b" dominant-baseline="central">0.25 s</text>
+<path d="M150 80h105.29624165410054a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-105.29624165410054z" fill="#898781"/>
+<text x="265.2962416541005" y="87" fill="#0b0b0b" dominant-baseline="central">0.19 s</text>
 <text x="0" y="109" fill="#0b0b0b" dominant-baseline="central" font-weight="600">inup</text>
-<path d="M150 102h185.5387304903593a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-185.5387304903593z" fill="#2a78d6"/>
-<text x="345.5387304903593" y="109" fill="#0b0b0b" dominant-baseline="central" font-weight="600">0.40 s</text>
+<path d="M150 102h156.9761081479638a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-156.9761081479638z" fill="#2a78d6"/>
+<text x="316.9761081479638" y="109" fill="#0b0b0b" dominant-baseline="central" font-weight="600">0.29 s</text>
 <text x="0" y="131" fill="#0b0b0b" dominant-baseline="central">taze</text>
-<path d="M150 124h261.78703652263675a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-261.78703652263675z" fill="#898781"/>
-<text x="421.78703652263675" y="131" fill="#0b0b0b" dominant-baseline="central">0.56 s</text>
+<path d="M150 124h213.6458436553331a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-213.6458436553331z" fill="#898781"/>
+<text x="373.6458436553331" y="131" fill="#0b0b0b" dominant-baseline="central">0.39 s</text>
 <text x="0" y="153" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
-<path d="M150 146h340.0914466906026a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-340.0914466906026z" fill="#898781"/>
-<text x="500.0914466906026" y="153" fill="#0b0b0b" dominant-baseline="central">0.73 s</text>
+<path d="M150 146h309.360707423734a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-309.360707423734z" fill="#898781"/>
+<text x="469.360707423734" y="153" fill="#0b0b0b" dominant-baseline="central">0.56 s</text>
 <text x="0" y="175" fill="#0b0b0b" dominant-baseline="central">npm outdated</text>
-<path d="M150 168h392.0779223796265a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-392.0779223796265z" fill="#898781"/>
-<text x="552.0779223796264" y="175" fill="#0b0b0b" dominant-baseline="central">0.84 s</text>
+<path d="M150 168h408.0273770127832a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-408.0273770127832z" fill="#898781"/>
+<text x="568.0273770127832" y="175" fill="#0b0b0b" dominant-baseline="central">0.73 s</text>
 <text x="0" y="197" fill="#0b0b0b" dominant-baseline="central">npm-check</text>
 <path d="M150 190h502a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-502z" fill="#898781"/>
-<text x="662" y="197" fill="#0b0b0b" dominant-baseline="central">1.07 s</text>
+<text x="662" y="197" fill="#0b0b0b" dominant-baseline="central">0.90 s</text>
 <text x="0" y="238" fill="#0b0b0b" font-weight="600">vuejs/core</text>
 <text x="0" y="255" fill="#52514e">22 package.json files · 69 dependencies</text>
 <text x="0" y="275" fill="#0b0b0b" dominant-baseline="central" font-weight="600">inup</text>
-<path d="M150 268h123.54091697414748a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-123.54091697414748z" fill="#2a78d6"/>
-<text x="283.5409169741475" y="275" fill="#0b0b0b" dominant-baseline="central" font-weight="600">0.78 s</text>
+<path d="M150 268h109.69221829456416a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-109.69221829456416z" fill="#2a78d6"/>
+<text x="269.69221829456416" y="275" fill="#0b0b0b" dominant-baseline="central" font-weight="600">0.68 s</text>
 <text x="0" y="297" fill="#0b0b0b" dominant-baseline="central">syncpack</text>
-<path d="M150 290h152.12636177638586a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-152.12636177638586z" fill="#898781"/>
-<text x="312.12636177638586" y="297" fill="#0b0b0b" dominant-baseline="central">0.96 s</text>
+<path d="M150 290h152.0332954139453a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-152.0332954139453z" fill="#898781"/>
+<text x="312.0332954139453" y="297" fill="#0b0b0b" dominant-baseline="central">0.93 s</text>
 <text x="0" y="319" fill="#0b0b0b" dominant-baseline="central">pnpm outdated</text>
-<path d="M150 312h236.16641177125004a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-236.16641177125004z" fill="#898781"/>
-<text x="396.16641177125007" y="319" fill="#0b0b0b" dominant-baseline="central">1.47 s</text>
+<path d="M150 312h244.35123469087424a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-244.35123469087424z" fill="#898781"/>
+<text x="404.3512346908742" y="319" fill="#0b0b0b" dominant-baseline="central">1.48 s</text>
 <text x="0" y="341" fill="#0b0b0b" dominant-baseline="central">taze</text>
-<path d="M150 334h237.8386523371849a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-237.8386523371849z" fill="#898781"/>
-<text x="397.8386523371849" y="341" fill="#0b0b0b" dominant-baseline="central">1.48 s</text>
+<path d="M150 334h453.97279967757987a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-453.97279967757987z" fill="#898781"/>
+<text x="613.9727996775798" y="341" fill="#0b0b0b" dominant-baseline="central">2.74 s</text>
 <text x="0" y="363" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
 <path d="M150 356h502a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-502z" fill="#898781"/>
-<text x="662" y="363" fill="#0b0b0b" dominant-baseline="central">3.10 s</text>
+<text x="662" y="363" fill="#0b0b0b" dominant-baseline="central">3.02 s</text>
 <text x="0" y="404" fill="#0b0b0b" font-weight="600">TanStack/query</text>
 <text x="0" y="421" fill="#52514e">105 package.json files · 190 dependencies</text>
 <text x="0" y="441" fill="#0b0b0b" dominant-baseline="central" font-weight="600">inup</text>
-<path d="M150 434h73.17212580883081a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-73.17212580883081z" fill="#2a78d6"/>
-<text x="233.1721258088308" y="441" fill="#0b0b0b" dominant-baseline="central" font-weight="600">1.41 s</text>
+<path d="M150 434h63.79297948155488a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-63.79297948155488z" fill="#2a78d6"/>
+<text x="223.79297948155488" y="441" fill="#0b0b0b" dominant-baseline="central" font-weight="600">1.28 s</text>
 <text x="0" y="463" fill="#0b0b0b" dominant-baseline="central">syncpack</text>
-<path d="M150 456h146.01015010802968a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-146.01015010802968z" fill="#898781"/>
-<text x="306.0101501080297" y="463" fill="#0b0b0b" dominant-baseline="central">2.73 s</text>
+<path d="M150 456h140.61440340796074a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-140.61440340796074z" fill="#898781"/>
+<text x="300.6144034079607" y="463" fill="#0b0b0b" dominant-baseline="central">2.73 s</text>
 <text x="0" y="485" fill="#0b0b0b" dominant-baseline="central">pnpm outdated</text>
-<path d="M150 478h153.34525736283138a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-153.34525736283138z" fill="#898781"/>
-<text x="313.3452573628314" y="485" fill="#0b0b0b" dominant-baseline="central">2.87 s</text>
+<path d="M150 478h152.28102793274604a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-152.28102793274604z" fill="#898781"/>
+<text x="312.28102793274604" y="485" fill="#0b0b0b" dominant-baseline="central">2.95 s</text>
 <text x="0" y="507" fill="#0b0b0b" dominant-baseline="central">taze</text>
-<path d="M150 500h480.72828747719626a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-480.72828747719626z" fill="#898781"/>
-<text x="640.7282874771963" y="507" fill="#0b0b0b" dominant-baseline="central">8.83 s</text>
+<path d="M150 500h477.3274563011955a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-477.3274563011955z" fill="#898781"/>
+<text x="637.3274563011955" y="507" fill="#0b0b0b" dominant-baseline="central">9.10 s</text>
 <text x="0" y="529" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
 <path d="M150 522h502a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-502z" fill="#898781"/>
-<text x="662" y="529" fill="#0b0b0b" dominant-baseline="central">9.22 s</text>
+<text x="662" y="529" fill="#0b0b0b" dominant-baseline="central">9.57 s</text>
 <text x="0" y="570" fill="#0b0b0b" font-weight="600">vendurehq/vendure</text>
 <text x="0" y="587" fill="#52514e">54 package.json files · 323 dependencies</text>
 <text x="0" y="607" fill="#0b0b0b" dominant-baseline="central">bun outdated</text>
-<path d="M150 600h161.40180154951992a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-161.40180154951992z" fill="#898781"/>
-<text x="321.4018015495199" y="607" fill="#0b0b0b" dominant-baseline="central">1.58 s</text>
+<path d="M150 600h145.60022338081455a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-145.60022338081455z" fill="#898781"/>
+<text x="305.60022338081455" y="607" fill="#0b0b0b" dominant-baseline="central">1.52 s</text>
 <text x="0" y="629" fill="#0b0b0b" dominant-baseline="central" font-weight="600">inup</text>
-<path d="M150 622h215.0310904658282a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-215.0310904658282z" fill="#2a78d6"/>
-<text x="375.03109046582824" y="629" fill="#0b0b0b" dominant-baseline="central" font-weight="600">2.09 s</text>
+<path d="M150 622h184.9315269375777a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-184.9315269375777z" fill="#2a78d6"/>
+<text x="344.9315269375777" y="629" fill="#0b0b0b" dominant-baseline="central" font-weight="600">1.92 s</text>
 <text x="0" y="651" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
-<path d="M150 644h290.94333110660654a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-290.94333110660654z" fill="#898781"/>
-<text x="450.94333110660654" y="651" fill="#0b0b0b" dominant-baseline="central">2.81 s</text>
+<path d="M150 644h284.27092968897614a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-284.27092968897614z" fill="#898781"/>
+<text x="444.27092968897614" y="651" fill="#0b0b0b" dominant-baseline="central">2.94 s</text>
 <text x="0" y="673" fill="#0b0b0b" dominant-baseline="central">syncpack</text>
-<path d="M150 666h437.4285021824485a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-437.4285021824485z" fill="#898781"/>
-<text x="597.4285021824485" y="673" fill="#0b0b0b" dominant-baseline="central">4.21 s</text>
+<path d="M150 666h399.5424138347626a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-399.5424138347626z" fill="#898781"/>
+<text x="559.5424138347626" y="673" fill="#0b0b0b" dominant-baseline="central">4.11 s</text>
 <text x="0" y="695" fill="#0b0b0b" dominant-baseline="central">taze</text>
 <path d="M150 688h502a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-502z" fill="#898781"/>
-<text x="662" y="695" fill="#0b0b0b" dominant-baseline="central">4.83 s</text>
+<text x="662" y="695" fill="#0b0b0b" dominant-baseline="central">5.15 s</text>
 <text x="0" y="736" fill="#0b0b0b" font-weight="600">backstage/backstage</text>
 <text x="0" y="753" fill="#52514e">269 package.json files · 591 dependencies</text>
 <text x="0" y="773" fill="#0b0b0b" dominant-baseline="central" font-weight="600">inup</text>
-<path d="M150 766h81.48147757380188a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-81.48147757380188z" fill="#2a78d6"/>
-<text x="241.4814775738019" y="773" fill="#0b0b0b" dominant-baseline="central" font-weight="600">1.98 s</text>
+<path d="M150 766h99.20363416552337a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-99.20363416552337z" fill="#2a78d6"/>
+<text x="259.20363416552334" y="773" fill="#0b0b0b" dominant-baseline="central" font-weight="600">1.78 s</text>
 <text x="0" y="795" fill="#0b0b0b" dominant-baseline="central">syncpack</text>
-<path d="M150 788h134.1241222208603a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-134.1241222208603z" fill="#898781"/>
-<text x="294.1241222208603" y="795" fill="#0b0b0b" dominant-baseline="central">3.19 s</text>
-<text x="0" y="817" fill="#0b0b0b" dominant-baseline="central">taze</text>
-<path d="M150 810h347.6696126824302a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-347.6696126824302z" fill="#898781"/>
-<text x="507.6696126824302" y="817" fill="#0b0b0b" dominant-baseline="central">8.13 s</text>
-<text x="0" y="839" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
+<path d="M150 788h189.4372026392062a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-189.4372026392062z" fill="#898781"/>
+<text x="349.4372026392062" y="795" fill="#0b0b0b" dominant-baseline="central">3.33 s</text>
+<text x="0" y="817" fill="#0b0b0b" dominant-baseline="central">npm-check-updates</text>
+<path d="M150 810h453.8115949806669a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-453.8115949806669z" fill="#898781"/>
+<text x="613.8115949806669" y="817" fill="#0b0b0b" dominant-baseline="central">7.89 s</text>
+<text x="0" y="839" fill="#0b0b0b" dominant-baseline="central">taze</text>
 <path d="M150 832h502a4 4 0 0 1 4 4v6a4 4 0 0 1 -4 4h-502z" fill="#898781"/>
-<text x="662" y="839" fill="#0b0b0b" dominant-baseline="central">11.7 s</text>
+<text x="662" y="839" fill="#0b0b0b" dominant-baseline="central">8.72 s</text>
 </svg>
