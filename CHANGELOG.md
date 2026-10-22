@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Faster first runs in big projects on a fast connection. inup now unpacks the largest registry responses on your other CPU cores, so it no longer waits for one core to work through them after the downloads have finished.
+
 ## [1.8.7] - 2026-10-21
 
 ### Changed
