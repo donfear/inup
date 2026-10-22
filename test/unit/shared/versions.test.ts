@@ -111,6 +111,28 @@ describe('version utils', () => {
       ])
     })
 
+    it('orders versions as semver does, not as strings, and skips keys that are not versions', () => {
+      const stable = ['1.9.0', '10.0.0', '1.10.0', '9.0.0', '1.10.1', '0.0.2']
+      const prerelease = [
+        '2.0.0-rc.10',
+        '2.0.0-rc.9',
+        '2.0.0-beta',
+        '10.0.0-alpha.1',
+        'v3.0.0-next.1',
+      ]
+      const raw = JSON.stringify({
+        versions: Object.fromEntries(
+          [...stable, ...prerelease, 'latest', '1.0', '1.0.0.0'].map((v) => [v, {}])
+        ),
+      })
+
+      const result = parseVersions(raw)
+      expect(result.allVersions).toEqual(['10.0.0', '9.0.0', '1.10.1', '1.10.0', '1.9.0', '0.0.2'])
+      expect(result.allVersions).toEqual([...stable].sort(semver.rcompare))
+      expect(result.prereleaseVersions).toEqual([...prerelease].sort(semver.rcompare))
+      expect(result.latestVersion).toBe('10.0.0')
+    })
+
     it('excludes build-metadata versions from both lists', () => {
       const raw = JSON.stringify({
         versions: { '1.0.0': {}, '1.0.1+build.5': {}, '1.0.2-rc.1+build.6': {} },
