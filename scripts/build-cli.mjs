@@ -39,8 +39,12 @@ if (require.main === module) cli.program.parse()
 /** Write the bundle and its launcher into `outdir`; returns the launcher's path. */
 export async function bundleCli({ outdir = 'dist', entry = 'src/cli.ts' } = {}) {
   const { warnings } = await build({
-    entryPoints: [entry],
-    outfile: join(outdir, BUNDLE_FILE),
+    // decode-pool.ts starts its workers from decode-worker.js beside the code that runs it.
+    entryPoints: [
+      { in: entry, out: BUNDLE_FILE.replace(/\.js$/, '') },
+      { in: 'src/shared/registry/decode-worker.ts', out: 'decode-worker' },
+    ],
+    outdir,
     bundle: true,
     platform: 'node',
     format: 'cjs',

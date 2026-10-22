@@ -3,9 +3,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { isBuiltin } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Worker } from 'node:worker_threads'
+import { brotliCompressSync } from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { BUNDLE_FILE, bundleCli, LAUNCHER } from '../../../scripts/build-cli.mjs'
 import { PACKAGE_VERSION } from '../../../src/shared/config'
+import { startDecodeWorker } from '../../../src/shared/registry/decode-pool'
 
 /**
  * The published CLI: dist/cli.js launches one bundled file. Built outside the
@@ -57,11 +60,27 @@ describe('bundled CLI', () => {
   })
 
   // Covers the paths a run below cannot reach, like the interactive picker.
-  it('requires nothing but Node built-ins at runtime', () => {
-    const bundle = readFileSync(join(outdir, BUNDLE_FILE), 'utf8')
+  it.each([BUNDLE_FILE, 'decode-worker.js'])('%s requires nothing but Node built-ins', (file) => {
+    const bundle = readFileSync(join(outdir, file), 'utf8')
     const required = [...bundle.matchAll(/\brequire\("([^"]+)"\)/g)].map(([, id]) => id)
-    expect(required).toContain('node:fs')
+    expect(required).toContain('node:zlib')
     expect(required.filter((id) => !isBuiltin(id))).toEqual([])
+  })
+
+  // decode-pool.ts starts it from beside the bundle; a test run from source never can.
+  it('writes a decode worker beside the bundle that decodes a body', async () => {
+    const worker = startDecodeWorker(join(outdir, 'decode-worker.js')) as Worker
+    try {
+      const raw = brotliCompressSync(JSON.stringify({ versions: { '1.0.0': {}, '1.1.0': {} } }))
+      const reply = new Promise((resolve) => worker.once('message', resolve))
+      worker.postMessage({ id: 1, raw, encoding: 'br' })
+      expect(await reply).toEqual({
+        id: 1,
+        data: { latestVersion: '1.1.0', allVersions: ['1.1.0', '1.0.0'], prereleaseVersions: [] },
+      })
+    } finally {
+      await worker.terminate()
+    }
   })
 
   it('runs without the repository node_modules', { timeout: 30_000 }, () => {

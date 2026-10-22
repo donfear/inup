@@ -56,6 +56,12 @@ import {
 } from '../../../../src/shared/http/hill-climb-controller'
 import { sleep } from '../../../../src/shared/http/retry'
 import {
+  type DecodeWorker,
+  MIN_WORKER_BYTES,
+  setDecodeWorkerFactory,
+} from '../../../../src/shared/registry/decode-pool'
+import type { DecodeReply, DecodeRequest } from '../../../../src/shared/registry/decode-worker'
+import {
   clearPackageCache,
   fetchPackageVersions,
   startPackageVersionFetch,
@@ -479,6 +485,46 @@ describe('npm-registry', () => {
       const result = await fetchPackageVersions(['demo-pkg'])
       expect(result.get('demo-pkg')?.latestVersion).toBe('1.1.0')
     }
+  })
+
+  describe('big bodies', () => {
+    const payload = JSON.stringify({
+      versions: { '1.0.0': {}, '1.1.0': {} },
+      readme: 'x'.repeat(MIN_WORKER_BYTES),
+    })
+
+    /** A worker thread stand-in that answers each request with `answer`. */
+    const fakeWorker = (answer: (request: DecodeRequest) => DecodeReply): DecodeWorker => {
+      let onMessage: (reply: DecodeReply) => void = () => undefined
+      return {
+        postMessage: (request) => queueMicrotask(() => onMessage(answer(request))),
+        on: (event: string, listener: (reply: never) => void) => {
+          if (event === 'message') onMessage = listener
+        },
+        ref: () => undefined,
+        unref: () => undefined,
+      } as DecodeWorker
+    }
+
+    afterEach(() => setDecodeWorkerFactory(null))
+
+    it('are decoded on a worker thread', async () => {
+      setDecodeWorkerFactory(() =>
+        fakeWorker(({ id }) => ({ id, data: { latestVersion: '9.0.0', allVersions: ['9.0.0'] } }))
+      )
+      requestMock.mockResolvedValue({ statusCode: 200, body: payload })
+
+      const result = await fetchPackageVersions(['demo-pkg'])
+      expect(result.get('demo-pkg')?.latestVersion).toBe('9.0.0')
+    })
+
+    it('are decoded on the main thread when the worker fails', async () => {
+      setDecodeWorkerFactory(() => fakeWorker(({ id }) => ({ id, error: 'worker gone' })))
+      requestMock.mockResolvedValue({ statusCode: 200, body: payload })
+
+      const result = await fetchPackageVersions(['demo-pkg'])
+      expect(result.get('demo-pkg')?.latestVersion).toBe('1.1.0')
+    })
   })
 
   it('emits every package exactly once with its own data', async () => {

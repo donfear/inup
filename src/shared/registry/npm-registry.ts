@@ -18,6 +18,7 @@ import { clamp } from '../math'
 import { stripControlCharacters } from '../terminal/text'
 import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
+import { decodeOffThread } from './decode-pool'
 import { type RegistryTarget, registryTargetFor } from './registry-config'
 import {
   type NativeTransport,
@@ -164,11 +165,27 @@ async function decodePackument(
       debugLog.warn('npm-registry', 'Rust decoder failed, falling back to TypeScript', error)
     }
   }
-  const data = parseVersions((await decompressBody(raw, encoding)).toString('utf8'))
+  const data = await decodeInTypeScript(raw, encoding)
   if (etag) {
     writeEtag(cacheKey, etag, data)
   }
   return data
+}
+
+/** A big body goes to a decode worker; a small one, or one the pool turned down, stays here. */
+async function decodeInTypeScript(
+  raw: Buffer,
+  encoding: string | undefined
+): Promise<PackageVersionData> {
+  const offThread = decodeOffThread(raw, encoding ?? '')
+  if (offThread) {
+    try {
+      return await offThread
+    } catch {
+      // The worker failed before answering; the body is still here to decode.
+    }
+  }
+  return parseVersions((await decompressBody(raw, encoding)).toString('utf8'))
 }
 
 // Origins where the native transport failed in a way Node's own stack might not
