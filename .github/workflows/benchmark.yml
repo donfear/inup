@@ -63,8 +63,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+
+      # The native core too, so every inup run, --json included, uses it.
       - name: Build
-        run: pnpm build
+        run: pnpm build:all
+
+      - name: Check that inup loads its native core
+        run: |
+          core="$(node -e "import('./scripts/bench-compare.mjs').then((m) => process.stdout.write(m.inupCore()))")"
+          echo "inup core: $core"
+          test "$core" = native
 
       - name: Install hyperfine
         env:
