@@ -249,8 +249,10 @@ export function pickerEnv(box, env = process.env) {
  * and wait until it goes quiet, with nothing drawn and nothing written under
  * `box` for `idleMs`. The time is the last thing it drew or wrote: a picker
  * may finish drawing the rows on screen and keep fetching the rest, writing
- * each into its cache. One that exits first never opened; one that is still
- * busy after `limitMs` fails too.
+ * each into its cache. Quiet only counts once it has drawn something: until
+ * then python, the terminal and the picker are still starting, however long
+ * that takes. One that exits first never opened; one that draws nothing or is
+ * still busy within `limitMs` fails too.
  */
 export function timePicker(argv, { cwd, box, idleMs = PICKER_IDLE_MS, limitMs = PICKER_LIMIT_MS }) {
   return new Promise((resolve, reject) => {
@@ -303,7 +305,8 @@ export function timePicker(argv, { cwd, box, idleMs = PICKER_IDLE_MS, limitMs = 
     const poll = setInterval(() => {
       const now = Date.now()
       const quiet = now - Math.max(start, lastDrawn, lastEvent)
-      if (exit === null && quiet < idleMs && now - start < limitMs) return
+      const settled = drawn > 0 && quiet >= idleMs
+      if (exit === null && !settled && now - start < limitMs) return
       clearInterval(poll)
       watcher.close()
       const command = argv.join(' ')
@@ -311,10 +314,10 @@ export function timePicker(argv, { cwd, box, idleMs = PICKER_IDLE_MS, limitMs = 
         outcome = new Error(
           `${command} exited (${exit}) instead of waiting\n${stderr.slice(-2000)}`
         )
+      } else if (drawn === 0) {
+        outcome = new Error(`${command} drew nothing in ${limitMs / 1000} s`)
       } else if (quiet < idleMs) {
         outcome = new Error(`${command} was still busy after ${limitMs / 1000} s`)
-      } else if (drawn === 0) {
-        outcome = new Error(`${command} drew nothing`)
       } else {
         outcome = (Math.max(lastDrawn, lastWritten) - start) / 1000
       }
