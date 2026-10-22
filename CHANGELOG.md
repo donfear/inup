@@ -12,6 +12,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 - Faster first runs in big projects on a fast connection. inup now unpacks the largest registry responses on your other CPU cores, so it no longer waits for one core to work through them after the downloads have finished.
 - Faster first runs in big projects. inup now reads each version number once when it sorts a package's versions, instead of on every comparison, which took about a third of its work when nothing was cached yet.
 
+### Fixed
+
+- When the registry's vulnerability check does not answer, inup gives up after 10 seconds instead of a minute. Scripted runs (`--json`, `--check`, `--apply`) used to wait out the full minute before reporting, and then listed no vulnerabilities without saying why. They now warn on stderr that vulnerabilities could not be checked.
+
 ## [1.8.7] - 2026-10-21
 
 ### Changed

@@ -306,14 +306,14 @@ describe('HeadlessRunner.run', () => {
     await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
 
     // The audit checks the currently-installed specifier of every declared
-    // dependency (it starts before the registry says which are outdated), and
-    // stays best-effort: no rejection is asked for.
+    // dependency (it starts before the registry says which are outdated). A failure
+    // must be told apart from a clean audit, so it asks to be rejected.
     expect(mocks.fetchVulnerabilities).toHaveBeenCalledWith(
       new Map([
         ['axios', '^0.27.0'],
         ['left-pad', '^1.3.0'],
       ]),
-      {}
+      { rejectOnFailure: true }
     )
 
     const report = JSON.parse(logSpy.mock.calls[0][0] as string)
@@ -419,6 +419,28 @@ describe('HeadlessRunner.run', () => {
     expect(process.exitCode).toBe(0)
 
     logSpy.mockRestore()
+  })
+
+  it.each([
+    [new Error('no answer within 10 s'), 'no answer within 10 s'],
+    ['refused', 'refused'],
+  ])('warns on stderr when the audit fails, and still reports', async (failure, reason) => {
+    mocks.fetchVulnerabilities.mockRejectedValue(failure)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    process.exitCode = 0
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true, check: true })
+
+    expect(errSpy).toHaveBeenCalledWith(
+      `Warning: vulnerabilities could not be checked — the advisory request failed: ${reason}. The report lists none.`
+    )
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    expect(report.summary.vulnerable).toBe(0)
+    // --check gates on updates; the audit is not what it checks.
+    expect(process.exitCode).toBe(1)
+    logSpy.mockRestore()
+    errSpy.mockRestore()
   })
 
   it('warns about failed lookups on stderr, naming the first five, without --check', async () => {
