@@ -36,16 +36,20 @@ export function parseVersions(raw: string): ParsedVersions {
   // Stable versions only — prereleases are kept in their own list so they are
   // never offered to users on a stable version. The strict x.y.z shape also
   // keeps build-metadata variants (1.0.0+build) out of the stable pool.
-  const allVersions = versionKeys.filter((v) => /^[0-9]+\.[0-9]+\.[0-9]+$/.test(v))
-  const sortedVersions = allVersions.sort(semver.rcompare)
-  const prereleaseVersions = versionKeys
-    .filter((v) => semver.valid(v) !== null && semver.prerelease(v) !== null)
-    .sort(semver.rcompare)
+  const stableKeys: string[] = []
+  const otherKeys: string[] = []
+  for (const key of versionKeys) {
+    if (/^[0-9]+\.[0-9]+\.[0-9]+$/.test(key)) stableKeys.push(key)
+    else otherKeys.push(key)
+  }
+  const allVersions = sortStableDescending(stableKeys)
+  // A strict x.y.z is never a prerelease, so only the other keys need a full parse.
+  const prereleaseVersions = sortPrereleasesDescending(otherKeys)
   // A package that has only ever published prereleases still has a meaningful
   // latest; without this fallback it would be reported as unavailable.
   const latestVersion =
-    sortedVersions.length > 0
-      ? sortedVersions[0]
+    allVersions.length > 0
+      ? allVersions[0]
       : prereleaseVersions.length > 0
         ? prereleaseVersions[0]
         : 'unknown'
@@ -78,6 +82,31 @@ export function parseVersions(raw: string): ParsedVersions {
   const enginesNode = extractEnginesNode(latestManifest?.engines)
 
   return { latestVersion, allVersions, prereleaseVersions, deprecated, enginesNode, publishTimes }
+}
+
+// A packument can list thousands of versions, and `sort(semver.rcompare)` parses both sides of
+// every comparison — n·log n parses where n will do. These sorts parse each version once and
+// order exactly as `sort(semver.rcompare)` does, ties included (Array#sort is stable).
+
+/** Strict `x.y.z` versions, newest first. */
+function sortStableDescending(versions: string[]): string[] {
+  const parsed = versions.map((version) => {
+    const [major, minor, patch] = version.split('.').map(Number)
+    return { version, major, minor, patch }
+  })
+  parsed.sort((a, b) => b.major - a.major || b.minor - a.minor || b.patch - a.patch)
+  return parsed.map((entry) => entry.version)
+}
+
+/** The keys that are valid prerelease versions, newest first. */
+function sortPrereleasesDescending(keys: string[]): string[] {
+  const parsed: Array<{ key: string; version: semver.SemVer }> = []
+  for (const key of keys) {
+    const version = semver.parse(key)
+    if (version !== null && version.prerelease.length > 0) parsed.push({ key, version })
+  }
+  parsed.sort((a, b) => b.version.compare(a.version))
+  return parsed.map((entry) => entry.key)
 }
 
 /**
