@@ -43,7 +43,8 @@ describe('FIXTURES', () => {
 
 describe('TOOLS', () => {
   it('asks every tool for every update, workspaces included, without writing', () => {
-    expect(tool('inup').args(pnpmWorkspace)).toEqual(['--json'])
+    // The other tools don't check for vulnerabilities, so inup skips its check too.
+    expect(tool('inup').args(pnpmWorkspace)).toEqual(['--json', '--no-audit'])
     expect(tool('ncu').args(single)).toEqual(['--jsonUpgraded'])
     expect(tool('ncu').args(pnpmWorkspace)).toEqual(['--jsonUpgraded', '--workspaces'])
     expect(tool('taze').args(single)).toEqual([
@@ -171,7 +172,7 @@ describe('pickers', () => {
   const npmSingle = { pm: 'npm', workspaces: false }
 
   it('opens each interactive list, every update included', () => {
-    expect(picker('inup').args(pnpmWorkspace)).toEqual([])
+    expect(picker('inup').args(pnpmWorkspace)).toEqual(['--no-audit'])
     expect(picker('ncu').args(single)).toEqual(['--interactive'])
     expect(picker('taze').args(pnpmWorkspace)).toEqual([
       'major',

@@ -230,7 +230,9 @@ describe('renderTables', () => {
     expect(tables).toContain(
       'GitHub Actions ubuntu24 20261012.1, 4 CPUs, Node v24.11.0, 21 Oct 2026'
     )
-    expect(tables).toContain("inup's times include its vulnerability check")
+    expect(tables).toContain(
+      "inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too."
+    )
   })
 
   it('falls back to the OS name off GitHub Actions', () => {

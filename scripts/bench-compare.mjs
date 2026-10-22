@@ -80,9 +80,10 @@ export const TOOLS = [
   {
     id: 'inup',
     name: () => 'inup',
-    args: () => ['--json'],
+    // The other tools don't check for vulnerabilities, so inup skips its check too.
+    args: () => ['--json', '--no-audit'],
     count: ({ stdout }) => JSON.parse(stdout).summary.outdated,
-    picker: { args: () => [] },
+    picker: { args: () => ['--no-audit'] },
   },
   {
     id: 'ncu',
