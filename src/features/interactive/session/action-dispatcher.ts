@@ -71,7 +71,7 @@ export function dispatchAction(action: InputAction, ctx: DispatchContext): boole
     if (auditProgress.hasData) {
       stateManager.toggleVulnerableFilter()
     } else if (!auditProgress.isRunning) {
-      vulnerabilityAuditController.enqueueStates(states, requestRender)
+      vulnerabilityAuditController.start(states, requestRender)
     }
   }
 

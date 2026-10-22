@@ -47,6 +47,7 @@ function makeHarness(states = makeStates()) {
   const vulnerabilityAuditController = {
     getProgress: vi.fn(() => ({ total: 0, completed: 0, isRunning: false, hasData: false })),
     enqueueStates: vi.fn(),
+    start: vi.fn(),
   }
 
   let resolved = false
@@ -273,16 +274,14 @@ describe('dispatchAction vulnerability audit', () => {
 
     dispatch({ type: 'trigger_audit_scan' })
 
-    expect(vulnerabilityAuditController.enqueueStates).toHaveBeenCalledWith(
-      states,
-      expect.any(Function)
-    )
+    // start, not enqueueStates: with --no-audit this is what turns the audit on.
+    expect(vulnerabilityAuditController.start).toHaveBeenCalledWith(states, expect.any(Function))
   })
 
   it('re-renders from the audit progress callback until resolved', () => {
     const { dispatch, vulnerabilityAuditController, render, setResolved } = makeHarness()
     dispatch({ type: 'trigger_audit_scan' })
-    const onUpdate = vulnerabilityAuditController.enqueueStates.mock.calls[0][1] as () => void
+    const onUpdate = vulnerabilityAuditController.start.mock.calls[0][1] as () => void
     render.mockClear()
 
     onUpdate()
@@ -305,7 +304,7 @@ describe('dispatchAction vulnerability audit', () => {
     dispatch({ type: 'toggle_vulnerable_filter' })
 
     expect(stateManager.isVulnerableFilterActive()).toBe(true)
-    expect(vulnerabilityAuditController.enqueueStates).not.toHaveBeenCalled()
+    expect(vulnerabilityAuditController.start).not.toHaveBeenCalled()
   })
 
   it('does nothing while a scan is already running', () => {
@@ -319,7 +318,7 @@ describe('dispatchAction vulnerability audit', () => {
 
     dispatch({ type: 'trigger_audit_scan' })
 
-    expect(vulnerabilityAuditController.enqueueStates).not.toHaveBeenCalled()
+    expect(vulnerabilityAuditController.start).not.toHaveBeenCalled()
     expect(stateManager.isVulnerableFilterActive()).toBe(false)
   })
 })

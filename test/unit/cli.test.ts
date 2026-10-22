@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getGitWorkingTreeState: vi.fn(),
   promptForImmediateConfirmation: vi.fn(),
   upgradeRunnerOptions: [] as unknown[],
+  headlessRunnerOptions: [] as unknown[],
   configureNativeCore: vi.fn(),
   openPicker: vi.fn(),
 }))
@@ -26,6 +27,9 @@ vi.mock('../../src/index', () => ({
 
 vi.mock('../../src/features/headless', () => ({
   HeadlessRunner: class {
+    constructor(options: unknown) {
+      mocks.headlessRunnerOptions.push(options)
+    }
     run = mocks.headlessRun
   },
 }))
@@ -389,6 +393,52 @@ describe('CLI concurrency flag', () => {
 
     errorSpy.mockRestore()
     exitSpy.mockRestore()
+  })
+})
+
+describe('CLI audit flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    mocks.headlessRunnerOptions.length = 0
+    delete process.env.CI
+
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+
+  it('audits by default in the picker and in headless runs', async () => {
+    setInteractive(true)
+    await runCli(baseOptions)
+    await runCli({ ...baseOptions, json: true })
+
+    expect(mocks.upgradeRunnerOptions[0]).toMatchObject({ audit: true })
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ audit: true })
+  })
+
+  it('passes --no-audit to the picker', async () => {
+    setInteractive(true)
+    await runCli({ ...baseOptions, audit: false })
+
+    expect(mocks.upgradeRunnerOptions[0]).toMatchObject({ audit: false })
+  })
+
+  it('passes --no-audit to headless runs', async () => {
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true, audit: false })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ audit: false })
   })
 })
 

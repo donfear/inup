@@ -37,6 +37,8 @@ export class HeadlessRunner {
         throw new Error('No package.json found in current directory')
       }
 
+      // --no-audit: no advisory request at all, and the report says vulnerabilities are unknown.
+      const audit = this.options?.audit ?? true
       // The bulk advisory request needs only name → declared specifier (every one of
       // them, so each declaration gets its own advisories), which the detector knows
       // before it touches the registry. Start it from the `initial` event so it
@@ -74,7 +76,7 @@ export class HeadlessRunner {
             case 'done':
               break
           }
-        } else if (event.type === 'initial') {
+        } else if (event.type === 'initial' && audit) {
           advisories = fetchVulnerabilitiesPerVersion(event.payload.declaredVersions, {
             rejectOnFailure: true,
           }).catch((error: unknown) => {
@@ -99,7 +101,12 @@ export class HeadlessRunner {
 
       // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
       const cooldown = this.detector.getCooldownDiagnostics()
-      const report = buildHeadlessReport(packages, outdated, vulnerabilities, cooldown)
+      const report = buildHeadlessReport(
+        packages,
+        outdated,
+        audit ? vulnerabilities : null,
+        cooldown
+      )
 
       // A cooldown that could not act must say so. It fails open on missing publish times, so
       // staying quiet here would present an inert control as a satisfied one — and this is the

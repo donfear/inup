@@ -191,7 +191,10 @@ export function renderInterface(
     statusLine += `  ${getThemeColor('warning')(`${loadingProgress.failed} unavailable`)}`
   }
 
-  if (auditProgress && auditProgress.total > 0) {
+  if (auditProgress?.off) {
+    // --no-audit: rows without badges must not read as a clean audit.
+    statusLine += `  ${getThemeColor('textSecondary')('Audit off · s to run')}`
+  } else if (auditProgress && auditProgress.total > 0) {
     // A failed request leaves rows without badges, exactly like a clean audit — say so,
     // or "no badge" would read as "no advisories".
     const auditLabel = auditProgress.isRunning

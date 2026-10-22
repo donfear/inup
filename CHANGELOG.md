@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `--no-audit` skips the vulnerability check, for runs where you only want to know what is outdated. The `--json` report then gives `summary.vulnerable` as `null` instead of a count, so a skipped check is never read as a clean one. The picker says "Audit off" and still runs the check when you press `s`.
+
 ## [1.8.8] - 2026-10-22
 
 ### Changed

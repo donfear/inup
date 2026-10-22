@@ -18,11 +18,14 @@ export function failedLookupNames(all: PackageInfo[]): string[] {
   return [...new Set(all.filter((pkg) => pkg.lookupFailed).map((pkg) => pkg.name))]
 }
 
-/** Build the machine-readable `--json` payload from the scanned + outdated package sets. */
+/**
+ * Build the machine-readable `--json` payload from the scanned + outdated package sets.
+ * `vulnerabilities` is null when the audit was skipped (--no-audit).
+ */
 export function buildHeadlessReport(
   all: PackageInfo[],
   outdated: PackageInfo[],
-  vulnerabilities: VulnerabilityMap,
+  vulnerabilities: VulnerabilityMap | null,
   cooldown?: HeadlessCooldownStatus | null
 ): HeadlessReport {
   // Drawn from `all`, not `outdated`: a package whose only newer versions are inside the
@@ -52,7 +55,8 @@ export function buildHeadlessReport(
       total: all.length,
       outdated: outdated.length,
       major: outdated.filter((pkg) => pkg.hasMajorUpdate).length,
-      vulnerable: vulnerabilities.size,
+      // null when nothing was checked: 0 would read as "no known advisories".
+      vulnerable: vulnerabilities === null ? null : vulnerabilities.size,
       // Unique packages, NOT array length: this is a risk count, and one package
       // held across five workspaces is one thing to think about, not five.
       heldByCooldown: countHeldPackages(all),
@@ -76,7 +80,7 @@ export function buildHeadlessReport(
       if (pkg.enginesNode) entry.enginesNode = pkg.enginesNode
       if (pkg.heldByCooldown) entry.heldByCooldown = pkg.heldByCooldown
       if (pkg.heldByPatch) entry.heldByPatch = pkg.heldByPatch
-      const vulnerability = vulnerabilities.get(pkg)
+      const vulnerability = vulnerabilities?.get(pkg)
       if (vulnerability) entry.vulnerability = vulnerability
       return entry
     }),

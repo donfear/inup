@@ -21,6 +21,8 @@ export interface AuditProgress {
   failed: number
   isRunning: boolean
   hasData: boolean
+  /** Set while the audit waits to be asked for (--no-audit): nothing has been checked. */
+  off?: boolean
 }
 
 export interface StreamOutdatedPackagesInitialPayload {
