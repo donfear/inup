@@ -54,6 +54,7 @@ export interface CliOptions {
   target?: ApplyTarget
   concurrency?: string
   native?: boolean
+  audit?: boolean
   minimumReleaseAge?: string
 }
 
@@ -238,6 +239,8 @@ export async function runCli(options: CliOptions): Promise<void> {
     minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
     // Pinned parallelism: flag > .inuprc; undefined lets the controller adapt.
     concurrency: concurrency ?? projectConfig.concurrency,
+    // Commander sets false for --no-audit; a caller that builds CliOptions itself may omit it.
+    audit: options.audit ?? true,
   }
 
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
@@ -332,6 +335,7 @@ program
     'use the native (Rust) registry core, on by default; downloads it on first use, even in headless runs'
   )
   .option('--no-native', 'use the TypeScript registry core for this run')
+  .option('--no-audit', 'skip the vulnerability check (the picker still runs it when you press s)')
   .option('--json', 'print a machine-readable JSON report and exit (non-interactive, read-only)')
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .option(

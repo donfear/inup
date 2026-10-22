@@ -331,6 +331,35 @@ describe('HeadlessRunner.run', () => {
     logSpy.mockRestore()
   })
 
+  it('with audit off sends no advisory request and reports vulnerabilities as unknown', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo', audit: false }).run({ json: true })
+
+    expect(mocks.fetchVulnerabilities).not.toHaveBeenCalled()
+    const report = JSON.parse(logSpy.mock.calls[0][0] as string)
+    // null, not 0: nothing was checked, and 0 would read as "no known advisories".
+    expect(report.summary.vulnerable).toBeNull()
+    expect(report.outdated.map((p: any) => p.name)).toEqual(['axios'])
+    // Skipped on request, so not reported as a failed audit.
+    expect(errorSpy).not.toHaveBeenCalled()
+
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('with audit off prints the plain report without a vulnerability count', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new HeadlessRunner({ cwd: '/repo', audit: false }).run({})
+
+    expect(mocks.fetchVulnerabilities).not.toHaveBeenCalled()
+    expect(String(logSpy.mock.calls[0][0])).toContain('1 package(s) outdated across 1 file(s).')
+
+    logSpy.mockRestore()
+  })
+
   it('starts the advisory request from the initial dependency set, before packages resolve', async () => {
     let auditCallsBeforeComplete = -1
     mocks.streamOutdatedPackages.mockImplementation(async (onEvent: (e: unknown) => void) => {

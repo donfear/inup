@@ -24,6 +24,8 @@ import type {
 
 interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean
+  /** False with --no-audit: nothing is checked until the user presses `s`. */
+  audit?: boolean
 }
 
 const DEFAULT_VULNERABILITY_DISPLAY_OPTIONS: Required<VulnerabilityDisplayOptions> = {
@@ -69,7 +71,7 @@ export class InteractiveUI {
     return { ...this.options, cooldown: this.cooldown }
   }
   private readonly saveExact: boolean
-  private readonly vulnerabilityAuditController = new VulnerabilityAuditController()
+  private readonly vulnerabilityAuditController: VulnerabilityAuditController
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
   /**
@@ -86,6 +88,9 @@ export class InteractiveUI {
     this.packageManager = packageManager
     this.options = normalizeVulnerabilityDisplayOptions(options)
     this.saveExact = options?.saveExact ?? false
+    this.vulnerabilityAuditController = new VulnerabilityAuditController({
+      automatic: options?.audit ?? true,
+    })
   }
 
   public async selectPackagesToUpgrade(

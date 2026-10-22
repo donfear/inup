@@ -71,6 +71,19 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
     expect(choices[0].targetVersion).toBe('2.0.0')
   })
 
+  it.each([
+    [{}, undefined],
+    [{ audit: false }, true],
+  ])('with %o hands the session an audit that is off: %s', async (options, off) => {
+    const ui = new InteractiveUI(npmInfo, options)
+    sessionMock.mockResolvedValue([])
+
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    const controller = sessionMock.mock.calls[0][4]
+    expect(controller.getProgress().off).toBe(off)
+  })
+
   it('passes normalized vulnerability display options to the session', async () => {
     const ui = new InteractiveUI(npmInfo, { showPeerDependencyVulnerabilities: true })
     sessionMock.mockResolvedValue([])

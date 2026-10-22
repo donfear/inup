@@ -19,6 +19,7 @@ inup [options]
 | `--concurrency <n>` | Pin registry-fetch parallelism (1–24) and disable adaptive ramping — for slow or metered connections |
 | `--native` | Use the [native core](configuration.md#native) (on by default), downloading it on first use even with `--json`, `--check` or `--apply` |
 | `--no-native` | Use the standard core for this run, even if `.inuprc` enables native |
+| `--no-audit` | Skip the vulnerability check. With `--json`, `summary.vulnerable` is `null`; the picker shows "Audit off" and still runs the check when you press `s` |
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation). Never rewrites `peerDependencies` |

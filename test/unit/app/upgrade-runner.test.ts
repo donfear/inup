@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   prefetchSecurityAudit: vi.fn(),
   setCooldownHeldCount: vi.fn(),
   setCooldownUnsupported: vi.fn(),
+  uiOptions: [] as unknown[],
   performanceTracker: {
     start: vi.fn(),
     setPackageManager: vi.fn(),
@@ -38,6 +39,9 @@ vi.mock('../../../src/features/debug', () => ({
 
 vi.mock('../../../src/app/interactive-ui', () => ({
   InteractiveUI: class {
+    constructor(_packageManager: unknown, options: unknown) {
+      mocks.uiOptions.push(options)
+    }
     selectPackagesToUpgradeProgressive = mocks.selectPackagesToUpgradeProgressive
     selectPackagesToUpgrade = mocks.selectPackagesToUpgrade
     confirmUpgrade = mocks.confirmUpgrade
@@ -131,6 +135,15 @@ describe('UpgradeRunner terminal handoff', () => {
         },
       })
     })
+  })
+
+  it.each([
+    [{}, true],
+    [{ audit: false }, false],
+  ])('hands the audit choice %o to the picker', (options, audit) => {
+    mocks.uiOptions.length = 0
+    new UpgradeRunner({ cwd: '/repo', ...options })
+    expect(mocks.uiOptions[0]).toMatchObject({ audit })
   })
 
   it('names cooldown-held packages instead of stopping at "up to date"', async () => {

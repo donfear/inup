@@ -410,6 +410,22 @@ describe('renderInterface status line', () => {
     expect(text).toContain('Audit 5/5')
   })
 
+  it('says the audit is off until it is asked for', () => {
+    const text = renderPlain([baseState], {
+      auditProgress: {
+        completed: 0,
+        total: 0,
+        failed: 0,
+        isRunning: false,
+        hasData: false,
+        off: true,
+      },
+    })
+
+    // Rows without badges would otherwise read as a clean audit.
+    expect(text).toContain('Audit off · s to run')
+  })
+
   it('flags a failed audit instead of showing it complete', () => {
     const text = renderPlain([baseState], {
       auditProgress: { completed: 5, total: 5, failed: 2, isRunning: false, hasData: true },

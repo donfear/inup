@@ -13,7 +13,7 @@ The payload carries a `schemaVersion` so scripts and agents can pin to a known s
     total: number         // packages scanned
     outdated: number      // packages with an available update
     major: number         // of the outdated, how many have a `latest` beyond the in-range target
-    vulnerable: number    // of the outdated, how many have ≥1 known advisory on the installed version
+    vulnerable: number | null // of the outdated, how many have ≥1 known advisory on the installed version; null with --no-audit (not checked)
     heldByCooldown: number // UNIQUE packages with a withheld version (0 when the cooldown is off)
     failed: number        // UNIQUE packages whose registry lookup failed
   }

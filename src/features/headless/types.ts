@@ -64,7 +64,7 @@ export interface HeadlessReport {
     total: number // Packages scanned
     outdated: number // Packages with an available update
     major: number // Of the outdated, how many have a latest beyond the in-range target
-    vulnerable: number // Of the outdated, how many have ≥1 known advisory on the current version
+    vulnerable: number | null // Of the outdated, how many have ≥1 known advisory on the current version; null with --no-audit
     heldByCooldown: number // Packages with ≥1 version withheld by minimumReleaseAge (0 when disabled)
     failed: number // Packages whose registry lookup failed (unique names)
   }
