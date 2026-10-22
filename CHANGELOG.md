@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.8] - 2026-10-22
+
 ### Changed
 
 - Faster first runs in big projects on a fast connection. inup now unpacks the largest registry responses on your other CPU cores, so it no longer waits for one core to work through them after the downloads have finished.
@@ -542,7 +544,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.7...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.8.8...HEAD
+[1.8.8]: https://github.com/donfear/inup/compare/v1.8.7...v1.8.8
 [1.8.7]: https://github.com/donfear/inup/compare/v1.8.6...v1.8.7
 [1.8.6]: https://github.com/donfear/inup/compare/v1.8.5...v1.8.6
 [1.8.5]: https://github.com/donfear/inup/compare/v1.8.4...v1.8.5
