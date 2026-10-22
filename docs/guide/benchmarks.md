@@ -72,18 +72,18 @@ Fixtures: `express`, `vue-core`, `tanstack-query`, `vendure`, `backstage`. Times
 
 [`expressjs/express@0dee2c5`](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8) · npm · 1 package.json · 44 dependencies
 
-Median, ± standard deviation, min–max, over 10 runs. Measured 21 Oct 2026 on GitHub Actions ubuntu24 20261018.339.1 · Linux 7.0.0-1017-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.22.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39625653309).
+Median, ± standard deviation, min–max, over 10 runs. Measured 22 Oct 2026 on GitHub Actions ubuntu24 20261018.339.1 · Linux 7.0.0-1017-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.22.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39738521077).
 
 #### Listing outdated dependencies
 
 | Tool | Version | First run | Repeat run | Updates found |
 | :-- | :-- | --: | --: | --: |
-| inup | 1.8.7 (4103ffa) | 0.39 s ± 0.03<br><sub>0.37–0.47</sub> | 0.36 s ± 0.02<br><sub>0.34–0.41</sub> | 22 |
-| npm-check-updates | 23.1.1 | 0.68 s ± 0.02<br><sub>0.66–0.72</sub> | 0.71 s ± 0.04<br><sub>0.68–0.80</sub> | 21 |
-| taze | 21.3.0 | 0.85 s ± 1.40<br><sub>0.51–5.19</sub> | 0.21 s ± 0.00<br><sub>0.21–0.21</sub> | 21 |
-| syncpack | 15.3.3 | **0.23 s** ± 0.06<br><sub>0.20–0.40</sub> | **0.04 s** ± 0.00<br><sub>0.04–0.05</sub> | 22 |
-| npm-check | 6.0.1 | 1.11 s ± 0.03<br><sub>1.07–1.17</sub> | 1.13 s ± 0.02<br><sub>1.09–1.16</sub> | — |
-| npm outdated | 11.19.1 | 0.92 s ± 0.02<br><sub>0.89–0.94</sub> | 0.68 s ± 0.01<br><sub>0.67–0.70</sub> | 13 |
+| inup | 1.8.7 (c67f702) | 0.41 s ± 25.71<br><sub>0.39–60.16</sub> | 0.36 s ± 24.66<br><sub>0.34–60.21</sub> | 22 |
+| npm-check-updates | 23.1.1 | 0.66 s ± 0.05<br><sub>0.63–0.81</sub> | 0.65 s ± 0.03<br><sub>0.64–0.73</sub> | 22 |
+| taze | 21.3.0 | 0.80 s ± 2.17<br><sub>0.49–5.19</sub> | 0.21 s ± 0.01<br><sub>0.20–0.23</sub> | 21 |
+| syncpack | 15.3.3 | **0.22 s** ± 0.02<br><sub>0.20–0.26</sub> | **0.04 s** ± 0.01<br><sub>0.04–0.06</sub> | 22 |
+| npm-check | 6.0.1 | 1.06 s ± 0.05<br><sub>1.02–1.16</sub> | 1.06 s ± 0.05<br><sub>1.03–1.18</sub> | — |
+| npm outdated | 11.19.1 | 0.88 s ± 0.01<br><sub>0.87–0.89</sub> | 0.67 s ± 0.01<br><sub>0.66–0.68</sub> | 13 |
 
 Commands, run in the repository root:
 
@@ -100,11 +100,11 @@ npm outdated --json
 
 | Tool | Version | First run | Repeat run |
 | :-- | :-- | --: | --: |
-| inup | 1.8.7 (4103ffa) | 0.49 s ± 0.05<br><sub>0.45–0.60</sub> | 0.46 s ± 0.05<br><sub>0.44–0.59</sub> |
-| npm-check-updates | 23.1.1 | 0.71 s ± 0.13<br><sub>0.67–1.05</sub> | 0.71 s ± 0.04<br><sub>0.67–0.79</sub> |
-| taze | 21.3.0 | 0.91 s ± 1.93<br><sub>0.54–5.41</sub> | **0.23 s** ± 0.00<br><sub>0.23–0.23</sub> |
-| syncpack | 15.3.3 | **0.26 s** ± 0.04<br><sub>0.23–0.36</sub> | 0.25 s ± 0.02<br><sub>0.23–0.28</sub> |
-| npm-check | 6.0.1 | 1.21 s ± 0.14<br><sub>1.11–1.60</sub> | 1.16 s ± 0.13<br><sub>1.11–1.55</sub> |
+| inup | 1.8.7 (c67f702) | 0.47 s ± 0.04<br><sub>0.45–0.58</sub> | 0.44 s ± 0.04<br><sub>0.35–0.48</sub> |
+| npm-check-updates | 23.1.1 | 0.65 s ± 0.04<br><sub>0.63–0.76</sub> | 0.65 s ± 0.03<br><sub>0.64–0.73</sub> |
+| taze | 21.3.0 | 0.82 s ± 0.14<br><sub>0.67–1.22</sub> | 0.23 s ± 0.00<br><sub>0.22–0.23</sub> |
+| syncpack | 15.3.3 | **0.23 s** ± 0.01<br><sub>0.22–0.25</sub> | **0.22 s** ± 0.05<br><sub>0.21–0.37</sub> |
+| npm-check | 6.0.1 | 1.05 s ± 0.02<br><sub>1.04–1.08</sub> | 1.05 s ± 0.05<br><sub>1.03–1.15</sub> |
 | npm update -i | — | not run: npm has no interactive update |  |
 
 Commands, run in the repository root in a 160×50 terminal:
@@ -121,17 +121,17 @@ npm-check --update --skip-unused
 
 [`vuejs/core@65eae17`](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395) · pnpm@12.11.2 · 22 package.json files · 69 dependencies
 
-Median, ± standard deviation, min–max, over 10 runs. Measured 21 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 9V45 96-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39625653309).
+Median, ± standard deviation, min–max, over 10 runs. Measured 22 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39738521077).
 
 #### Listing outdated dependencies
 
 | Tool | Version | First run | Repeat run | Updates found |
 | :-- | :-- | --: | --: | --: |
-| inup | 1.8.7 (4103ffa) | 1.01 s ± 0.07<br><sub>0.87–1.08</sub> | 0.40 s ± 0.07<br><sub>0.36–0.58</sub> | 26 |
-| npm-check-updates | 23.1.1 | 4.44 s ± 0.28<br><sub>4.27–5.22</sub> | 4.63 s ± 0.33<br><sub>4.09–5.14</sub> | 25 |
-| taze | 21.3.0 | **0.83 s** ± 0.08<br><sub>0.76–1.00</sub> | 0.31 s ± 0.01<br><sub>0.30–0.32</sub> | 25 |
-| syncpack | 15.3.3 | 0.99 s ± 0.27<br><sub>0.89–1.80</sub> | 0.13 s ± 0.00<br><sub>0.13–0.14</sub> | 23 |
-| pnpm outdated | 12.11.2 | 1.50 s ± 0.20<br><sub>1.46–2.13</sub> | **0.13 s** ± 0.01<br><sub>0.12–0.16</sub> | 27 |
+| inup | 1.8.7 (c67f702) | **0.95 s** ± 28.65<br><sub>0.80–60.23</sub> | 0.45 s ± 28.88<br><sub>0.40–60.23</sub> | 28 |
+| npm-check-updates | 23.1.1 | 3.53 s ± 0.34<br><sub>3.15–4.30</sub> | 3.49 s ± 0.21<br><sub>3.08–3.61</sub> | 26 |
+| taze | 21.3.0 | 1.60 s ± 0.57<br><sub>1.14–2.90</sub> | 0.50 s ± 0.01<br><sub>0.49–0.51</sub> | 27 |
+| syncpack | 15.3.3 | 0.97 s ± 0.05<br><sub>0.88–1.08</sub> | **0.16 s** ± 0.00<br><sub>0.16–0.17</sub> | 24 |
+| pnpm outdated | 12.11.2 | 1.97 s ± 0.24<br><sub>1.52–2.22</sub> | 0.18 s ± 0.01<br><sub>0.17–0.19</sub> | 28 |
 | npm-check | — | not run: no workspace support |  |  |
 
 Commands, run in the repository root:
@@ -148,10 +148,10 @@ pnpm outdated --recursive --format json
 
 | Tool | Version | First run | Repeat run |
 | :-- | :-- | --: | --: |
-| inup | 1.8.7 (4103ffa) | 1.25 s ± 0.14<br><sub>1.02–1.45</sub> | 0.48 s ± 0.06<br><sub>0.41–0.57</sub> |
-| taze | 21.3.0 | **0.84 s** ± 0.59<br><sub>0.77–2.64</sub> | 0.30 s ± 0.02<br><sub>0.29–0.34</sub> |
-| syncpack | 15.3.3 | 1.19 s ± 0.46<br><sub>1.02–2.58</sub> | 1.12 s ± 0.17<br><sub>0.89–1.54</sub> |
-| pnpm update -i | 12.11.2 | 1.49 s ± 0.18<br><sub>1.44–2.05</sub> | **0.12 s** ± 0.00<br><sub>0.12–0.14</sub> |
+| inup | 1.8.7 (c67f702) | 1.03 s ± 0.03<br><sub>1.00–1.08</sub> | 0.52 s ± 0.04<br><sub>0.47–0.59</sub> |
+| taze | 21.3.0 | 1.67 s ± 0.51<br><sub>1.09–2.73</sub> | 0.51 s ± 0.00<br><sub>0.50–0.52</sub> |
+| syncpack | 15.3.3 | **0.97 s** ± 0.05<br><sub>0.90–1.03</sub> | 0.91 s ± 0.05<br><sub>0.83–0.98</sub> |
+| pnpm update -i | 12.11.2 | 1.94 s ± 0.17<br><sub>1.54–2.07</sub> | **0.19 s** ± 0.01<br><sub>0.19–0.21</sub> |
 | npm-check-updates | — | not run: asks about one package.json at a time |  |
 | npm-check | — | not run: no workspace support |  |
 
@@ -168,17 +168,17 @@ pnpm update --interactive --latest --recursive
 
 [`TanStack/query@ce77be5`](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba) · pnpm@12.4.2 · 105 package.json files · 190 dependencies
 
-Median, ± standard deviation, min–max, over 10 runs. Measured 21 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 9V74 80-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39625653309).
+Median, ± standard deviation, min–max, over 10 runs. Measured 22 Oct 2026 on GitHub Actions ubuntu24 20261018.339.1 · Linux 7.0.0-1017-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.22.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39738521077).
 
 #### Listing outdated dependencies
 
 | Tool | Version | First run | Repeat run | Updates found |
 | :-- | :-- | --: | --: | --: |
-| inup | 1.8.7 (4103ffa) | **2.03 s** ± 0.06<br><sub>1.96–2.17</sub> | 0.58 s ± 0.12<br><sub>0.49–0.89</sub> | 606 |
-| npm-check-updates | 23.1.1 | 11.2 s ± 4.06<br><sub>10.21–23.57</sub> | 10.7 s ± 0.29<br><sub>10.33–11.21</sub> | 588 |
-| taze | 21.3.0 | 8.47 s ± 1.26<br><sub>6.78–10.79</sub> | 5.00 s ± 0.05<br><sub>4.94–5.07</sub> | 601 |
-| syncpack | 15.3.3 | 2.40 s ± 1.37<br><sub>2.19–6.06</sub> | **0.37 s** ± 0.01<br><sub>0.37–0.39</sub> | 118 |
-| pnpm outdated | 12.4.2 | 2.27 s ± 0.53<br><sub>2.11–3.78</sub> | 2.82 s ± 0.06<br><sub>2.70–2.89</sub> | 99 |
+| inup | 1.8.7 (c67f702) | 31.0 s ± 31.06<br><sub>1.44–60.44</sub> | 60.4 s ± 25.18<br><sub>0.69–60.45</sub> | 608 |
+| npm-check-updates | 23.1.1 | 9.65 s ± 0.41<br><sub>8.98–10.16</sub> | 9.91 s ± 2.27<br><sub>9.49–17.04</sub> | 588 |
+| taze | 21.3.0 | 10.3 s ± 1.75<br><sub>8.51–13.42</sub> | 6.67 s ± 0.05<br><sub>6.61–6.79</sub> | 601 |
+| syncpack | 15.3.3 | **2.70 s** ± 0.08<br><sub>2.66–2.86</sub> | **0.44 s** ± 0.01<br><sub>0.43–0.45</sub> | 118 |
+| pnpm outdated | 12.4.2 | 2.99 s ± 0.06<br><sub>2.90–3.10</sub> | 4.50 s ± 0.15<br><sub>4.13–4.75</sub> | 99 |
 | npm-check | — | not run: no workspace support |  |  |
 
 Commands, run in the repository root:
@@ -195,10 +195,10 @@ pnpm outdated --recursive --format json
 
 | Tool | Version | First run | Repeat run |
 | :-- | :-- | --: | --: |
-| inup | 1.8.7 (4103ffa) | 2.23 s ± 0.05<br><sub>2.18–2.33</sub> | **0.84 s** ± 0.41<br><sub>0.59–2.04</sub> |
-| taze | 21.3.0 | 9.02 s ± 1.09<br><sub>6.97–11.06</sub> | 5.07 s ± 0.04<br><sub>5.01–5.12</sub> |
-| syncpack | 15.3.3 | **2.19 s** ± 1.42<br><sub>2.10–6.68</sub> | 2.10 s ± 0.31<br><sub>2.06–3.10</sub> |
-| pnpm update -i | 12.4.2 | 2.25 s ± 0.05<br><sub>2.20–2.35</sub> | 2.76 s ± 0.09<br><sub>2.61–2.90</sub> |
+| inup | 1.8.7 (c67f702) | **1.61 s** ± 0.18<br><sub>1.53–2.15</sub> | 0.77 s ± 0.14<br><sub>0.73–1.17</sub> |
+| taze | 21.3.0 | 9.39 s ± 2.95<br><sub>8.66–17.89</sub> | **0.45 s** ± 0.01<br><sub>0.45–0.48</sub> |
+| syncpack | 15.3.3 | 2.57 s ± 0.06<br><sub>2.52–2.70</sub> | 2.61 s ± 0.08<br><sub>2.53–2.82</sub> |
+| pnpm update -i | 12.4.2 | 2.87 s ± 0.06<br><sub>2.79–2.96</sub> | 4.32 s ± 0.14<br><sub>4.10–4.52</sub> |
 | npm-check-updates | — | not run: asks about one package.json at a time |  |
 | npm-check | — | not run: no workspace support |  |
 
@@ -215,17 +215,17 @@ pnpm update --interactive --latest --recursive
 
 [`vendurehq/vendure@1dcaf0e`](https://github.com/vendurehq/vendure/tree/1dcaf0ee504675f3462d6302c23ff9f16beb2773) · bun · 54 package.json files · 323 dependencies
 
-Median, ± standard deviation, min–max, over 10 runs. Measured 21 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 9V74 80-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39625653309).
+Median, ± standard deviation, min–max, over 10 runs. Measured 22 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39738521077).
 
 #### Listing outdated dependencies
 
 | Tool | Version | First run | Repeat run | Updates found |
 | :-- | :-- | --: | --: | --: |
-| inup | 1.8.7 (4103ffa) | 3.38 s ± 0.99<br><sub>3.23–6.52</sub> | 0.78 s ± 0.06<br><sub>0.70–0.88</sub> | 362 |
-| npm-check-updates | 23.1.1 | 4.60 s ± 0.23<br><sub>4.52–5.15</sub> | 4.75 s ± 0.23<br><sub>4.42–5.15</sub> | 352 |
-| taze | 21.3.0 | 6.43 s ± 1.77<br><sub>4.13–9.70</sub> | 1.88 s ± 0.15<br><sub>1.87–2.34</sub> | 355 |
-| syncpack | 15.3.3 | 3.83 s ± 2.90<br><sub>3.68–12.88</sub> | 0.66 s ± 0.07<br><sub>0.63–0.86</sub> | 253 |
-| bun outdated | 1.4.3 | **1.54 s** ± 0.08<br><sub>1.36–1.65</sub> | **0.08 s** ± 0.00<br><sub>0.07–0.09</sub> | 327 |
+| inup | 1.8.7 (c67f702) | 60.4 s ± 30.15<br><sub>1.95–60.42</sub> | 60.4 s ± 17.37<br><sub>5.51–60.44</sub> | 362 |
+| npm-check-updates | 23.1.1 | 2.81 s ± 0.12<br><sub>2.70–3.05</sub> | 2.85 s ± 0.11<br><sub>2.72–3.10</sub> | 352 |
+| taze | 21.3.0 | 5.13 s ± 1.03<br><sub>4.68–8.07</sub> | 2.38 s ± 0.06<br><sub>2.31–2.51</sub> | 354 |
+| syncpack | 15.3.3 | 3.88 s ± 0.05<br><sub>3.83–4.00</sub> | 0.67 s ± 0.01<br><sub>0.67–0.69</sub> | 264 |
+| bun outdated | 1.4.3 | **1.55 s** ± 0.12<br><sub>1.49–1.91</sub> | **0.09 s** ± 0.00<br><sub>0.08–0.10</sub> | 327 |
 | npm-check | — | not run: no workspace support |  |  |
 
 Commands, run in the repository root:
@@ -242,10 +242,10 @@ bun outdated --recursive
 
 | Tool | Version | First run | Repeat run |
 | :-- | :-- | --: | --: |
-| inup | 1.8.7 (4103ffa) | 3.64 s ± 0.08<br><sub>3.56–3.83</sub> | **0.93 s** ± 0.07<br><sub>0.85–1.04</sub> |
-| taze | 21.3.0 | 4.58 s ± 1.41<br><sub>3.88–8.04</sub> | 1.91 s ± 0.82<br><sub>1.89–4.04</sub> |
-| syncpack | 15.3.3 | 3.55 s ± 1.93<br><sub>3.45–9.62</sub> | 3.51 s ± 0.64<br><sub>3.42–5.51</sub> |
-| bun update -i | 1.4.3 | **1.60 s** ± 0.12<br><sub>1.36–1.68</sub> | 1.63 s ± 0.13<br><sub>1.55–1.98</sub> |
+| inup | 1.8.7 (c67f702) | 2.29 s ± 0.07<br><sub>2.23–2.45</sub> | **0.91 s** ± 0.08<br><sub>0.81–1.02</sub> |
+| taze | 21.3.0 | 4.86 s ± 0.45<br><sub>4.55–5.86</sub> | 2.41 s ± 1.39<br><sub>2.32–6.78</sub> |
+| syncpack | 15.3.3 | 3.68 s ± 0.03<br><sub>3.65–3.77</sub> | 3.68 s ± 0.07<br><sub>3.61–3.79</sub> |
+| bun update -i | 1.4.3 | **1.60 s** ± 0.25<br><sub>1.51–2.08</sub> | 1.59 s ± 0.09<br><sub>1.49–1.83</sub> |
 | npm-check-updates | — | not run: asks about one package.json at a time |  |
 | npm-check | — | not run: no workspace support |  |
 
@@ -262,16 +262,16 @@ bun update --interactive --recursive
 
 [`backstage/backstage@76b0c7a`](https://github.com/backstage/backstage/tree/76b0c7a48ef737b1a46342c29269827715d70684) · yarn@4.18.0 · 269 package.json files · 591 dependencies
 
-Median, ± standard deviation, min–max, over 10 runs. Measured 21 Oct 2026 on GitHub Actions ubuntu24 20261018.339.1 · Linux 7.0.0-1017-azure · AMD EPYC 9V45 96-Core Processor · 4 CPUs · 16 GB · Node v24.22.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39625653309).
+Median, ± standard deviation, min–max, over 10 runs. Measured 22 Oct 2026 on GitHub Actions ubuntu24 20261012.334.1 · Linux 6.17.0-1022-azure · AMD EPYC 7763 64-Core Processor · 4 CPUs · 16 GB · Node v24.21.0 · hyperfine 1.20.0 · [workflow run](https://github.com/donfear/inup/actions/runs/39738521077).
 
 #### Listing outdated dependencies
 
 | Tool | Version | First run | Repeat run | Updates found |
 | :-- | :-- | --: | --: | --: |
-| inup | 1.8.7 (4103ffa) | **3.51 s** ± 0.10<br><sub>3.28–3.62</sub> | 1.92 s ± 0.11<br><sub>1.74–2.06</sub> | 1925 |
-| npm-check-updates | 23.1.1 | 26.9 s ± 1.54<br><sub>25.24–29.93</sub> | 28.3 s ± 1.39<br><sub>25.97–30.68</sub> | 1844 |
-| taze | 21.3.0 | 8.33 s ± 0.88<br><sub>7.22–10.48</sub> | 3.97 s ± 0.11<br><sub>3.86–4.16</sub> | 1858 |
-| syncpack | 15.3.3 | 4.54 s ± 0.28<br><sub>3.84–4.69</sub> | **0.49 s** ± 0.01<br><sub>0.48–0.53</sub> | 481 |
+| inup | 1.8.7 (c67f702) | 60.6 s ± 28.13<br><sub>2.33–60.67</sub> | 60.7 s ± 0.01<br><sub>60.64–60.67</sub> | 1925 |
+| npm-check-updates | 23.1.1 | 13.0 s ± 0.31<br><sub>12.52–13.65</sub> | 12.7 s ± 0.36<br><sub>12.29–13.35</sub> | 1844 |
+| taze | 21.3.0 | 11.1 s ± 1.09<br><sub>10.12–13.68</sub> | 6.65 s ± 0.11<br><sub>6.59–6.89</sub> | 1856 |
+| syncpack | 15.3.3 | **3.90 s** ± 0.06<br><sub>3.80–3.98</sub> | **0.60 s** ± 0.00<br><sub>0.59–0.60</sub> | 481 |
 | npm-check | — | not run: no workspace support |  |  |
 | yarn upgrade-interactive | — | not run: Yarn 2+ lists updates only in this interactive picker |  |  |
 
@@ -288,10 +288,10 @@ syncpack update --check
 
 | Tool | Version | First run | Repeat run |
 | :-- | :-- | --: | --: |
-| inup | 1.8.7 (4103ffa) | **3.52 s** ± 0.22<br><sub>3.21–3.96</sub> | **1.92 s** ± 0.15<br><sub>1.74–2.13</sub> |
-| taze | 21.3.0 | 8.77 s ± 1.33<br><sub>7.13–11.56</sub> | 4.05 s ± 0.32<br><sub>3.85–4.97</sub> |
-| syncpack | 15.3.3 | 4.02 s ± 0.21<br><sub>3.86–4.49</sub> | 4.22 s ± 0.16<br><sub>3.84–4.32</sub> |
-| yarn upgrade-interactive | 4.18.0 | 5.88 s ± 0.10<br><sub>5.74–6.05</sub> | 2.15 s ± 0.08<br><sub>2.10–2.37</sub> |
+| inup | 1.8.7 (c67f702) | **3.58 s** ± 0.16<br><sub>3.50–4.07</sub> | 1.52 s ± 0.10<br><sub>1.35–1.71</sub> |
+| taze | 21.3.0 | 10.7 s ± 0.74<br><sub>10.48–12.67</sub> | **0.61 s** ± 0.01<br><sub>0.60–0.63</sub> |
+| syncpack | 15.3.3 | 3.81 s ± 0.15<br><sub>3.72–4.23</sub> | 3.80 s ± 0.06<br><sub>3.73–3.93</sub> |
+| yarn upgrade-interactive | 4.18.0 | 9.76 s ± 0.22<br><sub>9.24–9.94</sub> | 3.41 s ± 1.22<br><sub>3.28–7.25</sub> |
 | npm-check-updates | — | not run: asks about one package.json at a time |  |
 | npm-check | — | not run: no workspace support |  |
 
