@@ -44,7 +44,7 @@ Each repository is installed with its own package manager, with install scripts 
 
 ## Where tools differ
 
-- inup also checks every dependency for known vulnerabilities during the run, and its times include that check.
+- inup checks every dependency for known vulnerabilities by default. None of the other tools does, so inup runs here with `--no-audit`. The check is one request to npm's advisory service, which takes about 0.2 seconds to answer: on a small repository a normal run takes about that much longer, and on a large one the check runs while the registry lookups do.
 - inup's first interactive run downloads its native core (about 1.5 MB) and checks it, so its first-run picker times include that download. Its listing runs never download it.
 - taze looks versions up through its own metadata service (`npm.antfu.dev`) by default. On a repeat run it reuses what it fetched in the last 30 minutes without contacting the registry. inup revalidates each package with the registry on every run, so a version published a minute ago is already in the report.
 - npm-check-updates keeps no cache by default, so its repeat runs take as long as its first runs.

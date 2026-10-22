@@ -133,7 +133,7 @@ export function renderTables(results) {
     pickers
       ? 'Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too.'
       : null,
-    "inup's times include its vulnerability check, which the other tools don't run.",
+    "inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too.",
     pickers ? "inup's first picker run also downloads its native core (about 1.5 MB)." : null,
     'Fastest in **bold**.',
   ]
