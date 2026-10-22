@@ -235,6 +235,12 @@ describe('renderTables', () => {
     )
   })
 
+  it('says when inup ran on its native core, which then downloads nothing', () => {
+    const native = renderTables(results.map((result) => ({ ...result, inupCore: 'native' })))
+    expect(native).toContain('inup runs on its native (Rust) core, built from the same commit.')
+    expect(native).not.toContain('downloads its native core')
+  })
+
   it('falls back to the OS name off GitHub Actions', () => {
     const local = { ...express, environment: { ...environment, image: null, cores: 1 } }
     expect(renderTables([local])).toContain('on Linux 6.8.0-1017-azure, 1 CPU,')

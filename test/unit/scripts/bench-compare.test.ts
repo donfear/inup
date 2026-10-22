@@ -7,6 +7,7 @@ import {
   countManifests,
   FIXTURES,
   inspectFixture,
+  inupCore,
   pickerEnv,
   quote,
   resetBoxCommand,
@@ -28,6 +29,24 @@ const npmWorkspace = { pm: 'npm', workspaces: true }
 const pnpmWorkspace = { pm: 'pnpm', workspaces: true }
 const bunWorkspace = { pm: 'bun', workspaces: true }
 const yarnWorkspace = { pm: 'yarn', workspaces: true }
+
+describe('inupCore', () => {
+  it('reports the core a checkout loads, as a headless run would, without downloading', () => {
+    const root = mkdtempSync(join(tmpdir(), 'inup-bench-core-'))
+    try {
+      mkdirSync(join(root, 'dist', 'shared', 'registry'), { recursive: true })
+      writeFileSync(
+        join(root, 'dist', 'shared', 'registry', 'rust-core.js'),
+        `let options
+exports.configureNativeCore = (value) => { options = value }
+exports.activeCore = () => (options.enabled && options.download === false ? 'native' : 'unexpected')`
+      )
+      expect(inupCore(root)).toBe('native')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('FIXTURES', () => {
   it('pins every repository to a full commit', () => {

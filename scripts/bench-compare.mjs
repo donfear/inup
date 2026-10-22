@@ -512,6 +512,23 @@ function packageManagerBin(fixture, dir, workdir) {
   return exe ? { argv: [exe], version } : nodeBin(prefix, pm, pm)
 }
 
+/**
+ * The core inup runs on from the checkout at `root`, settled as a headless run
+ * settles it: 'native' when a built addon loads (`pnpm build:all`), else
+ * 'js'. Never downloads one.
+ */
+export function inupCore(root = ROOT) {
+  const script =
+    'const core = require(process.argv[1]);' +
+    'core.configureNativeCore({ enabled: true, download: false });' +
+    'process.stdout.write(core.activeCore())'
+  return run(process.execPath, [
+    '-e',
+    script,
+    join(root, 'dist', 'shared', 'registry', 'rust-core.js'),
+  ])
+}
+
 /** Where each tool's command comes from, and its version. */
 function resolveTools(fixture, dir, workdir) {
   const prefix = npmInstall(
@@ -746,6 +763,7 @@ export async function benchmark({ fixtureId, runs, out, workdir }) {
       ...countManifests(dir),
     },
     environment: environment(),
+    inupCore: inupCore(),
     tools: tools.map(({ id, name, version, display, updates }) => ({
       id,
       name,

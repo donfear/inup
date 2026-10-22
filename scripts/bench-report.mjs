@@ -127,6 +127,8 @@ function where(environment) {
 export function renderTables(results) {
   const [first] = results
   const pickers = results.every((result) => result.picker)
+  // Built with `pnpm build:all`: every run loads the addon, so nothing is downloaded.
+  const native = results.every((result) => result.inupCore === 'native')
   const note = [
     'First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept.',
     `Median of ${first.runs} runs per tool on ${where(first.environment)}, ${formatDate(first.date)}; listing timed with [hyperfine](https://github.com/sharkdp/hyperfine) ${first.environment.hyperfine}.`,
@@ -134,7 +136,11 @@ export function renderTables(results) {
       ? 'Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too.'
       : null,
     "inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too.",
-    pickers ? "inup's first picker run also downloads its native core (about 1.5 MB)." : null,
+    native
+      ? 'inup runs on its native (Rust) core, built from the same commit.'
+      : pickers
+        ? "inup's first picker run also downloads its native core (about 1.5 MB)."
+        : null,
     'Fastest in **bold**.',
   ]
     .filter(Boolean)
