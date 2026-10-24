@@ -56,6 +56,7 @@ export interface CliOptions {
   native?: boolean
   audit?: boolean
   minimumReleaseAge?: string
+  global?: boolean
 }
 
 /** A comma-separated flag value as a list, trimmed and without empty entries. */
@@ -181,7 +182,8 @@ export async function runCli(options: CliOptions): Promise<void> {
   // The dirty-tree check starts here, but only the picker waits for it: the runner starts its
   // scan first, so packages load while git looks at the tree and while the prompt waits for an
   // answer. Interactive only: the prompt would hang without a TTY, and headless is read-only.
-  const gitState = interactive ? getGitWorkingTreeState(cwd) : undefined
+  // Global packages live outside any repository, so there is no tree to check.
+  const gitState = interactive && !options.global ? getGitWorkingTreeState(cwd) : undefined
 
   // Merge CLI exclude patterns with config
   const excludePatterns = [...splitList(options.exclude), ...(projectConfig.exclude || [])]
@@ -222,14 +224,30 @@ export async function runCli(options: CliOptions): Promise<void> {
     configureNativeCore({ enabled: true, download: interactive || nativeChoice === true })
   }
 
+  // -g: list the global packages and scan a throwaway manifest that declares them. npm unless
+  // --package-manager names another.
+  let scanDir = cwd
+  let packageManager = options.packageManager
+  if (options.global) {
+    packageManager ??= 'npm'
+    const { listGlobalPackages, writeGlobalManifest } = await import('./shared/global-packages')
+    try {
+      scanDir = writeGlobalManifest(listGlobalPackages(packageManager))
+    } catch (error) {
+      console.error(chalk.red((error as Error).message))
+      process.exit(2)
+    }
+  }
+
   const runnerOptions: UpgradeOptions = {
-    cwd,
+    cwd: scanDir,
     excludePatterns,
     scanDirs: projectConfig.scanDirs,
     maxDepth,
     ignorePackages,
     ignoreMajorPackages: projectConfig.ignoreMajor,
-    packageManager: options.packageManager,
+    packageManager,
+    global: options.global,
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
@@ -310,6 +328,7 @@ program
     '-i, --ignore <packages>',
     'ignore packages (comma-separated, supports glob patterns like @babel/*)'
   )
+  .option('-g, --global', 'upgrade globally installed packages (npm, pnpm or bun)')
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option(
     '--init',
