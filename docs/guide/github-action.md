@@ -38,6 +38,8 @@ Peer ranges (`peerDependencies`) are never rewritten, so publishing from the upg
 
 Packages with a pnpm patch pinned to a version (`patchedDependencies: { next@16.3.5: … }`) are never upgraded automatically. pnpm refuses to install when a patch no longer matches any package, so the bump would fail the whole run. They are listed in a **Held by pnpm patch** table in the PR body; upgrade them by hand and re-create the patch with `pnpm patch`. Patches keyed by name only (`next`), or by a range that still covers the new version, don't hold anything back.
 
+If your `.inuprc` sets [`verify`](configuration.md#verify), for example to `npm test`, the PR keeps only the upgrades that command passes with and lists the others in a **Reverted** table. The command also runs before upgrading, so install your dependencies in a step before inup's.
+
 Catalog-sourced upgrades (pnpm `catalog:` deps) are applied to `pnpm-workspace.yaml` and marked `catalog:<name>` in the PR body so reviewers know which file the diff touches.
 
 With `minimum-release-age` set, the PR body also gets a **Held by release-age cooldown** table listing versions that exist but were deliberately not applied, and how old each one is. A cooldown that skipped silently would read to a reviewer as "nothing newer available" — the opposite of what the control means.
@@ -78,4 +80,4 @@ By default the upgrade commit is authored by `github-actions[bot]`. To attribute
 
 `outdated`, `vulnerable`, `pull-request-number`.
 
-`@v1` floats to the latest `1.x` release; pin to a specific version or a SHA for reproducible runs. The action honors your [`.inuprc`](configuration.md) (`ignore`, `exclude`, `scanDirs`).
+`@v1` floats to the latest `1.x` release; pin to a specific version or a SHA for reproducible runs. The action honors your [`.inuprc`](configuration.md) (`ignore`, `exclude`, `scanDirs`, `verify`).

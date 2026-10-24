@@ -74,6 +74,13 @@ export interface InupProjectConfig {
    * turn it off. The --native / --no-native flags override this.
    */
   native?: boolean
+
+  /**
+   * A command the upgrades must keep passing, usually the tests ("npm test"). After the picker
+   * or --apply upgrades, inup runs it and reverts each upgrade it fails with. --verify overrides
+   * it and --no-verify skips it.
+   */
+  verify?: string
 }
 
 const CONFIG_FILES = [
@@ -255,6 +262,7 @@ const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
   showOptionalDependencyVulnerabilities: true,
   concurrency: true,
   native: true,
+  verify: true,
 }
 
 /** The known key `key` is most likely a typo of (at most two edits apart), if any. */
@@ -332,6 +340,17 @@ function normalizeConfig(config: InupProjectConfig, configPath: string): InupPro
 
   if (typeof config.native === 'boolean') {
     normalized.native = config.native
+  }
+
+  if (config.verify !== undefined) {
+    if (typeof config.verify === 'string' && config.verify.trim() !== '') {
+      normalized.verify = config.verify
+    } else {
+      // A check the user asked for, so never dropped silently: upgrades would go in unchecked.
+      console.warn(
+        `Warning: ignoring invalid "verify" in project config (expected a command such as "npm test", got ${JSON.stringify(config.verify)})`
+      )
+    }
   }
 
   if (config.concurrency !== undefined) {

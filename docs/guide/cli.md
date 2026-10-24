@@ -26,6 +26,8 @@ Name packages to check only those: `inup react react-dom`, or with glob patterns
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation). Never rewrites `peerDependencies` |
+| `--verify <command>` | Run the command (for example `"npm test"`) before and after upgrading, in the picker or with `--apply`. If it fails after, inup puts every file back and retries one package at a time, keeping the upgrades the command passes with and reverting the rest. Refuses to start if the command already fails. Also via [`.inuprc`](configuration.md#verify) |
+| `--no-verify` | Skip the `verify` command set in `.inuprc` for this run |
 | `--target <level>` | With `--apply`: `minor` (default, in-range), `patch`, or `latest` |
 | `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via `.inuprc`) |
 | `--save-exact` | Write exact versions instead of preserving the range prefix (`^`/`~`) |

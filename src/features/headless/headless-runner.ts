@@ -9,7 +9,7 @@ import {
   fetchVulnerabilitiesPerVersion,
   type PackageVulnerabilities,
 } from '../audit'
-import { PackageDetector, PackageUpgrader } from '../upgrade'
+import { PackageDetector, PackageUpgrader, VerifiedUpgrade } from '../upgrade'
 import { buildHeadlessReport, failedLookupNames, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
 
@@ -99,14 +99,7 @@ export class HeadlessRunner {
         this.holdPatchedPackages(outdated, options.target ?? 'minor')
       }
 
-      // Build the report from the *pre-apply* outdated set: it describes what this run addressed.
       const cooldown = this.detector.getCooldownDiagnostics()
-      const report = buildHeadlessReport(
-        packages,
-        outdated,
-        audit ? vulnerabilities : null,
-        cooldown
-      )
 
       // A cooldown that could not act must say so. It fails open on missing publish times, so
       // staying quiet here would present an inert control as a satisfied one — and this is the
@@ -147,7 +140,14 @@ export class HeadlessRunner {
       }
 
       if (options.json) {
-        // stdout is reserved for the JSON document only.
+        // From the outdated set found before --apply: the report describes what this run addressed,
+        // marking what --apply held back or --verify put back. stdout is reserved for it alone.
+        const report = buildHeadlessReport(
+          packages,
+          outdated,
+          audit ? vulnerabilities : null,
+          cooldown
+        )
         console.log(JSON.stringify(report, null, 2))
       } else if (!options.apply) {
         console.log(renderPlainReport(outdated, vulnerabilities, packages))
@@ -177,7 +177,7 @@ export class HeadlessRunner {
     json: boolean
   ): Promise<void> {
     const choices = this.buildChoices(outdated, target)
-    if (choices.length === 0) return
+    if (choices.size === 0) return
 
     const packageManager = PackageManagerDetector.resolve(this.options)
     // With --json, run the upgrader quietly: its own progress + the install child's stdout go to
@@ -186,7 +186,19 @@ export class HeadlessRunner {
       quiet: json,
       global: this.options?.global,
     })
-    await upgrader.upgradePackages(choices)
+    const command = this.options?.verify
+    if (!command) {
+      await upgrader.upgradePackages([...choices.values()])
+      return
+    }
+
+    const cwd = this.options?.cwd ?? process.cwd()
+    const verified = new VerifiedUpgrade(upgrader, { command, cwd, quiet: json })
+    const { reverted } = await verified.run([...choices.values()])
+    // So the report never lists an upgrade --verify put back as applied.
+    for (const [pkg, choice] of choices) {
+      if (reverted.includes(choice.name)) pkg.revertedByVerify = command
+    }
   }
 
   /**
@@ -217,8 +229,9 @@ export class HeadlessRunner {
   }
 
   /**
-   * Build `PackageUpgradeChoice[]` from the outdated set per the version policy. Mirrors
-   * `createUpgradeChoices` in the TUI: preserves the original range prefix (^/~) unless --save-exact.
+   * Build the upgrade choice for each outdated package per the version policy, keyed by that
+   * package. Mirrors `createUpgradeChoices` in the TUI: preserves the original range prefix (^/~)
+   * unless --save-exact.
    *
    * - minor: take the in-range target (`rangeVersion`); skip packages whose only update is a
    *   major (no in-range bump). Uses upgradeType 'range'.
@@ -229,9 +242,12 @@ export class HeadlessRunner {
    * peerDependencies are never written, at any target: they stay in the report only. Neither are
    * packages held by a pinned pnpm patch.
    */
-  private buildChoices(outdated: PackageInfo[], target: ApplyTarget): PackageUpgradeChoice[] {
+  private buildChoices(
+    outdated: PackageInfo[],
+    target: ApplyTarget
+  ): Map<PackageInfo, PackageUpgradeChoice> {
     const saveExact = this.options?.saveExact ?? false
-    const choices: PackageUpgradeChoice[] = []
+    const choices = new Map<PackageInfo, PackageUpgradeChoice>()
 
     for (const pkg of outdated) {
       // A peer range says which host versions a library supports; it is not a version to install.
@@ -246,7 +262,7 @@ export class HeadlessRunner {
         ? targetVersion
         : applyVersionPrefix(pkg.currentVersion, targetVersion)
 
-      choices.push({
+      choices.set(pkg, {
         name: pkg.name,
         packageJsonPath: pkg.packageJsonPath,
         dependencyType: pkg.type,

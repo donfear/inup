@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   selectPackagesToUpgrade: vi.fn(),
   confirmUpgrade: vi.fn(),
   upgradePackages: vi.fn(),
+  verifiedCtor: vi.fn(),
+  verifiedRun: vi.fn(),
   clearProgress: vi.fn(),
   detectPackageManager: vi.fn(),
   insertResolvedPackages: vi.fn(),
@@ -55,6 +57,15 @@ vi.mock('../../../src/app/interactive-ui', () => ({
 vi.mock('../../../src/features/upgrade/upgrader', () => ({
   PackageUpgrader: class {
     upgradePackages = mocks.upgradePackages
+  },
+}))
+
+vi.mock('../../../src/features/upgrade/verified-upgrade', () => ({
+  VerifiedUpgrade: class {
+    constructor(...args: unknown[]) {
+      mocks.verifiedCtor(...args)
+    }
+    run = mocks.verifiedRun
   },
 }))
 
@@ -769,7 +780,31 @@ describe('UpgradeRunner terminal handoff', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     await new UpgradeRunner({ cwd: '/repo' }).run()
     expect(mocks.upgradePackages).toHaveBeenCalledTimes(1)
+    expect(mocks.verifiedRun).not.toHaveBeenCalled()
     logSpy.mockRestore()
+  })
+
+  it.each([
+    ['in the scanned directory', { cwd: '/repo' }, '/repo'],
+    ['in the current directory by default', {}, process.cwd()],
+  ])('runs the verify command on what the user picked, %s', async (_label, options, cwd) => {
+    const choice = {
+      name: 'next',
+      packageJsonPath: '/repo/package.json',
+      dependencyType: 'dependencies',
+      upgradeType: 'range',
+      targetVersion: '^1.1.0',
+      currentVersionSpecifier: '^1.0.0',
+    }
+    mocks.selectPackagesToUpgradeProgressive.mockResolvedValue([choice])
+    mocks.confirmUpgrade.mockResolvedValue(true)
+    mocks.verifiedRun.mockResolvedValue({ kept: ['next'], reverted: [] })
+
+    await new UpgradeRunner({ ...options, verify: 'npm test' }).run()
+
+    expect(mocks.upgradePackages).not.toHaveBeenCalled()
+    expect(mocks.verifiedCtor.mock.calls[0][1]).toEqual({ command: 'npm test', cwd })
+    expect(mocks.verifiedRun).toHaveBeenCalledWith([choice])
   })
 
   it('exits 2 (error) when no package.json is found', async () => {
