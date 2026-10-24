@@ -10,7 +10,7 @@
 [![Downloads](https://img.shields.io/npm/dm/inup?style=for-the-badge&color=646CFF&logoColor=white)](https://www.npmjs.com/package/inup)
 [![CI](https://img.shields.io/github/actions/workflow/status/donfear/inup/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 
-See what's outdated, read what changed, and pick what to upgrade. Works with **npm, pnpm, Yarn, and Bun**.
+See what's outdated, read what changed, and pick what to upgrade. Works with **npm, pnpm, Yarn, and Bun**, and stays fast on big monorepos ([benchmarks](#speed)).
 
 Run this in your project:
 
@@ -21,6 +21,19 @@ npx inup
 Requires Node.js 22.19+. No configuration needed.
 
 ![inup terminal picker showing dependency versions and upgrade selections](docs/demo/interactive-upgrade.gif)
+
+## Why inup
+
+| | inup | npm-check-updates | taze |
+| --- | :-: | :-: | :-: |
+| Interactive picker | ✓ | ✓ | ✓ |
+| Monorepos and workspaces | ✓ | ✓ | ✓ |
+| Release-age cooldown | ✓ | ✓ | ✓ |
+| Each package's changelog, inside the picker | ✓ | | |
+| Vulnerability audit, with the versions that fix it | ✓ | | |
+| A scheduled update PR from a GitHub Action | ✓ | | |
+
+<sub>Other tools' features as their READMEs describe them, October 2026.</sub>
 
 ## Pick your updates
 
@@ -81,12 +94,17 @@ Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or sav
 <!-- BENCHMARK:START -->
 ## Speed
 
+On a first run, inup lists outdated dependencies up to 11× faster than npm-check-updates and up to 9× faster than taze on these repositories.
+
 How long each tool takes, on public repositories pinned to a commit, to list every outdated dependency and to open its picker with every update loaded. Lower is better.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark/speed-dark.svg">
   <img alt="First-run times in seconds. expressjs/express: inup 0.28 s, npm-check-updates 0.74 s, taze 0.84 s, syncpack 0.25 s, npm-check 1.20 s, npm outdated 0.97 s; vuejs/core: inup 0.61 s, npm-check-updates 3.49 s, taze 1.57 s, syncpack 0.97 s, pnpm outdated 1.54 s; TanStack/query: inup 0.79 s, npm-check-updates 8.77 s, taze 7.29 s, syncpack 2.24 s, pnpm outdated 2.44 s; vendurehq/vendure: inup 1.54 s, npm-check-updates 3.24 s, taze 5.58 s, syncpack 4.17 s, bun outdated 1.68 s; backstage/backstage: inup 1.46 s, npm-check-updates 10.1 s, taze 10.5 s, syncpack 3.84 s" src="docs/benchmark/speed-light.svg">
 </picture>
+
+<details>
+<summary>All timings</summary>
 
 ### Listing outdated dependencies
 
@@ -133,6 +151,8 @@ Each tool's interactive list of updates, timed until every update is loaded.
 | pnpm / bun update -i / yarn upgrade-interactive | — | **0.21 s** | 3.43 s | 1.66 s | 3.43 s |
 
 <sub>First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept. Median of 10 runs per tool on GitHub Actions ubuntu24 20261012.334.1, 4 CPUs, Node v24.21.0, 22 Oct 2026; listing timed with [hyperfine](https://github.com/sharkdp/hyperfine) 1.20.0. Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too. inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too. inup runs on its native (Rust) core, built from the same commit. Fastest in **bold**.</sub>
+
+</details>
 
 [How it's measured, tool versions and exact commands](docs/guide/benchmarks.md)
 <!-- BENCHMARK:END -->

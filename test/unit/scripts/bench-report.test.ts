@@ -7,6 +7,7 @@ import {
   joinNames,
   renderChart,
   renderDetails,
+  renderHeadline,
   renderReadme,
   renderTables,
   replaceBlock,
@@ -264,10 +265,41 @@ describe('renderReadme', () => {
     )
   })
 
+  it('folds the tables away under the chart', () => {
+    expect(readme).toContain(
+      '<details>\n<summary>All timings</summary>\n\n### Listing outdated dependencies'
+    )
+    expect(readme).toContain('</details>')
+  })
+
   it('links to the method', () => {
     expect(readme).toContain(
       "[How it's measured, tool versions and exact commands](docs/guide/benchmarks.md)"
     )
+  })
+})
+
+describe('renderHeadline', () => {
+  it("claims inup's largest first-run lead, rounded down, over the tools that ran", () => {
+    expect(renderHeadline(results)).toBe(
+      'On a first run, inup lists outdated dependencies up to 10× faster than npm-check-updates on these repositories.'
+    )
+  })
+
+  it('joins several tools', () => {
+    const withTaze = {
+      ...vue,
+      tools: [...vue.tools, tool('taze', 'taze', 'taze -r', 20)],
+      results: { ...vue.results, cold: { ...vue.results.cold, taze: timing(5.1) } },
+    }
+    expect(renderHeadline([withTaze])).toBe(
+      'On a first run, inup lists outdated dependencies up to 10× faster than npm-check-updates and up to 3× faster than taze on these repositories.'
+    )
+  })
+
+  it('claims nothing under a twofold lead, and the README leaves the line out', () => {
+    expect(renderHeadline([express])).toBeNull()
+    expect(renderReadme([express])).not.toContain('On a first run')
   })
 })
 
