@@ -137,6 +137,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   concurrency?: number // Pin registry fetch parallelism (1..24) and disable adaptation
   minimumReleaseAge?: number // Minutes a version must have been public before it's offered. 0/absent disables.
   minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge
+  global?: boolean // `inup -g`: the packages are global installs listed in a throwaway manifest
   audit?: boolean // Check vulnerabilities on every run; false skips it (--no-audit). Defaults to true
 }
 
