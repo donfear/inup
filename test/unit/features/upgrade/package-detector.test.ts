@@ -820,6 +820,63 @@ describe('PackageDetector edge paths', () => {
     expect(requested.flat()).toEqual([])
   })
 
+  it('checks only the packages named on the command line, and fetches nothing else', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.some(
+        (pattern) => pattern === name || (pattern === 'eslint-*' && name.startsWith('eslint-'))
+      )
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mocks.declaredDependencies.mockResolvedValue([
+        dep('react', '^18.0.0'),
+        dep('eslint-plugin-x', '^1.0.0'),
+        dep('zod', '^3.0.0'),
+      ])
+      const requested: string[][] = []
+      mocks.fetchPackageVersions.mockImplementation(async (packageNames: string[]) => {
+        requested.push(packageNames)
+        return new Map()
+      })
+
+      const detector = new PackageDetector({
+        cwd: '/repo',
+        onlyPackages: ['react', 'eslint-*', 'recat'],
+      })
+      await detector.streamOutdatedPackages(logWarnings)
+
+      expect(requested.flat().sort()).toEqual(['eslint-plugin-x', 'react'])
+      // A typo must not read as "everything is up to date".
+      expect(warn).toHaveBeenCalledWith('Warning: no dependency matches recat')
+      expect(warn).toHaveBeenCalledTimes(1)
+    } finally {
+      warn.mockRestore()
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
+  it('warns about nothing when every package filter matches', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mocks.declaredDependencies.mockResolvedValue([dep('react', '^18.0.0')])
+      mocks.fetchPackageVersions.mockImplementation(async () => new Map())
+
+      await new PackageDetector({ cwd: '/repo', onlyPackages: ['react'] }).streamOutdatedPackages(
+        logWarnings
+      )
+
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
   it('treats a package as up to date when ignoreMajor suppresses its only update', async () => {
     const { isPackageIgnored } = await import('../../../../src/shared/config')
     vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>

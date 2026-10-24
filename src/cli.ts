@@ -39,6 +39,8 @@ if (typeof enableCompileCache === 'function') {
 export const program = new Command()
 
 export interface CliOptions {
+  /** Positional `inup <packages…>`: names or globs to limit the run to. */
+  packages?: string[]
   dir: string
   exclude: string
   ignore: string
@@ -191,6 +193,9 @@ export async function runCli(options: CliOptions): Promise<void> {
     ...new Set([...splitList(options.ignore), ...(projectConfig.ignore || [])]),
   ]
 
+  // `inup react eslint-*`, or `inup react,react-dom` like --ignore
+  const onlyPackages = [...new Set((options.packages ?? []).flatMap(splitList))]
+
   const maxDepth = Number.parseInt(options.maxDepth, 10)
   if (!Number.isInteger(maxDepth) || maxDepth < 0) {
     console.error(chalk.red(`Invalid max depth: ${options.maxDepth}`))
@@ -228,6 +233,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     scanDirs: projectConfig.scanDirs,
     maxDepth,
     ignorePackages,
+    onlyPackages,
     ignoreMajorPackages: projectConfig.ignoreMajor,
     packageManager: options.packageManager,
     showPeerDependencyVulnerabilities: projectConfig.showPeerDependencyVulnerabilities ?? false,
@@ -304,6 +310,10 @@ program
     'Interactive upgrade tool for package managers. Auto-detects and works with npm, yarn, pnpm, and bun.'
   )
   .version(PACKAGE_VERSION)
+  .argument(
+    '[packages...]',
+    'only check these packages (names or glob patterns like @babel/*; default: all)'
+  )
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
   .option(
@@ -356,7 +366,7 @@ program
   // Exit codes: 0 ok, 1 updates exist (--check), 2 error. Commander exits 1 on a usage error,
   // which --check would read as "updates exist"; --help and --version keep their 0.
   .exitOverride((error) => process.exit(error.exitCode === 0 ? 0 : 2))
-  .action(runCli)
+  .action((packages: string[], options: CliOptions) => runCli({ ...options, packages }))
 
 // Handle uncaught errors gracefully
 process.on('uncaughtException', (error) => {

@@ -91,6 +91,7 @@ export class PackageDetector {
   private excludePatterns: string[]
   private scanDirs: string[]
   private ignorePackages: string[]
+  private onlyPackages: string[]
   private ignoreMajorPackages: string[]
   private maxDepth: number
   private minimumReleaseAge: number
@@ -112,6 +113,7 @@ export class PackageDetector {
     this.excludePatterns = options?.excludePatterns || []
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
+    this.onlyPackages = options?.onlyPackages || []
     this.ignoreMajorPackages = options?.ignoreMajorPackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.concurrency = options?.concurrency
@@ -357,6 +359,12 @@ export class PackageDetector {
         return
       }
 
+      // `inup react eslint-*`: the same matcher as --ignore, inverted. Filtered before the name is
+      // grouped, so the registry never fetches what the run leaves out.
+      if (this.onlyPackages.length > 0 && !isPackageIgnored(dep.name, this.onlyPackages)) {
+        return
+      }
+
       if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
         ignoredCount++
         if (!seenIgnored.has(dep.name)) {
@@ -422,6 +430,7 @@ export class PackageDetector {
       tDeps
     )
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
+    this.warnUnmatchedFilters(dependenciesByName, onEvent)
     performanceTracker.recordCounts({ rawDependencies: rawDependencyCount })
 
     onEvent({
@@ -796,6 +805,25 @@ export class PackageDetector {
           list.map((dir) => `   - ${dir}`).join('\n') +
           `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
       },
+    })
+  }
+
+  /**
+   * Names each package filter that matched no dependency, so a typo (`inup recat`) never reads
+   * as "everything is up to date".
+   */
+  private warnUnmatchedFilters(
+    dependenciesByName: Map<string, DependencyEntry[]>,
+    onEvent: StreamOutdatedPackagesCallback
+  ): void {
+    const names = [...dependenciesByName.keys()]
+    const unmatched = this.onlyPackages.filter(
+      (pattern) => !names.some((name) => isPackageIgnored(name, [pattern]))
+    )
+    if (unmatched.length === 0) return
+    onEvent({
+      type: 'warning',
+      payload: { message: `Warning: no dependency matches ${unmatched.join(', ')}` },
     })
   }
 

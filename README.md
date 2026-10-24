@@ -76,7 +76,7 @@ Review the diff and run your tests after upgrading.
 
 inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
-Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
+Only after a few packages? Name them: `npx inup react "eslint-*"`. Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
 <!-- BENCHMARK:START -->
 ## Speed

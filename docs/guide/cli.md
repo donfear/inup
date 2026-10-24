@@ -3,8 +3,10 @@
 inup is a single command. Without flags it opens the interactive picker; with `--json`, `--check` or `--apply` (or when stdin or stdout isn't a TTY) it runs headless.
 
 ```bash
-inup [options]
+inup [options] [packages...]
 ```
+
+Name packages to check only those: `inup react react-dom`, or with glob patterns, `inup "@babel/*" "eslint-*"` (quote them so your shell doesn't expand them). The registry is asked about nothing else, so it's fast in a big monorepo, and it works the same with `--json`, `--check` and `--apply`. A name that matches no dependency gets a warning, so a typo never looks like "up to date".
 
 ## Options
 

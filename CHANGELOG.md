@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Name the packages to check: `npx inup react "eslint-*"` looks up only those, in the picker and with `--json`, `--check` and `--apply`. Names and glob patterns work as they do in `--ignore`, and a name that matches no dependency gets a warning instead of looking up to date.
 - `--no-audit` skips the vulnerability check, for runs where you only want to know what is outdated. The `--json` report then gives `summary.vulnerable` as `null` instead of a count, so a skipped check is never read as a clean one. The picker says "Audit off" and still runs the check when you press `s`.
 
 ## [1.8.8] - 2026-10-22
