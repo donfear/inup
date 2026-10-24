@@ -442,6 +442,49 @@ describe('CLI audit flag', () => {
   })
 })
 
+describe('CLI verify flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.headlessRunnerOptions.length = 0
+    delete process.env.CI
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+
+  it('passes the command to --apply', async () => {
+    setInteractive(false)
+    await runCli({ ...baseOptions, apply: true, verify: 'npm test' })
+
+    expect(mocks.headlessRun).toHaveBeenCalledWith(
+      expect.objectContaining({ apply: true, verify: 'npm test' })
+    )
+  })
+
+  it('exits 2 without --apply, which makes the upgrades it checks', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli({ ...baseOptions, json: true, verify: 'npm test' })).rejects.toThrow(
+      'process.exit'
+    )
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(mocks.headlessRun).not.toHaveBeenCalled()
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+})
+
 describe('CLI max-depth flag', () => {
   beforeEach(() => {
     vi.clearAllMocks()

@@ -9,6 +9,17 @@ const mocks = vi.hoisted(() => ({
   fetchVulnerabilities: vi.fn(),
   upgradePackages: vi.fn(),
   upgraderCtor: vi.fn(),
+  verifiedCtor: vi.fn(),
+  verifiedRun: vi.fn(),
+}))
+
+vi.mock('../../../../src/features/upgrade/verified-upgrade', () => ({
+  VerifiedUpgrade: class {
+    constructor(...args: unknown[]) {
+      mocks.verifiedCtor(...args)
+    }
+    run = mocks.verifiedRun
+  },
 }))
 
 vi.mock('../../../../src/features/upgrade/package-detector', () => ({
@@ -527,6 +538,37 @@ describe('HeadlessRunner.run', () => {
   })
 
   describe('--apply', () => {
+    it('--verify hands the choices to the verified upgrade instead of upgrading directly', async () => {
+      mocks.scanResult.mockResolvedValue([OUTDATED])
+      mocks.verifiedRun.mockResolvedValue({ kept: ['axios'], reverted: [] })
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo' }).run({
+        apply: true,
+        json: true,
+        verify: 'npm test',
+      })
+
+      expect(mocks.upgradePackages).not.toHaveBeenCalled()
+      const [, packageManager, command, cwd, options] = mocks.verifiedCtor.mock.calls[0]
+      expect(packageManager).toMatchObject({ name: 'npm' })
+      expect([command, cwd, options]).toEqual(['npm test', '/repo', { quiet: true }])
+      expect(mocks.verifiedRun.mock.calls[0][0]).toEqual([
+        expect.objectContaining({ name: 'axios', upgradeType: 'range' }),
+      ])
+      logSpy.mockRestore()
+    })
+
+    it('--verify runs the command in the current directory when none is given', async () => {
+      mocks.scanResult.mockResolvedValue([OUTDATED])
+      mocks.verifiedRun.mockResolvedValue({ kept: ['axios'], reverted: [] })
+
+      await new HeadlessRunner().run({ apply: true, verify: 'npm test' })
+
+      expect(mocks.verifiedCtor.mock.calls.at(-1)?.[3]).toBe(process.cwd())
+      expect(mocks.verifiedCtor.mock.calls.at(-1)?.[4]).toEqual({ quiet: false })
+    })
+
     it('target=minor bumps in-range and skips major-only packages', async () => {
       mocks.scanResult.mockResolvedValue([OUTDATED, MAJOR_ONLY, UP_TO_DATE])
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})

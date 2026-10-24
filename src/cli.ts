@@ -56,6 +56,7 @@ export interface CliOptions {
   native?: boolean
   audit?: boolean
   minimumReleaseAge?: string
+  verify?: string
 }
 
 /** A comma-separated flag value as a list, trimmed and without empty entries. */
@@ -174,6 +175,11 @@ export async function runCli(options: CliOptions): Promise<void> {
     }
   }
 
+  if (options.verify !== undefined && !options.apply) {
+    console.error(chalk.red('--verify works with --apply: it checks the upgrades --apply makes.'))
+    process.exit(2)
+  }
+
   // Load project config from .inuprc. Before the dirty-tree prompt, so a broken config fails
   // the run before it asks anything.
   const projectConfig = loadProjectConfigOrExit(cwd)
@@ -254,6 +260,7 @@ export async function runCli(options: CliOptions): Promise<void> {
       check: options.check,
       apply: options.apply,
       target: options.target,
+      verify: options.verify,
     })
     return
   }
@@ -345,6 +352,10 @@ program
   .option(
     '--minimum-release-age <minutes>',
     'only offer versions published at least this many minutes ago (supply-chain cooldown; also via .inuprc)'
+  )
+  .option(
+    '--verify <command>',
+    'with --apply: run this command (e.g. "npm test") after upgrading, and revert each upgrade it fails with'
   )
   // No commander default: HeadlessRunner owns the 'minor' default for an absent target.
   .addOption(

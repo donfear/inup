@@ -1048,4 +1048,27 @@ catalogs:
       errorSpy.mockRestore()
     }
   })
+
+  it('reinstalls the projects the choices touch, for a verified upgrade that put files back', async () => {
+    const manifest = join(testDir, 'package.json')
+    writeFileSync(manifest, '{}')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new PackageUpgrader(makePackageManager()).reinstall([
+      {
+        name: 'lodash',
+        packageJsonPath: manifest,
+        dependencyType: 'dependencies',
+        upgradeType: 'latest',
+        targetVersion: '^5.0.0',
+        currentVersionSpecifier: '^4.0.0',
+      },
+    ])
+
+    expect(spawnSyncMock).toHaveBeenCalledWith(
+      'npm --version',
+      expect.objectContaining({ cwd: testDir })
+    )
+    logSpy.mockRestore()
+  })
 })

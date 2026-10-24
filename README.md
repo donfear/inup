@@ -209,6 +209,7 @@ To turn it off for a project, add `"native": false` to [`.inuprc`](docs/guide/co
 npx inup --check  # Exit 1 if updates exist; don't change files
 npx inup --json   # Print a JSON report; don't change files
 npx inup --apply  # Apply in-range updates and run install
+npx inup --apply --verify "npm test"  # Keep only the upgrades your tests pass with
 ```
 
 [CLI reference](docs/guide/cli.md) · [CI guide](docs/guide/ci.md) · [Troubleshooting](docs/guide/faq.md)

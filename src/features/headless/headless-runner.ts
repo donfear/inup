@@ -9,7 +9,7 @@ import {
   fetchVulnerabilitiesPerVersion,
   type PackageVulnerabilities,
 } from '../audit'
-import { PackageDetector, PackageUpgrader } from '../upgrade'
+import { PackageDetector, PackageUpgrader, VerifiedUpgrade } from '../upgrade'
 import { buildHeadlessReport, failedLookupNames, renderPlainReport } from './report'
 import type { ApplyTarget, HeadlessOptions } from './types'
 
@@ -143,7 +143,12 @@ export class HeadlessRunner {
       // --apply writes the bumps + lockfile. The scan above already honored .inuprc
       // (ignore/exclude/scanDirs), so the set we write is exactly the set we report — never more.
       if (options.apply) {
-        await this.applyUpgrades(outdated, options.target ?? 'minor', !!options.json)
+        await this.applyUpgrades(
+          outdated,
+          options.target ?? 'minor',
+          !!options.json,
+          options.verify
+        )
       }
 
       if (options.json) {
@@ -174,7 +179,8 @@ export class HeadlessRunner {
   private async applyUpgrades(
     outdated: PackageInfo[],
     target: ApplyTarget,
-    json: boolean
+    json: boolean,
+    verify: string | undefined
   ): Promise<void> {
     const choices = this.buildChoices(outdated, target)
     if (choices.length === 0) return
@@ -183,6 +189,11 @@ export class HeadlessRunner {
     // With --json, run the upgrader quietly: its own progress + the install child's stdout go to
     // stderr, leaving stdout for the JSON document only.
     const upgrader = new PackageUpgrader(packageManager, { quiet: json })
+    if (verify) {
+      const cwd = this.options?.cwd ?? process.cwd()
+      await new VerifiedUpgrade(upgrader, packageManager, verify, cwd, { quiet: json }).run(choices)
+      return
+    }
     await upgrader.upgradePackages(choices)
   }
 

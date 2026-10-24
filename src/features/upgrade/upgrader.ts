@@ -80,6 +80,11 @@ export class PackageUpgrader {
     this.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
   }
 
+  /** Re-run the install for the projects the choices touch, after their files were put back. */
+  public async reinstall(choices: PackageUpgradeChoice[]): Promise<void> {
+    await this.runInstall(choices)
+  }
+
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {
     // We just rewrote package.json, so the install must be allowed to regenerate the lockfile.
     // pnpm/yarn default to frozen/immutable installs under CI; writeInstallCommand opts out.
