@@ -63,6 +63,7 @@ export interface PackageInfo {
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
   patchPins?: string[] // Version selectors of the pnpm patches pinned to this package (`16.3.5`, `^2.0.0`)
   heldByPatch?: string // pnpm patch key (`next@16.3.5`) the --apply bump would orphan, so it is skipped
+  revertedByVerify?: string // The verify command this package's --apply upgrade failed, so it was put back
   lookupFailed?: boolean // The registry returned nothing (network, auth, not found): updates unknown
 }
 
@@ -138,6 +139,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge
   global?: boolean // `inup -g`: the packages are global installs listed in a throwaway manifest
   audit?: boolean // Check vulnerabilities on every run; false skips it (--no-audit). Defaults to true
+  verify?: string // Command the upgrades must keep passing (--verify or .inuprc); the ones it fails are reverted
 }
 
 /**

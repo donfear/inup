@@ -906,6 +906,33 @@ catalogs:
         logSpy.mockRestore()
       }
     })
+
+    it('names every file an upgrade can write: the manifests and each install root lockfile', () => {
+      const workspace = join(testDir, 'workspace')
+      mkdirSync(workspace)
+      writeFileSync(
+        join(workspace, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['packages/*'] })
+      )
+      const x = writeFixture(join(workspace, 'packages', 'x'))
+      const y = writeFixture(join(workspace, 'packages', 'y'))
+      const standalone = writeFixture(join(testDir, 'demo'))
+
+      const files = new PackageUpgrader(makePackageManager()).filesWrittenBy([
+        makeChoice(x),
+        makeChoice(y),
+        makeChoice(x),
+        makeChoice(standalone),
+      ])
+
+      expect(files).toEqual([
+        x,
+        y,
+        standalone,
+        join(testDir, 'demo', 'package-lock.json'),
+        join(workspace, 'package-lock.json'),
+      ])
+    })
   })
 
   describe('quiet catalog upgrades', () => {

@@ -56,7 +56,7 @@ export interface CliOptions {
   native?: boolean
   audit?: boolean
   minimumReleaseAge?: string
-  verify?: string
+  verify?: string | false // false: --no-verify
   global?: boolean
 }
 
@@ -176,13 +176,16 @@ export async function runCli(options: CliOptions): Promise<void> {
     }
   }
 
-  if (options.verify !== undefined && !options.apply) {
-    console.error(chalk.red('--verify works with --apply: it checks the upgrades --apply makes.'))
-    process.exit(2)
-  }
-  if (options.verify !== undefined && options.global) {
-    console.error(chalk.red("--verify doesn't work with -g: global installs can't be put back."))
-    process.exit(2)
+  // --verify checks the upgrades inup makes, so it needs a run that makes some.
+  if (typeof options.verify === 'string') {
+    if (options.global) {
+      console.error(chalk.red("--verify doesn't work with -g: global installs can't be put back."))
+      process.exit(2)
+    }
+    if (!interactive && !options.apply) {
+      console.error(chalk.red('--verify checks upgrades: use it in the picker or with --apply.'))
+      process.exit(2)
+    }
   }
 
   // Load project config from .inuprc. Before the dirty-tree prompt, so a broken config fails
@@ -234,6 +237,10 @@ export async function runCli(options: CliOptions): Promise<void> {
     configureNativeCore({ enabled: true, download: interactive || nativeChoice === true })
   }
 
+  // The command the upgrades must keep passing: flag > .inuprc, and --no-verify skips both. The
+  // config belongs to the project, so -g leaves it out.
+  const verify = options.global ? undefined : (options.verify ?? projectConfig.verify) || undefined
+
   // -g: list the global packages and scan a throwaway manifest that declares them. npm unless
   // --package-manager names another.
   let scanDir = cwd
@@ -269,6 +276,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     concurrency: concurrency ?? projectConfig.concurrency,
     // Commander sets false for --no-audit; a caller that builds CliOptions itself may omit it.
     audit: options.audit ?? true,
+    verify,
   }
 
   // Non-interactive (piped / CI / --json / --check) routes to the read-only headless feature;
@@ -282,7 +290,6 @@ export async function runCli(options: CliOptions): Promise<void> {
       check: options.check,
       apply: options.apply,
       target: options.target,
-      verify: options.verify,
     })
     return
   }
@@ -378,8 +385,9 @@ program
   )
   .option(
     '--verify <command>',
-    'with --apply: run this command (e.g. "npm test") after upgrading, and revert each upgrade it fails with'
+    'run this command (e.g. "npm test") after upgrading and revert each upgrade it fails with (also via .inuprc)'
   )
+  .option('--no-verify', 'skip the verify command set in .inuprc for this run')
   // No commander default: HeadlessRunner owns the 'minor' default for an absent target.
   .addOption(
     new Option(

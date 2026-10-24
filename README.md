@@ -91,6 +91,14 @@ inup detects your package manager and finds dependencies across workspaces. Priv
 
 Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
+## Keep only the upgrades your tests pass
+
+```bash
+npx inup --verify "npm test"
+```
+
+After you upgrade, inup runs your tests. If they fail, it puts everything back and tries one package at a time, so you keep every upgrade that passes and nothing that breaks. Add `"verify": "npm test"` to [`.inuprc`](docs/guide/configuration.md#verify) to check every upgrade, in the picker, with `--apply` and in the GitHub Action.
+
 <!-- BENCHMARK:START -->
 ## Speed
 

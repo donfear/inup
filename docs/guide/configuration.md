@@ -25,7 +25,8 @@ The quickest start is `inup --init`: it writes a commented `.inuprc` template wi
   "minimumReleaseAge": 10080,
   "minimumReleaseAgeExclude": ["@myco/*"],
   "showPeerDependencyVulnerabilities": false,
-  "showOptionalDependencyVulnerabilities": false
+  "showOptionalDependencyVulnerabilities": false,
+  "verify": "npm test"
 }
 ```
 
@@ -82,6 +83,20 @@ Fetch and parse registry data with inup's native core, written in Rust. On large
 inup itself ships without native code. The first interactive run downloads the core for your platform (about 1.5 MB) from your npm registry, checks it against the checksum the registry publishes and against the hash built into your copy of inup, and caches it (the cached file is checked again on every run); that run still uses the standard core, and later runs use the native one. A new inup version downloads its matching core once. Scripted runs (`--json`, `--check`, `--apply`, CI) use a cached core but don't download one unless you pass `--native` or set `"native": true`, so they never wait on the download.
 
 Available for macOS, Linux (glibc and musl) and Windows, on x64 and arm64. Wherever the native core can't be downloaded or loaded, inup quietly uses the standard core — `--debug` logs which one is active.
+
+### `verify`
+
+A command your upgrades must keep passing, usually your tests. After you upgrade, in the picker or with `--apply`, inup runs it in the directory inup runs in. If it fails, inup puts back every file the upgrade wrote (`package.json`, `pnpm-workspace.yaml` and the lockfile), installs again, and retries one package at a time, keeping each upgrade the command passes with and reverting the rest. A package declared in several workspaces is kept or reverted everywhere at once.
+
+```json
+{
+  "verify": "npm test"
+}
+```
+
+inup also runs the command before upgrading, and stops if it already fails: it couldn't tell which upgrade broke it. `--verify <command>` replaces it for one run and `--no-verify` skips it. Runs that write nothing (`--json` or `--check` without `--apply`) don't use it, and neither does `-g`, because a global install can't be put back.
+
+In the [GitHub Action](github-action.md), the pull request keeps only the upgrades the command passes with. Install your dependencies in a step before the Action, so the command can run before upgrading.
 
 ### `minimumReleaseAge`
 

@@ -1,68 +1,77 @@
 import { type StdioOptions, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import chalk from 'chalk'
-import { findWorkspaceRoot } from '../../shared/fs'
-import type { PackageManagerInfo, PackageUpgradeChoice } from '../../shared/types'
+import type { PackageUpgradeChoice } from '../../shared/types'
 import type { PackageUpgrader } from './upgrader'
 
+export interface VerifyOptions {
+  /** The command the upgrades must keep passing, usually the tests (`npm test`). */
+  command: string
+  /** Where the command runs. */
+  cwd: string
+  /** Log to stderr and send the command's stdout there too, keeping stdout for `--json`. */
+  quiet?: boolean
+}
+
 export interface VerifyResult {
-  /** Packages upgraded with the verify command still passing. */
+  /** Packages upgraded with the command still passing. */
   kept: string[]
-  /** Packages whose upgrade failed the verify command (or its install), put back as they were. */
+  /** Packages whose upgrade failed the command (or its install), put back as they were. */
   reverted: string[]
 }
 
-/** The files an upgrade can change, and their contents before it (null: did not exist). */
+/** Each file an upgrade can write, with its contents before it (null: it did not exist). */
 type Snapshot = Map<string, string | null>
 
 /**
- * `--apply --verify <command>`: upgrade, then run the command (usually the tests). When it fails,
- * put everything back and retry one package at a time, keeping each upgrade the command still
- * passes with and reverting the rest. Refuses to start if the command fails before upgrading:
- * it couldn't tell an upgrade that breaks it from a check that was already broken.
+ * `--verify <command>`, or `verify` in .inuprc: upgrade, then run the command. When it fails,
+ * put everything back and retry one package at a time, keeping each upgrade the command passes
+ * with and reverting the rest. Refuses to start when the command already fails, because it
+ * couldn't tell an upgrade that breaks it from a check that was broken before.
  */
 export class VerifiedUpgrade {
-  private readonly log: (message: string) => void
+  private readonly command: string
+  private readonly cwd: string
   private readonly stdio: StdioOptions
+  private readonly log: (message: string) => void
 
   constructor(
     private readonly upgrader: PackageUpgrader,
-    private readonly packageManager: PackageManagerInfo,
-    private readonly command: string,
-    private readonly cwd: string,
-    { quiet = false }: { quiet?: boolean } = {}
+    { command, cwd, quiet = false }: VerifyOptions
   ) {
-    this.log = quiet ? (message) => console.error(message) : (message) => console.log(message)
-    // As for the install: in quiet mode the command's stdout goes to stderr, keeping stdout for --json.
+    this.command = command
+    this.cwd = cwd
+    // As for the install: in quiet mode the command's stdout goes to stderr.
     this.stdio = quiet ? ['inherit', 2, 'inherit'] : 'inherit'
+    this.log = quiet ? (message) => console.error(message) : (message) => console.log(message)
   }
 
   async run(choices: PackageUpgradeChoice[]): Promise<VerifyResult> {
     if (!this.passes('before upgrading')) {
       throw new Error(
-        `\`${this.command}\` fails before upgrading anything, so it can't tell which upgrade breaks it. Make it pass first.`
+        `\`${this.command}\` fails before upgrading anything, so inup can't tell which upgrade breaks it. Make it pass first, or skip it with --no-verify.`
       )
     }
 
-    const names = [...new Set(choices.map((choice) => choice.name))]
+    const byName = groupByName(choices)
     if (await this.tryUpgrade(choices, 'with every upgrade')) {
-      return this.report({ kept: names, reverted: [] })
+      return this.report({ kept: [...byName.keys()], reverted: [] })
+    }
+    // With a single package, the round that just failed was already its own.
+    if (byName.size === 1) {
+      return this.report({ kept: [], reverted: [...byName.keys()] })
     }
 
     this.log(chalk.yellow('\nRetrying one package at a time to find the upgrades that break it.'))
     const result: VerifyResult = { kept: [], reverted: [] }
-    for (const name of names) {
-      const ok = await this.tryUpgrade(
-        choices.filter((choice) => choice.name === name),
-        `with ${name} upgraded`
-      )
-      ;(ok ? result.kept : result.reverted).push(name)
+    for (const [name, group] of byName) {
+      if (await this.tryUpgrade(group, `with ${name} upgraded`)) result.kept.push(name)
+      else result.reverted.push(name)
     }
     return this.report(result)
   }
 
-  /** Apply the choices and run the command; on failure, put the files and install back. */
+  /** Upgrade and run the command. When either fails, put the files back and install again. */
   private async tryUpgrade(choices: PackageUpgradeChoice[], label: string): Promise<boolean> {
     const before = this.snapshot(choices)
     try {
@@ -82,17 +91,11 @@ export class VerifiedUpgrade {
     return result.status === 0
   }
 
-  /** Every manifest the choices write, and the lockfile of each project they install in. */
   private snapshot(choices: PackageUpgradeChoice[]): Snapshot {
-    const files = new Set<string>()
-    for (const { packageJsonPath } of choices) {
-      files.add(packageJsonPath)
-      const dir = dirname(packageJsonPath)
-      const root = findWorkspaceRoot(dir, this.packageManager.name) ?? dir
-      files.add(join(root, this.packageManager.lockFile))
-    }
     return new Map(
-      [...files].map((file) => [file, existsSync(file) ? readFileSync(file, 'utf-8') : null])
+      this.upgrader
+        .filesWrittenBy(choices)
+        .map((file) => [file, existsSync(file) ? readFileSync(file, 'utf-8') : null])
     )
   }
 
@@ -104,20 +107,25 @@ export class VerifiedUpgrade {
   }
 
   private report(result: VerifyResult): VerifyResult {
+    const { kept, reverted } = result
+    const names = (list: string[]) => (list.length > 0 ? `: ${list.join(', ')}` : '')
     this.log(
-      chalk.green(
-        `\n✅ Kept ${result.kept.length} upgrade(s) that pass \`${this.command}\`${
-          result.kept.length > 0 ? `: ${result.kept.join(', ')}` : ''
-        }`
-      )
+      chalk.green(`\n✅ Kept ${kept.length} upgrade(s) that pass \`${this.command}\`${names(kept)}`)
     )
-    if (result.reverted.length > 0) {
-      this.log(
-        chalk.yellow(
-          `↩️  Reverted ${result.reverted.length} that fail it: ${result.reverted.join(', ')}`
-        )
-      )
+    if (reverted.length > 0) {
+      this.log(chalk.yellow(`↩️  Reverted ${reverted.length} that fail it${names(reverted)}`))
     }
     return result
   }
+}
+
+/** The choices per package: one package is kept or reverted in every manifest that declares it. */
+function groupByName(choices: PackageUpgradeChoice[]): Map<string, PackageUpgradeChoice[]> {
+  const groups = new Map<string, PackageUpgradeChoice[]>()
+  for (const choice of choices) {
+    const group = groups.get(choice.name)
+    if (group) group.push(choice)
+    else groups.set(choice.name, [choice])
+  }
+  return groups
 }

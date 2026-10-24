@@ -11,16 +11,18 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 import type { PackageUpgrader } from '../../../../src/features/upgrade/upgrader'
 import { VerifiedUpgrade } from '../../../../src/features/upgrade/verified-upgrade'
-import type { PackageManagerInfo, PackageUpgradeChoice } from '../../../../src/shared/types'
-
-const npm = { name: 'npm', lockFile: 'package-lock.json' } as PackageManagerInfo
+import type { PackageUpgradeChoice } from '../../../../src/shared/types'
 
 describe('VerifiedUpgrade', () => {
   let dir: string
   let manifest: string
   let lockfile: string
   let installed: Set<string>
-  let upgrader: { upgradePackages: ReturnType<typeof vi.fn>; reinstall: ReturnType<typeof vi.fn> }
+  let upgrader: {
+    upgradePackages: ReturnType<typeof vi.fn>
+    reinstall: ReturnType<typeof vi.fn>
+    filesWrittenBy: ReturnType<typeof vi.fn>
+  }
   /** Names whose upgrade makes the verify command fail. */
   let breaking: Set<string>
   let log: ReturnType<typeof vi.spyOn>
@@ -34,8 +36,12 @@ describe('VerifiedUpgrade', () => {
     currentVersionSpecifier: '^1.0.0',
   })
 
-  const verified = (options?: { quiet?: boolean }) =>
-    new VerifiedUpgrade(upgrader as unknown as PackageUpgrader, npm, 'npm test', dir, options)
+  const verified = (quiet?: boolean) =>
+    new VerifiedUpgrade(upgrader as unknown as PackageUpgrader, {
+      command: 'npm test',
+      cwd: dir,
+      quiet,
+    })
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'inup-verify-'))
@@ -60,6 +66,9 @@ describe('VerifiedUpgrade', () => {
             .filter(Boolean)
         )
       }),
+      filesWrittenBy: vi.fn((choices: PackageUpgradeChoice[]) => [
+        ...new Set([...choices.map((c) => c.packageJsonPath), lockfile]),
+      ]),
     }
     spawnSyncMock.mockReset().mockImplementation(() => ({
       status: [...installed].some((name) => breaking.has(name)) ? 1 : 0,
@@ -101,21 +110,38 @@ describe('VerifiedUpgrade', () => {
     expect(lines.some((line) => line.includes('Reverted 1 that fail it: b'))).toBe(true)
   })
 
-  it('upgrades each package in every manifest at once, and puts back a lockfile that was not there', async () => {
-    rmSync(lockfile)
+  it('retries a package in every manifest that declares it at once', async () => {
     const nested = join(dir, 'packages', 'x', 'package.json')
     mkdirSync(join(dir, 'packages', 'x'), { recursive: true })
     writeFileSync(nested, 'nested')
+    breaking.add('b')
+
+    const result = await verified().run([choice('a'), choice('b'), choice('a', nested)])
+
+    expect(result).toEqual({ kept: ['a'], reverted: ['b'] })
+    expect(upgrader.upgradePackages.mock.calls.map(([choices]) => choices)).toEqual([
+      [choice('a'), choice('b'), choice('a', nested)],
+      [choice('a'), choice('a', nested)],
+      [choice('b')],
+    ])
+  })
+
+  it('reverts a single package without retrying it, and removes a lockfile that was not there', async () => {
+    rmSync(lockfile)
     breaking.add('a')
 
-    const result = await verified().run([choice('a'), choice('a', nested)])
+    const result = await verified().run([choice('a')])
 
     expect(result).toEqual({ kept: [], reverted: ['a'] })
-    expect(upgrader.upgradePackages).toHaveBeenLastCalledWith([choice('a'), choice('a', nested)])
+    expect(upgrader.upgradePackages).toHaveBeenCalledTimes(1)
+    expect(spawnSyncMock).toHaveBeenCalledTimes(2)
+    expect(upgrader.reinstall).toHaveBeenCalledWith([choice('a')])
     expect(existsSync(lockfile)).toBe(false)
     expect(readFileSync(manifest, 'utf-8')).toBe('before')
     const lines = log.mock.calls.map(([line]) => String(line))
+    expect(lines.some((line) => line.includes('Retrying'))).toBe(false)
     expect(lines.some((line) => line.includes('Kept 0 upgrade(s) that pass `npm test`'))).toBe(true)
+    expect(lines.some((line) => line.includes('Reverted 1 that fail it: a'))).toBe(true)
   })
 
   it('treats an upgrade whose install fails as one that breaks it', async () => {
@@ -141,7 +167,7 @@ describe('VerifiedUpgrade', () => {
     spawnSyncMock.mockReturnValue({ status: 1 })
 
     await expect(verified().run([choice('a')])).rejects.toThrow(
-      "`npm test` fails before upgrading anything, so it can't tell which upgrade breaks it. Make it pass first."
+      "`npm test` fails before upgrading anything, so inup can't tell which upgrade breaks it. Make it pass first, or skip it with --no-verify."
     )
     expect(upgrader.upgradePackages).not.toHaveBeenCalled()
   })
@@ -149,7 +175,7 @@ describe('VerifiedUpgrade', () => {
   it('keeps stdout for --json in quiet mode', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await verified({ quiet: true }).run([choice('a')])
+    await verified(true).run([choice('a')])
 
     expect(spawnSyncMock).toHaveBeenCalledWith('npm test', {
       cwd: dir,

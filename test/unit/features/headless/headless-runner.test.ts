@@ -538,35 +538,66 @@ describe('HeadlessRunner.run', () => {
   })
 
   describe('--apply', () => {
-    it('--verify hands the choices to the verified upgrade instead of upgrading directly', async () => {
+    it('with a verify command, hands the choices to the verified upgrade instead', async () => {
       mocks.scanResult.mockResolvedValue([OUTDATED])
       mocks.verifiedRun.mockResolvedValue({ kept: ['axios'], reverted: [] })
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
 
-      await new HeadlessRunner({ cwd: '/repo' }).run({
+      await new HeadlessRunner({ cwd: '/repo', verify: 'npm test' }).run({
         apply: true,
         json: true,
-        verify: 'npm test',
       })
 
       expect(mocks.upgradePackages).not.toHaveBeenCalled()
-      const [, packageManager, command, cwd, options] = mocks.verifiedCtor.mock.calls[0]
-      expect(packageManager).toMatchObject({ name: 'npm' })
-      expect([command, cwd, options]).toEqual(['npm test', '/repo', { quiet: true }])
+      expect(mocks.verifiedCtor.mock.calls[0][1]).toEqual({
+        command: 'npm test',
+        cwd: '/repo',
+        quiet: true,
+      })
       expect(mocks.verifiedRun.mock.calls[0][0]).toEqual([
         expect.objectContaining({ name: 'axios', upgradeType: 'range' }),
       ])
       logSpy.mockRestore()
     })
 
-    it('--verify runs the command in the current directory when none is given', async () => {
+    it('runs the verify command in the current directory when none is given', async () => {
       mocks.scanResult.mockResolvedValue([OUTDATED])
       mocks.verifiedRun.mockResolvedValue({ kept: ['axios'], reverted: [] })
 
-      await new HeadlessRunner().run({ apply: true, verify: 'npm test' })
+      await new HeadlessRunner({ verify: 'npm test' }).run({ apply: true })
 
-      expect(mocks.verifiedCtor.mock.calls.at(-1)?.[3]).toBe(process.cwd())
-      expect(mocks.verifiedCtor.mock.calls.at(-1)?.[4]).toEqual({ quiet: false })
+      expect(mocks.verifiedCtor.mock.calls.at(-1)?.[1]).toEqual({
+        command: 'npm test',
+        cwd: process.cwd(),
+        quiet: false,
+      })
+    })
+
+    it('marks the upgrades the verify command put back in the JSON report', async () => {
+      mocks.scanResult.mockResolvedValue([
+        { ...OUTDATED },
+        { ...MINOR_ONLY },
+        { ...LODASH_DEP },
+        { ...LODASH_PEER },
+      ])
+      mocks.verifiedRun.mockResolvedValue({ kept: ['axios'], reverted: ['lodash-ish', 'lodash'] })
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      await new HeadlessRunner({ cwd: '/repo', verify: 'npm test' }).run({
+        apply: true,
+        json: true,
+      })
+
+      const report = JSON.parse(String(logSpy.mock.calls.at(-1)?.[0]))
+      const reverted = report.outdated.map((e: any) => [e.name, e.type, e.revertedByVerify])
+      // The peer range was never written, so it was never put back either.
+      expect(reverted).toEqual([
+        ['axios', 'dependencies', undefined],
+        ['lodash-ish', 'dependencies', 'npm test'],
+        ['lodash', 'dependencies', 'npm test'],
+        ['lodash', 'peerDependencies', undefined],
+      ])
+      logSpy.mockRestore()
     })
 
     it('target=minor bumps in-range and skips major-only packages', async () => {

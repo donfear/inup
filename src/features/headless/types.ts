@@ -9,7 +9,6 @@ export interface HeadlessOptions {
   check?: boolean // Exit non-zero when updates exist (CI gate)
   apply?: boolean // Write the bumps to package.json + run install (the only write path)
   target?: ApplyTarget // --apply version policy; defaults to 'minor' (in-range only)
-  verify?: string // --apply: command that must keep passing; upgrades that fail it are reverted
 }
 
 /** Bump when the `--json` shape changes in a way consumers (scripts, agents) must adapt to. */
@@ -57,6 +56,7 @@ export interface HeadlessReportEntry {
   vulnerability?: HeadlessVulnerability // Advisories on the current version + whether upgrading clears them
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
   heldByPatch?: string // --apply skipped it: this pnpm patch key is pinned to a version the bump would leave
+  revertedByVerify?: string // --apply put it back: its upgrade fails this verify command
 }
 
 export interface HeadlessReport {

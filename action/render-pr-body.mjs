@@ -57,11 +57,11 @@ export function applyVersionPrefix(current, target) {
  * the current spec, and it's only a real change when it differs from the current spec's version
  * (prefix stripped). Entries where only a major exists have `range === current` and aren't applied.
  * Peer ranges never are: `--apply` does not rewrite peerDependencies. Neither is a package held by
- * a pinned pnpm patch.
+ * a pinned pnpm patch, or one `--verify` put back.
  */
 export function wasApplied(e) {
   if (e.type === 'peerDependencies') return false
-  if (e.heldByPatch) return false
+  if (e.heldByPatch || e.revertedByVerify) return false
   const cleanCurrent = stripVersionPrefix(e.current)
   return e.range !== cleanCurrent && e.range !== e.current
 }
@@ -181,6 +181,30 @@ export function patchedSection(entries) {
   return lines
 }
 
+/**
+ * Upgrades `--verify` put back because the verify command (from `.inuprc`) failed with them.
+ * Listed so the reviewer knows the update exists and needs code changes before it can land.
+ */
+export function revertedSection(entries) {
+  const reverted = entries.filter((e) => e.revertedByVerify)
+  if (reverted.length === 0) return []
+
+  const command = escapeCell(reverted[0].revertedByVerify)
+  const lines = [`### ↩️ Reverted: fails \`${command}\``, '']
+  lines.push(
+    `With these upgrades \`${command}\` fails, so inup put them back and they are **not in this PR**. ` +
+      'Upgrade them by hand once your code is ready for them.'
+  )
+  lines.push('')
+  lines.push('| Package | Current | Available |')
+  lines.push('|---|---|---|')
+  for (const e of reverted) {
+    lines.push(`| \`${escapeCell(e.name)}\` | ${escapeCell(e.current)} | ${escapeCell(e.latest)} |`)
+  }
+  lines.push('')
+  return lines
+}
+
 export function render(report) {
   const { summary } = report
   // Collapse monorepo duplicates up front so every section below counts and lists unique upgrades.
@@ -290,6 +314,7 @@ export function render(report) {
     lines.push('')
   }
 
+  lines.push(...revertedSection(outdated))
   lines.push(...patchedSection(outdated))
   lines.push(...heldSection(report))
 

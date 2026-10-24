@@ -43,6 +43,8 @@ describe('buildConfigTemplate', () => {
     expect(config.concurrency).toBeUndefined()
     // native ships commented out — the core stays on by default.
     expect(config.native).toBeUndefined()
+    // verify ships commented out — not every project has tests to run.
+    expect(config.verify).toBeUndefined()
     warn.mockRestore()
   })
 
@@ -57,6 +59,7 @@ describe('buildConfigTemplate', () => {
       showOptionalDependencyVulnerabilities: true,
       concurrency: true,
       native: true,
+      verify: true,
     }
     const template = buildConfigTemplate()
     for (const field of Object.keys(documentedFields)) {
@@ -71,6 +74,7 @@ describe('buildConfigTemplate', () => {
       minimumReleaseAgeExclude: ['@myco/*'],
       concurrency: 4,
       native: false,
+      verify: 'npm test',
     }
     const COMMENTED_FIELD = /^(\s*)\/\/ ("(\w+)":.*)$/
 

@@ -620,4 +620,31 @@ describe('render-pr-body release-age cooldown section', () => {
     expect(body).toContain('**never upgraded automatically**')
     expect(body).toContain('| `next` | ^16.3.5 | 16.4.0 | `next@16.3.5` |')
   })
+
+  it('lists upgrades --verify put back and never marks them applied', async () => {
+    const entry = {
+      current: '^1.0.0',
+      range: '1.2.0',
+      latest: '1.2.0',
+      type: 'dependencies',
+      packageJsonPath: '/repo/package.json',
+      hasMajorUpdate: false,
+    }
+    const body = await renderPrBody({
+      schemaVersion: 2,
+      summary: { ...baseSummary, total: 2, outdated: 2 },
+      outdated: [
+        { ...entry, name: 'kept' },
+        { ...entry, name: 'broken', revertedByVerify: 'npm test' },
+      ],
+    })
+
+    expect(body).toContain(
+      '### ✅ Applied in this PR\n\n- `kept` `^1.0.0` → `^1.2.0` (dependencies)\n\n'
+    )
+    expect(body).toContain('| `broken` | ^1.0.0 | ^1.2.0 | 1.2.0 | dependencies | — | — | — |')
+    expect(body).toContain('### ↩️ Reverted: fails `npm test`')
+    expect(body).toContain('they are **not in this PR**')
+    expect(body).toContain('| `broken` | ^1.0.0 | 1.2.0 |')
+  })
 })
