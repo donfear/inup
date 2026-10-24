@@ -114,6 +114,12 @@ describe('ConfigManager', () => {
       expect(configManager.getNetworkProfile()).toEqual(profile)
     })
 
+    it('keeps a limit learned over HTTP/2, above the HTTP/1.1 socket pool', () => {
+      const profile = validProfile({ learnedLimit: 100 })
+      configManager.setNetworkProfile(profile)
+      expect(configManager.getNetworkProfile()).toEqual(profile)
+    })
+
     it('coexists with the theme in the same file', () => {
       configManager.setTheme('dracula')
       configManager.setNetworkProfile(validProfile())
@@ -133,7 +139,7 @@ describe('ConfigManager', () => {
     })
 
     it('rejects out-of-range or non-integer learned limits', () => {
-      for (const learnedLimit of [0, -1, 99, 7.5, Number.NaN]) {
+      for (const learnedLimit of [0, -1, 101, 7.5, Number.NaN]) {
         configManager.setNetworkProfile(validProfile({ learnedLimit }))
         expect(configManager.getNetworkProfile()).toBeNull()
       }

@@ -6,7 +6,7 @@ const gunzipAsync = promisify(gunzip)
 const inflateAsync = promisify(inflate)
 const brotliDecompressAsync = promisify(brotliDecompress)
 
-import { POOL_CONNECTIONS } from '../config'
+import { MULTIPLEXED_STREAMS, POOL_CONNECTIONS } from '../config'
 import { debugLog } from '../debug-logger'
 import { etagFileFor, readEtag, writeEtag } from '../http/etag-store'
 import { type ControlTick, HillClimbController } from '../http/hill-climb-controller'
@@ -79,6 +79,8 @@ type RegistryAttemptOutcome =
       revalidated: boolean
       /** Compressed body bytes received (0 for a 304). */
       bytes: number
+      /** Answered over HTTP/2, so in-flight requests are not bound by sockets. */
+      multiplexed: boolean
     }
   | { kind: 'not-found' }
   /** 401/403: the registry refused the request. Final like not-found, but reported. */
@@ -228,6 +230,7 @@ async function attemptNative(
         latencyMs,
         revalidated: result.revalidated,
         bytes: result.bytes,
+        multiplexed: result.multiplexed === true,
       }
     case 'not-found':
       return finalFailure(target.origin, result.status)
@@ -299,7 +302,7 @@ async function attemptWithNodeHttp(
       requestHeaders['if-none-match'] = cached.etag
     }
 
-    const { statusCode, headers, body } = await httpRequest(target.origin, {
+    const { statusCode, headers, body, multiplexed } = await httpRequest(target.origin, {
       path,
       headers: requestHeaders,
       headersTimeoutMs: HEADERS_TIMEOUT_MS,
@@ -315,6 +318,7 @@ async function attemptWithNodeHttp(
         latencyMs: Date.now() - startedAt,
         revalidated: true,
         bytes: 0,
+        multiplexed,
       }
     }
 
@@ -347,6 +351,7 @@ async function attemptWithNodeHttp(
       latencyMs: Date.now() - startedAt,
       revalidated: false,
       bytes: raw.length,
+      multiplexed,
     }
   } catch {
     signal?.throwIfAborted()
@@ -462,7 +467,11 @@ export interface PackageVersionFetch {
  *   climbs to the goodput knee — adapting DOWN on slow-but-healthy links — and
  *   backs off on congestion (429/503) or errors. `concurrency` pins the limit
  *   outright and disables the controller.
- * - Tiny runs skip the controller and run at a fixed `min(learned ?? ceil, count)`
+ * - The ceiling is the HTTP/1.1 socket pool until a response arrives over
+ *   HTTP/2; then requests are streams on one connection and it rises to the
+ *   registry's stream limit. A response over HTTP/1.1 puts it back for the
+ *   rest of the run: the limit is shared by every registry the run uses.
+ * - Tiny runs skip the controller and run at a fixed `min(learned, pool, count)`
  *   so they never crawl up from the floor and lose to fixed — while still
  *   honoring a persisted slow-link profile.
  * - No body timeout: slow responses finish. Real network errors and header
@@ -536,7 +545,9 @@ export function startPackageVersionFetch(
           ? controller.getLimit()
           : // Too small to control: smart fixed start, capped by any learned
             // slow-link limit so small projects still benefit from the profile.
-            Math.max(1, Math.min(networkProfile?.learnedLimit ?? POOL_CONNECTIONS, total))
+            // A limit learned over HTTP/2 can pass the socket pool, and nothing
+            // here learns whether this run's registries multiplex: keep the pool.
+            Math.max(1, Math.min(networkProfile?.learnedLimit ?? total, POOL_CONNECTIONS, total))
     const semaphore = new ResizableSemaphore(initialLimit)
 
     // Streamed body bytes feed the controller's cold-window goodput as they
@@ -545,6 +556,9 @@ export function startPackageVersionFetch(
       ? (bytes) => controller.recordBytes(bytes)
       : undefined
 
+    /** A registry answered over HTTP/1.1, where each request holds a socket. */
+    let socketBound = false
+
     // --- per-attempt observer ---------------------------------------------------
     // Feeds the adaptive controller AND (optionally) reports per-package latency
     // and refusals. Built per package so the callbacks know the name.
@@ -552,6 +566,14 @@ export function startPackageVersionFetch(
       if (!controller && !options.onPackageTiming && !options.onAccessDenied) return undefined
       return (outcome) => {
         if (outcome.kind === 'success') {
+          // Over HTTP/2 the socket pool no longer caps in-flight requests. The
+          // limit is shared by every registry in the run, though: once one
+          // answers over HTTP/1.1, the pool is the ceiling for the rest of it.
+          if (!outcome.multiplexed) socketBound = true
+          const ceiling = socketBound
+            ? controller?.lowerCeiling(POOL_CONNECTIONS)
+            : controller?.raiseCeiling(MULTIPLEXED_STREAMS)
+          if (ceiling != null) semaphore.setLimit(ceiling)
           // A success can also demand an immediate limit change (the hill-climb
           // controller's failed profile validation), so apply any returned limit.
           const next = controller?.record('success', outcome.latencyMs, {
