@@ -430,7 +430,7 @@ export class PackageDetector {
       tDeps
     )
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
-    this.warnUnmatchedFilters(dependenciesByName, onEvent)
+    this.warnUnmatchedFilters(dependenciesByName, seenIgnored, onEvent)
     performanceTracker.recordCounts({ rawDependencies: rawDependencyCount })
 
     onEvent({
@@ -809,22 +809,29 @@ export class PackageDetector {
   }
 
   /**
-   * Names each package filter that matched no dependency, so a typo (`inup recat`) never reads
-   * as "everything is up to date".
+   * Names each package filter that leaves nothing to check, so a typo (`inup recat`) or a
+   * package the ignore list skips never reads as "everything is up to date".
    */
   private warnUnmatchedFilters(
     dependenciesByName: Map<string, DependencyEntry[]>,
+    ignored: Set<string>,
     onEvent: StreamOutdatedPackagesCallback
   ): void {
-    const names = [...dependenciesByName.keys()]
+    const matchesAny = (pattern: string, names: Iterable<string>) =>
+      [...names].some((name) => isPackageIgnored(name, [pattern]))
     const unmatched = this.onlyPackages.filter(
-      (pattern) => !names.some((name) => isPackageIgnored(name, [pattern]))
+      (pattern) => !matchesAny(pattern, dependenciesByName.keys())
     )
-    if (unmatched.length === 0) return
-    onEvent({
-      type: 'warning',
-      payload: { message: `Warning: no dependency matches ${unmatched.join(', ')}` },
-    })
+    const skipped = unmatched.filter((pattern) => matchesAny(pattern, ignored))
+    const missing = unmatched.filter((pattern) => !skipped.includes(pattern))
+
+    const warn = (message: string) => onEvent({ type: 'warning', payload: { message } })
+    if (skipped.length > 0) {
+      warn(`Warning: your ignore list (--ignore or .inuprc) skips ${skipped.join(', ')}`)
+    }
+    if (missing.length > 0) {
+      warn(`Warning: no dependency matches ${missing.join(', ')}`)
+    }
   }
 
   /**

@@ -856,6 +856,32 @@ describe('PackageDetector edge paths', () => {
     }
   })
 
+  it('says so when a named package is on the ignore list, instead of "no dependency matches"', async () => {
+    const { isPackageIgnored } = await import('../../../../src/shared/config')
+    vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
+      patterns.includes(name)
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      mocks.declaredDependencies.mockResolvedValue([dep('react', '^18.0.0'), dep('zod', '^3.0.0')])
+      mocks.fetchPackageVersions.mockImplementation(async () => new Map())
+
+      await new PackageDetector({
+        cwd: '/repo',
+        onlyPackages: ['zod', 'react', 'recat'],
+        ignorePackages: ['zod'],
+      }).streamOutdatedPackages(logWarnings)
+
+      expect(warn.mock.calls).toEqual([
+        ['Warning: your ignore list (--ignore or .inuprc) skips zod'],
+        ['Warning: no dependency matches recat'],
+      ])
+    } finally {
+      warn.mockRestore()
+      vi.mocked(isPackageIgnored).mockImplementation(() => false)
+    }
+  })
+
   it('warns about nothing when every package filter matches', async () => {
     const { isPackageIgnored } = await import('../../../../src/shared/config')
     vi.mocked(isPackageIgnored).mockImplementation((name: string, patterns: string[]) =>
