@@ -906,6 +906,33 @@ catalogs:
         logSpy.mockRestore()
       }
     })
+
+    it('names every file an upgrade can write: the manifests and each install root lockfile', () => {
+      const workspace = join(testDir, 'workspace')
+      mkdirSync(workspace)
+      writeFileSync(
+        join(workspace, 'package.json'),
+        JSON.stringify({ name: 'root', workspaces: ['packages/*'] })
+      )
+      const x = writeFixture(join(workspace, 'packages', 'x'))
+      const y = writeFixture(join(workspace, 'packages', 'y'))
+      const standalone = writeFixture(join(testDir, 'demo'))
+
+      const files = new PackageUpgrader(makePackageManager()).filesWrittenBy([
+        makeChoice(x),
+        makeChoice(y),
+        makeChoice(x),
+        makeChoice(standalone),
+      ])
+
+      expect(files).toEqual([
+        x,
+        y,
+        standalone,
+        join(testDir, 'demo', 'package-lock.json'),
+        join(workspace, 'package-lock.json'),
+      ])
+    })
   })
 
   describe('quiet catalog upgrades', () => {
@@ -1090,5 +1117,28 @@ catalogs:
       )
       logSpy.mockRestore()
     })
+  })
+
+  it('reinstalls the projects the choices touch, for a verified upgrade that put files back', async () => {
+    const manifest = join(testDir, 'package.json')
+    writeFileSync(manifest, '{}')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await new PackageUpgrader(makePackageManager()).reinstall([
+      {
+        name: 'lodash',
+        packageJsonPath: manifest,
+        dependencyType: 'dependencies',
+        upgradeType: 'latest',
+        targetVersion: '^5.0.0',
+        currentVersionSpecifier: '^4.0.0',
+      },
+    ])
+
+    expect(spawnSyncMock).toHaveBeenCalledWith(
+      'npm --version',
+      expect.objectContaining({ cwd: testDir })
+    )
+    logSpy.mockRestore()
   })
 })

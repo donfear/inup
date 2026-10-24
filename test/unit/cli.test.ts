@@ -516,6 +516,103 @@ describe('CLI global packages', () => {
   })
 })
 
+describe('CLI verify command', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    mocks.headlessRunnerOptions.length = 0
+    delete process.env.CI
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+    mocks.listGlobalPackages.mockReturnValue({})
+    mocks.writeGlobalManifest.mockReturnValue('/tmp/inup-global-x')
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+  const verifyOf = (runnerOptions: unknown[]) =>
+    (runnerOptions.at(-1) as { verify?: string } | undefined)?.verify
+
+  it('passes --verify to --apply', async () => {
+    setInteractive(false)
+    await runCli({ ...baseOptions, apply: true, verify: 'npm test' })
+
+    expect(verifyOf(mocks.headlessRunnerOptions)).toBe('npm test')
+  })
+
+  it('passes --verify to the picker', async () => {
+    setInteractive(true)
+    await runCli({ ...baseOptions, verify: 'npm test' })
+
+    expect(verifyOf(mocks.upgradeRunnerOptions)).toBe('npm test')
+  })
+
+  it('uses the command from .inuprc', async () => {
+    setInteractive(false)
+    mocks.loadProjectConfig.mockReturnValue({ verify: 'pnpm test' })
+
+    await runCli({ ...baseOptions, apply: true })
+
+    expect(verifyOf(mocks.headlessRunnerOptions)).toBe('pnpm test')
+  })
+
+  it('lets --verify override .inuprc', async () => {
+    setInteractive(false)
+    mocks.loadProjectConfig.mockReturnValue({ verify: 'pnpm test' })
+
+    await runCli({ ...baseOptions, apply: true, verify: 'pnpm lint' })
+
+    expect(verifyOf(mocks.headlessRunnerOptions)).toBe('pnpm lint')
+  })
+
+  it('skips the .inuprc command with --no-verify', async () => {
+    setInteractive(true)
+    mocks.loadProjectConfig.mockReturnValue({ verify: 'pnpm test' })
+
+    await runCli({ ...baseOptions, verify: false })
+
+    expect(verifyOf(mocks.upgradeRunnerOptions)).toBeUndefined()
+  })
+
+  it('leaves the .inuprc command out of -g, whose packages are not the project', async () => {
+    setInteractive(false)
+    mocks.loadProjectConfig.mockReturnValue({ verify: 'pnpm test' })
+
+    await runCli({ ...baseOptions, apply: true, global: true })
+
+    expect(verifyOf(mocks.headlessRunnerOptions)).toBeUndefined()
+  })
+
+  it.each([
+    ['--json', { json: true }],
+    ['--check', { check: true }],
+    ['-g', { apply: true, global: true }],
+  ])('exits 2 for --verify with %s, which it cannot check', async (_label, flags) => {
+    setInteractive(false)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli({ ...baseOptions, ...flags, verify: 'npm test' })).rejects.toThrow(
+      'process.exit'
+    )
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(mocks.headlessRun).not.toHaveBeenCalled()
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+})
+
 describe('CLI max-depth flag', () => {
   beforeEach(() => {
     vi.clearAllMocks()

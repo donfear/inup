@@ -56,6 +56,7 @@ export interface HeadlessReportEntry {
   vulnerability?: HeadlessVulnerability // Advisories on the current version + whether upgrading clears them
   heldByCooldown?: CooldownHold // A newer version exists but minimumReleaseAge withheld it
   heldByPatch?: string // --apply skipped it: this pnpm patch key is pinned to a version the bump would leave
+  revertedByVerify?: string // --apply put it back: its upgrade fails this verify command
 }
 
 export interface HeadlessReport {

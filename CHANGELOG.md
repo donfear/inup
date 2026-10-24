@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `--verify "npm test"` keeps only the upgrades your tests pass with, in the picker and with `--apply`. inup runs the command after upgrading, and if it fails, puts everything back and tries one package at a time, reverting each one that breaks it. It won't start if the command already fails. Set it for a project with `"verify"` in `.inuprc`, and skip it for one run with `--no-verify`. In the `--json` report a reverted upgrade carries `revertedByVerify`, and the GitHub Action lists it in the PR instead of marking it applied.
 - `npx inup -g` upgrades your globally installed packages, with changelogs and the audit like any project. It uses npm unless you pass `--package-manager pnpm` or `--package-manager bun`, and also works with `--json`, `--check` and `--apply`.
 - `--no-audit` skips the vulnerability check, for runs where you only want to know what is outdated. The `--json` report then gives `summary.vulnerable` as `null` instead of a count, so a skipped check is never read as a clean one. The picker says "Audit off" and still runs the check when you press `s`.
 

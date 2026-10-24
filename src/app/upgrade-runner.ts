@@ -1,7 +1,12 @@
 import chalk from 'chalk'
 import { getPerformanceTracker } from '../features/debug'
 import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
-import { PackageDetector, PackageUpgrader } from '../features/upgrade'
+import {
+  PackageDetector,
+  PackageUpgrader,
+  VerifiedUpgrade,
+  type VerifyOptions,
+} from '../features/upgrade'
 import { countHeldPackages } from '../shared/cooldown'
 import { PackageManagerDetector } from '../shared/package-manager'
 import { ConsoleUtils } from '../shared/terminal'
@@ -22,6 +27,7 @@ export class UpgradeRunner {
   private ui: InteractiveUI
   private upgrader: PackageUpgrader
   private packageManager: PackageManagerInfo
+  private verify?: VerifyOptions
 
   constructor(options?: UpgradeOptions) {
     this.packageManager = PackageManagerDetector.resolve(options)
@@ -35,6 +41,9 @@ export class UpgradeRunner {
       audit: options?.audit ?? true,
     })
     this.upgrader = new PackageUpgrader(this.packageManager, { global: options?.global })
+    if (options?.verify) {
+      this.verify = { command: options.verify, cwd: options.cwd ?? process.cwd() }
+    }
   }
 
   /**
@@ -226,8 +235,11 @@ export class UpgradeRunner {
         break
       }
 
-      // Perform upgrade
-      await this.upgrader.upgradePackages(selectedChoices)
+      if (this.verify) {
+        await new VerifiedUpgrade(this.upgrader, this.verify).run(selectedChoices)
+      } else {
+        await this.upgrader.upgradePackages(selectedChoices)
+      }
     } catch (error) {
       printWarnings()
       console.error(chalk.red(`Error: ${error}`))

@@ -36,6 +36,8 @@ Anything newer than that target is still reported as the latest update (`hasMajo
 
 With pnpm, `--apply` also skips a package whose patch in `patchedDependencies` is pinned to a version the upgrade would leave (`next@16.3.5`). pnpm refuses to install with an unused patch, so the upgrade is left to you: bump the package and re-create the patch with `pnpm patch`. The skipped packages are named in a warning on stderr and carry `heldByPatch` in the `--json` report. In the picker such a package has a `[PATCH]` badge (press `i` for the patch it is tied to), and `m` and `l` skip it; you can still select it by hand.
 
+With `--verify "npm test"`, or [`verify`](configuration.md#verify) in `.inuprc`, `--apply` keeps only the upgrades the command passes with and puts the rest back. In the `--json` report, each upgrade it put back carries `revertedByVerify` with the command.
+
 It honors [`.inuprc`](configuration.md) exactly as the report does — a package the config excludes is never written. With `--apply --json`, the install output goes to stderr so stdout stays pure JSON.
 
 The install runs once in each project that changed: in its workspace root, or in the project's own directory when it isn't part of a workspace. If an install fails or the package manager isn't installed, `--apply` exits `2` and names each directory with the command to run there. The version bumps stay written.

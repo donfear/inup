@@ -1,6 +1,6 @@
 import { type StdioOptions, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import chalk from 'chalk'
 import { createSpinner } from 'nanospinner'
 import { executeCommand } from '../../shared/exec'
@@ -88,6 +88,19 @@ export class PackageUpgrader {
     // Count unique packages upgraded
     const uniquePackages = new Set(choices.map((c) => c.name))
     this.log(chalk.green(`\n✅ Successfully upgraded ${uniquePackages.size} package(s)!`))
+  }
+
+  /** Every file upgrading the choices can write: the manifests and each install's lockfile. */
+  public filesWrittenBy(choices: PackageUpgradeChoice[]): string[] {
+    const lockfiles = this.findInstallDirs(choices).map((dir) =>
+      join(dir, this.packageManager.lockFile)
+    )
+    return [...new Set([...choices.map((choice) => choice.packageJsonPath), ...lockfiles])]
+  }
+
+  /** Install again after the files the choices wrote were put back. */
+  public async reinstall(choices: PackageUpgradeChoice[]): Promise<void> {
+    await this.runInstall(choices)
   }
 
   /** One global install of every chosen version: the listing it came from is no file to edit. */

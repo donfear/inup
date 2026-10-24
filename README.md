@@ -91,6 +91,14 @@ inup detects your package manager and finds dependencies across workspaces. Priv
 
 Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
+## Keep only the upgrades your tests pass
+
+```bash
+npx inup --verify "npm test"
+```
+
+After you upgrade, inup runs your tests. If they fail, it puts everything back and tries one package at a time, so you keep every upgrade that passes and nothing that breaks. Add `"verify": "npm test"` to [`.inuprc`](docs/guide/configuration.md#verify) to check every upgrade, in the picker, with `--apply` and in the GitHub Action.
+
 <!-- BENCHMARK:START -->
 ## Speed
 
@@ -229,6 +237,7 @@ To turn it off for a project, add `"native": false` to [`.inuprc`](docs/guide/co
 npx inup --check  # Exit 1 if updates exist; don't change files
 npx inup --json   # Print a JSON report; don't change files
 npx inup --apply  # Apply in-range updates and run install
+npx inup --apply --verify "npm test"  # Keep only the upgrades your tests pass with
 ```
 
 [CLI reference](docs/guide/cli.md) · [CI guide](docs/guide/ci.md) · [Troubleshooting](docs/guide/faq.md)
@@ -243,7 +252,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-2047_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-2112_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

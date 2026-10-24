@@ -78,6 +78,11 @@ export function buildConfigTemplate(): string {
   // 1.5 MB, verified against the registry's checksum). Set false to keep
   // native code off this project.
   // "native": false,
+
+  // A command your upgrades must keep passing, usually your tests. After you
+  // upgrade in the picker or with --apply, inup runs it and puts back each
+  // upgrade it fails with. --no-verify skips it for one run.
+  // "verify": "npm test",
 }
 `
 }

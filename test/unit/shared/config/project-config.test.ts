@@ -254,6 +254,27 @@ describe('project-config', () => {
     })
   })
 
+  describe('verify field', () => {
+    it('loads the command', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ verify: 'pnpm test --run' }))
+      expect(loadProjectConfig(testDir).verify).toBe('pnpm test --run')
+    })
+
+    it.each([
+      ['empty', '""'],
+      ['blank', '"  "'],
+      ['a boolean', 'true'],
+      ['a list', '["npm test"]'],
+    ])('drops a verify value that is %s and says so', (_label, raw) => {
+      // Dropped silently, the upgrades would go in without the check the user asked for.
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      writeFileSync(join(testDir, '.inuprc'), `{"verify": ${raw}}`)
+      expect(loadProjectConfig(testDir).verify).toBeUndefined()
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('"verify"'))
+      warn.mockRestore()
+    })
+  })
+
   describe('concurrency field', () => {
     it('accepts an integer concurrency within the pool range', () => {
       writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ concurrency: 8 }))
