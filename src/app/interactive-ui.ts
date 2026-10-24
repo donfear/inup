@@ -26,6 +26,8 @@ interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean
   /** False with --no-audit: nothing is checked until the user presses `s`. */
   audit?: boolean
+  /** The packages the run is limited to (`inup react`, or `only` in .inuprc), for the header. */
+  onlyPackages?: string[]
 }
 
 const DEFAULT_VULNERABILITY_DISPLAY_OPTIONS: Required<VulnerabilityDisplayOptions> = {
@@ -68,9 +70,10 @@ export class InteractiveUI {
   }
 
   private sessionOptions(): SessionDisplayOptions {
-    return { ...this.options, cooldown: this.cooldown }
+    return { ...this.options, cooldown: this.cooldown, onlyPackages: this.onlyPackages }
   }
   private readonly saveExact: boolean
+  private readonly onlyPackages: string[]
   private readonly vulnerabilityAuditController: VulnerabilityAuditController
   private readonly packageInfoModalController = new PackageInfoModalController()
   private refreshView?: () => void
@@ -88,6 +91,7 @@ export class InteractiveUI {
     this.packageManager = packageManager
     this.options = normalizeVulnerabilityDisplayOptions(options)
     this.saveExact = options?.saveExact ?? false
+    this.onlyPackages = options?.onlyPackages ?? []
     this.vulnerabilityAuditController = new VulnerabilityAuditController({
       automatic: options?.audit ?? true,
     })

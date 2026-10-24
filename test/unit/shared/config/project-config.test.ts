@@ -184,6 +184,14 @@ describe('project-config', () => {
       expect(loadProjectConfig(testDir).ignoreMajor).toEqual(['@tiptap/*'])
     })
 
+    it('loads only patterns, keeping string entries and dropping a non-array value', () => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ only: ['react', 42, '@myco/*'] }))
+      expect(loadProjectConfig(testDir).only).toEqual(['react', '@myco/*'])
+
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ only: 'react' }))
+      expect(loadProjectConfig(testDir).only).toBeUndefined()
+    })
+
     it('should load showPeerDependencyVulnerabilities when set to a boolean', () => {
       writeFileSync(
         join(testDir, '.inuprc'),

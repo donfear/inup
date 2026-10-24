@@ -208,8 +208,14 @@ export async function runCli(options: CliOptions): Promise<void> {
     ...new Set([...splitList(options.ignore), ...(projectConfig.ignore || [])]),
   ]
 
-  // `inup react eslint-*`, or `inup react,react-dom` like --ignore
-  const onlyPackages = [...new Set((options.packages ?? []).flatMap(splitList))]
+  // The packages to check: `inup react eslint-*` (or `inup react,react-dom`, like --ignore), else
+  // `only` in .inuprc. Named packages replace the configured list instead of adding to it, so
+  // `inup '*'` checks everything once. The config belongs to the project, so -g leaves it out.
+  const namedPackages = (options.packages ?? []).flatMap(splitList)
+  const configuredPackages = options.global ? [] : (projectConfig.only ?? []).flatMap(splitList)
+  const patterns = [...new Set(namedPackages.length > 0 ? namedPackages : configuredPackages)]
+  // `*` matches every package, so it is no filter at all.
+  const onlyPackages = patterns.includes('*') ? [] : patterns
 
   const maxDepth = Number.parseInt(options.maxDepth, 10)
   if (!Number.isInteger(maxDepth) || maxDepth < 0) {
@@ -348,7 +354,7 @@ program
   .version(PACKAGE_VERSION)
   .argument(
     '[packages...]',
-    'only check these packages (names or glob patterns like @babel/*; default: all)'
+    'only check these packages (names or glob patterns like @babel/*; default: all, or "only" in .inuprc)'
   )
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')

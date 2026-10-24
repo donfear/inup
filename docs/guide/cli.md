@@ -6,7 +6,9 @@ inup is a single command. Without flags it opens the interactive picker; with `-
 inup [options] [packages...]
 ```
 
-Name packages to check only those: `inup react react-dom`, or with glob patterns, `inup "@babel/*" "eslint-*"` (quote them so your shell doesn't expand them). The registry is asked about nothing else, so it's fast in a big monorepo, and it works the same with `--json`, `--check` and `--apply`. A name that matches no dependency gets a warning, so a typo never looks like "up to date".
+Name packages to check only those: `inup react react-dom`, or with glob patterns, `inup "@babel/*" "eslint-*"` (quote them so your shell doesn't expand them). The registry is asked about nothing else, so it's fast in a big monorepo, and it works the same with `--json`, `--check` and `--apply`. A name that matches no dependency gets a warning, so a typo never looks like "up to date". The picker's header and the start of a headless run name the packages the run is limited to, so a missing comma can't slip by: `inup -i react react-dom` ignores react and checks only react-dom.
+
+To limit every run, set [`only`](configuration.md#only) in `.inuprc`. Packages named on the command line replace that list for the run, and `inup "*"` checks everything.
 
 ## Options
 

@@ -54,7 +54,7 @@ vi.mock('../../../../src/features/audit/vulnerability-checker', () => ({
 }))
 
 import { HeadlessRunner } from '../../../../src/features/headless'
-import { getVisualLength } from '../../../../src/shared/terminal'
+import { getVisualLength, stripAnsi } from '../../../../src/shared/terminal'
 import type {
   PackageLoadProgress,
   StreamOutdatedPackagesCallback,
@@ -522,6 +522,24 @@ describe('HeadlessRunner.run', () => {
     expect(output).toMatch(/outdated across 1 file/)
     expect(process.exitCode).toBe(0)
     logSpy.mockRestore()
+  })
+
+  it('says on stderr which packages a filtered run checks, keeping --json stdout one document', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const notes = () => errorSpy.mock.calls.map(([line]) => stripAnsi(String(line)))
+
+    await new HeadlessRunner({ cwd: '/repo' }).run({ json: true })
+    expect(notes()).toEqual([])
+
+    await new HeadlessRunner({ cwd: '/repo', onlyPackages: ['axios', '@babel/*'] }).run({
+      json: true,
+    })
+    expect(notes()).toEqual(['Checking only axios, @babel/*'])
+    expect(logSpy).toHaveBeenCalledTimes(2)
+    for (const [document] of logSpy.mock.calls) expect(() => JSON.parse(document)).not.toThrow()
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
   it('exits 2 on error (no package.json)', async () => {

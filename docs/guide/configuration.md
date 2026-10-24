@@ -19,6 +19,7 @@ The quickest start is `inup --init`: it writes a commented `.inuprc` template wi
 ```json
 {
   "ignore": ["@babel/*", "eslint-*", "typescript"],
+  "only": ["@myco/*", "react", "react-dom"],
   "ignoreMajor": ["@tiptap/*"],
   "exclude": ["fixtures", "examples/.*"],
   "scanDirs": ["lib"],
@@ -41,6 +42,21 @@ Packages to skip during upgrade checks. Supports exact names and glob patterns:
 - `"eslint-*"` — wildcard, `*` matches any sequence, `?` matches one character
 
 The same syntax works ad hoc via `--ignore` on the command line.
+
+### `only`
+
+Check only these packages, as if every run named them on the command line (`inup react react-dom`). Same pattern syntax as `ignore`, which still applies on top. Nothing else is looked up in the registry, so it's fast in a big monorepo.
+
+- Packages named on the command line replace this list for that run, and `inup "*"` checks everything.
+- A pattern that matches no dependency gets a warning, so a typo never looks like "up to date".
+- The picker's header and the start of a headless run name the packages the run is limited to.
+- `inup -g` leaves it out: it belongs to the project, not to your global packages.
+
+```json
+{
+  "only": ["@myco/*"]
+}
+```
 
 ### `ignoreMajor`
 

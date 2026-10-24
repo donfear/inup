@@ -38,6 +38,8 @@ function getTerminalHeight(): number {
 export type SessionDisplayOptions = Required<VulnerabilityDisplayOptions> & {
   /** Held by reference so the header tracks the scan instead of freezing at mount time. */
   cooldown?: CooldownRenderStatus
+  /** The packages the run is limited to, if any, for the header. */
+  onlyPackages?: string[]
 }
 
 export interface InteractiveSessionHandle {
@@ -113,6 +115,7 @@ export async function runInteractiveSession(
       showPeerDependencyVulnerabilities: options.showPeerDependencyVulnerabilities,
       showOptionalDependencyVulnerabilities: options.showOptionalDependencyVulnerabilities,
       cooldown: options.cooldown,
+      onlyPackages: options.onlyPackages,
     }
 
     const key = (text: string) => chalk.bold.white(text)

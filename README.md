@@ -89,7 +89,7 @@ Review the diff and run your tests after upgrading.
 
 inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
-Only after a few packages? Name them: `npx inup react "eslint-*"`. Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
+Only after a few packages? Name them: `npx inup react "eslint-*"`, or for every run with [`only`](docs/guide/configuration.md#only) in `.inuprc`. Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
 
 ## Keep only the upgrades your tests pass
 
@@ -252,7 +252,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-2125_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-2166_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

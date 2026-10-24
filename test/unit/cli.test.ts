@@ -564,6 +564,36 @@ describe('CLI package filter', () => {
 
     expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: ['react', '@babel/*'] })
   })
+
+  it('falls back to `only` in .inuprc, and named packages replace it', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*', ' ', 'react'] })
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true })
+    await runCli({ ...baseOptions, json: true, packages: ['zod'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: ['@myco/*', 'react'] })
+    expect(mocks.headlessRunnerOptions[1]).toMatchObject({ onlyPackages: ['zod'] })
+  })
+
+  it("checks every package for '*', whatever .inuprc says", async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*'] })
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true, packages: ['react', '*'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: [] })
+  })
+
+  it('leaves `only` in .inuprc out of -g, which is not the project', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*'] })
+    mocks.listGlobalPackages.mockReturnValue({ typescript: '5.4.5' })
+    mocks.writeGlobalManifest.mockReturnValue('/tmp/inup-global-x')
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true, global: true })
+    await runCli({ ...baseOptions, json: true, global: true, packages: ['typescript'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: [] })
+    expect(mocks.headlessRunnerOptions[1]).toMatchObject({ onlyPackages: ['typescript'] })
+  })
 })
 
 describe('CLI verify command', () => {

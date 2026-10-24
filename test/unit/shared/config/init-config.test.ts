@@ -43,6 +43,8 @@ describe('buildConfigTemplate', () => {
     expect(config.concurrency).toBeUndefined()
     // native ships commented out — the core stays on by default.
     expect(config.native).toBeUndefined()
+    // only ships commented out — a filter on by default would hide packages.
+    expect(config.only).toBeUndefined()
     // verify ships commented out — not every project has tests to run.
     expect(config.verify).toBeUndefined()
     warn.mockRestore()
@@ -53,6 +55,7 @@ describe('buildConfigTemplate', () => {
     // Record until the list — and therefore the template — is updated too.
     const documentedFields: Record<keyof Required<InupProjectConfig>, true> = {
       ignore: true,
+      only: true,
       exclude: true,
       scanDirs: true,
       showPeerDependencyVulnerabilities: true,
@@ -70,6 +73,7 @@ describe('buildConfigTemplate', () => {
   describe('uncommenting optional fields', () => {
     // Every field the template ships commented out, and what it loads as once enabled.
     const OPTIONAL_FIELDS: Record<string, unknown> = {
+      only: ['@myco/*'],
       minimumReleaseAge: 10080,
       minimumReleaseAgeExclude: ['@myco/*'],
       concurrency: 4,

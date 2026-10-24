@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { UIRenderer } from '../../../../../src/features/interactive/renderer'
-import { stripAnsi } from '../../../../../src/shared/terminal/text'
+import { getVisualLength, stripAnsi } from '../../../../../src/shared/terminal/text'
 import { makeSelectionState } from '../../../../fixtures/selection-state-factory'
 
 const renderer = new UIRenderer()
@@ -58,6 +58,40 @@ describe('UIRenderer', () => {
       { cooldown: { heldCount: 2, unsupported: false } }
     )
     expect(stripAnsi(withoutPm.join('\n'))).toContain('2 fully held by cooldown')
+  })
+
+  it('names the packages the run is limited to in the header, cut to fit but never dropped', () => {
+    // `inup react` or `only` in .inuprc: nothing else was looked up, so a short list must not
+    // pass for the whole project, and a missing comma in `inup -i react react-dom` shows here.
+    const header = (onlyPackages: string[] | undefined, width: number, heldCount = 0) =>
+      stripAnsi(
+        renderer.renderInterface(
+          [makeSelectionState()],
+          0,
+          0,
+          10,
+          'Deps, Dev',
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          width,
+          undefined,
+          undefined,
+          { onlyPackages, cooldown: { heldCount, unsupported: false } }
+        )[0]
+      ).trimEnd()
+
+    expect(header(undefined, 120)).not.toContain('only')
+    expect(header([], 120)).not.toContain('only')
+    expect(header(['react', '@babel/*'], 120)).toMatch(/- Deps, Dev · only react, @babel\/\*$/)
+
+    const many = Array.from({ length: 20 }, (_, i) => `package-${i}`)
+    expect(header(many, 80)).toMatch(/· only package-0, package-1, .*\.\.\.$/)
+    expect(getVisualLength(header(many, 80))).toBe(80)
+
+    // No room left beside the cooldown count: still says what the run is limited to.
+    expect(header(['react-dom'], 60, 3)).toContain('· only react...  3 fully held')
   })
 
   it('says so in the header when the cooldown could not act at all', () => {

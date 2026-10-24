@@ -16,6 +16,12 @@ export interface InupProjectConfig {
   ignore?: string[]
 
   /**
+   * Check only these packages, as if every run named them: `inup react` on the command line.
+   * Same pattern syntax as `ignore`. Packages named on the command line replace this list.
+   */
+  only?: string[]
+
+  /**
    * Packages whose major updates are suppressed. Minor/patch updates still
    * show; a package whose only available update is a new major is treated as
    * up to date. Same pattern syntax as `ignore`.
@@ -244,6 +250,7 @@ export function stripTrailingCommas(content: string): string {
 /** List-valued fields: kept when they are arrays, with any non-string entries dropped. */
 const STRING_LIST_KEYS = [
   'ignore',
+  'only',
   'ignoreMajor',
   'exclude',
   'scanDirs',
@@ -253,6 +260,7 @@ const STRING_LIST_KEYS = [
 /** Every field the loader reads. A Record, so a field added to the interface can't be missed. */
 const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
   ignore: true,
+  only: true,
   ignoreMajor: true,
   exclude: true,
   scanDirs: true,

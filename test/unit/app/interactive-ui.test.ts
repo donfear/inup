@@ -95,7 +95,17 @@ describe('InteractiveUI.selectPackagesToUpgrade', () => {
       showPeerDependencyVulnerabilities: true,
       showOptionalDependencyVulnerabilities: false,
       cooldown: { heldCount: 0, unsupported: false },
+      onlyPackages: [],
     })
+  })
+
+  it('passes the packages the run is limited to into the session, for its header', async () => {
+    const ui = new InteractiveUI(npmInfo, { onlyPackages: ['react', '@babel/*'] })
+    sessionMock.mockResolvedValue([])
+
+    await ui.selectPackagesToUpgrade([makePackageInfo()])
+
+    expect(sessionMock.mock.calls[0][5]).toMatchObject({ onlyPackages: ['react', '@babel/*'] })
   })
 
   it('passes the inert-cooldown flag set by the runner into the session', async () => {

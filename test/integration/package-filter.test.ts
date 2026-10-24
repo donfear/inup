@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   fetchVulnerabilities: vi.fn(),
   spawnSync: vi.fn(),
   pickerRows: [] as PackageInfo[],
+  pickerOnly: undefined as string[] | undefined,
 }))
 
 // Registry: every package's latest is 2.0.0, with a 1.x line in range.
@@ -41,10 +42,13 @@ vi.mock('../../src/shared/registry/version-checker', () => ({
   checkForUpdateAsync: vi.fn(async () => null),
 }))
 
-// The picker's screen: it records the rows the scan gives it, then picks the latest version of
-// each once loading is done, the way `l` and Enter would.
+// The picker's screen: it records the rows the scan gives it and the filter its header names,
+// then picks the latest version of each once loading is done, the way `l` and Enter would.
 vi.mock('../../src/app/interactive-ui', () => ({
   InteractiveUI: class {
+    constructor(_packageManager: unknown, options: { onlyPackages?: string[] }) {
+      mocks.pickerOnly = options.onlyPackages
+    }
     prefetchSecurityAudit() {}
     setCooldownHeldCount() {}
     setCooldownUnsupported() {}
@@ -71,7 +75,7 @@ vi.mock('../../src/app/interactive-ui', () => ({
   },
 }))
 
-import { runCli } from '../../src/cli'
+import { program, runCli } from '../../src/cli'
 
 let projectDir: string
 
@@ -107,10 +111,12 @@ const DEPENDENCIES = {
 describe('inup <packages…>', () => {
   let log: ReturnType<typeof vi.spyOn>
   let warn: ReturnType<typeof vi.spyOn>
+  let error: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.pickerRows.length = 0
+    mocks.pickerOnly = undefined
     mocks.fetchVulnerabilities.mockResolvedValue(new Map())
     mocks.spawnSync.mockReturnValue({ status: 0, signal: null })
     mocks.fetchPackageVersions.mockImplementation(
@@ -125,6 +131,7 @@ describe('inup <packages…>', () => {
     )
     log = vi.spyOn(console, 'log').mockImplementation(() => {})
     warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     projectDir = mkdtempSync(join(tmpdir(), 'inup-filter-'))
     writeFileSync(join(projectDir, 'package-lock.json'), '{}\n')
@@ -135,6 +142,7 @@ describe('inup <packages…>', () => {
   afterEach(() => {
     log.mockRestore()
     warn.mockRestore()
+    error.mockRestore()
     process.exitCode = undefined
     rmSync(projectDir, { recursive: true, force: true })
   })
@@ -145,6 +153,7 @@ describe('inup <packages…>', () => {
         '{}'
     )
   const warnings = () => warn.mock.calls.map(([line]) => String(line))
+  const notes = () => error.mock.calls.map(([line]) => String(line))
 
   it('asks the registry about the named packages only, and reports only them', async () => {
     await runCli(cliOptions(['react', 'eslint-*'], { json: true }))
@@ -156,6 +165,32 @@ describe('inup <packages…>', () => {
         .sort()
     ).toEqual(['eslint-plugin-x', 'react'])
     expect(warnings()).toEqual([])
+    expect(notes()).toEqual(['Checking only react, eslint-*'])
+  })
+
+  it('checks only what `only` in .inuprc names, unless the command line names others', async () => {
+    writeJson(join(projectDir, '.inuprc'), { ignore: ['left-pad'], only: ['react*'] })
+
+    await runCli(cliOptions([], { json: true }))
+    expect(requested()).toEqual(['react', 'react-dom'])
+    expect(notes()).toEqual(['Checking only react*'])
+
+    mocks.fetchPackageVersions.mockClear()
+    await runCli(cliOptions(['zod'], { json: true }))
+    expect(requested()).toEqual(['zod'])
+  })
+
+  it('shows a name a missing comma turned into the filter', async () => {
+    // Meant as `-i react,react-dom`: react-dom is now the only package checked, and says so.
+    await program.parseAsync(
+      ['-i', 'react', 'react-dom', '--json', '--no-native', '--dir', projectDir],
+      {
+        from: 'user',
+      }
+    )
+
+    expect(requested()).toEqual(['react-dom'])
+    expect(notes()).toEqual(['Checking only react-dom'])
   })
 
   it('warns about a typo and about a name the ignore list skips', async () => {
@@ -203,6 +238,7 @@ describe('inup <packages…>', () => {
     }
 
     expect(mocks.pickerRows.map((pkg) => pkg.name)).toEqual(['react-dom'])
+    expect(mocks.pickerOnly).toEqual(['react-dom'])
     expect(readJson(join(projectDir, 'package.json')).dependencies).toEqual({
       ...DEPENDENCIES,
       'react-dom': '^2.0.0',
