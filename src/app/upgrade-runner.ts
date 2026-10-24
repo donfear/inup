@@ -34,7 +34,7 @@ export class UpgradeRunner {
       saveExact: options?.saveExact ?? false,
       audit: options?.audit ?? true,
     })
-    this.upgrader = new PackageUpgrader(this.packageManager)
+    this.upgrader = new PackageUpgrader(this.packageManager, { global: options?.global })
   }
 
   /**

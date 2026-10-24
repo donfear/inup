@@ -9,6 +9,7 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `npx inup -g` upgrades your globally installed packages, with changelogs and the audit like any project. It uses npm unless you pass `--package-manager pnpm` or `--package-manager bun`, and also works with `--json`, `--check` and `--apply`.
 - `--no-audit` skips the vulnerability check, for runs where you only want to know what is outdated. The `--json` report then gives `summary.vulnerable` as `null` instead of a count, so a skipped check is never read as a clean one. The picker says "Audit off" and still runs the check when you press `s`.
 
 ## [1.8.8] - 2026-10-22
