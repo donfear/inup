@@ -102,13 +102,13 @@ After you upgrade, inup runs your tests. If they fail, it puts everything back a
 <!-- BENCHMARK:START -->
 ## Speed
 
-On a first run, inup lists outdated dependencies up to 11× faster than npm-check-updates and up to 9× faster than taze on these repositories.
+On a first run, inup lists outdated dependencies up to 15× faster than npm-check-updates and up to 13× faster than taze on these repositories.
 
 How long each tool takes, on public repositories pinned to a commit, to list every outdated dependency and to open its picker with every update loaded. Lower is better.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/benchmark/speed-dark.svg">
-  <img alt="First-run times in seconds. expressjs/express: inup 0.28 s, npm-check-updates 0.74 s, taze 0.84 s, syncpack 0.25 s, npm-check 1.20 s, npm outdated 0.97 s; vuejs/core: inup 0.61 s, npm-check-updates 3.49 s, taze 1.57 s, syncpack 0.97 s, pnpm outdated 1.54 s; TanStack/query: inup 0.79 s, npm-check-updates 8.77 s, taze 7.29 s, syncpack 2.24 s, pnpm outdated 2.44 s; vendurehq/vendure: inup 1.54 s, npm-check-updates 3.24 s, taze 5.58 s, syncpack 4.17 s, bun outdated 1.68 s; backstage/backstage: inup 1.46 s, npm-check-updates 10.1 s, taze 10.5 s, syncpack 3.84 s" src="docs/benchmark/speed-light.svg">
+  <img alt="First-run times in seconds. expressjs/express: inup 0.27 s, npm-check-updates 0.74 s, taze 0.70 s, syncpack 0.25 s, npm-check 1.14 s, npm outdated 0.91 s; vuejs/core: inup 0.63 s, npm-check-updates 2.55 s, taze 1.21 s, syncpack 0.83 s, pnpm outdated 1.39 s; TanStack/query: inup 0.70 s, npm-check-updates 10.5 s, taze 9.30 s, syncpack 2.74 s, pnpm outdated 2.83 s; vendurehq/vendure: inup 1.24 s, npm-check-updates 3.75 s, taze 5.22 s, syncpack 3.48 s, bun outdated 1.47 s; backstage/backstage: inup 1.39 s, npm-check-updates 11.4 s, taze 8.87 s, syncpack 3.21 s" src="docs/benchmark/speed-light.svg">
 </picture>
 
 <details>
@@ -120,21 +120,21 @@ Each tool prints every outdated dependency and exits.
 
 | First run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8)<br><sub>1 package.json · 44 dependencies</sub> | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395)<br><sub>22 package.json files · 69 dependencies</sub> | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba)<br><sub>105 package.json files · 190 dependencies</sub> | [vendurehq/vendure](https://github.com/vendurehq/vendure/tree/1dcaf0ee504675f3462d6302c23ff9f16beb2773)<br><sub>54 package.json files · 323 dependencies</sub> | [backstage/backstage](https://github.com/backstage/backstage/tree/76b0c7a48ef737b1a46342c29269827715d70684)<br><sub>269 package.json files · 591 dependencies</sub> |
 | :-- | --: | --: | --: | --: | --: |
-| inup | 0.28 s | **0.61 s** | **0.79 s** | **1.54 s** | **1.46 s** |
-| npm-check-updates | 0.74 s | 3.49 s | 8.77 s | 3.24 s | 10.1 s |
-| taze | 0.84 s | 1.57 s | 7.29 s | 5.58 s | 10.5 s |
-| syncpack | **0.25 s** | 0.97 s | 2.24 s | 4.17 s | 3.84 s |
-| npm-check | 1.20 s | — | — | — | — |
-| npm / pnpm / bun outdated | 0.97 s | 1.54 s | 2.44 s | 1.68 s | — |
+| inup | 0.27 s | **0.63 s** | **0.70 s** | **1.24 s** | **1.39 s** |
+| npm-check-updates | 0.74 s | 2.55 s | 10.5 s | 3.75 s | 11.4 s |
+| taze | 0.70 s | 1.21 s | 9.30 s | 5.22 s | 8.87 s |
+| syncpack | **0.25 s** | 0.83 s | 2.74 s | 3.48 s | 3.21 s |
+| npm-check | 1.14 s | — | — | — | — |
+| npm / pnpm / bun outdated | 0.91 s | 1.39 s | 2.83 s | 1.47 s | — |
 
 | Repeat run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8) | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395) | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba) | [vendurehq/vendure](https://github.com/vendurehq/vendure/tree/1dcaf0ee504675f3462d6302c23ff9f16beb2773) | [backstage/backstage](https://github.com/backstage/backstage/tree/76b0c7a48ef737b1a46342c29269827715d70684) |
 | :-- | --: | --: | --: | --: | --: |
-| inup | 0.23 s | 0.25 s | 0.40 s | 0.60 s | 0.95 s |
-| npm-check-updates | 0.74 s | 3.28 s | 8.73 s | 3.14 s | 9.56 s |
-| taze | 0.23 s | 0.54 s | 5.07 s | 2.18 s | 6.69 s |
-| syncpack | **0.05 s** | **0.18 s** | **0.38 s** | 0.80 s | **0.63 s** |
-| npm-check | 1.22 s | — | — | — | — |
-| npm / pnpm / bun outdated | 0.75 s | 0.21 s | 3.49 s | **0.09 s** | — |
+| inup | 0.18 s | 0.22 s | **0.37 s** | 0.54 s | 0.93 s |
+| npm-check-updates | 0.75 s | 2.63 s | 10.3 s | 3.72 s | 11.4 s |
+| taze | 0.21 s | 0.38 s | 6.78 s | 1.89 s | 5.00 s |
+| syncpack | **0.04 s** | 0.15 s | 0.46 s | 0.64 s | **0.51 s** |
+| npm-check | 1.15 s | — | — | — | — |
+| npm / pnpm / bun outdated | 0.69 s | **0.14 s** | 3.69 s | **0.08 s** | — |
 
 ### Opening the picker
 
@@ -142,23 +142,23 @@ Each tool's interactive list of updates, timed until every update is loaded.
 
 | First run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8) | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395) | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba) | [vendurehq/vendure](https://github.com/vendurehq/vendure/tree/1dcaf0ee504675f3462d6302c23ff9f16beb2773) | [backstage/backstage](https://github.com/backstage/backstage/tree/76b0c7a48ef737b1a46342c29269827715d70684) |
 | :-- | --: | --: | --: | --: | --: |
-| inup | 0.39 s | **0.74 s** | **0.96 s** | **1.45 s** | **1.85 s** |
-| npm-check-updates | 0.71 s | — | — | — | — |
-| taze | 0.87 s | 1.42 s | 7.32 s | 5.56 s | 10.4 s |
-| syncpack | **0.25 s** | 0.93 s | 2.22 s | 3.93 s | 3.66 s |
-| npm-check | 1.20 s | — | — | — | — |
-| pnpm / bun update -i / yarn upgrade-interactive | — | 1.53 s | 2.40 s | 1.69 s | 9.41 s |
+| inup | 0.40 s | **0.57 s** | **0.95 s** | **1.40 s** | **2.12 s** |
+| npm-check-updates | 0.70 s | — | — | — | — |
+| taze | 1.05 s | 1.34 s | 8.84 s | 4.53 s | 8.76 s |
+| syncpack | **0.27 s** | 0.81 s | 2.60 s | 3.35 s | 3.24 s |
+| npm-check | 1.17 s | — | — | — | — |
+| pnpm / bun update -i / yarn upgrade-interactive | — | 1.37 s | 2.79 s | 1.47 s | 7.64 s |
 
 | Repeat run | [expressjs/express](https://github.com/expressjs/express/tree/0dee2c52c7c873498f8ed7d8ee4ddd0a04d3ada8) | [vuejs/core](https://github.com/vuejs/core/tree/65eae178383289b6a9f93505ab85017460f72395) | [TanStack/query](https://github.com/TanStack/query/tree/ce77be5e15c695df9d4d9122caf9256d334433ba) | [vendurehq/vendure](https://github.com/vendurehq/vendure/tree/1dcaf0ee504675f3462d6302c23ff9f16beb2773) | [backstage/backstage](https://github.com/backstage/backstage/tree/76b0c7a48ef737b1a46342c29269827715d70684) |
 | :-- | --: | --: | --: | --: | --: |
-| inup | 0.31 s | 0.40 s | **0.62 s** | **0.67 s** | 1.23 s |
-| npm-check-updates | 0.71 s | — | — | — | — |
-| taze | **0.24 s** | 0.53 s | 5.23 s | 2.31 s | **0.63 s** |
-| syncpack | 0.25 s | 0.92 s | 2.25 s | 3.94 s | 3.69 s |
-| npm-check | 1.16 s | — | — | — | — |
-| pnpm / bun update -i / yarn upgrade-interactive | — | **0.21 s** | 3.43 s | 1.66 s | 3.43 s |
+| inup | 0.33 s | 0.35 s | 0.64 s | **0.68 s** | **1.17 s** |
+| npm-check-updates | 0.75 s | — | — | — | — |
+| taze | **0.23 s** | 0.39 s | **0.45 s** | 1.88 s | 5.27 s |
+| syncpack | 0.28 s | 0.77 s | 2.61 s | 3.37 s | 3.31 s |
+| npm-check | 1.18 s | — | — | — | — |
+| pnpm / bun update -i / yarn upgrade-interactive | — | **0.15 s** | 3.48 s | 1.47 s | 2.56 s |
 
-<sub>First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept. Median of 10 runs per tool on GitHub Actions ubuntu24 20261012.334.1, 4 CPUs, Node v24.21.0, 22 Oct 2026; listing timed with [hyperfine](https://github.com/sharkdp/hyperfine) 1.20.0. Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too. inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too. inup runs on its native (Rust) core, built from the same commit. Fastest in **bold**.</sub>
+<sub>First run: every cache the tool keeps is emptied before each run. Repeat run: caches kept. Median of 10 runs per tool on GitHub Actions ubuntu24 20261023.334.3, 4 CPUs, Node v24.21.0, 24 Oct 2026; listing timed with [hyperfine](https://github.com/sharkdp/hyperfine) 1.20.0. Pickers run in a 160×50 terminal and count as loaded at the last thing they draw or write to their cache before 5 s of quiet, so rows fetched off screen count too. inup runs with `--no-audit`: the other tools don't check for vulnerabilities, so it skips its check too. inup runs on its native (Rust) core, built from the same commit. Fastest in **bold**.</sub>
 
 </details>
 
