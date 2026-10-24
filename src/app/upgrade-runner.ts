@@ -39,6 +39,7 @@ export class UpgradeRunner {
         options?.showOptionalDependencyVulnerabilities ?? false,
       saveExact: options?.saveExact ?? false,
       audit: options?.audit ?? true,
+      onlyPackages: options?.onlyPackages,
     })
     this.upgrader = new PackageUpgrader(this.packageManager, { global: options?.global })
     if (options?.verify) {

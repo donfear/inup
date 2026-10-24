@@ -67,7 +67,7 @@ vi.mock('../../src/shared/terminal/terminal-input', () => ({
   },
 }))
 
-import { runCli } from '../../src/cli'
+import { program, runCli } from '../../src/cli'
 import { stripAnsi } from '../../src/shared/terminal/text'
 
 // The dirty-tree preflight is an interactive-only concern; force a TTY on both ends (and clear
@@ -513,6 +513,86 @@ describe('CLI global packages', () => {
 
     errorSpy.mockRestore()
     exitSpy.mockRestore()
+  })
+})
+
+describe('CLI package filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    mocks.headlessRunnerOptions.length = 0
+    delete process.env.CI
+
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: false, isDirty: false })
+    mocks.upgradeRunnerRun.mockResolvedValue(undefined)
+    mocks.headlessRun.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+
+  it('checks every package when none is named', async () => {
+    setInteractive(true)
+    await runCli(baseOptions)
+
+    expect(mocks.upgradeRunnerOptions[0]).toMatchObject({ onlyPackages: [] })
+  })
+
+  it('takes names and globs, comma-separated or not, once each', async () => {
+    setInteractive(false)
+    await runCli({
+      ...baseOptions,
+      json: true,
+      packages: ['react', 'eslint-*, react-dom', 'react'],
+    })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({
+      onlyPackages: ['react', 'eslint-*', 'react-dom'],
+    })
+  })
+
+  it('reads them as positional arguments', async () => {
+    setInteractive(false)
+    await program.parseAsync(['react', '@babel/*', '--json'], { from: 'user' })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: ['react', '@babel/*'] })
+  })
+
+  it('falls back to `only` in .inuprc, and named packages replace it', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*', ' ', 'react'] })
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true })
+    await runCli({ ...baseOptions, json: true, packages: ['zod'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: ['@myco/*', 'react'] })
+    expect(mocks.headlessRunnerOptions[1]).toMatchObject({ onlyPackages: ['zod'] })
+  })
+
+  it("checks every package for '*', whatever .inuprc says", async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*'] })
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true, packages: ['react', '*'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: [] })
+  })
+
+  it('leaves `only` in .inuprc out of -g, which is not the project', async () => {
+    mocks.loadProjectConfig.mockReturnValue({ only: ['@myco/*'] })
+    mocks.listGlobalPackages.mockReturnValue({ typescript: '5.4.5' })
+    mocks.writeGlobalManifest.mockReturnValue('/tmp/inup-global-x')
+    setInteractive(false)
+    await runCli({ ...baseOptions, json: true, global: true })
+    await runCli({ ...baseOptions, json: true, global: true, packages: ['typescript'] })
+
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ onlyPackages: [] })
+    expect(mocks.headlessRunnerOptions[1]).toMatchObject({ onlyPackages: ['typescript'] })
   })
 })
 

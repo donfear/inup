@@ -129,6 +129,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
   ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
+  onlyPackages?: string[] // Package names/patterns to limit the run to (`inup <packages…>` or `only` in .inuprc)
   ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
   debug?: boolean // Write verbose debug log to <os tmpdir>/inup/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)

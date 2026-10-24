@@ -37,6 +37,11 @@ export class HeadlessRunner {
         throw new Error('No package.json found in current directory')
       }
 
+      // `inup react` or `only` in .inuprc, said every run: a missing comma (`inup -i react
+      // react-dom`) turns a name into the filter. stderr keeps `--json` stdout a pure document.
+      const only = this.options?.onlyPackages ?? []
+      if (only.length > 0) console.error(chalk.gray(`Checking only ${only.join(', ')}`))
+
       // --no-audit: no advisory request at all, and the report says vulnerabilities are unknown.
       const audit = this.options?.audit ?? true
       // The bulk advisory request needs only name → declared specifier (every one of

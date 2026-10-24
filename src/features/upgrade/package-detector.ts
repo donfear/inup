@@ -91,6 +91,7 @@ export class PackageDetector {
   private excludePatterns: string[]
   private scanDirs: string[]
   private ignorePackages: string[]
+  private onlyPackages: string[]
   private ignoreMajorPackages: string[]
   private maxDepth: number
   private minimumReleaseAge: number
@@ -112,6 +113,7 @@ export class PackageDetector {
     this.excludePatterns = options?.excludePatterns || []
     this.scanDirs = options?.scanDirs || []
     this.ignorePackages = options?.ignorePackages || []
+    this.onlyPackages = options?.onlyPackages || []
     this.ignoreMajorPackages = options?.ignoreMajorPackages || []
     this.maxDepth = options?.maxDepth ?? 10
     this.concurrency = options?.concurrency
@@ -357,6 +359,12 @@ export class PackageDetector {
         return
       }
 
+      // `inup react eslint-*`: the same matcher as --ignore, inverted. Filtered before the name is
+      // grouped, so the registry never fetches what the run leaves out.
+      if (this.onlyPackages.length > 0 && !isPackageIgnored(dep.name, this.onlyPackages)) {
+        return
+      }
+
       if (this.ignorePackages.length > 0 && isPackageIgnored(dep.name, this.ignorePackages)) {
         ignoredCount++
         if (!seenIgnored.has(dep.name)) {
@@ -422,6 +430,7 @@ export class PackageDetector {
       tDeps
     )
     performanceTracker.recordPhaseDuration('depCollection', Date.now() - tDeps)
+    this.warnUnmatchedFilters(dependenciesByName, seenIgnored, onEvent)
     performanceTracker.recordCounts({ rawDependencies: rawDependencyCount })
 
     onEvent({
@@ -797,6 +806,32 @@ export class PackageDetector {
           `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
       },
     })
+  }
+
+  /**
+   * Names each package filter that leaves nothing to check, so a typo (`inup recat`) or a
+   * package the ignore list skips never reads as "everything is up to date".
+   */
+  private warnUnmatchedFilters(
+    dependenciesByName: Map<string, DependencyEntry[]>,
+    ignored: Set<string>,
+    onEvent: StreamOutdatedPackagesCallback
+  ): void {
+    const matchesAny = (pattern: string, names: Iterable<string>) =>
+      [...names].some((name) => isPackageIgnored(name, [pattern]))
+    const unmatched = this.onlyPackages.filter(
+      (pattern) => !matchesAny(pattern, dependenciesByName.keys())
+    )
+    const skipped = unmatched.filter((pattern) => matchesAny(pattern, ignored))
+    const missing = unmatched.filter((pattern) => !skipped.includes(pattern))
+
+    const warn = (message: string) => onEvent({ type: 'warning', payload: { message } })
+    if (skipped.length > 0) {
+      warn(`Warning: your ignore list (--ignore or .inuprc) skips ${skipped.join(', ')}`)
+    }
+    if (missing.length > 0) {
+      warn(`Warning: no dependency matches ${missing.join(', ')}`)
+    }
   }
 
   /**

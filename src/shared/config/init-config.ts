@@ -41,6 +41,11 @@ export function buildConfigTemplate(): string {
   // Exact names or globs: "lodash", "@babel/*", "eslint-*" (? matches one char).
   "ignore": [],
 
+  // Check only these packages, as if every run named them on the command
+  // line (\`inup react\`). Same pattern syntax as "ignore". Packages named on
+  // the command line replace this list for that run.
+  // "only": ["@myco/*"],
+
   // Suppress only MAJOR updates for these packages — minor/patch bumps still
   // show, and a package whose only update is a new major counts as up to date.
   // Same pattern syntax as "ignore".

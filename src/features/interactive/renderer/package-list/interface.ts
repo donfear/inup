@@ -74,13 +74,25 @@ export function renderInterface(
   const headerLine =
     '  ' +
     inupLogo() +
-    (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '')
-  const fullHeaderLine =
+    (packageManager ? getThemeColor('textSecondary')(` (${packageManager.displayName})`) : '') +
     (activeFilterLabel
-      ? headerLine +
-        getThemeColor('textSecondary')(' - ') +
-        getThemeColor('primary')(activeFilterLabel)
-      : headerLine) + heldSuffix
+      ? getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
+      : '')
+
+  // `inup react` or `only` in .inuprc: no other package was even looked up, so the list can't
+  // pass for the whole project. Cut to fit beside the rest, but always shown: a missing comma
+  // (`inup -i react react-dom`) turns a name into a filter, and this is where that shows.
+  let onlySuffix = ''
+  if (options.onlyPackages?.length) {
+    const label = getThemeColor('textSecondary')(' · only ')
+    const room = terminalWidth - VersionUtils.getVisualLength(headerLine + label + heldSuffix)
+    onlySuffix =
+      label +
+      getThemeColor('primary')(
+        truncatePlainText(options.onlyPackages.join(', '), Math.max(room, 8))
+      )
+  }
+  const fullHeaderLine = headerLine + onlySuffix + heldSuffix
   const headerPadding = Math.max(0, terminalWidth - VersionUtils.getVisualLength(fullHeaderLine))
   output.push(fullHeaderLine + ' '.repeat(headerPadding))
   output.push('')

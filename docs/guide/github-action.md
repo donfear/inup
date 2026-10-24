@@ -80,4 +80,4 @@ By default the upgrade commit is authored by `github-actions[bot]`. To attribute
 
 `outdated`, `vulnerable`, `pull-request-number`.
 
-`@v1` floats to the latest `1.x` release; pin to a specific version or a SHA for reproducible runs. The action honors your [`.inuprc`](configuration.md) (`ignore`, `exclude`, `scanDirs`, `verify`).
+`@v1` floats to the latest `1.x` release; pin to a specific version or a SHA for reproducible runs. The action honors your [`.inuprc`](configuration.md) (`ignore`, `only`, `exclude`, `scanDirs`, `verify`).
