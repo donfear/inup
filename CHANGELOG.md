@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-24
+
 ### Added
 
 - Name the packages to check: `npx inup react "eslint-*"` looks up only those, in the picker and with `--json`, `--check` and `--apply`. Names and glob patterns work as they do in `--ignore`, and a name that matches no dependency gets a warning instead of looking up to date. Set `"only"` in `.inuprc` to limit every run; names on the command line replace it, and `inup "*"` checks everything. The picker's header and the start of a headless run name the packages a run is limited to, so a missing comma in `inup -i react react-dom` shows.
@@ -551,7 +553,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.8.8...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/donfear/inup/compare/v1.8.8...v1.9.0
 [1.8.8]: https://github.com/donfear/inup/compare/v1.8.7...v1.8.8
 [1.8.7]: https://github.com/donfear/inup/compare/v1.8.6...v1.8.7
 [1.8.6]: https://github.com/donfear/inup/compare/v1.8.5...v1.8.6

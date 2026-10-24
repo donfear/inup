@@ -1,6 +1,6 @@
 {
   "name": "inup",
-  "version": "1.8.8",
+  "version": "1.9.0",
   "description": "Interactive dependency upgrader for npm, yarn, pnpm & bun. Changelogs, vulnerability audit, monorepo & pnpm catalogs, zero-config.",
   "main": "dist/index.js",
   "bin": {
