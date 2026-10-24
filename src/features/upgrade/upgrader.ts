@@ -11,6 +11,7 @@ import {
   stripBom,
   writeFileAtomic,
 } from '../../shared/fs'
+import { globalAddCommand } from '../../shared/global-packages'
 import { writeCatalogUpdates } from '../../shared/pnpm-catalogs'
 import type {
   DependencyType,
@@ -30,23 +31,32 @@ export interface PackageUpgraderOptions {
    * `process.stdout.write` shim — the only reliable fix is to redirect the fd at spawn time.
    */
   quiet?: boolean
+  /** `inup -g`: install the chosen versions globally instead of writing a package.json. */
+  global?: boolean
 }
 
 export class PackageUpgrader {
   private packageManager: PackageManagerInfo
   private quiet: boolean
+  private global: boolean
   /** When quiet, send our own progress to stderr so stdout stays reserved for the JSON document. */
   private log: (message?: unknown) => void
 
   constructor(packageManager: PackageManagerInfo, options?: PackageUpgraderOptions) {
     this.packageManager = packageManager
     this.quiet = options?.quiet ?? false
+    this.global = options?.global ?? false
     this.log = this.quiet ? (msg) => console.error(msg) : (msg) => console.log(msg)
   }
 
   public async upgradePackages(choices: PackageUpgradeChoice[]): Promise<void> {
     if (choices.length === 0) {
       this.log(chalk.yellow('No packages to upgrade.'))
+      return
+    }
+
+    if (this.global) {
+      await this.installGlobally(choices)
       return
     }
 
@@ -83,6 +93,18 @@ export class PackageUpgrader {
   /** Re-run the install for the projects the choices touch, after their files were put back. */
   public async reinstall(choices: PackageUpgradeChoice[]): Promise<void> {
     await this.runInstall(choices)
+  }
+
+  /** One global install of every chosen version: the listing it came from is no file to edit. */
+  private async installGlobally(choices: PackageUpgradeChoice[]): Promise<void> {
+    // targetVersion carries the range prefix it would be written with; a global install pins.
+    const specs = choices.map(
+      (choice) => `${choice.name}@${choice.targetVersion.replace(/^[\^~]/, '')}`
+    )
+    const command = globalAddCommand(this.packageManager.name, specs)
+    const failure = this.installIn(dirname(choices[0].packageJsonPath), command)
+    if (failure) throw new Error(`The global install did not finish (${failure}).`)
+    this.log(chalk.green(`\n✅ Successfully upgraded ${specs.length} global package(s)!`))
   }
 
   private async runInstall(choices: PackageUpgradeChoice[]): Promise<void> {

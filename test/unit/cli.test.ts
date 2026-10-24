@@ -14,6 +14,13 @@ const mocks = vi.hoisted(() => ({
   headlessRunnerOptions: [] as unknown[],
   configureNativeCore: vi.fn(),
   openPicker: vi.fn(),
+  listGlobalPackages: vi.fn(),
+  writeGlobalManifest: vi.fn(),
+}))
+
+vi.mock('../../src/shared/global-packages', () => ({
+  listGlobalPackages: mocks.listGlobalPackages,
+  writeGlobalManifest: mocks.writeGlobalManifest,
 }))
 
 vi.mock('../../src/index', () => ({
@@ -442,6 +449,73 @@ describe('CLI audit flag', () => {
   })
 })
 
+describe('CLI global packages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.upgradeRunnerOptions.length = 0
+    mocks.headlessRunnerOptions.length = 0
+    delete process.env.CI
+
+    mocks.loadProjectConfig.mockReturnValue({})
+    mocks.checkForUpdateAsync.mockResolvedValue(null)
+    mocks.getGitWorkingTreeState.mockResolvedValue({ isRepo: true, isDirty: true })
+    mocks.upgradeRunnerRun.mockImplementation(async (confirmStart: () => Promise<boolean>) => {
+      if (await confirmStart()) mocks.openPicker()
+    })
+    mocks.listGlobalPackages.mockReturnValue({ typescript: '5.4.5' })
+    mocks.writeGlobalManifest.mockReturnValue('/tmp/inup-global-x')
+  })
+
+  afterEach(() => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, configurable: true })
+    if (originalCI === undefined) delete process.env.CI
+    else process.env.CI = originalCI
+  })
+
+  const baseOptions = { dir: '/repo', exclude: '', ignore: '', maxDepth: '10' }
+
+  it('scans a manifest of the npm global packages, with no dirty-tree check', async () => {
+    setInteractive(true)
+    await runCli({ ...baseOptions, global: true })
+
+    expect(mocks.listGlobalPackages).toHaveBeenCalledWith('npm')
+    expect(mocks.writeGlobalManifest).toHaveBeenCalledWith({ typescript: '5.4.5' })
+    expect(mocks.upgradeRunnerOptions[0]).toMatchObject({
+      cwd: '/tmp/inup-global-x',
+      packageManager: 'npm',
+      global: true,
+    })
+    expect(mocks.getGitWorkingTreeState).not.toHaveBeenCalled()
+    expect(mocks.promptForImmediateConfirmation).not.toHaveBeenCalled()
+    expect(mocks.openPicker).toHaveBeenCalledTimes(1)
+  })
+
+  it('lists them with the package manager named', async () => {
+    setInteractive(false)
+    await runCli({ ...baseOptions, global: true, packageManager: 'bun', json: true })
+
+    expect(mocks.listGlobalPackages).toHaveBeenCalledWith('bun')
+    expect(mocks.headlessRunnerOptions[0]).toMatchObject({ packageManager: 'bun', global: true })
+  })
+
+  it('exits 2 when they cannot be listed', async () => {
+    mocks.listGlobalPackages.mockImplementation(() => {
+      throw new Error('Could not list global packages')
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(runCli({ ...baseOptions, global: true })).rejects.toThrow('process.exit')
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(stripAnsi(String(errorSpy.mock.calls[0][0]))).toBe('Could not list global packages')
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+})
+
 describe('CLI verify flag', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -477,6 +551,21 @@ describe('CLI verify flag', () => {
     await expect(runCli({ ...baseOptions, json: true, verify: 'npm test' })).rejects.toThrow(
       'process.exit'
     )
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    expect(mocks.headlessRun).not.toHaveBeenCalled()
+
+    errorSpy.mockRestore()
+    exitSpy.mockRestore()
+  })
+  it('exits 2 with -g, whose installs it cannot put back', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    await expect(
+      runCli({ ...baseOptions, apply: true, global: true, verify: 'npm test' })
+    ).rejects.toThrow('process.exit')
     expect(exitSpy).toHaveBeenCalledWith(2)
     expect(mocks.headlessRun).not.toHaveBeenCalled()
 

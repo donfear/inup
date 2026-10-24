@@ -174,10 +174,35 @@ export function describeChart(results) {
     .join('; ')
 }
 
-/** The README section: heading, chart, tables. */
+/** Tools the README's headline compares inup against, by id. */
+const HEADLINE_TOOLS = ['ncu', 'taze']
+
+/**
+ * The README's one-line claim: inup's largest first-run lead over each
+ * headline tool, rounded down, for tools it beats at least twofold.
+ */
+export function renderHeadline(results) {
+  const leads = HEADLINE_TOOLS.flatMap((id) => {
+    let name
+    let best = 0
+    for (const { tools, results: timings } of results) {
+      const inup = timings.cold.inup
+      const other = timings.cold[id]
+      if (!inup || !other) continue
+      name = tools.find((tool) => tool.id === id).name
+      best = Math.max(best, other.median / inup.median)
+    }
+    return best >= 2 ? [`${Math.floor(best)}× faster than ${name}`] : []
+  })
+  if (leads.length === 0) return null
+  return `On a first run, inup lists outdated dependencies up to ${leads.join(' and up to ')} on these repositories.`
+}
+
+/** The README section: heading, claim, chart, and the tables folded away. */
 export function renderReadme(results) {
   return [
     '## Speed',
+    renderHeadline(results),
     'How long each tool takes, on public repositories pinned to a commit, to list every outdated dependency and to open its picker with every update loaded. Lower is better.',
     [
       '<picture>',
@@ -185,9 +210,11 @@ export function renderReadme(results) {
       `  <img alt="${escapeXml(`First-run times in seconds. ${describeChart(results)}`)}" src="${CHART_PATHS.light}">`,
       '</picture>',
     ].join('\n'),
-    renderTables(results),
+    `<details>\n<summary>All timings</summary>\n\n${renderTables(results)}\n\n</details>`,
     "[How it's measured, tool versions and exact commands](docs/guide/benchmarks.md)",
-  ].join('\n\n')
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 function timingCell(timing, best) {

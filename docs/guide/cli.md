@@ -13,6 +13,7 @@ inup [options]
 | `-d, --dir <path>` | Run in a specific directory (default: current directory) |
 | `-e, --exclude <patterns>` | Exclude paths matching regex patterns, comma-separated |
 | `-i, --ignore <packages>` | Ignore packages — comma-separated, glob supported (`@babel/*`) |
+| `-g, --global` | Upgrade your globally installed packages instead of a project's, with npm (default), pnpm or Bun (`--package-manager`). Works in the picker and with `--json`, `--check` and `--apply`; upgrades run `npm install -g`, `pnpm add -g` or `bun add -g` |
 | `--max-depth <number>` | Maximum directory depth for `package.json` discovery (default: 10) |
 | `--init` | Create a commented `.inuprc` template documenting every option (asks before overwriting) |
 | `--package-manager <name>` | Force the package manager: `npm`, `yarn`, `pnpm` or `bun` |

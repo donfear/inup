@@ -1049,6 +1049,49 @@ catalogs:
     }
   })
 
+  describe('global packages', () => {
+    const globalChoice = (name: string, targetVersion: string): PackageUpgradeChoice => ({
+      name,
+      packageJsonPath: join(testDir, 'package.json'),
+      dependencyType: 'dependencies',
+      upgradeType: 'latest',
+      targetVersion,
+      currentVersionSpecifier: '^1.0.0',
+    })
+
+    it('installs every chosen version globally, pinned, and writes no file', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      const upgrader = new PackageUpgrader(makePackageManager({ name: 'pnpm' }), { global: true })
+
+      await upgrader.upgradePackages([
+        globalChoice('typescript', '^6.0.0'),
+        globalChoice('zx', '9.1.0'),
+      ])
+
+      expect(spawnSyncMock).toHaveBeenCalledTimes(1)
+      expect(spawnSyncMock.mock.calls[0][0]).toBe('pnpm add -g typescript@6.0.0 zx@9.1.0')
+      expect(spawnSyncMock.mock.calls[0][1]).toMatchObject({ cwd: testDir })
+      expect(readdirSync(testDir)).toEqual([])
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Successfully upgraded 2 global package(s)')
+      )
+      logSpy.mockRestore()
+    })
+
+    it('fails when the global install does', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      spawnSyncMock.mockReturnValueOnce({ status: 1, signal: null })
+      const upgrader = new PackageUpgrader(makePackageManager(), { global: true })
+
+      await expect(
+        upgrader.upgradePackages([globalChoice('typescript', '~6.0.1')])
+      ).rejects.toThrow(
+        'The global install did not finish (npm install -g typescript@6.0.1 exited with code 1).'
+      )
+      logSpy.mockRestore()
+    })
+  })
+
   it('reinstalls the projects the choices touch, for a verified upgrade that put files back', async () => {
     const manifest = join(testDir, 'package.json')
     writeFileSync(manifest, '{}')
