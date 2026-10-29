@@ -1,6 +1,11 @@
 import chalk from 'chalk'
 import { getPerformanceTracker } from '../features/debug'
-import { type InteractiveSessionHandle, SelectionList, selectionKey } from '../features/interactive'
+import {
+  type InteractiveSessionHandle,
+  SelectionList,
+  SortedReveal,
+  selectionKey,
+} from '../features/interactive'
 import {
   PackageDetector,
   PackageUpgrader,
@@ -86,11 +91,18 @@ export class UpgradeRunner {
       }
       const selection = new SelectionList()
       let session: InteractiveSessionHandle | undefined
-      // Packages arrive once each, in scan order; 'complete' installs the
-      // detector's final list so post-selection steps never see a partial one.
+      // Packages arrive once each, as their lookups finish; 'complete' installs
+      // the detector's final list so post-selection steps never see a partial one.
       let latestPackages: PackageInfo[] = []
       let previousSelections: Map<string, 'none' | 'range' | 'latest'> | undefined
       let failSelection: ((error: unknown) => void) | undefined
+      // Lookups finish in any order; the list fills in from the top instead of jumping.
+      const reveal = new SortedReveal<PackageInfo[]>((packages) => {
+        this.ui.insertResolvedPackages(selection, packages.flat(), previousSelections)
+        session?.refresh()
+      })
+      // The run aborts the scan as it ends; rows still held then have no list to go to.
+      scanController.signal.addEventListener('abort', () => reveal.dispose(), { once: true })
 
       // The UI holds a reference to `progress`, so updates must mutate it in
       // place — and copy EVERY field (a field-by-field copy silently dropped
@@ -111,18 +123,21 @@ export class UpgradeRunner {
         // The UI holds it until the picker opens, so declining the prompt sends nothing.
         if (event.type === 'initial') {
           this.ui.prefetchSecurityAudit(event.payload.declaredVersions)
+          reveal.expect(event.payload.currentVersions.keys())
         }
 
         if (event.type === 'package') {
           latestPackages.push(...event.payload.packageInfo)
           syncProgress(event.payload.progress)
-          this.ui.insertResolvedPackages(selection, event.payload.packageInfo, previousSelections)
+          reveal.arrive(event.payload.packageName, event.payload.packageInfo)
           this.ui.setCooldownHeldCount(countHeldPackages(latestPackages, { hiddenOnly: true }))
           this.ui.setCooldownUnsupported(this.isCooldownInert())
           session?.refresh()
         }
 
         if (event.type === 'complete') {
+          // Before the progress says loading is over, so the picker never sees it done but short.
+          reveal.flush()
           latestPackages = event.payload.packages
           syncProgress(event.payload.progress)
           // The detector marks firstResult as packages resolve; this only lands for a

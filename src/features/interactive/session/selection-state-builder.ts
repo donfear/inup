@@ -1,3 +1,4 @@
+import { comparePackageNames } from '../../../shared/package-names'
 import { findBlockingPatch } from '../../../shared/pnpm-patches'
 import type {
   PackageInfo,
@@ -30,15 +31,6 @@ export function selectionKey(
 ): string {
   const base = `${name}@${versionSpecifier}@${type}`
   return catalog ? `${base}@catalog:${catalog}` : base
-}
-
-/** List order: scoped packages first, then by name. */
-export function comparePackageNames(a: string, b: string): number {
-  const aIsScoped = a.startsWith('@')
-  const bIsScoped = b.startsWith('@')
-  if (aIsScoped && !bIsScoped) return -1
-  if (!aIsScoped && bIsScoped) return 1
-  return a.localeCompare(b)
 }
 
 export function deduplicatePackages(

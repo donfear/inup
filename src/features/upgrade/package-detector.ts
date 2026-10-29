@@ -12,6 +12,7 @@ import {
   readPackageJson,
 } from '../../shared/fs'
 import type { ControlTick } from '../../shared/http/hill-climb-controller'
+import { comparePackageNames } from '../../shared/package-names'
 import { isCatalogReference, PnpmCatalogs } from '../../shared/pnpm-catalogs'
 import { PnpmPatches } from '../../shared/pnpm-patches'
 import {
@@ -55,15 +56,6 @@ interface PreparedDependencies {
   /** `name` of every scanned package.json: the repo's own packages. */
   localPackageNames: Set<string>
   declaredVersions: Array<{ name: string; version: string }>
-}
-
-/** Scoped packages first, then by name: the order packages are listed and looked up in. */
-function byScopeThenName(a: string, b: string): number {
-  const aIsScoped = a.startsWith('@')
-  const bIsScoped = b.startsWith('@')
-  if (aIsScoped && !bIsScoped) return -1
-  if (!aIsScoped && bIsScoped) return 1
-  return a.localeCompare(b)
 }
 
 /** The fields a PackageInfo carries over from where the dependency is declared. */
@@ -394,7 +386,7 @@ export class PackageDetector {
         const deps = await read
         rawDependencyCount += deps.length
         for (const dep of deps) addDependency(dep)
-        if (newPackages.length > 0) onNewPackages(newPackages.splice(0).sort(byScopeThenName))
+        if (newPackages.length > 0) onNewPackages(newPackages.splice(0).sort(comparePackageNames))
       })
       // Both are awaited later, in scan order, or never if the scan fails: a read that fails
       // before its turn must not surface as an unhandled rejection in the meantime.
@@ -442,7 +434,7 @@ export class PackageDetector {
       },
     })
     const tFilter = Date.now()
-    const uniquePackages = Array.from(dependenciesByName.keys()).sort(byScopeThenName)
+    const uniquePackages = Array.from(dependenciesByName.keys()).sort(comparePackageNames)
 
     debugLog.info(
       'PackageDetector',

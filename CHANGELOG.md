@@ -7,6 +7,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The picker fills in from the top while packages load, instead of rows appearing mid-list and pushing the ones below them down. inup now asks the registry about packages in the order the list shows them, and a package that loads early waits up to 0.3 s for the ones listed above it. The list is still complete the moment the last package loads.
+
 ## [1.9.0] - 2026-10-24
 
 ### Added

@@ -1,5 +1,6 @@
+import { comparePackageNames } from '../../../shared/package-names'
 import type { PackageSelectionState } from '../../../shared/types'
-import { comparePackageNames, selectionKey } from './selection-state-builder'
+import { selectionKey } from './selection-state-builder'
 
 const keyOf = (state: PackageSelectionState) =>
   selectionKey(state.name, state.currentVersionSpecifier, state.type, state.catalog)
