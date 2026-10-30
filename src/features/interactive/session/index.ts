@@ -12,3 +12,4 @@ export {
   deduplicatePackages,
   selectionKey,
 } from './selection-state-builder'
+export { SortedReveal } from './sorted-reveal'

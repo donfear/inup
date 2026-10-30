@@ -15,6 +15,7 @@ import { InflightMap } from '../http/inflight'
 import { ResizableSemaphore } from '../http/resizable-semaphore'
 import { isCongestionStatus, isRetryableStatus, parseRetryAfterMs, sleep } from '../http/retry'
 import { clamp } from '../math'
+import { insertInListOrder } from '../package-names'
 import { stripControlCharacters } from '../terminal/text'
 import type { FetchPackageVersionsOptions, OnPackageReadyCallback } from '../types'
 import { type ParsedVersions, parseVersions } from '../versions'
@@ -457,7 +458,9 @@ export interface PackageVersionFetch {
  * Concurrency model:
  * - A single resizable semaphore caps in-flight fetches. Package names are
  *   pulled from a work queue and dispatched as slots free up (a lazy pump),
- *   rather than pre-sliced into fixed batches.
+ *   rather than pre-sliced into fixed batches. The queue is kept in list order
+ *   (scoped first, then by name), so results arrive roughly in the order the
+ *   picker shows them.
  * - A hill-climb controller moves the limit at run time: it slow-starts and
  *   climbs to the goodput knee — adapting DOWN on slow-but-healthy links — and
  *   backs off on congestion (429/503) or errors. `concurrency` pins the limit
@@ -574,8 +577,14 @@ export function startPackageVersionFetch(
     }
 
     // --- worker: one package, once a slot frees up --------------------------------
-    const runOne = async (packageName: string): Promise<void> => {
+    // Packages waiting for a slot, in list order. Each worker takes the first one once its
+    // slot frees up, so lookups go out in the order the picker lists them, whatever order the
+    // scan found them in.
+    const waiting: string[] = []
+    const runOne = async (): Promise<void> => {
       await semaphore.acquire()
+      // One worker is started per name added, so a worker always finds one waiting.
+      const packageName = waiting.shift() as string
       try {
         options.signal?.throwIfAborted()
         const data = await getFreshPackageData(
@@ -617,7 +626,8 @@ export function startPackageVersionFetch(
     // A worker can fail (cancellation) before finish() awaits it; it is marked
     // handled here and still fails the run there.
     const dispatch = (packageName: string) => {
-      const worker = runOne(packageName)
+      insertInListOrder(waiting, packageName)
+      const worker = runOne()
       worker.catch(() => undefined)
       workers.push(worker)
     }

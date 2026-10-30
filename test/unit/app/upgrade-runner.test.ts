@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   streamOutdatedPackages: vi.fn(),
@@ -904,8 +904,9 @@ describe('UpgradeRunner terminal handoff', () => {
     expect(mocks.insertResolvedPackages.mock.calls[1][1]).toEqual([
       { ...streamedPackage, name: 'zod' },
     ])
-    // Once per package event, once for completion.
-    expect(refresh).toHaveBeenCalledTimes(4)
+    // Once for the initial event and once for completion. Each package refreshes twice: for the
+    // rows it reveals and for the progress line, which the session paints as one frame.
+    expect(refresh).toHaveBeenCalledTimes(6)
     expect(mocks.getOutdatedPackagesOnly).toHaveBeenCalledWith(completed)
     logSpy.mockRestore()
   })
@@ -1049,5 +1050,177 @@ describe('UpgradeRunner terminal handoff', () => {
     expect(clearSpy).not.toHaveBeenCalled()
     expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('inup'))
     expect(mocks.upgradePackages).not.toHaveBeenCalled()
+  })
+
+  describe('revealing the list from the top', () => {
+    const outdated = (name: string) => ({
+      name,
+      currentVersion: '^1.0.0',
+      rangeVersion: '^1.1.0',
+      latestVersion: '^2.0.0',
+      type: 'dependencies',
+      packageJsonPath: '/repo/package.json',
+      isOutdated: true,
+      hasRangeUpdate: true,
+      hasMajorUpdate: true,
+    })
+    const loading = {
+      phase: 'resolving',
+      resolved: 0,
+      total: 3,
+      failed: 0,
+      isLoading: true,
+    } as const
+    const initial = (...names: string[]) => ({
+      type: 'initial' as const,
+      payload: {
+        currentVersions: new Map(names.map((name) => [name, '^1.0.0'])),
+        declaredVersions: names.map((name) => ({ name, version: '^1.0.0' })),
+        progress: loading,
+      },
+    })
+    const arrived = (name: string) => ({
+      type: 'package' as const,
+      payload: { packageName: name, packageInfo: [outdated(name)] as any, progress: loading },
+    })
+    const complete = (...names: string[]) => ({
+      type: 'complete' as const,
+      payload: {
+        packages: names.map(outdated) as any,
+        progress: { ...loading, phase: 'done', isLoading: false } as const,
+      },
+    })
+    /** Names of the rows handed to the list, one entry per insert. */
+    const inserted = () =>
+      mocks.insertResolvedPackages.mock.calls.map((call) =>
+        (call[1] as Array<{ name: string }>).map((pkg) => pkg.name)
+      )
+
+    let log: ReturnType<typeof vi.spyOn>
+    beforeEach(() => {
+      log = vi.spyOn(console, 'log').mockImplementation(() => {})
+      mocks.selectPackagesToUpgradeProgressive.mockImplementation(async (_s, _p, ready) => {
+        ready({ refresh: vi.fn(), abort: vi.fn() })
+        return []
+      })
+    })
+    afterEach(() => {
+      log.mockRestore()
+      vi.useRealTimers()
+    })
+
+    it('shows a package that resolved early once the packages listed above it have loaded', async () => {
+      mocks.streamOutdatedPackages.mockImplementation(
+        async (onEvent: StreamOutdatedPackagesCallback) => {
+          await Promise.resolve()
+          onEvent(initial('zod', 'next', 'axios'))
+          onEvent(arrived('zod'))
+          onEvent(arrived('axios'))
+          onEvent(arrived('next'))
+          onEvent(complete('axios', 'next', 'zod'))
+        }
+      )
+
+      await new UpgradeRunner({ cwd: '/repo' }).run()
+
+      expect(inserted()).toEqual([['axios'], ['next', 'zod']])
+    })
+
+    it('shows a held package after a short wait while one above it is still loading', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+      let finishScan!: () => void
+      const scanFinished = new Promise<void>((resolve) => {
+        finishScan = resolve
+      })
+      mocks.streamOutdatedPackages.mockImplementation(
+        async (onEvent: StreamOutdatedPackagesCallback) => {
+          await Promise.resolve()
+          onEvent(initial('axios', 'zod'))
+          onEvent(arrived('zod'))
+          await scanFinished
+          onEvent(complete('zod'))
+        }
+      )
+      const refresh = vi.fn()
+      let closePicker!: () => void
+      mocks.selectPackagesToUpgradeProgressive.mockImplementation(async (_s, _p, ready) => {
+        ready({ refresh, abort: vi.fn() })
+        await new Promise<void>((resolve) => {
+          closePicker = resolve
+        })
+        return []
+      })
+
+      const run = new UpgradeRunner({ cwd: '/repo' }).run()
+      await vi.advanceTimersByTimeAsync(299)
+      expect(inserted()).toEqual([])
+      refresh.mockClear()
+
+      await vi.advanceTimersByTimeAsync(1)
+      expect(inserted()).toEqual([['zod']])
+      expect(refresh).toHaveBeenCalled()
+
+      finishScan()
+      await vi.advanceTimersByTimeAsync(0)
+      closePicker()
+      await run
+      expect(inserted()).toEqual([['zod']])
+    })
+
+    it('shows every held package before it reports that loading finished', async () => {
+      let progress!: PackageLoadProgress
+      const loadingAtInsert: boolean[] = []
+      mocks.insertResolvedPackages.mockImplementation(() => {
+        loadingAtInsert.push(progress.isLoading)
+      })
+      mocks.selectPackagesToUpgradeProgressive.mockImplementation(async (_s, live, ready) => {
+        progress = live
+        ready({ refresh: vi.fn(), abort: vi.fn() })
+        return []
+      })
+      mocks.streamOutdatedPackages.mockImplementation(
+        async (onEvent: StreamOutdatedPackagesCallback) => {
+          await Promise.resolve()
+          onEvent(initial('axios', 'zod'))
+          onEvent(arrived('zod'))
+          // axios never arrives: the scan's end still shows zod.
+          onEvent(complete('zod'))
+        }
+      )
+
+      await new UpgradeRunner({ cwd: '/repo' }).run()
+
+      expect(inserted()).toEqual([['zod']])
+      expect(loadingAtInsert).toEqual([true])
+    })
+
+    it('drops the rows it still holds when the run ends', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+      let closePicker!: () => void
+      mocks.selectPackagesToUpgradeProgressive.mockImplementation(async (_s, _p, ready) => {
+        ready({ refresh: vi.fn(), abort: vi.fn() })
+        await new Promise<void>((resolve) => {
+          closePicker = resolve
+        })
+        return []
+      })
+      mocks.streamOutdatedPackages.mockImplementation(
+        async (onEvent: StreamOutdatedPackagesCallback) => {
+          await Promise.resolve()
+          onEvent(initial('axios', 'zod'))
+          onEvent(arrived('zod'))
+          await new Promise(() => {}) // still loading when the user quits
+        }
+      )
+
+      const run = new UpgradeRunner({ cwd: '/repo' }).run()
+      await vi.advanceTimersByTimeAsync(0)
+      closePicker()
+      await run
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(inserted()).toEqual([])
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 })

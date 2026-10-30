@@ -1111,6 +1111,34 @@ describe('npm-registry', () => {
       }
     })
 
+    /** Package names in the order they were requested. */
+    const requested = () =>
+      requestMock.mock.calls.map(([{ path }]) => decodeURIComponent(path.replace(/^\//, '')))
+
+    it('asks for waiting packages in list order: scoped first, then by name', async () => {
+      const fetch = startPackageVersionFetch({ concurrency: 1 })
+      fetch.add(['zod', 'axios', '@b/x', '@a/y', 'react'])
+      const done = fetch.finish()
+      await vi.runAllTimersAsync()
+      await done
+
+      expect(requested()).toEqual(['@a/y', '@b/x', 'axios', 'react', 'zod'])
+    })
+
+    it('sends a package added later ahead of waiting packages listed below it', async () => {
+      const fetch = startPackageVersionFetch({ concurrency: 1 })
+      fetch.add(names(30, 'm'))
+      // m-1 is in flight; the rest wait for its slot.
+      await vi.advanceTimersByTimeAsync(1)
+      fetch.add(['a-late'])
+      const done = fetch.finish()
+      await vi.runAllTimersAsync()
+      await done
+
+      expect(requested().slice(0, 3)).toEqual(['m-1', 'a-late', 'm-10'])
+      expect(requested()).toHaveLength(31)
+    })
+
     it('fails the run with a cancellation that lands before the list is complete', async () => {
       const controller = new AbortController()
       const fetch = startPackageVersionFetch({ signal: controller.signal })
