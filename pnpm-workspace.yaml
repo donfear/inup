@@ -20,3 +20,5 @@ minimumReleaseAgeExclude:
   - '@vitest/utils@5.0.0'
   - vitest@5.0.0 || 5.0.3
   - wrap-ansi@10.0.1 || 10.0.2
+  - cli-truncate@6.2.0
+  - slice-ansi@10.0.0
