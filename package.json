@@ -73,23 +73,23 @@
     "README.md"
   ],
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
-    "@napi-rs/cli": "^3.10.5",
-    "@types/node": "^26.6.3",
+    "@biomejs/biome": "^2.6.6",
+    "@napi-rs/cli": "^3.10.12",
+    "@types/node": "^26.6.6",
     "@types/semver": "^7.8.0",
-    "@vitest/coverage-v8": "^5.0.3",
-    "esbuild": "^0.28.1",
+    "@vitest/coverage-v8": "^5.1.0",
+    "esbuild": "^0.28.2",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "chalk": "^6.0.1",
-    "cli-truncate": "^6.1.1",
+    "cli-truncate": "^6.2.0",
     "commander": "^15.0.0",
     "env-paths": "^4.0.0",
     "nanospinner": "^1.2.2",
     "registry-auth-token": "^5.1.1",
-    "semver": "^7.8.5",
+    "semver": "^7.8.6",
     "string-width": "^8.3.0",
     "wrap-ansi": "^10.0.2",
     "yaml": "^2.9.1"
