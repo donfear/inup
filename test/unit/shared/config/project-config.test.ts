@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -145,6 +145,107 @@ describe('project-config', () => {
       writeFileSync(join(testDir, '.inuprc.json'), JSON.stringify({ ignore: ['from-json'] }))
 
       expect(() => loadProjectConfig(testDir)).toThrow(join(testDir, '.inuprc'))
+    })
+
+    describe('byte order mark', () => {
+      const BOM = '﻿'
+
+      it.each([
+        ['plain JSON', `${BOM}{"ignore": ["a"]}`],
+        ['comments and a trailing comma', `${BOM}// header\n{\n  "ignore": ["a"], /* note */\n}\n`],
+        ['CRLF line endings', `${BOM}// header\r\n{\r\n  "ignore": ["a"],\r\n}\r\n`],
+      ])('reads a file that starts with one: %s', (_label, content) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        writeFileSync(join(testDir, '.inuprc'), content)
+
+        expect(loadProjectConfig(testDir)).toEqual({ ignore: ['a'] })
+        expect(warn).not.toHaveBeenCalled()
+        warn.mockRestore()
+      })
+
+      it('keeps error positions pointing into the file as written', () => {
+        const content = `${BOM}{\n  "ignore": []\n  "exclude": []\n}`
+        writeFileSync(join(testDir, '.inuprc'), content)
+
+        const position = content.indexOf('"exclude"')
+        expect(() => loadProjectConfig(testDir)).toThrow(new RegExp(`at position ${position}\\b`))
+      })
+
+      it('still refuses one anywhere but the very start', () => {
+        writeFileSync(join(testDir, '.inuprc'), `{"ignore": []}${BOM}`)
+
+        expect(() => loadProjectConfig(testDir)).toThrow(
+          `Invalid config file ${join(testDir, '.inuprc')}`
+        )
+      })
+    })
+
+    describe('empty file', () => {
+      it.each([
+        ['zero bytes', ''],
+        ['only whitespace', '  \n\r\n\t\n'],
+        ['only comments', '// nothing yet\n/* still nothing */\n'],
+        ['only a byte order mark', '﻿'],
+      ])('reads %s as defaults, with a warning', (_label, content) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const configPath = join(testDir, '.inuprc')
+        writeFileSync(configPath, content)
+
+        expect(loadProjectConfig(testDir)).toEqual({})
+        expect(warn).toHaveBeenCalledTimes(1)
+        expect(warn).toHaveBeenCalledWith(`Warning: ${configPath} is empty; using defaults`)
+        warn.mockRestore()
+      })
+
+      it('still counts as the nearest config, so a parent config is not used instead', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const child = join(testDir, 'child')
+        mkdirSync(child)
+        writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ minimumReleaseAge: 10080 }))
+        writeFileSync(join(child, '.inuprc'), '')
+
+        expect(loadProjectConfig(child)).toEqual({})
+        warn.mockRestore()
+      })
+    })
+
+    describe('what counts as a config file being there', () => {
+      it.skipIf(process.platform === 'win32')(
+        'fails on a dangling symlink instead of quietly using the next file',
+        () => {
+          symlinkSync(join(testDir, 'missing-target'), join(testDir, '.inuprc'))
+          writeFileSync(join(testDir, '.inuprc.json'), JSON.stringify({ ignore: ['from-json'] }))
+
+          expect(() => loadProjectConfig(testDir)).toThrow(
+            `Invalid config file ${join(testDir, '.inuprc')}`
+          )
+        }
+      )
+
+      it('fails on a directory with a config file name', () => {
+        mkdirSync(join(testDir, '.inuprc'))
+        writeFileSync(join(testDir, '.inuprc.json'), JSON.stringify({ ignore: ['from-json'] }))
+
+        expect(() => loadProjectConfig(testDir)).toThrow(
+          `Invalid config file ${join(testDir, '.inuprc')}`
+        )
+      })
+
+      it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+        'keeps searching past a directory it may not look inside, as before',
+        () => {
+          const locked = join(testDir, 'locked')
+          const cwd = join(locked, 'cwd')
+          mkdirSync(cwd, { recursive: true })
+          writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: ['from-parent'] }))
+          chmodSync(locked, 0o000)
+          try {
+            expect(loadProjectConfig(cwd)).toEqual({ ignore: ['from-parent'] })
+          } finally {
+            chmodSync(locked, 0o755)
+          }
+        }
+      )
     })
 
     it.each(['null', '[]', '42'])('refuses a top-level %s instead of an object', (raw) => {

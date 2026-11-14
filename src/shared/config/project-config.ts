@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { lstatSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { findUp } from '../fs/find-up'
 import { POOL_CONNECTIONS } from './constants'
@@ -108,11 +108,26 @@ export function loadProjectConfig(cwd: string): InupProjectConfig {
 function loadConfigIn(dir: string): InupProjectConfig | undefined {
   for (const configFile of CONFIG_FILES) {
     const configPath = join(dir, configFile)
-    if (existsSync(configPath)) {
+    if (configEntryExists(configPath)) {
       return normalizeConfig(parseConfigFile(configPath), configPath)
     }
   }
   return undefined
+}
+
+/**
+ * Whether anything sits at `path`, judged by lstat rather than existsSync: a dangling
+ * symlink counts as present, so it fails loudly when read instead of handing the lookup
+ * to a sibling or parent config. Any lstat error (missing, or an ancestor we may not
+ * search) means absent, exactly as existsSync treated it.
+ */
+function configEntryExists(path: string): boolean {
+  try {
+    lstatSync(path)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -123,8 +138,17 @@ function loadConfigIn(dir: string): InupProjectConfig | undefined {
 function parseConfigFile(configPath: string): InupProjectConfig {
   let config: unknown
   try {
-    const content = readFileSync(configPath, 'utf-8')
-    config = JSON.parse(stripTrailingCommas(stripJsonComments(content)))
+    const json = stripTrailingCommas(
+      stripJsonComments(blankByteOrderMark(readFileSync(configPath, 'utf-8')))
+    )
+    if (json.trim() === '') {
+      // Present but empty (`touch inup.config.json`, or every line commented out). Not an
+      // error, but not silent either: a write that died halfway leaves an empty file too,
+      // and it may have been the file turning the cooldown on.
+      console.warn(`Warning: ${configPath} is empty; using defaults`)
+      return {}
+    }
+    config = JSON.parse(json)
   } catch (error) {
     throw new Error(`Invalid config file ${configPath}: ${(error as Error).message}`)
   }
@@ -132,6 +156,15 @@ function parseConfigFile(configPath: string): InupProjectConfig {
     throw new Error(`Invalid config file ${configPath}: expected a JSON object`)
   }
   return config
+}
+
+/**
+ * Blank a leading UTF-8 byte order mark, which Windows editors such as Notepad write and
+ * JSON.parse rejects. Blanked rather than deleted, like comments, so error positions
+ * still line up with the file.
+ */
+function blankByteOrderMark(content: string): string {
+  return content.charCodeAt(0) === 0xfeff ? ` ${content.slice(1)}` : content
 }
 
 /**

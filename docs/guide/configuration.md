@@ -10,7 +10,7 @@ The first file found wins and inup stops looking: configs are never merged, and 
 
 Every mode honors it — the interactive picker, `--json`, `--check` and `--apply`. A package the config excludes is never reported or written.
 
-Despite the JSON format, `//` line comments, `/* ... */` block comments and trailing commas are allowed — inup strips them before parsing, so the file can document itself.
+Despite the JSON format, `//` line comments, `/* ... */` block comments and trailing commas are allowed — inup strips them before parsing, so the file can document itself. A byte order mark at the start is fine too, and an empty file (or one that is all comments) means the defaults, with a warning.
 
 The quickest start is `inup --init`: it writes a commented `.inuprc` template with every field documented inline (and asks before overwriting an existing config).
 

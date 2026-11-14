@@ -11,6 +11,12 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - The picker fills in from the top while packages load, instead of rows appearing mid-list and pushing the ones below them down. inup now asks the registry about packages in the order the list shows them, and a package that loads early waits up to 0.3 s for the ones listed above it. The list is still complete the moment the last package loads.
 
+### Fixed
+
+- A config file saved with a byte order mark, as Windows Notepad does, is read instead of failing with `Unexpected token`.
+- An empty config file, or one with every line commented out, means the defaults, with a warning, instead of failing with `Unexpected end of JSON input`.
+- A config file that is a broken symlink fails with an error naming it, instead of inup quietly reading the next config file in its place.
+
 ## [1.9.0] - 2026-10-24
 
 ### Added
