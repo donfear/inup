@@ -44,6 +44,10 @@ jobs:
           - { abi: linux-arm64-musl, target: aarch64-unknown-linux-musl, host: ubuntu-24.04-arm, cross: -x, smoke: alpine }
     env:
       MACOSX_DEPLOYMENT_TARGET: '11.0'
+      # The napi-rs cross toolchain ships GCC 4.8.5, which does not define
+      # __ARM_ARCH on aarch64, so ring's assembly hits its #error. cc-rs reads
+      # this only for the aarch64-gnu target; the other targets are untouched.
+      CFLAGS_aarch64_unknown_linux_gnu: -D__ARM_ARCH=8
     defaults:
       run:
         shell: bash
