@@ -1,12 +1,12 @@
 import { lstatSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { findUp } from '../fs/find-up'
 import { POOL_CONNECTIONS } from './constants'
 import { PACKAGE_NAME } from './package-meta'
 import { isValidConcurrency, isValidMinimumReleaseAge } from './validation'
 
 /**
- * Project-level configuration loaded from .inuprc or .inuprc.json
+ * Project-level configuration, loaded from the nearest config file (see CONFIG_FILES).
  */
 export interface InupProjectConfig {
   /**
@@ -89,30 +89,48 @@ export interface InupProjectConfig {
   verify?: string
 }
 
-const CONFIG_FILES = [
+/**
+ * Config file names, in lookup order. The documented ones are inup.config.jsonc and
+ * inup.config.json; the .inuprc names are what `--init` used to write, still read so
+ * no existing project breaks, just no longer documented.
+ */
+export const CONFIG_FILES = [
+  `${PACKAGE_NAME}.config.jsonc`,
   `.${PACKAGE_NAME}rc`,
   `.${PACKAGE_NAME}rc.json`,
   `${PACKAGE_NAME}.config.json`,
-]
+] as const
 
 /**
- * Load project configuration from .inuprc, .inuprc.json, or inup.config.json
- * Searches in the specified directory and parent directories up to root.
+ * Load project configuration from the nearest config file, searching the specified
+ * directory and then each parent up to the root.
  * Throws when the nearest config file can't be read or parsed.
  */
 export function loadProjectConfig(cwd: string): InupProjectConfig {
   return findUp(cwd, loadConfigIn) ?? {}
 }
 
+/**
+ * Every config file in `dir` (not its parents), in lookup order. Checked name by name
+ * rather than by listing the directory, so it behaves the same on case-sensitive and
+ * case-insensitive filesystems.
+ */
+export function findConfigFilesIn(dir: string): string[] {
+  return CONFIG_FILES.map((name) => join(dir, name)).filter(configEntryExists)
+}
+
 /** The first config file in `dir`, normalized; undefined to keep searching upward. */
 function loadConfigIn(dir: string): InupProjectConfig | undefined {
-  for (const configFile of CONFIG_FILES) {
-    const configPath = join(dir, configFile)
-    if (configEntryExists(configPath)) {
-      return normalizeConfig(parseConfigFile(configPath), configPath)
-    }
+  const [configPath, ...shadowed] = findConfigFilesIn(dir)
+  if (configPath === undefined) return undefined
+  if (shadowed.length > 0) {
+    // Only one is read, so an edit to any of the others silently does nothing.
+    const others = shadowed.map((path) => basename(path)).join(', ')
+    console.warn(
+      `Warning: ${dir} has several config files; using ${basename(configPath)}. Delete ${others} to silence this.`
+    )
   }
-  return undefined
+  return normalizeConfig(parseConfigFile(configPath), configPath)
 }
 
 /**
@@ -291,7 +309,7 @@ const STRING_LIST_KEYS = [
 ] as const
 
 /** Every field the loader reads. A Record, so a field added to the interface can't be missed. */
-const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
+export const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
   ignore: true,
   only: true,
   ignoreMajor: true,
@@ -306,13 +324,19 @@ const KNOWN_KEYS: Record<keyof InupProjectConfig, true> = {
   verify: true,
 }
 
+/**
+ * Keys that are allowed but mean nothing to inup. `$schema` points editors at the JSON
+ * schema for this file (config-schema.json) so they can autocomplete and check it.
+ */
+export const IGNORED_KEYS: readonly string[] = ['$schema']
+
 /** The known key `key` is most likely a typo of (at most two edits apart), if any. */
 function suggestKey(key: string): string | undefined {
   // Ignore case and separators, so "minimum-release-age" still finds its match.
   const simplify = (name: string) => name.toLowerCase().replace(/[-_]/g, '')
   let best: string | undefined
   let bestDistance = 3
-  for (const known of Object.keys(KNOWN_KEYS)) {
+  for (const known of [...Object.keys(KNOWN_KEYS), ...IGNORED_KEYS]) {
     const distance = editDistance(simplify(key), simplify(known))
     if (distance < bestDistance) {
       best = known
@@ -345,7 +369,7 @@ function normalizeConfig(config: InupProjectConfig, configPath: string): InupPro
   // Unknown keys are ignored but never silently: a typo like "minimumReleaseAg"
   // would otherwise read as "no cooldown configured".
   for (const key of Object.keys(config)) {
-    if (!Object.hasOwn(KNOWN_KEYS, key)) {
+    if (!Object.hasOwn(KNOWN_KEYS, key) && !IGNORED_KEYS.includes(key)) {
       const suggestion = suggestKey(key)
       const hint = suggestion ? ` (did you mean "${suggestion}"?)` : ''
       console.warn(`Warning: ignoring unknown key "${key}" in ${configPath}${hint}`)

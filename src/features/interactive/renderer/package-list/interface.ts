@@ -79,7 +79,7 @@ export function renderInterface(
       ? getThemeColor('textSecondary')(' - ') + getThemeColor('primary')(activeFilterLabel)
       : '')
 
-  // `inup react` or `only` in .inuprc: no other package was even looked up, so the list can't
+  // `inup react` or `only` in the config file: no other package was even looked up, so the list can't
   // pass for the whole project. Cut to fit beside the rest, but always shown: a missing comma
   // (`inup -i react react-dom`) turns a name into a filter, and this is where that shows.
   let onlySuffix = ''

@@ -1,6 +1,6 @@
 import { POOL_CONNECTIONS } from './constants'
 
-// One definition of each accepted range, shared by the CLI flags and .inuprc so
+// One definition of each accepted range, shared by the CLI flags and the config file so
 // the two can never disagree about what a valid value is.
 
 /** Pinned registry-fetch parallelism: an integer 1..POOL_CONNECTIONS. */

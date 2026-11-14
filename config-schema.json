@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "inup configuration",
+  "description": "Project settings for inup (inup.config.jsonc). Every field is optional. Docs: https://github.com/donfear/inup/blob/main/docs/guide/configuration.md",
+  "type": "object",
+  "allowComments": true,
+  "allowTrailingCommas": true,
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "The JSON schema for this file, so editors can autocomplete and check it. inup itself ignores it."
+    },
+    "ignore": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Hide these packages from upgrade checks entirely. Exact names or globs: \"lodash\", \"@babel/*\", \"eslint-*\" (? matches one character).",
+      "examples": [["lodash", "@babel/*"]]
+    },
+    "only": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Check only these packages, as if every run named them on the command line (`inup react`). Same pattern syntax as \"ignore\". Packages named on the command line replace this list for that run.",
+      "examples": [["@myco/*"]]
+    },
+    "ignoreMajor": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Suppress only major updates for these packages: minor and patch updates still show, and a package whose only update is a new major counts as up to date. Same pattern syntax as \"ignore\"."
+    },
+    "exclude": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Skip directories while discovering package.json files. Regular expressions, matched against forward-slash relative paths."
+    },
+    "scanDirs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Scan these directory names even though they are on the default skip list (node_modules, dist, build, coverage, out, lib, es, esm, cjs). Use it when a real package lives under, say, lib/."
+    },
+    "minimumReleaseAge": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Supply-chain cooldown in minutes, the same name and unit pnpm uses: never offer a version published more recently than this. 0 turns it off. 10080 is 7 days.",
+      "examples": [10080]
+    },
+    "minimumReleaseAgeExclude": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Packages exempt from minimumReleaseAge, typically your own, which you want immediately. Same pattern syntax as \"ignore\".",
+      "examples": [["@myco/*"]]
+    },
+    "showPeerDependencyVulnerabilities": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show vulnerability badges for peerDependencies in the package list."
+    },
+    "showOptionalDependencyVulnerabilities": {
+      "type": "boolean",
+      "default": false,
+      "description": "Show vulnerability badges for optionalDependencies in the package list."
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 24,
+      "description": "Pin registry-fetch parallelism (1-24) and turn off adaptive ramping, for slow or metered connections. The --concurrency flag overrides it.",
+      "examples": [4]
+    },
+    "native": {
+      "type": "boolean",
+      "default": true,
+      "description": "Use inup's native (Rust) core to fetch and parse registry data. On by default; the first run downloads the prebuilt core for this platform once. Set false to keep native code off this project. --native and --no-native override it."
+    },
+    "verify": {
+      "type": "string",
+      "pattern": "\\S",
+      "patternErrorMessage": "Give a command to run, such as \"npm test\".",
+      "description": "A command your upgrades must keep passing, usually your tests. After upgrading in the picker or with --apply, inup runs it and puts back each upgrade it fails with. --verify overrides it and --no-verify skips it for one run.",
+      "examples": ["npm test"]
+    }
+  }
+}

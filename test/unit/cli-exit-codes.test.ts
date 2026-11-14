@@ -64,6 +64,12 @@ describe('CLI exit codes', () => {
     expect(err).toBe('')
   })
 
+  it('names the config file --init writes, and no longer the old .inuprc name', () => {
+    expect(() => program.parse(['--help'], { from: 'user' })).toThrow('process.exit(0)')
+    expect(out).toContain('inup.config.jsonc')
+    expect(out).not.toContain('.inuprc')
+  })
+
   it.each([
     ['uncaughtException', new Error('boom')],
     ['unhandledRejection', new Error('boom')],

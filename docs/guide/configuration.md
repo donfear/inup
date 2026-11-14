@@ -1,23 +1,40 @@
 # Configuration
 
-inup needs no configuration to run. When you want persistent project rules, add a JSON config file. inup looks for the first of these, searching from the working directory upward to the filesystem root:
+inup needs no configuration to run. When you want persistent project rules, add an `inup.config.jsonc` file. The quickest start is `inup --init`: it writes one with every field documented inline, and asks before replacing a config that is already there.
 
-1. `.inuprc`
-2. `.inuprc.json`
-3. `inup.config.json`
+inup looks for its config from the working directory upward to the filesystem root, and uses the first directory that has one. In a directory, these names count, in this order:
 
-The first file found wins and inup stops looking: configs are never merged, and no other file stands in for a broken one. If that file can't be parsed, inup exits with an error (code 2) naming the file and where parsing failed, instead of running without your settings. A field inup doesn't recognize, usually a typo, is ignored with a warning that names it.
+1. `inup.config.jsonc`
+2. `inup.config.json`, for plain JSON
+
+(`.inuprc` and `.inuprc.json`, which older versions of `--init` wrote, are still read, between the two. If you have one, run `inup --init` to replace it.)
+
+The first file found wins and inup stops looking: configs are never merged, and no other file stands in for a broken one. If a directory has more than one, inup warns and names the ones it ignores. If that file can't be parsed, inup exits with an error (code 2) naming the file and where parsing failed, instead of running without your settings. A field inup doesn't recognize, usually a typo, is ignored with a warning that names it.
 
 Every mode honors it — the interactive picker, `--json`, `--check` and `--apply`. A package the config excludes is never reported or written.
 
-Despite the JSON format, `//` line comments, `/* ... */` block comments and trailing commas are allowed — inup strips them before parsing, so the file can document itself. A byte order mark at the start is fine too, and an empty file (or one that is all comments) means the defaults, with a warning.
+`//` line comments, `/* ... */` block comments and trailing commas are allowed in either file name — inup strips them before parsing, so the file can document itself. A byte order mark at the start is fine too, and an empty file (or one that is all comments) means the defaults, with a warning.
 
-The quickest start is `inup --init`: it writes a commented `.inuprc` template with every field documented inline (and asks before overwriting an existing config).
+## Editor autocomplete
+
+inup ships a JSON schema for its config, so editors can autocomplete field names, show what each one does and flag typos and out-of-range values. The template `inup --init` writes already points at it:
+
+```jsonc
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/inup@1/config-schema.json",
+  "ignore": ["@babel/*"],
+}
+```
+
+- **VS Code** downloads schemas only from domains you trust. The first time, it marks `$schema` with "Location … is untrusted"; use the quick fix and pick **Trust URI** to allow this one address.
+- **Offline, or without the prompt:** if inup is in your `devDependencies`, point at the copy in the package instead, relative to the config file: `"$schema": "./node_modules/inup/config-schema.json"`. That file is missing when you run inup with `npx` or from a global install, so the URL above is the default.
+- Prefer `inup.config.jsonc` for a commented file. Editors open `.json` files as strict JSON, so without the schema loaded they flag comments and trailing commas as errors; `.jsonc` files never get those errors.
 
 ## Example
 
-```json
+```jsonc
 {
+  "$schema": "https://cdn.jsdelivr.net/npm/inup@1/config-schema.json",
   "ignore": ["@babel/*", "eslint-*", "typescript"],
   "only": ["@myco/*", "react", "react-dom"],
   "ignoreMajor": ["@tiptap/*"],

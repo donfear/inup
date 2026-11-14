@@ -1,14 +1,12 @@
 #!/usr/bin/env node
 
-import { writeFileSync } from 'node:fs'
 import { enableCompileCache } from 'node:module'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import chalk from 'chalk'
 import { Command, Option } from 'commander'
 import type { ApplyTarget } from './features/headless'
 import {
-  buildConfigTemplate,
-  findExistingConfigFile,
+  findConfigFilesIn,
   INIT_CONFIG_FILENAME,
   isValidConcurrency,
   isValidMinimumReleaseAge,
@@ -16,6 +14,7 @@ import {
   PACKAGE_NAME,
   PACKAGE_VERSION,
   POOL_CONNECTIONS,
+  writeInitConfig,
 } from './shared/config'
 import { enableDebugLogging } from './shared/debug-logger'
 import { type GitWorkingTreeState, getGitWorkingTreeState } from './shared/git'
@@ -73,41 +72,49 @@ function splitList(value: string | undefined): string[] {
 }
 
 /**
- * `--init`: write a fully commented starter config to <cwd>/.inuprc.
- * When a config file already exists in that directory, ask before overwriting;
- * without a terminal on both ends there is no way to confirm, so refuse instead of clobbering.
+ * `--init`: write a fully commented starter config to <cwd>/inup.config.jsonc.
+ * When config files already exist in that directory, ask before replacing them, naming
+ * each one that would be deleted; without a terminal on both ends there is no way to
+ * confirm, so refuse instead of clobbering.
  */
 async function runInit(cwd: string): Promise<void> {
-  const existing = findExistingConfigFile(cwd)
-  const targetPath = join(cwd, INIT_CONFIG_FILENAME)
+  const existing = findConfigFilesIn(cwd)
 
-  if (existing) {
+  if (existing.length > 0) {
     if (!isInteractiveTerminal()) {
-      console.error(chalk.red(`Config already exists: ${existing}`))
-      console.error(chalk.yellow('Refusing to overwrite without confirmation. Delete it first,'))
+      console.error(chalk.red(`Config already exists: ${existing.join(', ')}`))
+      console.error(chalk.yellow('Refusing to replace it without confirmation. Delete it first,'))
       console.error(chalk.yellow('or run `inup --init` in an interactive terminal to confirm.'))
       process.exit(2)
     }
-    const shouldOverwrite = await TerminalInput.promptForImmediateConfirmation(
-      `${chalk.yellow('Config already exists:')} ${existing}. Overwrite with a fresh template? ${chalk.dim('[y/N]')} `,
+    const target = join(cwd, INIT_CONFIG_FILENAME)
+    const deleted = existing.filter((path) => path !== target).map((path) => basename(path))
+    const question =
+      deleted.length > 0
+        ? `Write a fresh ${INIT_CONFIG_FILENAME} and delete ${deleted.join(', ')}?`
+        : `Overwrite ${INIT_CONFIG_FILENAME} with a fresh template?`
+    const confirmed = await TerminalInput.promptForImmediateConfirmation(
+      `${chalk.yellow('Config already exists in')} ${cwd}. ${question} ${chalk.dim('[y/N]')} `,
       false
     )
-    if (!shouldOverwrite) {
+    if (!confirmed) {
       console.log(chalk.yellow('Kept the existing config.'))
       return
     }
   }
 
-  writeFileSync(targetPath, buildConfigTemplate(), 'utf-8')
-  console.log(`${chalk.green('Created')} ${targetPath}`)
-  if (existing && existing !== targetPath) {
-    // e.g. inup.config.json was found but we always write .inuprc, which is
-    // first in the loader's lookup order — the old file is now shadowed.
-    console.log(
-      chalk.yellow(`Note: ${existing} still exists but ${INIT_CONFIG_FILENAME} takes precedence.`)
-    )
+  let written: ReturnType<typeof writeInitConfig>
+  try {
+    written = writeInitConfig(cwd)
+  } catch (error) {
+    console.error(chalk.red((error as Error).message))
+    process.exit(2)
   }
-  console.log(chalk.dim('Every field is documented inline; comments are allowed in this file.'))
+  console.log(`${chalk.green('Created')} ${written.path}`)
+  for (const path of written.removed) console.log(`${chalk.yellow('Deleted')} ${path}`)
+  console.log(
+    chalk.dim('Every field is documented inline, and editors that read "$schema" autocomplete it.')
+  )
 }
 
 /**
@@ -159,7 +166,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   // (read-only, unless --apply).
   const interactive = isInteractiveTerminal() && !options.json && !options.check && !options.apply
 
-  // Validate --minimum-release-age the same way. Undefined means "defer to .inuprc"; an
+  // Validate --minimum-release-age the same way. Undefined means "defer to the config file"; an
   // explicit 0 means "disable the configured cooldown for this run", so presence is what
   // counts, not truthiness. Number() rather than parseInt: parseInt('7.5') is 7, and a
   // security control must reject input it cannot honor instead of quietly rounding it.
@@ -190,7 +197,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     }
   }
 
-  // Load project config from .inuprc. Before the dirty-tree prompt, so a broken config fails
+  // Load project config from the config file. Before the dirty-tree prompt, so a broken config fails
   // the run before it asks anything.
   const projectConfig = loadProjectConfigOrExit(cwd)
 
@@ -209,7 +216,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   ]
 
   // The packages to check: `inup react eslint-*` (or `inup react,react-dom`, like --ignore), else
-  // `only` in .inuprc. Named packages replace the configured list instead of adding to it, so
+  // `only` in the config file. Named packages replace the configured list instead of adding to it, so
   // `inup '*'` checks everything once. The config belongs to the project, so -g leaves it out.
   const namedPackages = (options.packages ?? []).flatMap(splitList)
   const configuredPackages = options.global ? [] : (projectConfig.only ?? []).flatMap(splitList)
@@ -239,7 +246,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     concurrency = parsed
   }
 
-  // Native core: flag (--native / --no-native) > .inuprc > on. Headless runs left on the default
+  // Native core: flag (--native / --no-native) > the config file > on. Headless runs left on the default
   // only use a core an earlier run cached: a download would hold CI and --json runs open until it
   // lands. Loaded only when on, so --no-native runs never touch it.
   const nativeChoice = options.native ?? projectConfig.native
@@ -248,7 +255,7 @@ export async function runCli(options: CliOptions): Promise<void> {
     configureNativeCore({ enabled: true, download: interactive || nativeChoice === true })
   }
 
-  // The command the upgrades must keep passing: flag > .inuprc, and --no-verify skips both. The
+  // The command the upgrades must keep passing: flag > the config file, and --no-verify skips both. The
   // config belongs to the project, so -g leaves it out.
   const verify = options.global ? undefined : (options.verify ?? projectConfig.verify) || undefined
 
@@ -281,10 +288,10 @@ export async function runCli(options: CliOptions): Promise<void> {
     showOptionalDependencyVulnerabilities:
       projectConfig.showOptionalDependencyVulnerabilities ?? false,
     saveExact: options.saveExact ?? false,
-    // CLI wins over .inuprc for the scalar; the exclusion list only comes from config.
+    // CLI wins over the config file for the scalar; the exclusion list only comes from config.
     minimumReleaseAge: cliMinimumReleaseAge ?? projectConfig.minimumReleaseAge ?? 0,
     minimumReleaseAgeExclude: projectConfig.minimumReleaseAgeExclude,
-    // Pinned parallelism: flag > .inuprc; undefined lets the controller adapt.
+    // Pinned parallelism: flag > the config file; undefined lets the controller adapt.
     concurrency: concurrency ?? projectConfig.concurrency,
     // Commander sets false for --no-audit; a caller that builds CliOptions itself may omit it.
     audit: options.audit ?? true,
@@ -354,7 +361,7 @@ program
   .version(PACKAGE_VERSION)
   .argument(
     '[packages...]',
-    'only check these packages (names or glob patterns like @babel/*; default: all, or "only" in .inuprc)'
+    'only check these packages (names or glob patterns like @babel/*; default: all, or "only" in the config file)'
   )
   .option('-d, --dir <directory>', 'specify directory to run in', process.cwd())
   .option('-e, --exclude <patterns>', 'exclude paths matching regex patterns (comma-separated)', '')
@@ -366,7 +373,7 @@ program
   .option('--max-depth <number>', 'maximum directory depth for package.json discovery', '10')
   .option(
     '--init',
-    'create a commented .inuprc template documenting every option (asks before overwriting)'
+    'create a commented inup.config.jsonc documenting every option (asks before replacing a config)'
   )
   .addOption(
     new Option('--package-manager <name>', 'manually specify package manager').choices(
@@ -393,17 +400,17 @@ program
   .option('-c, --check', 'exit non-zero if updates exist, without writing (for CI; read-only)')
   .option(
     '--apply',
-    'non-interactively write upgrades to package.json and run install (honors .inuprc ignore/exclude)'
+    'non-interactively write upgrades to package.json and run install (honors config file ignore/exclude)'
   )
   .option(
     '--minimum-release-age <minutes>',
-    'only offer versions published at least this many minutes ago (supply-chain cooldown; also via .inuprc)'
+    'only offer versions published at least this many minutes ago (supply-chain cooldown; also via the config file)'
   )
   .option(
     '--verify <command>',
-    'run this command (e.g. "npm test") after upgrading and revert each upgrade it fails with (also via .inuprc)'
+    'run this command (e.g. "npm test") after upgrading and revert each upgrade it fails with (also via the config file)'
   )
-  .option('--no-verify', 'skip the verify command set in .inuprc for this run')
+  .option('--no-verify', 'skip the verify command set in the config file for this run')
   // No commander default: HeadlessRunner owns the 'minor' default for an absent target.
   .addOption(
     new Option(

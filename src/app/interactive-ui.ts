@@ -26,7 +26,7 @@ interface InteractiveUIOptions extends VulnerabilityDisplayOptions {
   saveExact?: boolean
   /** False with --no-audit: nothing is checked until the user presses `s`. */
   audit?: boolean
-  /** The packages the run is limited to (`inup react`, or `only` in .inuprc), for the header. */
+  /** The packages the run is limited to (`inup react`, or `only` in the config file), for the header. */
   onlyPackages?: string[]
 }
 

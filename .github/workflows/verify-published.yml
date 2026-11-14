@@ -20,6 +20,28 @@ permissions:
   contents: read
 
 jobs:
+  # jsDelivr resolves inup@<major>, the address in every "$schema" `inup --init` writes, and
+  # caches that answer for up to 12 hours. Purge it once npm lists the new release, so editors
+  # get the new release's schema straight away. Best effort: if it fails, the alias catches up
+  # on its own, and an exact-version URL is never stale.
+  refresh-config-schema:
+    name: Refresh the config schema on jsDelivr
+    if: ${{ !contains(inputs.version, '-') }}
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Wait for the registry, then purge
+        run: |
+          for i in $(seq 60); do
+            npm view "inup@$VERSION" version >/dev/null 2>&1 && break
+            sleep 10
+          done
+          curl -fsS -m 10 "https://purge.jsdelivr.net/npm/inup@${VERSION%%.*}/config-schema.json" || true
+
   verify:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.host }}

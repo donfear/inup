@@ -89,7 +89,7 @@ Review the diff and run your tests after upgrading.
 
 inup detects your package manager and finds dependencies across workspaces. Private registries use your `.npmrc`. pnpm catalog entries are updated in `pnpm-workspace.yaml`.
 
-Only after a few packages? Name them: `npx inup react "eslint-*"`, or for every run with [`only`](docs/guide/configuration.md#only) in `.inuprc`. Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [`.inuprc`](docs/guide/configuration.md).
+Only after a few packages? Name them: `npx inup react "eslint-*"`, or for every run with [`only`](docs/guide/configuration.md#only) in the config file. Global tools too: `npx inup -g` upgrades what you installed with `npm install -g` (or pnpm and Bun with `--package-manager`). Need to leave a package alone? Run `npx inup --ignore "react,react-dom"`, or save your rules in [the config file](docs/guide/configuration.md).
 
 ## Keep only the upgrades your tests pass
 
@@ -97,7 +97,7 @@ Only after a few packages? Name them: `npx inup react "eslint-*"`, or for every 
 npx inup --verify "npm test"
 ```
 
-After you upgrade, inup runs your tests. If they fail, it puts everything back and tries one package at a time, so you keep every upgrade that passes and nothing that breaks. Add `"verify": "npm test"` to [`.inuprc`](docs/guide/configuration.md#verify) to check every upgrade, in the picker, with `--apply` and in the GitHub Action.
+After you upgrade, inup runs your tests. If they fail, it puts everything back and tries one package at a time, so you keep every upgrade that passes and nothing that breaks. Add `"verify": "npm test"` to [the config file](docs/guide/configuration.md#verify) to check every upgrade, in the picker, with `--apply` and in the GitHub Action.
 
 <!-- BENCHMARK:START -->
 ## Speed
@@ -173,7 +173,7 @@ A version published an hour ago is the one most likely to be a compromised relea
 npx inup --minimum-release-age 10080   # nothing published in the last 7 days
 ```
 
-Keep it in [`.inuprc`](docs/guide/configuration.md) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
+Keep it in [the config file](docs/guide/configuration.md) as `minimumReleaseAge` (minutes, the same name and unit pnpm uses), with `minimumReleaseAgeExclude` for your own packages.
 
 inup tells you what it held back rather than quietly showing you fewer updates, so a package waiting out its cooldown never looks the same as a package that is up to date.
 
@@ -229,7 +229,7 @@ npx inup --no-native  # standard core for this run
 npx inup --native     # native core, downloading it even in a scripted run
 ```
 
-To turn it off for a project, add `"native": false` to [`.inuprc`](docs/guide/configuration.md#native).
+To turn it off for a project, add `"native": false` to [the config file](docs/guide/configuration.md#native).
 
 ## Using it in scripts?
 
@@ -252,7 +252,7 @@ No telemetry or tracking. inup contacts your package registry for metadata and s
 <summary>Tests and coverage</summary>
 
 <!-- TEST-BADGES:START -->
-[![Tests](https://img.shields.io/badge/tests-2228_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-2511_passing-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen?style=for-the-badge)](https://github.com/donfear/inup/actions/workflows/ci.yml)
 <!-- TEST-BADGES:END -->
 

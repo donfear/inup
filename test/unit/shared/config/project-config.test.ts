@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CONFIG_FILES,
+  findConfigFilesIn,
   isPackageIgnored,
   loadProjectConfig,
   stripJsonComments,
@@ -66,16 +68,89 @@ describe('project-config', () => {
       expect(config.exclude).toEqual(['dist', 'node_modules'])
     })
 
-    it('should prefer .inuprc over other config files', () => {
-      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: ['from-inuprc'] }))
-      writeFileSync(join(testDir, '.inuprc.json'), JSON.stringify({ ignore: ['from-inuprc-json'] }))
+    describe('several config files', () => {
+      // Lookup order: the documented inup.config.jsonc first, then the order the older
+      // names have always had, which existing projects may rely on.
+      const ORDER = ['inup.config.jsonc', '.inuprc', '.inuprc.json', 'inup.config.json']
+      const pairs = ORDER.flatMap((winner, i) => ORDER.slice(i + 1).map((loser) => [winner, loser]))
+
+      it('looks the names up in this order', () => {
+        expect([...CONFIG_FILES]).toEqual(ORDER)
+      })
+
+      it.each(pairs)('%s wins over %s, with one warning naming the other', (winner, loser) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        writeFileSync(join(testDir, winner), JSON.stringify({ ignore: [winner] }))
+        writeFileSync(join(testDir, loser), JSON.stringify({ ignore: [loser] }))
+
+        expect(loadProjectConfig(testDir)).toEqual({ ignore: [winner] })
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          `Warning: ${testDir} has several config files; using ${winner}. Delete ${loser} to silence this.`
+        )
+        warn.mockRestore()
+      })
+
+      it('names every file it ignores', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        for (const name of ORDER)
+          writeFileSync(join(testDir, name), JSON.stringify({ ignore: [name] }))
+
+        expect(loadProjectConfig(testDir)).toEqual({ ignore: ['inup.config.jsonc'] })
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          `Warning: ${testDir} has several config files; using inup.config.jsonc. Delete .inuprc, .inuprc.json, inup.config.json to silence this.`
+        )
+        warn.mockRestore()
+      })
+
+      it.each(ORDER)('says nothing about a lone %s', (name) => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        writeFileSync(join(testDir, name), JSON.stringify({ ignore: ['only-one'] }))
+
+        expect(loadProjectConfig(testDir)).toEqual({ ignore: ['only-one'] })
+        expect(warn).not.toHaveBeenCalled()
+        warn.mockRestore()
+      })
+
+      it('says nothing when the configs are in different directories', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+        const child = join(testDir, 'child')
+        mkdirSync(child)
+        writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ ignore: ['parent'] }))
+        writeFileSync(join(child, 'inup.config.jsonc'), JSON.stringify({ ignore: ['child'] }))
+
+        expect(loadProjectConfig(child)).toEqual({ ignore: ['child'] })
+        expect(warn).not.toHaveBeenCalled()
+        warn.mockRestore()
+      })
+    })
+
+    it('loads inup.config.jsonc with comments and trailing commas', () => {
       writeFileSync(
-        join(testDir, 'inup.config.json'),
-        JSON.stringify({ ignore: ['from-inup-config'] })
+        join(testDir, 'inup.config.jsonc'),
+        '// project rules\n{\n  "ignore": ["react"], // pinned\n  "concurrency": 4,\n}\n'
       )
 
-      const config = loadProjectConfig(testDir)
-      expect(config.ignore).toEqual(['from-inuprc'])
+      expect(loadProjectConfig(testDir)).toEqual({ ignore: ['react'], concurrency: 4 })
+    })
+
+    describe('findConfigFilesIn()', () => {
+      it('lists every config file in the directory, in lookup order', () => {
+        writeFileSync(join(testDir, 'inup.config.json'), '{}')
+        writeFileSync(join(testDir, 'inup.config.jsonc'), '{}')
+
+        expect(findConfigFilesIn(testDir)).toEqual([
+          join(testDir, 'inup.config.jsonc'),
+          join(testDir, 'inup.config.json'),
+        ])
+      })
+
+      it('does not look in parent directories', () => {
+        const child = join(testDir, 'child')
+        mkdirSync(child)
+        writeFileSync(join(testDir, '.inuprc'), '{}')
+
+        expect(findConfigFilesIn(child)).toEqual([])
+      })
     })
 
     it('should search parent directories for config', () => {
@@ -441,6 +516,27 @@ describe('project-config', () => {
       expect(loadProjectConfig(testDir)).toEqual({ ignore: ['kept'] })
       expect(warn).toHaveBeenCalledExactlyOnceWith(
         `Warning: ignoring unknown key "${key}" in ${configPath} (did you mean "${suggestion}"?)`
+      )
+    })
+
+    it.each([
+      ['a URL', 'https://cdn.jsdelivr.net/npm/inup@1/config-schema.json'],
+      ['a relative path', './node_modules/inup/config-schema.json'],
+      ['a number', 42],
+    ])('accepts "$schema" set to %s silently, and leaves it out of the config', (_label, value) => {
+      writeFileSync(join(testDir, '.inuprc'), JSON.stringify({ $schema: value, ignore: ['kept'] }))
+
+      expect(loadProjectConfig(testDir)).toEqual({ ignore: ['kept'] })
+      expect(warn).not.toHaveBeenCalled()
+    })
+
+    it('suggests "$schema" for "schema"', () => {
+      const configPath = join(testDir, '.inuprc')
+      writeFileSync(configPath, JSON.stringify({ schema: 'x' }))
+
+      loadProjectConfig(testDir)
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `Warning: ignoring unknown key "schema" in ${configPath} (did you mean "$schema"?)`
       )
     })
 

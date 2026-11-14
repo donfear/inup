@@ -49,7 +49,7 @@ export interface PackageInfo {
   isOutdated: boolean
   hasRangeUpdate: boolean // If range version is different from current
   hasMajorUpdate: boolean // If latest is newer than the range target (beyond the declared range)
-  majorIgnored?: boolean // Major update exists but is suppressed by .inuprc ignoreMajor
+  majorIgnored?: boolean // Major update exists but is suppressed by the config file ignoreMajor
   description?: string // Package description from npm registry
   homepage?: string // Package homepage URL
   repository?: string // GitHub/repository URL for releases
@@ -125,12 +125,12 @@ export interface VulnerabilityDisplayOptions {
 export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   cwd?: string
   excludePatterns?: string[]
-  scanDirs?: string[] // Directory names to scan even if in the default skip list (from .inuprc)
+  scanDirs?: string[] // Directory names to scan even if in the default skip list (from the config file)
   maxDepth?: number // Maximum package.json scan depth, defaults to 10
   packageManager?: PackageManager // Manual override for package manager
-  ignorePackages?: string[] // Package names/patterns to ignore (from .inuprc or --ignore flag)
-  onlyPackages?: string[] // Package names/patterns to limit the run to (`inup <packages…>` or `only` in .inuprc)
-  ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from .inuprc ignoreMajor)
+  ignorePackages?: string[] // Package names/patterns to ignore (from the config file or --ignore flag)
+  onlyPackages?: string[] // Package names/patterns to limit the run to (`inup <packages…>` or `only` in the config file)
+  ignoreMajorPackages?: string[] // Patterns whose major updates are suppressed (from the config file ignoreMajor)
   debug?: boolean // Write verbose debug log to <os tmpdir>/inup/inup-debug-YYYY-MM-DD.log
   saveExact?: boolean // Write bare versions instead of preserving the range prefix (^/~)
   /** @deprecated No-op: registry concurrency always adapts unless `concurrency` pins it. */
@@ -140,7 +140,7 @@ export interface UpgradeOptions extends VulnerabilityDisplayOptions {
   minimumReleaseAgeExclude?: string[] // Package names/patterns exempt from minimumReleaseAge
   global?: boolean // `inup -g`: the packages are global installs listed in a throwaway manifest
   audit?: boolean // Check vulnerabilities on every run; false skips it (--no-audit). Defaults to true
-  verify?: string // Command the upgrades must keep passing (--verify or .inuprc); the ones it fails are reverted
+  verify?: string // Command the upgrades must keep passing (--verify or the config file); the ones it fails are reverted
 }
 
 /**
