@@ -21,6 +21,15 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const KEEP_ALIVE: Duration = Duration::from_secs(30);
 const POOL_CONNECTIONS: usize = 24;
 const DEFAULT_HEADERS_TIMEOUT_MS: u32 = 30_000;
+/// HTTP/2 flow-control windows. A cold run streams megabytes per packument;
+/// with the 64 KiB defaults the server stalls waiting for window updates.
+const STREAM_WINDOW_BYTES: u32 = 1 << 24;
+const SESSION_WINDOW_BYTES: u32 = 1 << 28;
+/// Every request shares the HTTP/2 connection, and a timed-out request does
+/// not close it: a connection that has gone silent with requests open is
+/// pinged and dropped long before the headers timeout, so retries reconnect.
+const H2_PING_INTERVAL: Duration = Duration::from_secs(10);
+const H2_PING_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Response body bytes received across all requests, not yet reported to JS.
 static RECEIVED_BYTES: AtomicU64 = AtomicU64::new(0);
@@ -65,6 +74,8 @@ pub struct FetchOutcome {
   pub bytes: f64,
   pub latency_ms: f64,
   pub status: u32,
+  /// The response came over HTTP/2 (requests share one connection).
+  pub multiplexed: bool,
   /// Raw Retry-After header of a congestion response.
   pub retry_after: Option<String>,
   /// For transient / fallback: tls | connect | timeout | io | decode | internal
@@ -81,6 +92,7 @@ impl FetchOutcome {
       bytes: 0.0,
       latency_ms: started.elapsed().as_secs_f64() * 1000.0,
       status: 0,
+      multiplexed: false,
       retry_after: None,
       error_class: None,
       error: None,
@@ -101,8 +113,13 @@ fn client() -> std::result::Result<&'static reqwest::Client, String> {
   CLIENT
     .get_or_init(|| {
       let _ = rustls::crypto::ring::default_provider().install_default();
+      // HTTP/2 when the server offers it (ALPN), one multiplexed connection per
+      // origin; HTTP/1.1 keep-alive otherwise.
       let mut builder = reqwest::Client::builder()
-        .http1_only()
+        .http2_initial_stream_window_size(STREAM_WINDOW_BYTES)
+        .http2_initial_connection_window_size(SESSION_WINDOW_BYTES)
+        .http2_keep_alive_interval(H2_PING_INTERVAL)
+        .http2_keep_alive_timeout(H2_PING_TIMEOUT)
         // The JS transport ignores proxy env vars; stay identical.
         .no_proxy()
         .connect_timeout(CONNECT_TIMEOUT)
@@ -226,6 +243,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
   };
 
   let status = response.status().as_u16();
+  let multiplexed = response.version() == reqwest::Version::HTTP_2;
   if status == 304 {
     if let Some(entry) = cached {
       return FetchOutcome {
@@ -233,6 +251,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
         data_json: Some(entry.data.get().to_owned()),
         revalidated: true,
         status: 304,
+        multiplexed,
         ..FetchOutcome::kind("success", started)
       };
     }
@@ -250,6 +269,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
       .map(str::to_owned);
     return FetchOutcome {
       status: status.into(),
+      multiplexed,
       retry_after,
       ..FetchOutcome::kind(kind, started)
     };
@@ -296,6 +316,7 @@ async fn run(request: FetchRequest, started: Instant) -> FetchOutcome {
       data_json: Some(json),
       bytes,
       status: status.into(),
+      multiplexed,
       ..FetchOutcome::kind("success", started)
     },
     Ok(Err(error)) => FetchOutcome::failed("transient", "decode", error, started),

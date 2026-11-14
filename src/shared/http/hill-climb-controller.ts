@@ -89,7 +89,8 @@ export interface RequestOutcomeMeta {
 export interface HillClimbTuning {
   /** Lower bound on the limit. */
   floor: number
-  /** Upper bound on the limit (kept == the pool's connection count). */
+  /** Upper bound on the limit (kept == the pool's connection count) until the
+   * transport proves it multiplexes — see raiseCeiling() and lowerCeiling(). */
   ceil: number
   /** Slow-start seed when there is no (valid) persisted profile. */
   coldStart: number
@@ -185,6 +186,10 @@ export class HillClimbController {
   private readonly onTick?: (tick: ControlTick) => void
 
   private limit: number
+  private ceil: number = this.tuning.ceil
+  private readonly packageCount: number
+  /** The persisted profile's limit, before the start-up ceiling clamped it. */
+  private readonly profileLimit: number | null = null
   private phase: ConcurrencyControllerState
   private frozen = false
 
@@ -244,14 +249,16 @@ export class HillClimbController {
     const t = this.tuning
     this.latencyEwma = new Ewma(t.ewmaAlpha)
     this.fullLatencyEwma = new Ewma(t.ewmaAlpha)
+    this.packageCount = packageCount
     const profile = options.profile ?? null
     if (profile) {
-      this.limit = clamp(Math.round(profile.learnedLimit), t.floor, t.ceil)
+      this.profileLimit = Math.round(profile.learnedLimit)
+      this.limit = clamp(this.profileLimit, t.floor, this.ceil)
       this.phase = 'validating'
       this.profileBaselineMs = profile.baselineLatencyMs
       this.validationRemaining = t.validateAfterCompletions
     } else {
-      this.limit = clamp(t.coldStart, t.floor, t.ceil)
+      this.limit = clamp(t.coldStart, t.floor, this.ceil)
       this.phase = 'slow-start'
       this.blindDoubleArmed = true
     }
@@ -273,6 +280,50 @@ export class HillClimbController {
 
   getState(): ConcurrencyControllerState {
     return this.phase
+  }
+
+  /**
+   * Lift the ceiling once the registry answers over HTTP/2: requests are then
+   * streams on one connection, no longer bound by the socket pool. Returns
+   * the new limit when it changed, to apply immediately; otherwise null.
+   */
+  raiseCeiling(ceil: number): number | null {
+    if (ceil <= this.ceil) return null
+    const before = this.limit
+    this.ceil = ceil
+    if (this.fastLink) {
+      // A link proven wide holds the ceiling, wherever it is.
+      this.limit = ceil
+    } else if (this.phase === 'validating' && this.profileLimit !== null) {
+      // A limit learned over HTTP/2 was clamped to the socket pool at start.
+      this.limit = Math.min(
+        clamp(this.profileLimit, this.tuning.floor, ceil),
+        Math.max(1, this.packageCount)
+      )
+    }
+    return this.limit === before ? null : this.limit
+  }
+
+  /**
+   * Put the ceiling back once a registry in the run answers over HTTP/1.1: the
+   * limit is shared by every registry, and there each request holds one of the
+   * pool's sockets. Returns the new limit when it changed; otherwise null.
+   */
+  lowerCeiling(ceil: number): number | null {
+    if (ceil >= this.ceil) return null
+    this.ceil = ceil
+    if (this.limit <= ceil) return null
+    this.limit = ceil
+    // The regime check carries on at the lower limit. Elsewhere, goodput
+    // measured above the new ceiling compares with nothing below it (and a
+    // pending probe would restore a limit above it): hold and re-learn.
+    if (this.phase !== 'validating') {
+      this.enterHold(0)
+      this.prevGoodput = null
+      this.prevRatio = null
+      this.prevMetric = null
+    }
+    return this.limit
   }
 
   /** Stop making decisions for the run tail: fewer in-flight requests than the
@@ -392,7 +443,7 @@ export class HillClimbController {
       // Same regime: climb from the learned limit, gated from here on.
       return null
     }
-    this.limit = clamp(t.coldStart, t.floor, t.ceil)
+    this.limit = clamp(t.coldStart, t.floor, this.ceil)
     // On a better regime the cold start may double blindly (the link is fast;
     // a wrong guess costs one window). On a worse one, stay gated.
     this.blindDoubleArmed = better
@@ -402,7 +453,7 @@ export class HillClimbController {
 
   private applyHardDecrease(): number {
     const t = this.tuning
-    this.limit = clamp(Math.round(this.limit * t.hardDecreaseFactor), t.floor, t.ceil)
+    this.limit = clamp(Math.round(this.limit * t.hardDecreaseFactor), t.floor, this.ceil)
     this.enterHold(0)
     this.prevGoodput = null
     this.prevRatio = null
@@ -436,7 +487,7 @@ export class HillClimbController {
     // check matters, and errors say nothing about the latency comparison.
     if (this.retriesSinceTick > 0) {
       this.windowIndex++
-      this.limit = clamp(Math.round(this.limit * t.softDecreaseFactor), t.floor, t.ceil)
+      this.limit = clamp(Math.round(this.limit * t.softDecreaseFactor), t.floor, this.ceil)
       if (this.phase !== 'validating') this.phase = 'slow-start'
       this.blindDoubleArmed = false
       this.probePending = false
@@ -484,7 +535,7 @@ export class HillClimbController {
     ) {
       if (!this.fastLink) {
         this.fastLink = true
-        this.limit = t.ceil
+        this.limit = this.ceil
         this.enterHold(bytesPerSec)
       }
       this.prevGoodput = null
@@ -584,7 +635,7 @@ export class HillClimbController {
       this.limitBeforeIncrease = null
       return 'revert'
     }
-    this.limit = clamp(this.limit - 1, t.floor, t.ceil)
+    this.limit = clamp(this.limit - 1, t.floor, this.ceil)
     return 'step-down'
   }
 
@@ -600,7 +651,7 @@ export class HillClimbController {
       return this.increase(this.limit + 1, 'up', goodput)
     }
     // The last +1 bought nothing: take it back and hold at the knee.
-    this.limit = clamp(this.limit - 1, t.floor, t.ceil)
+    this.limit = clamp(this.limit - 1, t.floor, this.ceil)
     this.enterHold(prev)
     return 'revert'
   }
@@ -622,7 +673,7 @@ export class HillClimbController {
       return 'step-down'
     }
     // Real loss: one step back up is the knee.
-    this.limit = clamp(this.limit + 1, t.floor, t.ceil)
+    this.limit = clamp(this.limit + 1, t.floor, this.ceil)
     this.enterHold(prev)
     return 'revert'
   }
@@ -658,12 +709,12 @@ export class HillClimbController {
 
     this.badStreak = 0
     this.windowsSinceProbe++
-    if (this.windowsSinceProbe >= t.reprobeAfterWindows && this.limit < t.ceil) {
+    if (this.windowsSinceProbe >= t.reprobeAfterWindows && this.limit < this.ceil) {
       this.probePending = true
       this.preProbeLimit = this.limit
       this.probeBaseline = goodput
       this.windowsSinceProbe = 0
-      this.limit = clamp(this.limit + 1, t.floor, t.ceil)
+      this.limit = clamp(this.limit + 1, t.floor, this.ceil)
       return 'probe-up'
     }
     return 'hold'
@@ -672,8 +723,8 @@ export class HillClimbController {
   private increase(target: number, reason: ControlTickReason, goodput: number): ControlTickReason {
     const t = this.tuning
     this.limitBeforeIncrease = this.limit
-    this.limit = clamp(target, t.floor, t.ceil)
-    if (this.limit === t.ceil) {
+    this.limit = clamp(target, t.floor, this.ceil)
+    if (this.limit === this.ceil) {
       this.enterHold(goodput)
     }
     return reason

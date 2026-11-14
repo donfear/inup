@@ -73,6 +73,8 @@ export interface NativeFetchOutcome {
   bytes: number
   latencyMs: number
   status: number
+  /** The response came over HTTP/2. */
+  multiplexed?: boolean
   retryAfter?: string | null
   /** transient / fallback only: tls | connect | timeout | io | decode | internal */
   errorClass?: string | null

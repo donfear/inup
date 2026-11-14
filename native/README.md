@@ -5,7 +5,7 @@ A Node-API addon (napi-rs) that takes over the registry client's work off the JS
 It has two capabilities, and inup uses whichever the loaded addon provides:
 
 - **Transport** (`fetchPackument`): one whole registry attempt.
-  - Reads the ETag cache and sends a conditional GET (reqwest, HTTP/1, rustls with the OS trust store plus `NODE_EXTRA_CA_CERTS`).
+  - Reads the ETag cache and sends a conditional GET (reqwest, HTTP/2 when the registry offers it and HTTP/1.1 otherwise, rustls with the OS trust store plus `NODE_EXTRA_CA_CERTS`).
   - Streams and decompresses the body (C brotli, gzip, deflate), parses the packument and writes the cache entry.
   - Returns version data as JSON text, which `JSON.parse` turns into objects far faster than napi can build them.
 - **Decoder** (`decodePackument`): decompress, parse and write the cache for a body the JS transport fetched.
@@ -38,7 +38,7 @@ Each registry attempt then takes the first path that works:
 | Addon loaded but decode-only (no transport exports) | JS transport + native decoder |
 | Native off, not downloaded yet, or unsupported platform | JS transport + TypeScript, unchanged |
 
-The JS transport is Node's built-in `http`/`https` (`src/shared/http/http-request.ts`); inup has no HTTP client dependency.
+The JS transport is Node's built-in `http`/`https`/`http2` (`src/shared/http/http-request.ts`); inup has no HTTP client dependency. Both transports use HTTP/2 when the registry offers it, with the same large flow-control windows, and HTTP/1.1 keep-alive otherwise.
 
 What happens when something goes wrong:
 - **Native decoder fails on a body:** that body is decoded again in TypeScript.

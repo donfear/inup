@@ -75,6 +75,8 @@ type MockResponse = {
   delayMs?: number
   /** When set, the body is also async-iterable and streams exactly these chunks. */
   chunks?: Buffer[]
+  /** Answered over HTTP/2. */
+  multiplexed?: boolean
 }
 
 const makeOkBody = (json: unknown): MockResponse => ({
@@ -110,6 +112,7 @@ describe('npm-registry', () => {
     return {
       statusCode: response.statusCode,
       headers: response.headers ?? {},
+      multiplexed: response.multiplexed ?? false,
       body: {
         dump: async () => {},
         [Symbol.asyncIterator]: async function* () {
@@ -820,6 +823,137 @@ describe('npm-registry', () => {
       })
       return () => peak
     }
+
+    /** A profile learned over HTTP/2: above the socket pool, same latency regime. */
+    const multiplexedProfile = {
+      schemaVersion: 1 as const,
+      learnedLimit: 100,
+      baselineLatencyMs: 20,
+      baselineGoodputRps: 100,
+      sampleCount: 100,
+      updatedAt: new Date(0).toISOString(),
+    }
+
+    /** Like withFastLink, answering over HTTP/2 or not. */
+    const withLink = (multiplexed: boolean) => {
+      let inFlight = 0
+      let peak = 0
+      requestMock.mockImplementation(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 20))
+        inFlight--
+        return { ...makeOkBody({ versions: { '1.0.0': {} } }), multiplexed }
+      })
+      return () => peak
+    }
+
+    it('lifts the ceiling past the socket pool once the registry answers over HTTP/2', async () => {
+      const getPeak = withLink(true)
+      const result = await runFetch(names(300), { networkProfile: multiplexedProfile })
+      expect(result.size).toBe(300)
+      expect(getPeak()).toBeGreaterThan(24)
+      expect(getPeak()).toBeLessThanOrEqual(100)
+    })
+
+    it('keeps the socket-pool ceiling over HTTP/1.1', async () => {
+      const getPeak = withLink(false)
+      await runFetch(names(300), { networkProfile: multiplexedProfile })
+      expect(getPeak()).toBeLessThanOrEqual(24)
+    })
+
+    /**
+     * Two registries in one run: `private-*` packages answer over HTTP/1.1
+     * after `privateMs`, the rest over HTTP/2 after `publicMs`. Returns the
+     * peak of requests in flight to the HTTP/1.1 registry, and the peak of all
+     * requests in flight when a request starts after its first answer.
+     */
+    const withTwoRegistries = (publicMs: number, privateMs: number) => {
+      let inFlight = 0
+      let socketBound = 0
+      let socketBoundPeak = 0
+      let firstSocketBoundAt: number | null = null
+      let peakAfter = 0
+      requestMock.mockImplementation(async ({ path }) => {
+        const multiplexed = !path.includes('private-')
+        inFlight++
+        if (!multiplexed) socketBound++
+        socketBoundPeak = Math.max(socketBoundPeak, socketBound)
+        if (firstSocketBoundAt !== null && Date.now() > firstSocketBoundAt) {
+          peakAfter = Math.max(peakAfter, inFlight)
+        }
+        await new Promise((r) => setTimeout(r, multiplexed ? publicMs : privateMs))
+        inFlight--
+        if (!multiplexed) {
+          socketBound--
+          firstSocketBoundAt ??= Date.now()
+        }
+        return { ...makeOkBody({ versions: { '1.0.0': {} } }), multiplexed }
+      })
+      return { socketBoundPeak: () => socketBoundPeak, peakAfter: () => peakAfter }
+    }
+
+    it('never lifts the ceiling once a registry in the run answered over HTTP/1.1', async () => {
+      // The HTTP/1.1 registry answers first, a little faster; most of its
+      // packages come after the HTTP/2 registry's.
+      const peaks = withTwoRegistries(20, 15)
+      const mixed = names(450).map((name, i) => (i === 0 || i >= 150 ? `private-${name}` : name))
+      const result = await runFetch(mixed, { networkProfile: multiplexedProfile })
+      expect(result.size).toBe(450)
+      expect(peaks.socketBoundPeak()).toBeLessThanOrEqual(24)
+    })
+
+    it('puts the socket-pool ceiling back when an HTTP/1.1 registry answers after HTTP/2', async () => {
+      const peaks = withTwoRegistries(5, 20)
+      // HTTP/2 answers first and lifts the ceiling; the private registry's
+      // packages come later in the queue.
+      const mixed = names(450).map((name, i) => (i >= 150 ? `private-${name}` : name))
+      const result = await runFetch(mixed, { networkProfile: multiplexedProfile })
+      expect(result.size).toBe(450)
+      expect(peaks.socketBoundPeak()).toBeGreaterThan(0)
+      expect(peaks.peakAfter()).toBeGreaterThan(0)
+      expect(peaks.peakAfter()).toBeLessThanOrEqual(24)
+    })
+
+    it('keeps runs too small to control within the socket pool, whatever the profile', async () => {
+      const getPeak = withFastLink(5)
+      await runFetch(names(29), { networkProfile: multiplexedProfile })
+      expect(getPeak()).toBe(24)
+    })
+
+    it('lifts the ceiling for native responses that came over HTTP/2', async () => {
+      let inFlight = 0
+      let peak = 0
+      const fetch = vi.fn(async () => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        await new Promise((r) => setTimeout(r, 20))
+        inFlight--
+        return {
+          kind: 'success',
+          dataJson: JSON.stringify({
+            latestVersion: '1.0.0',
+            allVersions: ['1.0.0'],
+            prereleaseVersions: [],
+            deprecated: null,
+            enginesNode: null,
+          }),
+          revalidated: true,
+          bytes: 0,
+          latencyMs: 20,
+          status: 304,
+          multiplexed: true,
+        }
+      })
+      nativeTransportMock.mockReturnValue({ fetch, takeReceivedBytes: vi.fn(() => 0) })
+      try {
+        await runFetch(names(300), { networkProfile: multiplexedProfile })
+      } finally {
+        nativeTransportMock.mockReset()
+        nativeTransportMock.mockReturnValue(null)
+      }
+      expect(peak).toBeGreaterThan(24)
+    })
 
     it('adapts DOWN on a bandwidth-bound link without any error signal', async () => {
       withBandwidthBoundPipe(8)
