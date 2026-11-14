@@ -14,7 +14,7 @@ import { NATIVE_INTEGRITY } from './native-integrity'
  * See native/README.md.
  *
  * The CLI turns it on unless the user opts out (`--no-native` or
- * `"native": false` in .inuprc); nothing native loads until then. When on,
+ * `"native": false` in the config file); nothing native loads until then. When on,
  * resolution happens once per process:
  * 1. a local `pnpm native:build` output (source checkouts)
  * 2. the addon cached by an earlier run, if it still matches the hash pinned

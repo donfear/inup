@@ -24,7 +24,7 @@ export interface VerifyResult {
 type Snapshot = Map<string, string | null>
 
 /**
- * `--verify <command>`, or `verify` in .inuprc: upgrade, then run the command. When it fails,
+ * `--verify <command>`, or `verify` in the config file: upgrade, then run the command. When it fails,
  * put everything back and retry one package at a time, keeping each upgrade the command passes
  * with and reverting the rest. Refuses to start when the command already fails, because it
  * couldn't tell an upgrade that breaks it from a check that was broken before.

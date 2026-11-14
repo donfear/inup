@@ -532,7 +532,7 @@ export function startPackageVersionFetch(
         : null
     const initialLimit =
       pinned !== undefined
-        ? // Belt-and-braces: cli/.inuprc validators already bound the pin, but
+        ? // Belt-and-braces: the flag and config file validators already bound the pin, but
           // this is the last stop before the semaphore — never exceed the pool.
           clamp(Math.floor(pinned), 1, Math.min(total, POOL_CONNECTIONS))
         : controller

@@ -53,6 +53,18 @@ jobs:
       - name: Validate package (publint)
         run: pnpm dlx publint
 
+      # config-schema.json is a published contract: editors load it from the installed
+      # package or from jsDelivr, which serves the npm tarball. A package without it would
+      # break every "$schema" line `inup --init` has written.
+      - name: Package ships the config schema
+        run: |
+          npm pack --dry-run --json --ignore-scripts | node -e '
+            const files = JSON.parse(require("fs").readFileSync(0, "utf8"))[0].files.map((f) => f.path)
+            if (!files.includes("config-schema.json")) {
+              console.error("config-schema.json is missing from the package (check \"files\" in package.json)")
+              process.exit(1)
+            }'
+
   # Cross-OS / cross-Node test matrix. Coverage + the README badge check run on a
   # single canonical cell (ubuntu / Node 24); every other cell runs plain tests.
   test:

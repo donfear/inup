@@ -7,8 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Editor autocomplete for the config file. inup now ships a JSON schema, and `inup --init` writes `inup.config.jsonc` with a `"$schema"` line pointing at it, so editors such as VS Code complete field names, show what each field does, and flag typos and out-of-range values. VS Code asks once before it trusts the schema's address; if inup is in your `devDependencies`, `"$schema": "./node_modules/inup/config-schema.json"` works offline without asking. inup ignores `"$schema"` instead of warning about an unknown key. Older inup versions don't read `inup.config.jsonc`.
+
 ### Changed
 
+- `inup --init` replaces an existing config instead of writing a second file next to it. It asks first, naming every file it will delete, and leaves `inup.config.jsonc` as the only config in the directory. `.inuprc` and `.inuprc.json` still work, but the docs now show `inup.config.jsonc` and `inup.config.json`.
+- A directory with more than one config file gets a warning naming the one inup reads and the ones to delete, since edits to the others do nothing. Projects where an older `inup --init` wrote `.inuprc` next to `inup.config.json` will see it once they upgrade; delete the file it names.
 - The picker fills in from the top while packages load, instead of rows appearing mid-list and pushing the ones below them down. inup now asks the registry about packages in the order the list shows them, and a package that loads early waits up to 0.3 s for the ones listed above it. The list is still complete the moment the last package loads.
 
 ### Fixed

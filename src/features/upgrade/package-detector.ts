@@ -89,7 +89,7 @@ export class PackageDetector {
   private minimumReleaseAge: number
   private minimumReleaseAgeExclude: string[]
 
-  /** Pinned parallelism (flag / .inuprc); undefined lets the controller adapt. */
+  /** Pinned parallelism (flag / the config file); undefined lets the controller adapt. */
   private readonly concurrency?: number
   private readonly networkProfile: NetworkProfile | null
   /** pnpm patches pinned to a version: read once per project, stamped on every declaration. */
@@ -539,7 +539,7 @@ export class PackageDetector {
         let hasMajorUpdate =
           latestValid && semver.valid(rangeCeiling) !== null && semver.gt(latestClean, rangeCeiling)
 
-        // .inuprc ignoreMajor: breaking updates for matched packages are never
+        // the config file ignoreMajor: breaking updates for matched packages are never
         // offered — a new major, or below 1.0.0 a new 0.y minor (0.0.z: a new
         // patch). A package whose only update is breaking counts as up to date;
         // in-range updates still surface normally, and so does a non-breaking
@@ -776,7 +776,7 @@ export class PackageDetector {
 
   /**
    * Warn (once per directory, after the scan) about package.json-bearing directories that the
-   * default skip list pruned, so the user can re-include them via `.inuprc`'s `scanDirs`.
+   * default skip list pruned, so the user can re-include them via the config file's `scanDirs`.
    * Emitted after scanning so it does not corrupt the progress spinner output.
    */
   private warnSkippedPackageDirs(
@@ -795,7 +795,7 @@ export class PackageDetector {
             list.length === 1 ? 'y' : 'ies'
           } matching the default ignore list:\n` +
           list.map((dir) => `   - ${dir}`).join('\n') +
-          `\n   Add the directory name(s) to "scanDirs" in .inuprc to include them.`,
+          `\n   Add the directory name(s) to "scanDirs" in the config file to include them.`,
       },
     })
   }
@@ -819,7 +819,7 @@ export class PackageDetector {
 
     const warn = (message: string) => onEvent({ type: 'warning', payload: { message } })
     if (skipped.length > 0) {
-      warn(`Warning: your ignore list (--ignore or .inuprc) skips ${skipped.join(', ')}`)
+      warn(`Warning: your ignore list (--ignore or the config file) skips ${skipped.join(', ')}`)
     }
     if (missing.length > 0) {
       warn(`Warning: no dependency matches ${missing.join(', ')}`)

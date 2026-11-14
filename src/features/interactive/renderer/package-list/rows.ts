@@ -26,7 +26,7 @@ export type PackageListRenderOptions = VulnerabilityDisplayOptions & {
   cooldownHeldShown?: boolean
   /** Selected rows across the whole list, including rows the current filter hides. */
   selectedCount?: number
-  /** `inup react` or `only` in .inuprc: the run checks just these, so the header names them. */
+  /** `inup react` or `only` in the config file: the run checks just these, so the header names them. */
   onlyPackages?: string[]
 }
 

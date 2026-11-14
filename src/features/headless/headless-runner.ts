@@ -37,7 +37,7 @@ export class HeadlessRunner {
         throw new Error('No package.json found in current directory')
       }
 
-      // `inup react` or `only` in .inuprc, said every run: a missing comma (`inup -i react
+      // `inup react` or `only` in the config file, said every run: a missing comma (`inup -i react
       // react-dom`) turns a name into the filter. stderr keeps `--json` stdout a pure document.
       const only = this.options?.onlyPackages ?? []
       if (only.length > 0) console.error(chalk.gray(`Checking only ${only.join(', ')}`))
@@ -138,7 +138,7 @@ export class HeadlessRunner {
         )
       }
 
-      // --apply writes the bumps + lockfile. The scan above already honored .inuprc
+      // --apply writes the bumps + lockfile. The scan above already honored the config file
       // (ignore/exclude/scanDirs), so the set we write is exactly the set we report — never more.
       if (options.apply) {
         await this.applyUpgrades(outdated, options.target ?? 'minor', !!options.json)

@@ -9,7 +9,7 @@ import {
 import { join, relative } from 'node:path'
 
 /**
- * Normalize a relative path to forward slashes before matching `.inuprc` exclude patterns.
+ * Normalize a relative path to forward slashes before matching the config file exclude patterns.
  * On Windows `path.relative` yields backslash separators (e.g. `packages\skipme`), but users write
  * exclude regexes with `/` (e.g. `^packages/skipme(?:/|$)`). Without this, excludes silently fail
  * on Windows and a path the user meant to skip gets scanned and upgraded.

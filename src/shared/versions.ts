@@ -240,7 +240,7 @@ function nextBreakingVersion({ major, minor, patch }: semver.SemVer): string {
 
 /**
  * Whether `version` breaks compatibility with the installed version under semver's caret rules:
- * a new major, a new 0.y minor, or a new 0.0.z patch. This is what `.inuprc` `ignoreMajor`
+ * a new major, a new 0.y minor, or a new 0.0.z patch. This is what the config file `ignoreMajor`
  * suppresses.
  */
 export function isBreakingUpdate(installed: semver.SemVer, version: string): boolean {

@@ -14,9 +14,9 @@ By default the range prefix is preserved (`^`/`~`); pass [`--save-exact`](cli.md
 
 A few things cause inup to skip something:
 
-- **Ignored packages** — anything matching `ignore` in [`.inuprc`](configuration.md) or `-i, --ignore` (glob supported, e.g. `@babel/*`).
-- **Excluded directories** — anything matching `exclude` in `.inuprc` or `-e, --exclude` (regex).
-- **Default skip list** — inup does not descend into `node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, or `cjs`, nor into directories whose name starts with `.` or `__` (`.yarn`, `__fixtures__`, `__mocks__`, …). If a real package lives under one of those (e.g. `lib/`), add it to `scanDirs` in `.inuprc`.
+- **Ignored packages** — anything matching `ignore` in [the config file](configuration.md) or `-i, --ignore` (glob supported, e.g. `@babel/*`).
+- **Excluded directories** — anything matching `exclude` in the config file or `-e, --exclude` (regex).
+- **Default skip list** — inup does not descend into `node_modules`, `dist`, `build`, `coverage`, `out`, `lib`, `es`, `esm`, or `cjs`, nor into directories whose name starts with `.` or `__` (`.yarn`, `__fixtures__`, `__mocks__`, …). If a real package lives under one of those (e.g. `lib/`), add it to `scanDirs` in the config file.
 - **Scan depth** — package discovery stops at `--max-depth` (default `10`) directories deep.
 - **Specifiers inup can't bump safely** — only a plain version (`1.2.3`, `^1.2.3`, `~1.2.3`, `>=1.2.3`, `=1.2.3`) is upgraded. Ranges such as `^17.0.0 || ^18.0.0`, `>=1.2.0 <2.0.0` or `1.x`, tags such as `latest`, and `workspace:`, `npm:`, `patch:`, git, URL or path specs are left as written and not listed.
 

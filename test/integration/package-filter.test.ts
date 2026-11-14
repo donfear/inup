@@ -198,7 +198,7 @@ describe('inup <packages…>', () => {
 
     expect(requested()).toEqual(['react'])
     expect(warnings()).toEqual([
-      'Warning: your ignore list (--ignore or .inuprc) skips left-pad',
+      'Warning: your ignore list (--ignore or the config file) skips left-pad',
       'Warning: no dependency matches recat',
     ])
   })

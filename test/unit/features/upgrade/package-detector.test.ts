@@ -873,7 +873,7 @@ describe('PackageDetector edge paths', () => {
       }).streamOutdatedPackages(logWarnings)
 
       expect(warn.mock.calls).toEqual([
-        ['Warning: your ignore list (--ignore or .inuprc) skips zod'],
+        ['Warning: your ignore list (--ignore or the config file) skips zod'],
         ['Warning: no dependency matches recat'],
       ])
     } finally {

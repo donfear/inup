@@ -8,7 +8,7 @@ inup [options] [packages...]
 
 Name packages to check only those: `inup react react-dom`, or with glob patterns, `inup "@babel/*" "eslint-*"` (quote them so your shell doesn't expand them). The registry is asked about nothing else, so it's fast in a big monorepo, and it works the same with `--json`, `--check` and `--apply`. A name that matches no dependency gets a warning, so a typo never looks like "up to date". The picker's header and the start of a headless run name the packages the run is limited to, so a missing comma can't slip by: `inup -i react react-dom` ignores react and checks only react-dom.
 
-To limit every run, set [`only`](configuration.md#only) in `.inuprc`. Packages named on the command line replace that list for the run, and `inup "*"` checks everything.
+To limit every run, set [`only`](configuration.md#only) in the config file. Packages named on the command line replace that list for the run, and `inup "*"` checks everything.
 
 ## Options
 
@@ -19,19 +19,19 @@ To limit every run, set [`only`](configuration.md#only) in `.inuprc`. Packages n
 | `-i, --ignore <packages>` | Ignore packages — comma-separated, glob supported (`@babel/*`) |
 | `-g, --global` | Upgrade your globally installed packages instead of a project's, with npm (default), pnpm or Bun (`--package-manager`). Works in the picker and with `--json`, `--check` and `--apply`; upgrades run `npm install -g`, `pnpm add -g` or `bun add -g` |
 | `--max-depth <number>` | Maximum directory depth for `package.json` discovery (default: 10) |
-| `--init` | Create a commented `.inuprc` template documenting every option (asks before overwriting) |
+| `--init` | Create a commented `inup.config.jsonc` documenting every option, with editor autocomplete (asks before replacing a config) |
 | `--package-manager <name>` | Force the package manager: `npm`, `yarn`, `pnpm` or `bun` |
 | `--concurrency <n>` | Pin registry-fetch parallelism (1–24) and disable adaptive ramping — for slow or metered connections |
 | `--native` | Use the [native core](configuration.md#native) (on by default), downloading it on first use even with `--json`, `--check` or `--apply` |
-| `--no-native` | Use the standard core for this run, even if `.inuprc` enables native |
+| `--no-native` | Use the standard core for this run, even if the config file enables native |
 | `--no-audit` | Skip the vulnerability check. With `--json`, `summary.vulnerable` is `null`; the picker shows "Audit off" and still runs the check when you press `s` |
 | `--json` | Print a machine-readable JSON report and exit (read-only) |
 | `-c, --check` | Exit non-zero if updates exist, without writing (for CI; read-only) |
 | `--apply` | Non-interactively write upgrades and install (for CI/automation). Never rewrites `peerDependencies` |
-| `--verify <command>` | Run the command (for example `"npm test"`) before and after upgrading, in the picker or with `--apply`. If it fails after, inup puts every file back and retries one package at a time, keeping the upgrades the command passes with and reverting the rest. Refuses to start if the command already fails. Also via [`.inuprc`](configuration.md#verify) |
-| `--no-verify` | Skip the `verify` command set in `.inuprc` for this run |
+| `--verify <command>` | Run the command (for example `"npm test"`) before and after upgrading, in the picker or with `--apply`. If it fails after, inup puts every file back and retries one package at a time, keeping the upgrades the command passes with and reverting the rest. Refuses to start if the command already fails. Also via [the config file](configuration.md#verify) |
+| `--no-verify` | Skip the `verify` command set in the config file for this run |
 | `--target <level>` | With `--apply`: `minor` (default, in-range), `patch`, or `latest` |
-| `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via `.inuprc`) |
+| `--minimum-release-age <minutes>` | Supply-chain cooldown: only offer versions published at least this many minutes ago (also via the config file) |
 | `--save-exact` | Write exact versions instead of preserving the range prefix (`^`/`~`) |
 | `--no-color` | Disable colored output (also respects `NO_COLOR` / `FORCE_COLOR`) |
 | `--debug` | Write a verbose debug log to `inup/inup-debug-YYYY-MM-DD.log` in your system temp directory (the exact path is printed when the run starts) |
@@ -50,4 +50,4 @@ To limit every run, set [`only`](configuration.md#only) in `.inuprc`. Packages n
 
 When stdin or stdout isn't a TTY or `$CI` is set (to anything but `false` or `0`), inup never opens the interactive UI — it prints a report instead, so it can't hang a pipeline. `inup | cat` gives a plain line-based report; `--json` gives the structured document.
 
-See [CI & scripting](ci.md) for the JSON schema and `--apply` semantics, and [Configuration](configuration.md) for the `.inuprc` file that all modes honor.
+See [CI & scripting](ci.md) for the JSON schema and `--apply` semantics, and [Configuration](configuration.md) for the config file that all modes honor.
