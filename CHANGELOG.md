@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.1] - 2026-11-14
+
 ### Added
 
 - Editor autocomplete for the config file. inup now ships a JSON schema, and `inup --init` writes `inup.config.jsonc` with a `"$schema"` line pointing at it, so editors such as VS Code complete field names, show what each field does, and flag typos and out-of-range values. VS Code asks once before it trusts the schema's address; if inup is in your `devDependencies`, `"$schema": "./node_modules/inup/config-schema.json"` works offline without asking. inup ignores `"$schema"` instead of warning about an unknown key. Older inup versions don't read `inup.config.jsonc`.
@@ -569,7 +571,8 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 - Initial release, as `pnpm-upgrade-interactive`: find every `package.json` in a pnpm workspace, ask `pnpm view` for newer versions, pick what to upgrade from an interactive list, and have `pnpm install` run for you afterwards. Built for monorepos, where the alternative is opening a dozen files by hand.
 
-[Unreleased]: https://github.com/donfear/inup/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/donfear/inup/compare/v1.9.1...HEAD
+[1.9.1]: https://github.com/donfear/inup/compare/v1.9.0...v1.9.1
 [1.9.0]: https://github.com/donfear/inup/compare/v1.8.8...v1.9.0
 [1.8.8]: https://github.com/donfear/inup/compare/v1.8.7...v1.8.8
 [1.8.7]: https://github.com/donfear/inup/compare/v1.8.6...v1.8.7
